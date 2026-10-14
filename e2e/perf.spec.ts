@@ -24,17 +24,27 @@ test('performance budget', async ({ page }) => {
   await hooks(page, 'advanceNoScan', 300);
   await hooks(page, 'setSpeed', 4);
   const busy = await measure(page, 2500);
+  // Someone clicked and followed: the outline is one more draw and the panel is DOM; nothing else changes.
+  const who = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { state: () => { people: { id: number; kind: string; state: string }[] } } }).__shelf;
+    return h.state().people.find((p) => p.kind === 'customer' && p.state !== 'driving')?.id ?? null;
+  });
+  expect(who).not.toBeNull();
+  await hooks(page, 'selectPerson', who);
+  await page.evaluate(() => (window as unknown as { __shelf: { runtime: { followSelected: () => void } } }).__shelf.runtime.followSelected());
+  const selected = await measure(page, 2500);
+  await page.keyboard.press('Escape');
   await hooks(page, 'setSpeed', 1);
   // One scroll step out (the lot and the road), then all the way out over the crossroads.
   await hooks(page, 'fp', 2.0, -1.5, 0, undefined, 20);
   const mid = await measure(page, 2500);
   await hooks(page, 'viewWorld', 0, 3, 0.3, 68, 0.9);
   const overview = await measure(page, 2500);
-  const report = { measuredAt: new Date().toISOString(), note: 'Headless SwiftShader (software GL); fps here is far below a real GPU. Draw calls and triangles are the hard budget.', starter, busy, mid, overview };
+  const report = { measuredAt: new Date().toISOString(), note: 'Headless SwiftShader (software GL); fps here is far below a real GPU. Draw calls and triangles are the hard budget.', starter, busy, selected, mid, overview };
   mkdirSync('docs/screens', { recursive: true });
   writeFileSync('docs/screens/perf.json', JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
-  for (const v of [starter, busy, mid, overview]) {
+  for (const v of [starter, busy, selected, mid, overview]) {
     expect(v.drawCalls).toBeLessThan(250);
     expect(v.triangles).toBeLessThan(900_000);
   }

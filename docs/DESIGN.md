@@ -90,6 +90,16 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - Lobby: a shop front (striped awning, the manager's head as the logo, the name with the shelf
   bracket, a price-tag beta badge, menu items as shelf-edge labels under a swinging OPEN sign, an
   LED ticker) over a live demo shop at golden hour.
+- Inspect: click or tap anyone but the manager and a small panel opens beside them (docked at the
+  bottom on a phone) with a yellow outline round them: name, type icon, mood face and word, what
+  they are doing, their list with ticks and crosses, basket against budget, patience, and "Came
+  here because…" / "Shopped at Cheapo because…" with two reasons. Staff show role, skill, morale
+  and wage, with a shortcut to the Staff card. Follow keeps the camera on them until they leave
+  the world, Esc or the focus key. Icons differ in shape as well as colour (tag, clock, heart,
+  star; smile, straight mouth, frown). Nothing is computed while nobody is selected.
+- Stats card, "Who shops where": today's shoppers so far by type at each store (yours counted as
+  they set out, the rivals' modelled day scaled by the hour). A row marks every shopper of that
+  type in town for ten seconds.
 - Font: Fredoka (OFL), bundled.
 
 ### 2.4 Save
@@ -164,6 +174,40 @@ clean/layout, wait, parking, awareness. Score → visit probability via softmax 
 
 Reputation moves at most ±0.03 per day toward the day's average satisfaction. The player's share of
 each type is a softmax (k = 4) over weighted scores against open rivals, who count 0.5 each.
+
+### 3.3 Rivals answer the player
+
+Each night every open rival reads the player's last three closes (price index, share of each
+customer type, reputation; kept on the day as `mine`) and the crossroads' shoppers. A rival whose
+trigger holds and whose cooldowns have run out is ready; of the ready rivals at most one moves per
+day, picked on the `rivals` stream. A rumour goes out the night before, a notice and a popup on
+the day, and the move shows on the corner: a banner on two poles facing the road, scaffolding, or
+MegaMart's poster on a billboard. Effects are added to the rival's scores (the scoring weights and
+the softmax are unchanged) at full strength, then fade over the move's last three days.
+
+| Rival | Trigger (last 3 closes) | Move | Lasts | Effect on its scores | Same move again after |
+|---|---|---|---|---|---|
+| Cheapo | your average price index more than 1 point under Cheapo's, or bargain hunters' share of you up 4 points | Price match: "WE MATCH ANY PRICE!" | 7 days | prices 5% lower, sales 4 points deeper, awareness +0.04 | 10 days |
+| Fresh & Fine | your reputation 5 points above its own | Renovation: closed behind scaffolding, "CLOSED FOR A REFIT" | 2 days, then 14 days renovated | renovated: quality +0.08, service +0.06 | 24 days |
+| Fresh & Fine | impulse buyers' share of you up 3 points | Tasting day: "FREE TASTING TODAY" | 1 day | awareness +0.2 | 7 days |
+| Fresh & Fine | loyalists' share of you up 3 points | Loyalty card: "LOYALTY CARDS HERE" | 10 days | availability +0.08 | 14 days |
+| MegaMart | your share of the crossroads above MegaMart's | Mega sale (if not on sale): "MEGA SALE" | 2 days | sale 7 points deeper, awareness +0.1 | 10 days |
+| MegaMart | the same | Billboard (a free site; you cannot rent it while it holds it) | 10 days | awareness +0.08 | 14 days |
+| MegaMart | the same | Long hours: "OPEN LATE" | 10 days | service +0.1 | 14 days |
+
+Any rival rests 4 days between two of its own moves. The balance harness's undercutter (the
+guided player with every price 20% under the town's from day 4) sees Cheapo price-match on day 6
+on every seed, closing Cheapo's price gap over it from 6–7 points to 2 within the week.
+
+### 3.4 Why a shopper chose a store
+
+When a shopper sets out (for the player's shop or a rival's), the sim stores the top two of
+weight × score for their type and the store they picked (ties go in column order: price,
+availability, layout, wait, parking, awareness). The inspect panel turns them into words:
+"Cheapest milk in town", "Always has my brands", "In and out fast", "Easy to park" (or "Close to
+home" on foot), "Saw their ads everywhere". Each type has a look as well as an icon: bargain
+hunters carry a reusable bag, impulse buyers a snack and are a little shorter, convenience
+shoppers walk 12% faster in work clothes, loyalists' hair is silver.
 
 ## 4. Art plan
 

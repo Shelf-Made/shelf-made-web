@@ -162,6 +162,65 @@ test('the camera zooms from the shelves out to the crossroads, turns in steps, a
   expect((await cam()).d).toBeLessThan(20);
 });
 
+test('click a customer: the panel says who they are and why they came; Follow tracks them; Esc lets go', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 12, 'main', 'Nosy Mart', { tutorial: false });
+  await hooks(page, 'quickSetup', true);
+  await hooks(page, 'setSpeed', 0);
+  await hooks(page, 'crowd', 6, true);
+  await hooks(page, 'advance', 35);
+  await hooks(page, 'fp', 0.5, -0.6, 0, 0.95, 15);
+  await page.waitForFunction(() => (window as unknown as { __shelf: { cameraSettled: () => boolean } }).__shelf.cameraSettled(), null, { timeout: 20_000 });
+  await settle(page, 400);
+  // A customer in the shop, well apart from everyone else on screen, so the click can only mean them.
+  const pick = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { state: () => { people: { id: number; kind: string; state: string }[] }; personScreen: (id: number) => { x: number; y: number; visible: boolean } | null } }).__shelf;
+    const all = h.state().people.filter((p) => p.state !== 'driving' && p.state !== 'inRival').map((p) => ({ ...p, at: h.personScreen(p.id) }));
+    const W = window.innerWidth, H = window.innerHeight;
+    const ok = all.filter((p) => p.kind === 'customer' && p.at?.visible && p.at.x > 80 && p.at.x < W - 360 && p.at.y > 120 && p.at.y < H - 160);
+    let best: { id: number; x: number; y: number; gap: number } | null = null;
+    for (const p of ok) {
+      const gap = Math.min(999, ...all.filter((q) => q.id !== p.id && q.at?.visible).map((q) => Math.hypot(q.at!.x - p.at!.x, q.at!.y - p.at!.y)));
+      if (!best || gap > best.gap) best = { id: p.id, x: p.at!.x, y: p.at!.y, gap };
+    }
+    return best;
+  });
+  expect(pick, 'a customer on screen').not.toBeNull();
+  expect(pick!.gap).toBeGreaterThan(30);
+  await page.mouse.click(pick!.x, pick!.y);
+  const panel = page.getByTestId('inspect');
+  await expect(panel).toBeVisible();
+  expect((await hooks<{ id: number }>(page, 'inspect')).id).toBe(pick!.id);
+  // Who they are, what kind of shopper, how they feel, their list, and why they came here (two reasons in plain words).
+  await expect(panel.locator('.name')).toHaveText(/^\w+ \w+$/);
+  await expect(panel.locator('.sub')).toHaveText(/hunters|shoppers|loyalists|buyers/);
+  await expect(panel.locator('.mood-word')).toHaveText(/Happy|Fine|Annoyed/);
+  await expect(panel.locator('.inspect-list li').first()).toBeVisible();
+  await expect(panel.locator('.why-label')).toHaveText('Came here because…');
+  await expect(panel.locator('.inspect-why li')).toHaveCount(2);
+  expect(await panel.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
+  // Follow: the camera leaves the manager and settles over them.
+  await panel.getByRole('button', { name: 'Follow' }).click();
+  expect(await hooks(page, 'followId')).toBe(pick!.id);
+  const gapToPerson = () => page.evaluate((id) => {
+    const h = (window as unknown as { __shelf: { state: () => { people: { id: number; x: number; z: number }[] }; cameraTarget: () => { x: number; z: number } } }).__shelf;
+    const p = h.state().people.find((q) => q.id === id)!; const c = h.cameraTarget();
+    return Math.hypot(p.x - c.x, p.z - c.z);
+  }, pick!.id);
+  await expect.poll(gapToPerson, { timeout: 20_000 }).toBeLessThan(0.3);
+  await expect(panel.getByRole('button', { name: 'Stop following' })).toBeVisible();
+  // Esc: the panel closes, the outline goes, and the camera comes back to the manager.
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  expect(await hooks(page, 'followId')).toBeNull();
+  const gapToOwner = () => page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { ownerPos: () => { x: number; z: number }; cameraTarget: () => { x: number; z: number } } }).__shelf;
+    const o = h.ownerPos(), c = h.cameraTarget();
+    return Math.hypot(o.x - c.x, o.z - c.z);
+  });
+  await expect.poll(gapToOwner, { timeout: 20_000 }).toBeLessThan(0.3);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
@@ -182,6 +241,41 @@ test.describe('on a phone', () => {
     await page.touchscreen.tap(q.x, q.y);
     await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - shelf.x - 0.5, o.z - shelf.z - 0.5); }, { timeout: 20_000 }).toBeLessThan(1.3);
     await expect(page.locator('.toast')).toContainText(/shelf/i);
+  });
+
+  test('tap a customer to see who they are: the panel docks above the tool shelf', async ({ page }) => {
+    await ready(page);
+    await hooks(page, 'newGame', 12, 'main', 'Pocket Nosy', { tutorial: false });
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setSpeed', 0);
+    await hooks(page, 'crowd', 6, true);
+    await hooks(page, 'advance', 35);
+    // The phone's view is narrow: look straight at one of them.
+    type Q = { people: { id: number; kind: string; state: string; x: number; z: number }[] };
+    const c = (await hooks<Q>(page, 'state')).people.find((p) => p.kind === 'customer' && p.state !== 'driving')!;
+    await hooks(page, 'viewWorld', c.x, c.z, 0, 12, 0.95);
+    // Wait until they stop moving on screen (the camera keeps sliding a moment after it says it has settled).
+    let at = { x: 0, y: 0, visible: false };
+    for (let i = 0, last = { x: -1, y: -1 }; i < 60; i++) {
+      await page.waitForFunction(() => (window as unknown as { __shelf: { cameraSettled: () => boolean } }).__shelf.cameraSettled(), null, { timeout: 20_000 });
+      await settle(page, 250);
+      at = await hooks<{ x: number; y: number; visible: boolean }>(page, 'personScreen', c.id);
+      if (Math.hypot(at.x - last.x, at.y - last.y) < 0.5) break;
+      last = at;
+    }
+    expect(at.visible, 'the customer on screen').toBe(true);
+    await page.touchscreen.tap(at.x, at.y);
+    const panel = page.getByTestId('inspect');
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveClass(/docked/);
+    const box = (await panel.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    // Big enough to hit with a thumb.
+    const close = (await panel.getByRole('button', { name: 'Close' }).boundingBox())!;
+    expect(close.height).toBeGreaterThanOrEqual(40);
+    await panel.getByRole('button', { name: 'Close' }).tap();
+    await expect(panel).toHaveCount(0);
   });
 });
 

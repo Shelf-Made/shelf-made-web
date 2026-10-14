@@ -3,7 +3,52 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Goals, closing rivals and the night card (latest)
+## Rivals answer back, and click anyone to see why (latest)
+
+- [x] **Rivals react to you.** Each night every rival reads your last three days (prices, which
+  shoppers you are winning, reputation) and at most one of them makes a move the next day, with a
+  rumour the night before and a notice on the day. Cheapo price-matches ("WE MATCH ANY PRICE!"
+  for a week) when you undercut it or bargain hunters drift your way. Fresh & Fine closes two days
+  behind scaffolding to renovate when your reputation outshines it (then reopens better for two
+  weeks), holds a free tasting day when impulse buyers come to you, and starts a loyalty card when
+  loyalists do. MegaMart answers a bigger share than its own with a mega sale, a poster on a free
+  billboard (which you then cannot rent) or longer hours. Every move has a cooldown, fades over its
+  last three days, and draws only on the rivals' random stream. The full table is in
+  `docs/DESIGN.md` §3.3.
+- [x] **Click a person.** A yellow outline and a small panel beside them: name, shopper type with
+  its icon, mood (face and word), what they are doing, their list with ticks and crosses, basket
+  against budget, patience, and "Came here because…" or "Shopped at Cheapo because…" with the two
+  reasons that weighed most, in plain words. Staff show role, skill, morale and wage, with a
+  shortcut to the Staff card. Follow keeps the camera on them until they leave town; Esc closes it
+  all and brings the camera back. On a phone a tap opens it docked above the tool shelf.
+- [x] **Each type looks a little different.** Bargain hunters carry a reusable tote, impulse
+  buyers a packet of sweets (and are shorter), convenience shoppers walk faster in work clothes,
+  loyalists have silver hair.
+- [x] **Who shops where.** A table on the Stats card: today's shoppers by type at your shop and
+  each rival's. A row puts a marker over every shopper of that type in town for ten seconds.
+- [x] **Save version 12** with a migration.
+- [x] **Fixes found on the way.** Building can no longer seal the delivery pallet into a pocket
+  (a balance run boxed its manager in with it), and cars entering a lot give way to cars leaving.
+
+Checks on the latest run:
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 89 passed; new: Cheapo's price match on undercutting and on bargain drift, then its cooldown; Fresh & Fine's renovation (closed two days, reopens better); MegaMart's moves and its billboard not for rent; at most one move a day and only the rivals stream drawn on; moves fading and dropping off; the two reasons for each type; reasons stored at spawn and worded by the panel; who shops where; the v11 → v12 migration; the pallet pocket |
+| `npm run e2e` | 12 passed; new: click a customer, read the panel (name, type, mood, list, two reasons, text ≥ 14 px), Follow until the camera sits on them, Esc closes it and the camera comes back; on a phone a tap opens the panel docked above the tool shelf with thumb-sized buttons; screenshots of a price match, a renovation, a rival shopper's panel and the Who shops where table |
+| `npm run audit:art` | passed |
+| `npm run balance -- --check` | passed in 272 s: nobody stuck in any strategy; rivals take 18% of a guided player's week one with reactions on (limit: a third); the undercutter makes Cheapo price-match on day 6 on every seed, closing Cheapo's price gap over it from 6–7 points to 2; guided ≈ $100/day in week one; goal 5 by days 14–15 |
+| Perf (`npm run perf`) | default zoom 99 draw calls / 129k triangles; busy 113 / 168k; someone selected and followed 87 / 142k (the outline is one draw); mid zoom 120 / 176k; overview 160 / 255k (budget 250 / 900k) |
+
+New screenshots: `31-cheapo-price-match`, `32-fresh-renovation`, `33-inspect-rival-shopper`,
+`34-who-shops-where`.
+
+Still open from this round:
+- The undercutter's advantage is cut to about a third within the week, not to nothing: Cheapo
+  matches 5% and you stay a little cheaper. Say if the match should go all the way.
+
+## Goals, closing rivals and the night card
 
 - [x] **A goal ladder.** Seven goals, one at a time, as a chip under the top bar; a click opens
   the ladder in Stats (done with the day, the active one with its progress, those to come).
@@ -251,7 +296,7 @@ Visual checklist, as of the last run: store ≈ 45% of the screen at default zoo
 ## Missing or broken
 - (Resolved) Pushing to GitHub works now; the branch is on GitHub.
 - Real-GPU frame rate was never measured; SwiftShader only. The 60 / 45 fps targets are plausible from the draw-call counts but unverified.
-- Rival AI is a small state machine (sales, expansion, drift), not a full copy of the player's command set.
+- Rival AI is a small state machine (sales, expansion, drift, books, and since Brief 5 one move at a time in answer to the player), not a full copy of the player's command set.
 - Franchise stores are a daily roll, not a second simulated floor; their buildings are stock Kenney shop fronts with a name board.
 - Kiosk hiccups and cashier slips are popups only; there is no "mistake" animation.
 - A late find: the popup layer was swallowing clicks on the world until the last hour; the gameplay spec now clicks the register, a floor tile and the cards for real so this cannot regress silently.

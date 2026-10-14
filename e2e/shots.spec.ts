@@ -269,6 +269,81 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('30-corner-bought') });
   });
 
+  test('rivals answer back: a price match, a renovation; who is who and who shops where', async ({ page }) => {
+    test.setTimeout(240_000);
+    await ready(page);
+    await hooks(page, 'newGame', 11, 'main', 'Corner Fresh', { tutorial: false });
+    await settle(page, 1500);
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setSpeed', 0);
+    await hooks(page, 'openRivals');
+    await hooks(page, 'setTime', 300);
+    await hooks(page, 'crowd', 6);
+    await hooks(page, 'advanceScan', 60, 2);
+    const rivals = (await st(page)).rivals;
+    const origin: Record<string, [number, number, number]> = { nw: [-15.5, -1.6, 1], ne: [10.9, -1.6, 1], sw: [-10.9, 6.6, -1], se: [15.5, 6.6, -1] };
+    const front = (id: string) => origin[rivals.find((r) => r.id === id)!.corner]!;
+
+    // Undercut Cheapo and it matches you: a banner across its front and a notice in the corner.
+    await hooks(page, 'rivalMove', 'discount', 'priceMatch');
+    {
+      const [cx, cz, facing] = front('discount');
+      await hooks(page, 'viewWorld', cx, cz + 1.2 * facing, facing > 0 ? 0.35 : Math.PI + 0.35, 11, 0.62);
+      await settle(page, 1600);
+      await page.screenshot({ path: out('31-cheapo-price-match') });
+    }
+
+    // Outshine Fresh & Fine and it closes for a refit: scaffolding and a board for two days.
+    await hooks(page, 'rivalMove', 'premium', 'renovation');
+    {
+      const [cx, cz, facing] = front('premium');
+      await hooks(page, 'viewWorld', cx + 1.5 * facing, cz + 0.8 * facing, facing > 0 ? 0.7 : Math.PI + 0.7, 13, 0.72);
+      await settle(page, 1600);
+      await page.screenshot({ path: out('32-fresh-renovation') });
+    }
+
+    // Click one of Cheapo's shoppers: who they are and why they went to Cheapo, not to you.
+    await hooks(page, 'rivalShoppers', 'discount', 8);
+    const [cx, cz, facing] = front('discount');
+    type P = { people: { id: number; rivalId?: string; bags?: boolean; x: number; z: number; state: string }[] };
+    let who: P['people'][number] | undefined;
+    for (let i = 0; i < 200 && !who; i++) {
+      who = (await hooks<P>(page, 'state')).people.find((p) => p.rivalId === 'discount' && p.bags && (p.state === 'leaving' || p.state === 'toCar')
+        && Math.hypot(p.x - cx, p.z - (cz + 2 * facing)) < 7 && (p.z - cz) * facing > 2.2);
+      if (!who) await hooks(page, 'advanceScan', 1, 2);
+    }
+    expect(who, 'a Cheapo shopper on the pavement').toBeTruthy();
+    await hooks(page, 'viewWorld', who!.x, who!.z, facing > 0 ? 0.8 : Math.PI + 0.8, 9, 0.8);
+    await settle(page, 1500);
+    const at = await hooks<{ x: number; y: number }>(page, 'personScreen', who!.id);
+    await page.mouse.click(at.x, at.y);
+    const panel = page.getByTestId('inspect');
+    await expect(panel).toBeVisible();
+    await expect(panel.locator('.why-label')).toContainText('Cheapo because');
+    await settle(page, 800);
+    await page.screenshot({ path: out('33-inspect-rival-shopper') });
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    // The Stats card: today's shoppers by type at each store. A row lights those shoppers up in town.
+    await hooks(page, 'rivalShoppers', 'discount', 6);
+    await hooks(page, 'rivalShoppers', 'chain', 6);
+    await hooks(page, 'crowd', 6, false);
+    await hooks(page, 'advanceScan', 25, 2);
+    // Light up whichever type has the most people out and about right now.
+    type Q = { people: { ctype?: string; kind: string; rivalId?: string; state: string }[] };
+    const about = (await hooks<Q>(page, 'state')).people.filter((p) => p.ctype && (p.kind === 'customer' || p.rivalId) && p.state !== 'inRival' && p.state !== 'driving');
+    const names: Record<string, string> = { bargain: 'Bargain hunters', convenience: 'Convenience shoppers', loyalist: 'Brand loyalists', impulse: 'Impulse buyers' };
+    const most = Object.keys(names).sort((a, b) => about.filter((p) => p.ctype === b).length - about.filter((p) => p.ctype === a).length)[0]!;
+    await hooks(page, 'viewWorld', 0, 1, 0.3, 30, 0.95);
+    await hooks(page, 'openCard', 'stats');
+    const table = page.locator('table.who-where');
+    await table.scrollIntoViewIfNeeded();
+    await table.getByRole('button', { name: new RegExp(names[most]!) }).click();
+    await settle(page, 1500);
+    await page.screenshot({ path: out('34-who-shops-where') });
+  });
+
   test('playing on a phone', async ({ browser }) => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
     await ready(page);
