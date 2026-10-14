@@ -23,7 +23,7 @@ describe('customers and rivals', () => {
     expect(s.stuckRescues).toBe(0);
   });
   it('customers respect budgets and the shop records misses', () => {
-    const s = openGame({ seed: 2, plotId: 'east', name: 'T' });
+    const s = openGame({ seed: 2, plotId: 'bus', name: 'T' });
     resetGridCache();
     for (let i = 0; i < 6000; i++) { tick(s); if (i % 4 === 0) applyCommand(s, { type: 'scan' }); }
     expect(s.today.served).toBeGreaterThan(3);

@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, WALL_T } from './layout';
+import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld } from './layout';
 
 export const CELL = 0.5;
 
@@ -58,14 +58,14 @@ export function fixtureFacing(rot: number): Vec2 {
   switch (rot & 3) { case 0: return { x: 0, z: 1 }; case 1: return { x: 1, z: 0 }; case 2: return { x: 0, z: -1 }; default: return { x: -1, z: 0 }; }
 }
 
-/** Grid in world coordinates: store-relative rects are offset by the shop origin. */
+/** Grid in world coordinates: store-relative rects are carried into the world by the shop's frame. */
 export function buildGrid(shop: Shop, version: number): Grid {
   const L = lotLayout(shop);
-  const ox = shop.originX, oz = shop.originZ;
-  const x0 = ox + L.plot.x0, z0 = oz + L.plot.z0, x1 = ox + L.plot.x1, z1 = oz + 3.5;
+  const bounds = rectToWorld(shop, { x0: L.plot.x0, z0: L.plot.z0, x1: L.plot.x1, z1: 3.5 });
+  const { x0, z0, x1, z1 } = bounds;
   const w = Math.round((x1 - x0) / CELL), h = Math.round((z1 - z0) / CELL);
   const g: Grid = { x0, z0, w, h, cost: new Float32Array(w * h), edges: new Set(), inside: new Uint8Array(w * h), version };
-  const R = (r: { x0: number; z0: number; x1: number; z1: number }, cost: number, inside = false) => fillRect(g, ox + r.x0, oz + r.z0, ox + r.x1, oz + r.z1, cost, inside);
+  const R = (r: { x0: number; z0: number; x1: number; z1: number }, cost: number, inside = false) => { const q = rectToWorld(shop, r); fillRect(g, q.x0, q.z0, q.x1, q.z1, cost, inside); };
   // Gardens: walkable but slow.
   fillRect(g, x0, z0, x1, z1, 2.5);
   // Paving.
@@ -73,7 +73,7 @@ export function buildGrid(shop: Shop, version: number): Grid {
   R({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.5 }, 1);
   R(L.aisle, 1.2); R(L.driveway, 1.2); R(L.serviceLane, 1.2); R(L.backYard, 1.2);
   // Sidewalk strip along the whole plot.
-  fillRect(g, x0, oz + 2.6, x1, oz + 3.5, 1);
+  R({ x0: L.plot.x0, z0: 2.6, x1: L.plot.x1, z1: 3.5 }, 1);
   // Parking bays are walkable when empty (cars block them later).
   for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
   // Shop floor (one room; `storeroom` only exists in old saves).
@@ -100,29 +100,26 @@ export function buildGrid(shop: Shop, version: number): Grid {
   if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.
   for (const fx of shop.fixtures) {
-    const fp = fixtureFootprint(fx);
-    fillRect(g, ox + fp.x0, oz + fp.z0, ox + fp.x1, oz + fp.z1, 0);
+    R(fixtureFootprint(fx), 0);
   }
   return g;
 }
 
 /** World-space centre of a fixture. */
-export function fixtureCentre(shop: Shop, f: Fixture): Vec2 {
-  return { x: shop.originX + f.x + 0.5, z: shop.originZ + f.z + 0.5 };
-}
+export function fixtureCentre(shop: Shop, f: Fixture): Vec2 { return toWorld(shop, f.x + 0.5, f.z + 0.5); }
 
 /** World-space standing point in front of a fixture. */
-export function fixtureFrontWorld(shop: Shop, f: Fixture): Vec2 {
-  const p = fixtureFront(f);
-  return { x: shop.originX + p.x, z: shop.originZ + p.z };
-}
+export function fixtureFrontWorld(shop: Shop, f: Fixture): Vec2 { const p = fixtureFront(f); return toWorld(shop, p.x, p.z); }
 
 /** World-space point behind a fixture (where staff stand at a register). */
 export function fixtureBackWorld(shop: Shop, f: Fixture): Vec2 {
   const c = fixtureCentre(shop, f);
-  const d = fixtureFacing(f.rot);
+  const d = dirToWorld(shop, fixtureFacing(f.rot));
   return { x: c.x - d.x, z: c.z - d.z };
 }
+
+/** A fixture's facing in world space. */
+export function fixtureFacingWorld(shop: Shop, rot: number): Vec2 { return dirToWorld(shop, fixtureFacing(rot)); }
 
 /** Is a cell blocked, including dynamic blockers? */
 export function isBlocked(g: Grid, cx: number, cz: number, dyn?: Set<number>): boolean {

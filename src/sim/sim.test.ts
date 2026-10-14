@@ -1,3 +1,4 @@
+import { CORNERS } from './layout';
 import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
@@ -44,7 +45,7 @@ describe('simulation', () => {
   });
 
   it('delivers an order to the storeroom', () => {
-    const s = openGame({ seed: 11, plotId: 'hill', name: 'Test' });
+    const s = openGame({ seed: 11, plotId: 'elm', name: 'Test' });
     resetGridCache();
     const before = s.shop.storage.reduce((a, e) => a + e.qty, 0);
     const res = applyCommand(s, { type: 'placeOrder', supplierId: 'express', lines: [{ productId: 'milk', qty: 10 }, { productId: 'rice', qty: 5 }] });
@@ -135,9 +136,12 @@ describe('simulation', () => {
   it('plot picking sets up the shop and the sign name', () => {
     const s = newGame({ seed: 5 });
     expect(s.phase).toBe('picking');
-    applyCommand(s, { type: 'choosePlot', plotId: 'east', name: 'Corner Fresh' });
+    applyCommand(s, { type: 'choosePlot', plotId: 'bus', name: 'Corner Fresh' });
     expect(s.phase).toBe('setup');
     expect(s.shop.name).toBe('Corner Fresh');
-    expect(s.shop.originX).toBe(22);
+    expect(s.shop.originX).toBe(CORNERS.sw.originX);
+    expect(s.shop.flip).toBe(true);
+    // The rivals took the other three corners.
+    expect(new Set(s.rivals.map((r) => r.corner))).toEqual(new Set(['nw', 'ne', 'se']));
   });
 });

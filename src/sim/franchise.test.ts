@@ -13,14 +13,14 @@ describe('franchises and checkout', () => {
     s.cash = 6000;
     while (!s.staffPool.some((c) => c.role === 'manager')) { day(s); applyCommand(s, { type: 'openTomorrow' }); }
     const m = s.staffPool.find((c) => c.role === 'manager')!;
-    expect(applyCommand(s, { type: 'openFranchise', plotId: 'hill', managerId: m.id }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'openFranchise', siteId: 'hillside', managerId: m.id }).ok).toBe(true);
     expect(s.franchises.length).toBe(1);
     day(s);
     expect(s.franchises[0]!.history.length).toBe(1);
     expect(s.notices.some((n) => n.text.includes('Corner Hillside'))).toBe(true);
   });
   it('card fees land in other costs and kiosks serve without a cashier', () => {
-    const s = openGame({ seed: 32, plotId: 'east', name: 'T', tutorial: false });
+    const s = openGame({ seed: 32, plotId: 'bus', name: 'T', tutorial: false });
     resetGridCache();
     s.cash = 3000;
     const reg = s.shop.fixtures.find((f) => f.type === 'register')!;

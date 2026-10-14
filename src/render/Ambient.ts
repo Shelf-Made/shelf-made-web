@@ -1,12 +1,11 @@
-import { Group, Mesh, Object3D, IcosahedronGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, MeshBasicMaterial, InstancedMesh, BufferGeometry, Float32BufferAttribute, DoubleSide, type Camera } from 'three';
-import { riverZ, RIVER_HALF_W } from '@/sim/layout';
+import { Group, Mesh, Object3D, IcosahedronGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, type BufferGeometry, type Camera } from 'three';
 import type { AssetLibrary } from './assets';
-import { groundHeight, BASIN, type TownPlan, type AnimalHome, type AnimalKind } from './town';
+import type { TownPlan, AnimalHome, AnimalKind } from './town';
 import { box, merge, paint } from './geometry';
 
 /**
  * Everything in the scenery that moves on its own: animals going about their day, birds circling
- * over the pocket, the fountain's spray, the waterfall, drifting clouds and a gradient sky. Render
+ * over the crossroads, drifting clouds and a gradient sky. Render
  * only, never part of the simulation; motion is a pure function of time so it costs nothing to save.
  */
 interface Critter { home: AnimalHome; obj: Object3D; parts: Object3D[]; seed: number; x: number; z: number; tx: number; tz: number; wait: number; heading: number }
@@ -16,15 +15,9 @@ function h01(n: number): number { const s = Math.sin(n * 12.9898) * 43758.5453; 
 export class AmbientView {
   readonly group = new Group();
   private critters: Critter[] = [];
-  private drops: InstancedMesh | null = null;
-  private foam: InstancedMesh | null = null;
-  private readonly streamTime = { value: 0 };
-  private readonly streamMat = streamMaterial(this.streamTime);
   private clouds: Mesh | null = null;
   private sky: Mesh;
   private skyMat: ShaderMaterial;
-  private fountain = { x: 0, z: 0 };
-  private waterfall = { x: 0, z: 0 };
   private readonly dummy = new Object3D();
   constructor(private readonly assets: AssetLibrary) {
     this.skyMat = new ShaderMaterial({
@@ -49,19 +42,6 @@ export class AmbientView {
       this.group.add(obj);
       this.critters.push({ home, obj, parts, seed: i * 7.31 + home.x, x: home.x, z: home.z, tx: home.x, tz: home.z, wait: h01(i) * 3, heading: h01(i + 3) * 6.28 });
     }
-    // Fountain spray: drops on looping arcs.
-    this.fountain = plan.fountain;
-    const drop = paint(new IcosahedronGeometry(0.035, 0), this.assets.palette, '#CDEBF7');
-    this.drops = new InstancedMesh(drop, this.assets.unlit, 40);
-    this.drops.frustumCulled = false;
-    this.group.add(this.drops);
-    // The stream: it runs down off the west plateau, tumbles over the cliff into the creek, and
-    // white streaks race down it. Foam churns at the foot.
-    this.waterfall = plan.waterfall;
-    this.group.add(new Mesh(streamGeometry(), this.streamMat));
-    this.foam = new InstancedMesh(paint(new IcosahedronGeometry(0.3, 0), this.assets.palette, '#FFFFFF'), this.assets.unlit, 7);
-    this.foam.frustumCulled = false;
-    this.group.add(this.foam);
     // Clouds: lumpy white puffs high over the pocket, one mesh turning slowly round the valley.
     const sky: BufferGeometry[] = [];
     for (let c = 0; c < 12; c++) {
@@ -146,27 +126,6 @@ export class AmbientView {
       c.obj.visible = vis;
       if (vis) this.animate(c, t, dt);
     }
-    if (this.drops) {
-      for (let i = 0; i < 40; i++) {
-        const ph = ((t * 0.9 + i / 40) % 1), a = (i / 40) * Math.PI * 2 * 3.1;
-        const r = ph * 0.75, y = 1.05 + ph * 1.1 - ph * ph * 1.6;
-        this.dummy.position.set(this.fountain.x + Math.cos(a) * r, Math.max(0.2, y), this.fountain.z + Math.sin(a) * r);
-        this.dummy.scale.setScalar(1 - ph * 0.4); this.dummy.rotation.set(0, 0, 0); this.dummy.updateMatrix();
-        this.drops.setMatrixAt(i, this.dummy.matrix);
-      }
-      this.drops.instanceMatrix.needsUpdate = true;
-    }
-    this.streamTime.value = t;
-    if (this.foam) {
-      for (let i = 0; i < 7; i++) {
-        const ph = t * 2.2 + i * 1.7, k = 0.75 + h01(i) * 0.5;
-        this.dummy.position.set(-BASIN.x + 0.2 + h01(i + 9) * 1.1, -0.1, riverZ(-BASIN.x) + (i - 3) * 0.32);
-        this.dummy.rotation.set(0, i, 0);
-        this.dummy.scale.set(k * (1 + 0.25 * Math.sin(ph)), k * (0.6 + 0.3 * Math.sin(ph * 1.3)), k * (1 + 0.25 * Math.cos(ph)));
-        this.dummy.updateMatrix(); this.foam.setMatrixAt(i, this.dummy.matrix);
-      }
-      this.foam.instanceMatrix.needsUpdate = true;
-    }
     if (this.clouds) this.clouds.rotation.y = t * 0.004;
   }
 
@@ -219,52 +178,4 @@ export class AmbientView {
       for (let l = 0; l < 4; l++) c.parts[l]!.rotation.x = moving ? Math.sin(t * 6 + l * Math.PI * 0.5) * 0.4 : 0;
     }
   }
-}
-
-/** Cut across the stream at the creek's own offsets so the ribbon sits on the terrain's vertices. */
-function streamGeometry(): BufferGeometry {
-  const W = RIVER_HALF_W;
-  const offs = [-(W - 0.1), -W * 0.45, W * 0.45, W - 0.1];
-  const xs: number[] = [-BASIN.x + 0.6];
-  for (let x = -49.5; x >= -90; x -= 1.5) xs.push(x);
-  const pos: number[] = [], st: number[] = [], idx: number[] = [];
-  let along = 0, prev: [number, number] | null = null;
-  for (const [i, x] of xs.entries()) {
-    const zc = riverZ(x);
-    const yc = i === 0 ? -0.1 : groundHeight(x, zc) + 0.07;
-    if (prev) along += Math.hypot(x - prev[0], yc - prev[1]);
-    prev = [x, yc];
-    for (const [k, o] of offs.entries()) {
-      const y = i === 0 ? -0.1 : groundHeight(x, zc + o) + 0.07;
-      pos.push(x, y, zc + o * (i === 0 ? 1.25 : 1));
-      st.push(k / (offs.length - 1), along);
-    }
-  }
-  const n = offs.length;
-  for (let i = 0; i < xs.length - 1; i++) for (let k = 0; k < n - 1; k++) {
-    const a = i * n + k, b = a + 1, c = a + n, d = c + 1;
-    idx.push(a, b, c, b, d, c);
-  }
-  const g = new BufferGeometry();
-  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
-  g.setAttribute('stream', new Float32BufferAttribute(st, 2));
-  g.setIndex(idx);
-  return g;
-}
-
-function streamMaterial(time: { value: number }): MeshBasicMaterial {
-  const m = new MeshBasicMaterial({ color: '#7EC8EC', transparent: true, opacity: 0.92, side: DoubleSide, depthWrite: false });
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uT = time;
-    sh.vertexShader = 'attribute vec2 stream; varying vec2 vS;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vS = stream;');
-    sh.fragmentShader = 'uniform float uT; varying vec2 vS;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-      float lane = floor(vS.x * 7.0);
-      float h = fract(sin(lane * 91.7) * 4375.85);
-      float f = fract(vS.y * (0.55 + h * 0.3) + uT * (1.1 + h * 0.6) + h);
-      float streak = smoothstep(0.0, 0.08, f) * (1.0 - smoothstep(0.18, 0.35, f));
-      float edge = smoothstep(0.35, 0.5, abs(vS.x - 0.5));
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), clamp(streak * 0.75 + edge * 0.45, 0.0, 1.0));`);
-  };
-  m.customProgramCacheKey = () => 'stream';
-  return m;
 }

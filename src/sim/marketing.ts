@@ -6,14 +6,11 @@
 import type { GameState, Promotion, AdTemplate } from './types';
 import { productDef } from './products';
 import { withRng, cue } from './state';
-import { PLOTS } from './layout';
+import { OFFMAP_SITES, BILLBOARDS } from './layout';
 
-export const FLYER_AREAS = PLOTS.map((p) => ({ id: p.id, name: p.name, cost: 60 + Math.round(p.traffic * 40), reach: 0.12 * p.traffic }));
-export const BILLBOARD_SITES = [
-  { id: 'highway', name: 'Highway exit', rent: 45, reach: 0.06 },
-  { id: 'school', name: 'By the school', rent: 30, reach: 0.04 },
-  { id: 'station', name: 'Bus station', rent: 35, reach: 0.05 },
-];
+/** Flyers go out in the neighbourhoods the roads lead to (each signposted at the edge of town). */
+export const FLYER_AREAS = OFFMAP_SITES.map((p) => ({ id: p.id, name: p.name, dir: p.dir, km: p.km, cost: 60 + Math.round(p.traffic * 40), reach: 0.12 * p.traffic }));
+export const BILLBOARD_SITES = BILLBOARDS;
 
 export function startFlyers(state: GameState, areaId: string): string | null {
   const area = FLYER_AREAS.find((a) => a.id === areaId);

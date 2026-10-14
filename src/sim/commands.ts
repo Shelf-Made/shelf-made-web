@@ -16,6 +16,7 @@ import { hire, fire, giveRaise, setShift } from './staff';
 import { canPlace, expandShop, expandLot, moveFixture } from './build';
 import { startFlyers, toggleBillboard, setPromotion, setAd } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
+import { seatRivals } from './rivals';
 import type { Promotion, AdTemplate } from './types';
 
 export type Command =
@@ -44,7 +45,7 @@ export type Command =
   | { type: 'promotion'; promo: Promotion | null }
   | { type: 'ad'; ad: AdTemplate | null }
   | { type: 'outsideSign'; on: boolean }
-  | { type: 'openFranchise'; plotId: string; managerId: number }
+  | { type: 'openFranchise'; siteId: string; managerId: number }
   | { type: 'closeFranchise'; franchiseId: number }
   | { type: 'replaceManager'; franchiseId: number; managerId: number }
   | { type: 'takeLoan'; offerId: string }
@@ -83,7 +84,9 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!plot) return { ok: false, message: 'No such plot.' };
       const name = cmd.name.trim().slice(0, 18) || 'Shelf Made';
       state.shop = makeShop(plot.id, name);
-      state.people = state.people.filter((p) => p.kind !== 'owner');
+      seatRivals(state);
+      state.cars = state.cars.filter((c) => c.state === 'passing');
+      state.people = state.people.filter((p) => p.kind === 'walker' && !p.rivalId);
       state.people.push(withRng(state, 'looks', (r) => makeOwner(state.nextId++, state.shop, r)));
       state.phase = 'setup';
       state.time = 0;
@@ -211,7 +214,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'promotion': { const err = setPromotion(state, cmd.promo); return err ? { ok: false, message: err } : { ok: true }; }
     case 'ad': { const err = setAd(state, cmd.ad); return err ? { ok: false, message: err } : { ok: true }; }
     case 'outsideSign': { if (cmd.on && !state.marketing.outsideSign) { if (state.cash < 150) return { ok: false, message: 'Need $150.' }; state.cash -= 150; } state.marketing.outsideSign = cmd.on; state.shop.layoutVersion++; return { ok: true }; }
-    case 'openFranchise': { const err = openFranchise(state, cmd.plotId, cmd.managerId); if (!err) cue(state, 'reward'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'openFranchise': { const err = openFranchise(state, cmd.siteId, cmd.managerId); if (!err) cue(state, 'reward'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'closeFranchise': { const err = closeFranchise(state, cmd.franchiseId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'replaceManager': { const err = replaceManager(state, cmd.franchiseId, cmd.managerId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'takeLoan': { const err = takeLoan(state, cmd.offerId); return err ? { ok: false, message: err } : { ok: true }; }

@@ -22,7 +22,7 @@ export function MarketingCard({ runtime, snap }: { runtime: GameRuntime; snap: S
       <h3>Flyers (fade over 4 days)</h3>
       <div className="list">
         {FLYER_AREAS.map((a) => { const live = m.campaigns.find((c) => c.areaId === a.id); return (
-          <div className="item" key={a.id}><div><div className="name">{a.name}</div><div className="sub">{money(a.cost)} · {live ? `running, day ${s.day - live.startDay + 1} of 4` : 'not running'}</div></div><button className="btn small" disabled={!!live || s.cash < a.cost} onClick={() => runtime.dispatch({ type: 'flyers', areaId: a.id })}>Send</button></div>
+          <div className="item" key={a.id}><div><div className="name">{a.name} <span className="tag">{a.km} km {a.dir}</span></div><div className="sub">{money(a.cost)} · {live ? `running, day ${s.day - live.startDay + 1} of 4` : 'not running'}</div></div><button className="btn small" disabled={!!live || s.cash < a.cost} onClick={() => runtime.dispatch({ type: 'flyers', areaId: a.id })}>Send</button></div>
         ); })}
       </div>
       <h3>Billboards (daily rent)</h3>

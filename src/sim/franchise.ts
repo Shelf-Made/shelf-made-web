@@ -1,28 +1,29 @@
 /**
- * Franchises: more stores in town, each run by a manager you hire. A lighter simulation
+ * Franchises: more stores out of town (named sites off the map, signposted from the crossroads),
+ * each run by a manager you hire. A lighter simulation
  * for stores you are not watching: one daily roll per store, driven by the manager's
  * skill, your shared reputation and the rules. Stock comes from a central warehouse
  * (your storeroom orders), reports and alerts arrive each night.
  */
 import type { GameState, Franchise, Candidate } from './types';
-import { PLOTS } from './layout';
+import { OFFMAP_SITES } from './layout';
 import { withRng } from './state';
 import { expectedByType } from './customers';
 
 export const FRANCHISE_COST = 2800;
 export const FRANCHISE_RENT = 35;
 
-export function openFranchise(state: GameState, plotId: string, managerId: number): string | null {
-  if (plotId === state.shop.plotId) return 'That is your own shop.';
-  if (state.franchises.some((f) => f.plotId === plotId)) return 'You already have a store there.';
-  const plot = PLOTS.find((p) => p.id === plotId);
-  if (!plot) return 'No such plot.';
+export function openFranchise(state: GameState, siteId: string, managerId: number): string | null {
+  if (state.franchises.some((f) => f.siteId === siteId)) return 'You already have a store there.';
+  const site = OFFMAP_SITES.find((p) => p.id === siteId);
+  if (!site) return 'No such site.';
+  if (state.rivals.some((r) => r.branches.includes(siteId))) return `MegaMart already trades in ${site.name}.`;
   const c = state.staffPool.find((x) => x.id === managerId && x.role === 'manager');
   if (!c) return "Pick a manager from today's pool.";
   if (state.cash < FRANCHISE_COST) return `Need $${FRANCHISE_COST} for the lease and fit-out.`;
   state.cash -= FRANCHISE_COST;
   state.staffPool = state.staffPool.filter((x) => x.id !== c.id);
-  const f: Franchise = { id: state.nextId++, plotId: plot.id, name: `${state.shop.name} ${plot.name}`, manager: c, openedDay: state.day, stockLevel: 0.6, reputation: state.shop.reputation, cashToday: 0, history: [], alerts: [] };
+  const f: Franchise = { id: state.nextId++, siteId: site.id, name: `${state.shop.name} ${site.name}`, manager: c, openedDay: state.day, stockLevel: 0.6, reputation: state.shop.reputation, cashToday: 0, history: [], alerts: [] };
   state.franchises.push(f);
   state.notices.push({ day: state.day, text: `${f.name} opens tomorrow with ${c.name} as manager.`, kind: 'info' });
   return null;
@@ -53,7 +54,7 @@ export function franchiseDay(state: GameState): void {
   const by = expectedByType(state);
   const baseCustomers = (by.bargain + by.convenience + by.loyalist + by.impulse) * 0.8;
   for (const f of state.franchises) {
-    const plot = PLOTS.find((p) => p.id === f.plotId)!;
+    const plot = OFFMAP_SITES.find((p) => p.id === f.siteId) ?? OFFMAP_SITES[0]!;
     withRng(state, 'franchise', (r) => {
       const m = f.manager;
       // Stock: the manager reorders by the rules; poor ones let shelves run bare.

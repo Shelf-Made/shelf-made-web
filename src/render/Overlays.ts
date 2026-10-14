@@ -2,6 +2,7 @@ import { Group, InstancedMesh, Object3D, PlaneGeometry, MeshBasicMaterial, Color
 import type { GameState } from '@/sim/types';
 import { doorInside } from '@/sim/people';
 import { fixtureCentre } from '@/sim/grid';
+import { toWorld } from '@/sim/layout';
 
 export type OverlayKind = 'none' | 'heat' | 'exposure' | 'paths';
 
@@ -41,7 +42,7 @@ export class Overlays {
     if (this.kind === 'heat') for (const v of this.heat.values()) max = Math.max(max, v);
     const d = doorInside(state);
     for (let x = f.x0; x < f.x1; x++) for (let z = f.z0; z < f.z1; z++) {
-      const wx = shop.originX + x + 0.5, wz = shop.originZ + z + 0.5;
+      const { x: wx, z: wz } = toWorld(shop, x + 0.5, z + 0.5);
       let v: number;
       if (this.kind === 'heat') v = (this.heat.get(`${Math.floor(wx)},${Math.floor(wz)}`) ?? 0) / max;
       else if (this.kind === 'exposure') {

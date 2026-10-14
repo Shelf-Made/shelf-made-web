@@ -1,7 +1,7 @@
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
 import type { Difficulty, FixtureType, Rot } from '@/sim/types';
 import { canPlace } from '@/sim/build';
-import { PLOTS, FIXTURES } from '@/sim/layout';
+import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame } from '@/sim/layout';
 import { fixtureCentre } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -235,7 +235,9 @@ export class GameRuntime {
       resetGridCache();
       const s = newGame({ seed: 2026, plotId: 'main', name: 'Shelf Made', tutorial: false, sandbox: true });
       quickSetup(s, true);
-      s.time = DAY_SECONDS * 0.62;
+      // All four corners trading: the rivals are open across the crossroads.
+      for (const rv of s.rivals) rv.open = true;
+      s.time = DAY_SECONDS * 0.7;
       this.lobbyState = s;
       r.setTown(s.seed, s.shop.plotId);
       r.setShop(s);
@@ -278,7 +280,7 @@ export class GameRuntime {
         }
         if (n >= 8) this.lobbyAcc = 0;
         L.sounds.length = 0;
-        // Drift back and forth over Main Street, east of the shop, looking up the valley.
+        // Drift back and forth over the crossroads at golden hour, the rivals' corners behind the shop.
         this.lobbyT += dt;
         this.lobbyYaw = 1.18 + 0.28 * Math.sin(this.lobbyT * 0.06);
         r.camera.focus(L.shop.originX + 0.5, L.shop.originZ - 2.6, 20, this.lobbyYaw, 0.24);
@@ -412,7 +414,8 @@ export class GameRuntime {
   hoverWorld(wx: number, wz: number): void {
     const s = this.state; if (!s) return;
     // Floor tiles sit on half-integer x (the door is at x = 0) and integer z.
-    const x = Math.floor(wx - s.shop.originX + 0.5) - 0.5, z = Math.floor(wz - s.shop.originZ);
+    const l = toLocal(s.shop, wx, wz);
+    const x = Math.floor(l.x + 0.5) - 0.5, z = Math.floor(l.z);
     if (this.build.hover && this.build.hover.x === x && this.build.hover.z === z) return;
     this.build.hover = { x, z };
     this.refreshGhost();
@@ -577,7 +580,7 @@ export class GameRuntime {
     if (far) return none;
     const spill = s.shop.litter.find((l) => Math.hypot(l.x - hit.x, l.z - hit.z) < 0.4);
     if (spill) return { info: { key: E, text: 'Mop up the spill', ok: true }, run: () => { this.dispatch({ type: 'clean', litterId: spill.id }); } };
-    const d = s.shop.delivery, lx = hit.x - s.shop.originX, lz = hit.z - s.shop.originZ;
+    const d = s.shop.delivery, { x: lx, z: lz } = toLocal(s.shop, hit.x, hit.z);
     if (owner.carrying && lx >= d.x0 && lx <= d.x1 && lz >= d.z0 && lz <= d.z1) {
       return { info: { key: E, text: 'Put the box back', ok: true }, run: () => { this.dispatch({ type: 'pickUp', productId: undefined }); } };
     }
@@ -588,7 +591,8 @@ export class GameRuntime {
   faceShop(): void {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
     const o = s.people.find((p) => p.kind === 'owner');
-    if (o) r.fp.faceTowards(o.x, o.z, s.shop.originX, s.shop.originZ - 3);
+    const t = toWorld(s.shop, 0, -3);
+    if (o) r.fp.faceTowards(o.x, o.z, t.x, t.z);
     r.fp.pitch = -0.42;
   }
 
@@ -596,16 +600,17 @@ export class GameRuntime {
   focusStore(snap = false): void {
     const s = this.state; const r = this.renderer;
     if (!s || !r) return;
-    const cx = s.shop.originX, cz = s.shop.originZ - 1.4;
-    r.camera.focus(cx, cz, 18.5, 0, 0.98);
+    const c = toWorld(s.shop, 0, -1.4);
+    r.camera.focus(c.x, c.z, 18.5, s.shop.flip ? Math.PI : 0, 0.98);
     if (snap) r.camera.snap();
   }
 
   previewPlot(plotId: string, snap = false): void {
     const r = this.renderer; if (!r) return;
-    const p = PLOTS.find((x) => x.id === plotId) ?? PLOTS[0]!;
-    // The picker card sits at the bottom, so frame the plot in the upper half.
-    r.camera.focus(p.x, 1.5, 21, 0.25, 0.95);
+    const fr = storeFrame(plotId);
+    const c = toWorld(fr, 2, -3.5);
+    // The picker card sits at the bottom, so frame the corner in the upper half; south corners are seen from across the road.
+    r.camera.focus(c.x, c.z, 24, (fr.flip ? Math.PI : 0) + 0.25, 0.95);
     if (snap) r.camera.snap();
   }
 

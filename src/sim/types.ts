@@ -46,7 +46,7 @@ export type CustomerType = 'bargain' | 'convenience' | 'loyalist' | 'impulse';
 
 export type PersonState =
   | 'driving' | 'toDoor' | 'entering' | 'shopping' | 'browsing' | 'toQueue' | 'queued' | 'paying' | 'leaving' | 'toCar' | 'walking' | 'gone'
-  | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working';
+  | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working' | 'inRival';
 
 export type Anim = 'idle' | 'walk' | 'browse' | 'carry' | 'pay' | 'sit';
 
@@ -95,6 +95,13 @@ export interface Person {
   shift?: 'full' | 'morning' | 'evening';
   /** Owner only: the direction the player is steering (world space), or null. */
   moveDir?: { x: number; z: number } | null;
+  /** Out on the streets: path indices where a zebra starts (wait for the walk light there). */
+  xings?: number[];
+  /** Shoppers bound for a rival: which one, and whether they carry its bags home. */
+  rivalId?: string;
+  bags?: boolean;
+  /** The walk animation to resume after waiting at a kerb. */
+  heldAnim?: Anim;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -116,6 +123,8 @@ export interface Car {
   speed: number;
   state: CarState;
   bay: number | null;
+  /** Whose lot the bay is in: undefined = the player's, a rival id, or 'street' for Elm Street's shared bays. */
+  lot?: string;
   ownerId: number | null;
   timer: number;
   /** Delivery trucks: the order they carry. */
@@ -128,6 +137,10 @@ export interface Car {
   waited?: number;
   /** Waiting at a junction for a gap in the traffic. */
   yielding?: boolean;
+  /** Distance to the car ahead in its lane (render-free scratch, recomputed each tick). */
+  gap?: number;
+  /** The car holding this one up, if any (to break two-car standoffs). */
+  blocker?: number;
 }
 
 export interface ParkingBay { x: number; z: number; yaw: number; carId: number | null }
@@ -146,12 +159,14 @@ export interface Order {
 
 export interface StockEntry { productId: string; qty: number; /** day received, for spoilage */ day: number }
 
+export type CornerId = 'nw' | 'ne' | 'sw' | 'se';
+
 export interface Plot {
   id: string;
   name: string;
   blurb: string;
-  /** World x of the plot centre (the store origin). Plots sit on the north side of the main road. */
-  x: number;
+  /** Which corner of the crossroads the plot is. */
+  corner: CornerId;
   rent: number;
   /** Multipliers on each customer type's arrival rate. */
   mix: Record<CustomerType, number>;
@@ -163,6 +178,8 @@ export interface Shop {
   plotId: string;
   /** World offset: store-relative (0,0) is the front door's tile centre. */
   originX: number; originZ: number;
+  /** South corners: the shop-relative frame is turned half round (the door faces north). */
+  flip?: boolean;
   /** Interior bounds in store-relative tiles. */
   floor: { x0: number; z0: number; x1: number; z1: number };
   storeroom: { x0: number; z0: number; x1: number; z1: number };
@@ -218,8 +235,15 @@ export interface RivalState {
   priceIndex: number;
   availability: number; quality: number; service: number; parking: number; awareness: number; reputation: number;
   saleDaysLeft: number; nextSaleDay: number;
+  /** The corner it trades from, and the world point just outside its front door. */
+  corner: CornerId;
   x: number; z: number;
+  /** Shop size it builds (for its footprint and lot) and its parking bays, in world space. */
+  sizeId: string; lotRows: number;
+  bays: ParkingBay[];
+  /** Branches off the map (MegaMart grows), shown as road signs. */
   stores: number; cash: number;
+  branches: string[];
 }
 
 export interface Bill { id: number; name: string; amount: number; dueDay: number }
@@ -230,7 +254,8 @@ export interface Promotion { kind: 'lossLeader' | 'buyTwo'; productId: string }
 export interface AdTemplate { kind: 'product' | 'discount' | 'target'; productId?: string; percent?: number; target?: CustomerType }
 
 export interface Franchise {
-  id: number; plotId: string; name: string; manager: Candidate; openedDay: number;
+  /** siteId: one of OFFMAP_SITES. */
+  id: number; siteId: string; name: string; manager: Candidate; openedDay: number;
   stockLevel: number; reputation: number; cashToday: number;
   history: { day: number; customers: number; served: number; revenue: number; profit: number }[];
   alerts: string[];
@@ -287,6 +312,10 @@ export interface GameState {
   /** Price bands customers saw today, for the town-average comparison. */
   townAvgIndex: number;
   rivals: RivalState[];
+  /** Shared parallel bays on Elm Street: anyone's customers may park there. */
+  streetBays: ParkingBay[];
+  /** Rival shoppers' spawn accumulator (visual only). */
+  rivalSpawn: number;
   /** Rolling service measurements feeding the store scores. */
   scores: { avgWait: number; waitSum: number; waitSamples: number; last: StoreScores | null };
   notices: Notice[];

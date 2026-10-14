@@ -7,12 +7,13 @@ import { StoreView, STORE_MODELS, type StoreHit } from './StoreView';
 import { PeopleView, PEOPLE_MODELS } from './People';
 import { CarsView } from './Cars';
 import { Lighting } from './Lighting';
-import { RivalsView } from './RivalsView';
+import { RivalsView, RIVAL_MODELS } from './RivalsView';
+import { StreetView } from './StreetView';
 import { AmbientView } from './Ambient';
 import { Overlays, type OverlayKind } from './Overlays';
 import { buildTown, type TownPlan } from './town';
 import type { GameState } from '@/sim/types';
-import { DAY_SECONDS } from '@/sim/layout';
+import { DAY_SECONDS, toLocal } from '@/sim/layout';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -37,6 +38,7 @@ export class WorldRenderer {
   private people: PeopleView;
   private cars: CarsView;
   private rivals: RivalsView;
+  private street: StreetView;
   private ambient: AmbientView;
   private clock = 0;
   readonly overlays = new Overlays();
@@ -63,9 +65,10 @@ export class WorldRenderer {
     this.store = new StoreView(this.assets);
     this.people = new PeopleView(this.assets);
     this.cars = new CarsView(this.assets);
-    this.rivals = new RivalsView(this.assets);
+    this.rivals = new RivalsView(this.assets, (t, sz, d, face, side) => this.store.letters(t, sz, d, face, side));
+    this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
-    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.overlays.group);
+    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group);
     this.resize();
   }
 
@@ -74,7 +77,7 @@ export class WorldRenderer {
     await this.assets.loadCore();
     const plan = buildTown(1, 'main');
     // Every town uses the same model set (the plan lists every model any seed can place), so load once.
-    const all = [...new Set([...StaticWorld.modelsNeeded(plan), ...STORE_MODELS, ...PEOPLE_MODELS])].filter((id) => this.assets.has(id));
+    const all = [...new Set([...StaticWorld.modelsNeeded(plan), ...STORE_MODELS, ...PEOPLE_MODELS, ...RIVAL_MODELS])].filter((id) => this.assets.has(id));
     await this.assets.loadModels(all, (done, total) => onProgress(0.05 + 0.85 * (done / total), `Loading models (${done}/${total})`));
     await this.store.init();
     this.cars.init();
@@ -83,14 +86,15 @@ export class WorldRenderer {
   }
 
   /** Build or rebuild the neighbourhood for a seed and plot. */
-  setTown(seed: number, plotId: string, branches: { plotId: string; name: string }[] = []): void {
-    const key = `${seed}:${plotId}:${branches.map((b) => b.plotId + '=' + b.name).join(',')}`;
+  setTown(seed: number, plotId: string): void {
+    const key = `${seed}:${plotId}`;
     if (key === this.townKey) return;
     this.townKey = key;
-    this.plan = buildTown(seed, plotId, branches.map((b) => b.plotId));
+    this.plan = buildTown(seed, plotId);
     this.statics.build(this.plan);
     this.ambient.build(this.plan);
-    this.rivals.build(this.plan, Object.fromEntries(branches.map((b) => [b.plotId, b.name])));
+    this.rivals.build(this.plan);
+    this.street.build();
   }
 
   get town(): TownPlan | null { return this.plan; }
@@ -113,20 +117,19 @@ export class WorldRenderer {
       focus = this.camera.target;
     }
     const night = state.phase === 'night';
-    if (night !== this.night) { this.night = night; this.statics.setNight(night); this.store.setNight(night); }
+    if (night !== this.night) { this.night = night; this.statics.setNight(night); this.store.setNight(night); this.rivals.setNight(night); }
     this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? 16 : this.camera.viewRadius());
     // Haze: close in first person, pushed back for the high cinematic views.
     const fog = this.scene.fog as Fog | null;
     if (fog) { const d = fp ? 0 : this.camera.goalDistance; fog.near = 55 + d * 0.9; fog.far = 210 + d * 1.2; }
-    // Branches change the town: rebuild when the set changes (cheap, a few times per game).
-    this.setTown(state.seed, state.shop.plotId, state.franchises.map((f) => ({ plotId: f.plotId, name: f.name })));
+    this.setTown(state.seed, state.shop.plotId);
     // In first person every wall stands full height; the cinematic camera still cuts the near ones down.
     // Third person cuts the walls between the camera and the manager down to a ledge; the lobby keeps them whole.
     // Outside, the shop stands whole; step in and the walls between the camera and the manager drop.
     let inside = false;
     if (fp) {
-      const f = state.shop.floor, ox = state.shop.originX, oz = state.shop.originZ, c = this.fp.camera.position;
-      const within = (x: number, z: number) => x - ox > f.x0 - 0.4 && x - ox < f.x1 + 0.4 && z - oz > f.z0 - 0.4 && z - oz < f.z1 + 0.7;
+      const f = state.shop.floor, c = this.fp.camera.position;
+      const within = (x: number, z: number) => { const l = toLocal(state.shop, x, z); return l.x > f.x0 - 0.4 && l.x < f.x1 + 0.4 && l.z > f.z0 - 0.4 && l.z < f.z1 + 0.7; };
       inside = within(owner.x, owner.z) || within(c.x, c.z);
     }
     this.store.update(state, fp ? (this.fp.third && inside ? this.fp.yaw : null) : (this.cutaway ? this.camera.yaw : null));
@@ -135,6 +138,7 @@ export class WorldRenderer {
     this.people.update(state, alpha, dt, focus, fp && !this.fp.third ? owner.id : -1, fp && !this.fp.third ? 0.3 : 0);
     this.cars.update(state, alpha);
     this.rivals.update(state);
+    this.street.update(state);
     this.overlays.sample(state);
     this.overlays.update(state);
     this.clock += Math.min(dt, 0.1);

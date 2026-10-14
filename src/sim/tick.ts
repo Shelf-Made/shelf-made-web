@@ -5,6 +5,7 @@ import { tickPeople, spawnCustomer, spawnWalker, plotOf } from './people';
 import { tickOrders, closeDay, isClosingTime } from './economy';
 import { withRng } from './state';
 import { expectedByType } from './customers';
+import { tickRivalSpawns } from './rivalShoppers';
 import type { CustomerType } from './types';
 
 /** Customers per day the shop can expect, before the time-of-day curve. */
@@ -56,6 +57,7 @@ export function tick(state: GameState): void {
     } else if (withRng(state, 'customers', (r) => r.chance(perSecond * TICK * 0.35))) {
       spawnCustomer(state);
     }
+    tickRivalSpawns(state, dayCurve(state.time));
     if (isClosingTime(state)) state.phase = 'closing';
   }
   ambient(state, 1);
@@ -77,7 +79,7 @@ function ambient(state: GameState, scale: number): void {
   const plot = plotOf(state);
   state.spawn.traffic += TICK * 0.09 * plot.traffic * scale;
   if (state.spawn.traffic >= 1) { state.spawn.traffic -= 1; spawnTraffic(state); }
-  state.spawn.walker += TICK * 0.07 * scale;
+  state.spawn.walker += TICK * 0.05 * scale;
   if (state.spawn.walker >= 1) { state.spawn.walker -= 1; spawnWalker(state); }
 }
 

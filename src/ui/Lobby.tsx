@@ -39,7 +39,7 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
       <div className="brand">
         {/* The logo is the shop front with the name on its fascia, so it is the title. */}
         <h1 className="logo-hero"><img src="/brand/logo.svg" alt="Shelf Made" width={512} height={512} /></h1>
-        <p className="tagline">Four bare walls and a concrete floor. Build it into the valley&apos;s favourite grocer, one shelf at a time.</p>
+        <p className="tagline">Four bare walls on a busy crossroads, and three rivals across the street. Build the corner everyone shops at, one shelf at a time.</p>
         <div className="pricetag"><span>Free beta</span><b>until Dec 10, 2026</b></div>
         {!snap.loaded && (
           <div className="loading">

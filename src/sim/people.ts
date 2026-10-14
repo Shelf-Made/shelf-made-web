@@ -1,11 +1,13 @@
 import type { GameState, Person, Fixture, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, MAP_X, SIDEWALK_N_Z, lotLayout } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacing, fixtureCentre, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
+import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal } from './layout';
+import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, dist } from './state';
 import { spawnCustomerCar, leaveLot } from './cars';
+import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
+import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
 import { listWeight, budgetFor } from './customers';
 import { pickType } from './tick';
 import { effectivePrice } from './marketing';
@@ -18,10 +20,10 @@ export function plotOf(state: GameState) { return PLOTS.find((p) => p.id === sta
 
 /** World-space points just outside and just inside the front door. */
 // Walls are WALL_T thick outside the floor edge, so the threshold runs from z = 0 to z = 0.5.
-export function doorOutside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.22, z: s.originZ + s.door.z + 0.95 + (id % 2) * 0.3 }; }
-export function doorInside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.2, z: s.originZ + s.door.z - 0.7 - (id % 2) * 0.3 }; }
+export function doorOutside(state: GameState, id = 0): Vec2 { const s = state.shop; return toWorld(s, s.door.x + ((id % 3) - 1) * 0.22, s.door.z + 0.95 + (id % 2) * 0.3); }
+export function doorInside(state: GameState, id = 0): Vec2 { const s = state.shop; return toWorld(s, s.door.x + ((id % 3) - 1) * 0.2, s.door.z - 0.7 - (id % 2) * 0.3); }
 /** Where workers pick up boxes: just in front of the delivery zone. */
-export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; const d = s.delivery; return { x: s.originX + (d.x0 + d.x1) / 2, z: s.originZ + d.z1 + 0.35 }; }
+export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; const d = s.delivery; return toWorld(s, (d.x0 + d.x1) / 2, d.z1 + 0.35); }
 
 /** Cells occupied by parked cars, so people walk around them. */
 export function dynamicBlockers(state: GameState): Set<number> {
@@ -48,7 +50,7 @@ function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): bool
 /** Queue slot k for a register: straight back from the front, then bending toward the middle of the shop. */
 export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   const front = fixtureFrontWorld(state.shop, reg);
-  const f = fixtureFacing(reg.rot);
+  const f = fixtureFacingWorld(state.shop, reg.rot);
   const straight = 3;
   const spacing = 0.7;
   let p: Vec2;
@@ -56,8 +58,7 @@ export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   else {
     // Bend toward the shop's centre so the line never runs into a wall.
     const base = { x: front.x + f.x * (straight - 1) * spacing, z: front.z + f.z * (straight - 1) * spacing };
-    const cx = state.shop.originX + (state.shop.floor.x0 + state.shop.floor.x1) / 2;
-    const cz = state.shop.originZ + (state.shop.floor.z0 + state.shop.floor.z1) / 2;
+    const { x: cx, z: cz } = toWorld(state.shop, (state.shop.floor.x0 + state.shop.floor.x1) / 2, (state.shop.floor.z0 + state.shop.floor.z1) / 2);
     let side = { x: -f.z, z: f.x };
     if ((cx - base.x) * side.x + (cz - base.z) * side.z < 0) side = { x: f.z, z: -f.x };
     const j = k - straight + 1;
@@ -119,39 +120,72 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
   };
   state.today.customers++;
   if (byCar) {
-    const car = spawnCustomerCar(state, p.id, fromWest);
-    if (!car) {
+    const { car, onward } = spawnCustomerCar(state, p.id, fromWest);
+    if (!car || onward?.kind === 'rival') {
+      // Lot full: the car drives on past, and (when there is one) pulls into a rival's lot instead.
       state.today.turnedAway++;
-      { const L = lotLayout(state.shop); popup(state, { x: state.shop.originX + L.driveway.x0 + 1, z: state.shop.originZ + L.driveway.z1 }, 'Lot full!', 'bad', 0.8); }
+      { const L = lotLayout(state.shop); popup(state, toWorld(state.shop, L.driveway.x0 + 1, L.driveway.z1), 'Lot full!', 'bad', 0.8); }
+      if (car && onward?.kind === 'rival') rivalShopperInCar(state, car, onward.rival.id, look);
       return null;
     }
     p.carId = car.id; p.state = 'driving'; p.anim = 'sit'; p.x = car.x; p.z = car.z;
   } else {
-    // Far enough along the sidewalk that nobody pops into view near the shop.
-    const sx = state.shop.originX + (fromWest ? -26 : 26);
-    p.x = sx; p.z = SIDEWALK_N_Z + withRng(state, 'customers', (r) => r.range(-0.12, 0.12));
-    p.path = [{ x: state.shop.originX + (fromWest ? -7.2 : 7.2), z: p.z }]; p.pathIdx = 0;
-    p.yaw = fromWest ? Math.PI / 2 : -Math.PI / 2;
+    // On foot: off the bus at rush hour, otherwise along one of the streets, far enough out that nobody pops into view.
+    const from = streetStart(state, 'customers');
+    const entry = frontageEntry(state, from);
+    const r = route(from, entry, withRng(state, 'customers', (rr) => rr.chance(0.5)));
+    p.x = from.x; p.z = from.z;
+    p.path = r.path; p.xings = r.xings; p.pathIdx = 0;
+    p.yaw = Math.atan2(p.path[0]!.x - p.x, p.path[0]!.z - p.z);
   }
   p.px = p.x; p.pz = p.z;
   state.people.push(p);
   return p;
 }
 
-/** Walkers stroll the whole of Main Street, from one tunnel to the other. */
-const WALKER_FAR = MAP_X + 14;
+/** Is it the morning or after-school rush, when buses unload at the stop? */
+export function busRush(time: number): boolean { return (time >= 0 && time < 75) || (time >= 420 && time < 510); }
 
+/**
+ * Where someone on foot comes into town: off the bus at rush hour, otherwise some way out along
+ * one of the eight sidewalk legs (far enough to be in the haze).
+ */
+export function streetStart(state: GameState, stream: string, far = false): Vec2 {
+  return withRng(state, stream, (r) => {
+    if (state.phase !== 'night' && busRush(state.time) && r.chance(0.45)) return { x: BUS_STOP.x + r.range(-0.6, 0.6), z: BUS_STOP.z + r.range(-0.1, 0.1) };
+    const leg = r.pick(LEGS);
+    const end = LEG_END[leg];
+    if (far) return { ...end };
+    const c = CORNER_POINT[legCorner(leg)];
+    const d = Math.hypot(end.x - c.x, end.z - c.z);
+    const t = r.range(26, 34) / d;
+    return { x: c.x + (end.x - c.x) * t, z: c.z + (end.z - c.z) * t };
+  });
+}
+
+/** The point on the player's frontage sidewalk where someone on foot turns in, on the side they come from. */
+export function frontageEntry(state: GameState, from: Vec2): Vec2 {
+  const s = state.shop;
+  const a = toWorld(s, -7.2, FRONT_WALK_Z), b = toWorld(s, 7.2, FRONT_WALK_Z);
+  const leg = legOf(a);
+  // Coming along the same leg, take the nearer end; otherwise the end nearer the crossroads.
+  const ref = legOf(from) === leg ? from : CORNER_POINT[legCorner(leg)];
+  return Math.abs(a.x - ref.x) < Math.abs(b.x - ref.x) ? a : b;
+}
+
+/** Walkers stroll through town from one end of a street to the end of another, crossing at the zebras. */
 export function spawnWalker(state: GameState): void {
+  const from = streetStart(state, 'walkers', true);
   withRng(state, 'walkers', (r) => {
-    const fromWest = r.chance(0.5);
-    const south = r.chance(0.5);
-    const z = (south ? 3.75 : SIDEWALK_N_Z) + r.range(-0.1, 0.1);
+    let to = LEG_END[r.pick(LEGS)];
+    for (let k = 0; k < 4 && legOf(to) === legOf(from); k++) to = LEG_END[r.pick(LEGS)];
+    const rt = route(from, to, r.chance(0.5));
     const p: Person = {
       id: nextId(state), kind: 'walker', look: { model: r.int(0, CUSTOMER_MODELS - 1), variant: r.int(0, 3), height: r.range(0.9, 1.1), dog: r.chance(0.3) },
-      x: fromWest ? -WALKER_FAR : WALKER_FAR, z, yaw: fromWest ? Math.PI / 2 : -Math.PI / 2, px: 0, pz: 0, state: 'walking', anim: 'walk',
-      path: [{ x: fromWest ? WALKER_FAR : -WALKER_FAR, z }], pathIdx: 0, speed: WALK_SPEED * r.range(0.7, 0.95), timer: 0,
+      x: from.x, z: from.z, yaw: 0, px: from.x, pz: from.z, state: 'walking', anim: 'walk',
+      path: rt.path, xings: rt.xings, pathIdx: 0, speed: WALK_SPEED * r.range(0.7, 0.95), timer: 0,
     };
-    p.px = p.x; p.pz = p.z;
+    p.yaw = Math.atan2(p.path[0]!.x - p.x, p.path[0]!.z - p.z);
     state.people.push(p);
   });
 }
@@ -291,6 +325,15 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       const car = state.cars.find((c) => c.id === p.carId);
       if (!car) { p.state = 'gone'; break; }
       p.x = car.x; p.z = car.z; p.yaw = car.yaw;
+      if (car.state === 'parked' && car.lot === 'street') {
+        // Parked on Elm Street: onto the sidewalk and round to the shop on foot.
+        p.x = SIDEWALK_E_X; p.z = car.z;
+        const entry = frontageEntry(state, { x: p.x, z: p.z });
+        const r = route({ x: p.x, z: p.z }, entry);
+        p.path = r.path; p.xings = r.xings; p.pathIdx = 0;
+        p.state = 'walking'; p.anim = 'walk';
+        break;
+      }
       if (car.state === 'parked') {
         // Step out beside the car, on the aisle side.
         p.x = car.x + 0.75; p.z = car.z + 0.55;
@@ -302,7 +345,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       break;
     }
     case 'walking': {
-      if (followPath(p, p.speed, dt, 12, 0.22)) { p.state = 'toDoor'; setPath(state, p, doorOutside(state, p.id), dyn); }
+      if (walkStreet(p, p.speed, state.tick)) { p.state = 'toDoor'; p.xings = undefined; setPath(state, p, doorOutside(state, p.id), dyn); }
       break;
     }
     case 'toDoor': {
@@ -444,20 +487,33 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         cue(state, 'chime');
         if (p.carId !== null && p.carId !== undefined) {
           const car = state.cars.find((c) => c.id === p.carId);
+          if (car && car.lot === 'street') {
+            // Back round to Elm Street on foot.
+            const side = { x: SIDEWALK_E_X, z: car.z };
+            const entry = frontageEntry(state, side);
+            setPath(state, p, entry, dyn);
+            const rt = route(entry, side);
+            const base = p.path.length;
+            p.path.push(...rt.path, { x: car.x + 0.55, z: car.z }); p.xings = rt.xings.map((i) => i + base);
+            p.state = 'toCar'; p.anim = p.anim === 'carry' ? 'carry' : 'walk';
+            break;
+          }
           if (car) { p.state = 'toCar'; p.anim = p.anim === 'carry' ? 'carry' : 'walk'; setPath(state, p, { x: car.x + 0.75, z: car.z + 0.55 }, dyn); break; }
         }
-        // On foot: walk to the sidewalk, then off along it until out of sight.
-        const west = withRng(state, 'customers', (r) => r.chance(0.5));
-        const edge = { x: state.shop.originX + (west ? -7.4 : 7.4), z: SIDEWALK_N_Z };
-        setPath(state, p, edge, dyn);
-        p.path.push({ x: state.shop.originX + (west ? -16 : 16), z: SIDEWALK_N_Z });
+        // On foot: out to the sidewalk, then off along the streets until out of sight.
+        const end = streetStart(state, 'customers');
+        const entry = frontageEntry(state, end);
+        setPath(state, p, entry, dyn);
+        const rt = route(entry, end, withRng(state, 'customers', (r) => r.chance(0.5)));
+        const base = p.path.length;
+        p.path.push(...rt.path); p.xings = rt.xings.map((i) => i + base);
         p.state = 'toCar';
         p.carId = null;
       }
       break;
     }
     case 'toCar': {
-      if (followPath(p, p.speed, dt, 12, 0.22)) {
+      if (walkStreet(p, p.speed, state.tick)) {
         const car = state.cars.find((c) => c.id === p.carId);
         if (car) leaveLot(state, car);
         p.state = 'gone';
@@ -469,8 +525,9 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
 }
 
 function tickWalker(state: GameState, p: Person): void {
+  if (p.rivalId) { tickRivalShopper(state, p); return; }
   if (p.path.length === 0) return;
-  if (followPath(p, p.speed, TICK)) p.state = 'gone';
+  if (walkStreet(p, p.speed, state.tick)) p.state = 'gone';
 }
 
 /** Direct steering (WASD): slide along walls and fixtures instead of stopping dead. */
@@ -529,7 +586,8 @@ export function ownerPickUp(state: GameState, productId?: string): string | null
   const o = state.people.find((x) => x.kind === 'owner');
   if (!o) return 'Nobody to carry.';
   const d = state.shop.delivery;
-  const zone = { x: state.shop.originX + Math.max(d.x0, Math.min(d.x1, o.x - state.shop.originX)), z: state.shop.originZ + Math.max(d.z0, Math.min(d.z1, o.z - state.shop.originZ)) };
+  const lo = toLocal(state.shop, o.x, o.z);
+  const zone = toWorld(state.shop, Math.max(d.x0, Math.min(d.x1, lo.x)), Math.max(d.z0, Math.min(d.z1, lo.z)));
   if (Math.hypot(o.x - zone.x, o.z - zone.z) > 1.4) return 'Walk over to the boxes first.';
   if (o.carrying) {
     // Put back what you hold first, then take the new box.
@@ -617,7 +675,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   }
   // Off shift: stand out by the back door (or walk there), do nothing else.
   if (p.kind === 'staff' && !onShift(p, state.time)) {
-    const s = state.shop; const off = { x: s.originX + s.backDoor.x + 1.6, z: s.originZ + s.backDoor.z - 1.0 };
+    const s = state.shop; const off = toWorld(s, s.backDoor.x + 1.6, s.backDoor.z - 1.0);
     if (p.task || p.carrying) { if (p.carrying) { state.shop.storage.push({ productId: p.carrying.productId, qty: p.carrying.qty, day: state.day }); p.carrying = null; } p.task = null; }
     if (dist(p, off) > 0.4) { if (p.state !== 'toRegister' || p.pathIdx >= p.path.length) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, off, dyn); } followPath(p, p.speed, dt, 12, 0.22); }
     else { p.state = 'idle'; p.anim = 'idle'; }
@@ -795,6 +853,8 @@ function separate(state: GameState, dyn: Set<number>): void {
 
 /** Nobody stays stuck: a person who has not moved toward a path target for 8 s is placed on the nearest walkable cell and re-pathed. */
 function watchdog(state: GameState, p: Person, dyn: Set<number>): void {
+  // Out on the streets (waiting at a kerb, off at a rival's) nobody is stuck: the grid only covers our plot.
+  if (p.kind === 'walker' || p.heldAnim || (p.xings && p.xings.length) || p.state === 'walking') { p.stuckTicks = 0; return; }
   const moving = p.path.length > 0 && p.pathIdx < p.path.length && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'driving' && p.state !== 'browsing' && p.state !== 'pickBox' && p.state !== 'stocking';
   if (!moving) { p.stuckTicks = 0; return; }
   const moved = Math.hypot(p.x - p.px, p.z - p.pz);

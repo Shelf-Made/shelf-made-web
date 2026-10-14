@@ -1,4 +1,5 @@
-import type { GameState } from '@/sim/types';
+import type { GameState, Franchise } from '@/sim/types';
+import { storeFrame, lotLayout, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES } from '@/sim/layout';
 import { SAVE_VERSION } from '@/sim/newGame';
 import { makeRivals } from '@/sim/rivals';
 import { makeMarket } from '@/sim/market';
@@ -33,7 +34,46 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => ({ franchises: [], ...raw, version: 7 }),
   // v7 → v8: one-room shops with a delivery zone; old shops keep their storeroom strip.
   (raw) => { const shop = raw.shop as { floor: { x0: number; z0: number }; storeroom: { z0: number }; delivery?: unknown }; shop.delivery ??= { x0: shop.floor.x0, z0: shop.storeroom.z0, x1: shop.floor.x0 + 2, z1: shop.storeroom.z0 + 1 }; return { timeScale: 1, ...raw, version: 8 }; },
+  // v8 → v9: the crossroads. Plots became corners, rivals took the other corners, franchises moved off the map.
+  (raw) => migrateToCrossroads(raw),
 ];
+
+/** Old plot ids to the corners that replaced them; old franchise plots to off-map sites. */
+export const PLOT_MIGRATION: Record<string, string> = { main: 'main', hill: 'elm', east: 'bus' };
+export const FRANCHISE_SITE_MIGRATION: Record<string, string> = { main: 'eastend', hill: 'hillside', east: 'elmheights' };
+
+function migrateToCrossroads(raw: Record<string, unknown>): Record<string, unknown> {
+  const s = raw as unknown as GameState;
+  const plotId = PLOT_MIGRATION[s.shop.plotId] ?? 'main';
+  const fr = storeFrame(plotId);
+  const shop = s.shop;
+  shop.plotId = plotId; shop.originX = fr.originX; shop.originZ = fr.originZ; shop.flip = fr.flip;
+  shop.bays = lotLayout(shop).bays.map((b) => ({ ...toWorld(fr, b.x, b.z), yaw: yawToWorld(fr, b.yaw), carId: null }));
+  // Rivals keep their trading state and move onto their corners.
+  const fresh = makeRivals(plotId);
+  s.rivals = fresh.map((r) => { const old = (s.rivals ?? []).find((o) => o.id === r.id); return old ? { ...r, open: old.open, saleDaysLeft: old.saleDaysLeft, nextSaleDay: old.nextSaleDay, cash: old.cash, reputation: old.reputation, awareness: old.awareness, parking: old.parking, stores: old.stores, branches: OFFMAP_SITES.slice(1, old.stores).map((x) => x.id) } : r; });
+  const oldFranchises = (s.franchises ?? []) as (Franchise & { plotId?: string })[];
+  s.franchises = oldFranchises.map((f) => { const { plotId: old, ...rest } = f; return { ...rest, siteId: f.siteId ?? FRANCHISE_SITE_MIGRATION[old ?? ''] ?? 'riverside' }; });
+  s.streetBays = STREET_BAYS.map((b) => ({ ...b, carId: null }));
+  // Flyer areas and billboards moved too: valley plots became neighbourhoods off the map, abstract boards became real ones.
+  const area: Record<string, string> = { main: 'eastend', hill: 'hillside', east: 'eastend' };
+  const board: Record<string, string> = { highway: 'edge', school: 'roof', station: 'bus' };
+  if (s.marketing) {
+    for (const c of s.marketing.campaigns ?? []) c.areaId = area[c.areaId] ?? c.areaId;
+    s.marketing.billboards = [...new Set((s.marketing.billboards ?? []).map((b) => board[b] ?? b))];
+  }
+  s.rivalSpawn = 0;
+  // Everything in motion was laid out for the old map: cars go, shoppers go, staff and you step back inside.
+  s.cars = [];
+  for (const o of s.orders ?? []) if (o.state === 'arriving') { o.state = 'pending'; o.eta = 1; }
+  s.people = (s.people ?? []).filter((p) => p.kind === 'owner' || p.kind === 'staff');
+  for (const [i, p] of s.people.entries()) {
+    const w = toWorld(fr, shop.door.x + 0.6 - (i % 3) * 0.6, shop.door.z - 1.4 - Math.floor(i / 3) * 0.6);
+    p.x = p.px = w.x; p.z = p.pz = w.z; p.path = []; p.pathIdx = 0; p.state = 'idle'; p.task = null; p.carrying = null; p.moveDir = null;
+  }
+  for (const f of shop.fixtures) if (f.queue) { f.queue = []; f.serving = null; f.scanned = 0; }
+  return { ...raw, version: 9 };
+}
 
 export function migrate(file: SaveFile): SaveFile {
   let raw = file.state as unknown as Record<string, unknown>;

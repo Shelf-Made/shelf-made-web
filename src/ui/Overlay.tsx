@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { keyLabel } from '@/save/settings';
+import { toWorld } from '@/sim/layout';
 
 /**
  * Screen-space UI over the first-person view: floating "+$" popups, the crosshair with what
@@ -75,7 +76,7 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
       if (!m) return;
       let anchor: { x: number; y: number; z: number } | null = null;
       if (t?.fixtureId !== undefined) anchor = runtime.fixtureAnchor(t.fixtureId);
-      else if (t?.anchor === 'delivery') { const d = s.shop.delivery; anchor = { x: s.shop.originX + (d.x0 + d.x1) / 2, y: 0.9, z: s.shop.originZ + (d.z0 + d.z1) / 2 }; }
+      else if (t?.anchor === 'delivery') { const d = s.shop.delivery; const w = toWorld(s.shop, (d.x0 + d.x1) / 2, (d.z0 + d.z1) / 2); anchor = { x: w.x, y: 0.9, z: w.z }; }
       if (!anchor) { m.style.display = 'none'; return; }
       r.project(anchor.x, anchor.y, anchor.z, proj);
       const w = window.innerWidth, h = window.innerHeight;

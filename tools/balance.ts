@@ -100,7 +100,7 @@ interface Run { strategy: string; seed: number; days: number; fitOutLeft: number
 
 function runGame(strategy: string, seed: number, days: number, difficulty: Difficulty = 'standard'): Run {
   resetGridCache();
-  const s = newGame({ seed, difficulty, plotId: ['main', 'hill', 'east'][seed % 3], name: 'Balance', tutorial: false });
+  const s = newGame({ seed, difficulty, plotId: ['main', 'elm', 'bus'][seed % 3], name: 'Balance', tutorial: false });
   fitOut(s);
   const fitOutLeft = s.cash;
   const act = STRATEGIES[strategy]!;
@@ -141,7 +141,7 @@ function main(): void {
   const days = 8;
   const runs: Run[] = [];
   const t0 = Date.now();
-  for (const strategy of Object.keys(STRATEGIES)) for (const seed of seeds) runs.push(runGame(strategy, seed, days));
+  for (const strategy of Object.keys(STRATEGIES)) for (const seed of seeds) { const t = Date.now(); runs.push(runGame(strategy, seed, days)); if (process.argv.includes("--progress")) console.log(`  ${strategy} seed ${seed}: ${Date.now() - t}ms`); }
   const failures: string[] = [];
   const by = (name: string) => runs.filter((r) => r.strategy === name);
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);

@@ -4,7 +4,7 @@
  */
 import type { GameState, CustomerType, RivalState, StoreScores } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS } from './layout';
+import { plotDef } from './layout';
 
 export const TYPE_WEIGHTS: Record<CustomerType, StoreScores> = {
   bargain: { price: 0.45, availability: 0.15, layout: 0.05, wait: 0.1, parking: 0.05, awareness: 0.2 },
@@ -93,9 +93,24 @@ export function playerShare(state: GameState, scores = computeScores(state)): Re
   return out;
 }
 
+/** Each open rival's share of each customer type, on the same softmax as the player's. */
+export function rivalShares(state: GameState, scores = computeScores(state)): Record<string, Record<CustomerType, number>> {
+  const open = state.rivals.filter((r) => r.open);
+  const out: Record<string, Record<CustomerType, number>> = {};
+  for (const r of open) out[r.id] = {} as Record<CustomerType, number>;
+  for (const type of Object.keys(TYPE_BASE) as CustomerType[]) {
+    const k = 4.0;
+    const mine = Math.exp(k * weighted(scores, type) * (1 + state.shop.reputation * 0.3));
+    const theirs = open.map((r) => Math.exp(k * weighted(rivalScores(r), type) * (1 + r.reputation * 0.3)) * 0.5);
+    const total = mine + theirs.reduce((a, b) => a + b, 0);
+    open.forEach((r, i) => { out[r.id]![type] = theirs[i]! / total; });
+  }
+  return out;
+}
+
 /** Expected arrivals per type for the day, before the time-of-day curve. */
 export function expectedByType(state: GameState): Record<CustomerType, number> {
-  const plot = PLOTS.find((p) => p.id === state.shop.plotId) ?? PLOTS[0]!;
+  const plot = plotDef(state.shop.plotId);
   const base = state.demandBase;
   const openRivals = state.rivals.filter((r) => r.open).length;
   const pool = base * plot.traffic * (1 + 0.75 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand;

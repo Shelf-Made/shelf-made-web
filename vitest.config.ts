@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'tools/**/*.test.ts'],
     environment: 'node',
+    // Multi-day sim runs take a few seconds each; leave headroom on a busy machine.
+    testTimeout: 60_000,
   },
 });

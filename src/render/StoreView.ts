@@ -6,7 +6,10 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, toLocal, rectToWorld } from '@/sim/layout';
+
+/** The z of a north corner's shop origin: frontage maths is done as if every shop faced south. */
+const NORTH_Z = -1.6;
 import { MAIN_N, PAVEMENT } from './town';
 import { box, merge, paint, place } from './geometry';
 import { recolor, cutDown, dropTriangles } from './recolor';
@@ -26,6 +29,8 @@ interface Side { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull: Mes
 /** The player's store: shell (Kenney walls, concrete floor, doors, sign), fixtures, stock, delivered boxes. */
 export class StoreView {
   readonly group = new Group();
+  /** Everything is built shop-relative under this root, which carries the shop's frame (south corners are turned half round). */
+  private root = new Group();
   private shell = new Group();
   private sides: Side[] = [];
   private fixtureMeshes = new Map<string, { mesh: InstancedMesh; ids: number[] }>();
@@ -50,12 +55,13 @@ export class StoreView {
   private chillerGeo: BufferGeometry | null = null;
 
   constructor(private readonly assets: AssetLibrary) {
-    this.group.add(this.shell);
+    this.group.add(this.root);
+    this.root.add(this.shell);
     this.ghostMat = new MeshStandardMaterial({ color: new Color('#3FA87A'), transparent: true, opacity: 0.55, depthWrite: false, roughness: 1 });
     this.wellMat = new MeshBasicMaterial({ color: new Color('#BFEFFF') });
     this.spillMat = new MeshBasicMaterial({ color: new Color('#9FD3F0'), transparent: true, opacity: 0.7, depthWrite: false });
     this.nightLight = new PointLight(0xffd9a0, 0, 9, 1.6);
-    this.group.add(this.nightLight);
+    this.root.add(this.nightLight);
   }
 
   async init(): Promise<void> {
@@ -66,7 +72,7 @@ export class StoreView {
       const b = geo.boundingBox!;
       const mesh = new InstancedMesh(geo, this.assets.material, 64);
       mesh.count = 0; mesh.castShadow = true; mesh.frustumCulled = false; mesh.visible = false;
-      this.group.add(mesh);
+      this.root.add(mesh);
       this.productMeshes.set(p.id, { mesh, w: b.max.x - b.min.x, h: b.max.y - b.min.y, d: b.max.z - b.min.z, minY: b.min.y });
     }
     const boxGeo = this.assets.geometry('furniture/cardboard-box-closed').clone().scale(1.5, 1.5, 1.5);
@@ -81,14 +87,14 @@ export class StoreView {
     this.wells = new InstancedMesh(well, this.wellMat, 24); this.wells.count = 0; this.wells.frustumCulled = false;
     const sticker = box(pal, '#FFFFFF', 0.12, 0.12, 0.01, 0, 0, 0);
     this.stickers = new InstancedMesh(sticker, new MeshBasicMaterial({ color: 0xffffff }), 48); this.stickers.count = 0; this.stickers.frustumCulled = false;
-    this.group.add(this.boxes, this.spills, this.wells, this.stickers);
+    this.root.add(this.boxes, this.spills, this.wells, this.stickers);
     try { this.font = await new FontLoader().loadAsync('/fonts/fredoka-bold.typeface.json'); } catch { this.font = null; }
   }
 
   setNight(on: boolean): void { this.nightLight.intensity = on ? 2.2 : 0; }
 
-  /** Chunky rounded letters from Fredoka Bold: cream faces, sunny-yellow sides. */
-  private letters(text: string, size: number, depth: number): BufferGeometry {
+  /** Chunky rounded letters from Fredoka Bold: cream faces, sunny-yellow sides (or any two colours). */
+  letters(text: string, size: number, depth: number, face = CREAM, sideHex = YELLOW): BufferGeometry {
     const pal = this.assets.palette;
     if (!this.font) return new Mesh().geometry;
     const g = new TextGeometry(text, { font: this.font, size, depth, curveSegments: 5, bevelEnabled: true, bevelThickness: depth * 0.25, bevelSize: size * 0.03, bevelSegments: 2 });
@@ -98,7 +104,7 @@ export class StoreView {
     // Paint by group: 0 = front/back faces, 1 = sides.
     const n = g.getAttribute('position').count;
     const uv = new Float32Array(n * 2);
-    const [fu, fv] = pal.uv(CREAM), [su, sv] = pal.uv(YELLOW);
+    const [fu, fv] = pal.uv(face), [su, sv] = pal.uv(sideHex);
     for (let i = 0; i < n; i++) { uv[i * 2] = su; uv[i * 2 + 1] = sv; }
     for (const grp of g.groups) if (grp.materialIndex === 0) {
       const idx = g.getIndex();
@@ -124,9 +130,13 @@ export class StoreView {
     this.shell.clear();
     this.sides = [];
     const f = shop.floor;
-    const ox = shop.originX, oz = shop.originZ;
+    // Built shop-relative; the root carries the frame.
+    const ox = 0, oz = 0;
+    this.root.position.set(shop.originX, 0, shop.originZ);
+    this.root.rotation.set(0, shop.flip ? Math.PI : 0, 0);
+    this.root.updateMatrixWorld(true);
     const backZ = Math.min(f.z0, shop.storeroom.z0);
-    this.shellKey = `${shop.name}|${shop.originX}|${shop.sizeId}|${shop.lotRows}`;
+    this.shellKey = `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}`;
 
     // ---- Floor: a poured concrete slab with saw-cut joints every two tiles, plus the lot paving outside.
     const floorParts: BufferGeometry[] = [];
@@ -152,12 +162,12 @@ export class StoreView {
     }
     for (let i = 0; i < 10; i++) floorParts.push(box(pal, i % 2 ? SLATE : YELLOW, 0.06, 0.006, dd / 10, ox + d.x1 - 0.04, 0.025, oz + d.z0 + ((i + 0.5) / 10) * dd));
     floorParts.push(box(pal, '#B8824C', dw - 0.24, 0.05, dd - 0.2, dcx, 0.025, dcz));
-    this.deliveryBox.set(new Vector3(ox + d.x0, 0, oz + d.z0), new Vector3(ox + d.x1, 1.0, oz + d.z1));
+    { const w = rectToWorld(shop, d); this.deliveryBox.set(new Vector3(w.x0, 0, w.z0), new Vector3(w.x1, 1.0, w.z1)); }
     // Lot: apron, walkway, aisle, bays, driveway, service lane, back yard; then the frontage sidewalk.
     const L = lotLayout(shop);
     const slab = (r: { x0: number; z0: number; x1: number; z1: number }, hex: string, h = 0.03, y = -0.012) =>
       floorParts.push(box(pal, hex, r.x1 - r.x0, h, r.z1 - r.z0, ox + (r.x0 + r.x1) / 2, y, oz + (r.z0 + r.z1) / 2));
-    const swIn = MAIN_N[0] - oz, swOut = MAIN_N[1] - oz, kerb = ROAD_Z - 1.0 - oz;
+    const swIn = MAIN_N[0] - NORTH_Z, swOut = MAIN_N[1] - NORTH_Z, kerb = ROAD_Z - 1.0 - NORTH_Z;
     // The apron stops at the driveway so the tarmac runs unbroken from the road to the bays.
     slab({ ...L.apron, z0: WALL_T - 0.02, x1: Math.min(L.apron.x1, L.driveway.x0) }, '#CFCBC2', 0.04);
     slab({ x0: L.walkwayX - 0.5, z0: L.apron.z1 - 0.02, x1: L.walkwayX + 0.5, z1: swIn + 0.02 }, '#CFCBC2', 0.04);
@@ -277,7 +287,7 @@ export class StoreView {
    */
   private dressLot(shop: Shop, parts: BufferGeometry[]): void {
     const L = lotLayout(shop);
-    const f = shop.floor, ox = shop.originX, oz = shop.originZ;
+    const f = shop.floor, ox = 0, oz = 0;
     const backZ = Math.min(f.z0, shop.storeroom.z0);
     const used = [
       { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T }, L.apron, L.aisle, L.driveway, L.serviceLane, L.backYard,
@@ -286,7 +296,7 @@ export class StoreView {
       ...L.bays.map((b) => ({ x0: b.x - 0.9, z0: b.z - 0.6, x1: b.x + 0.9, z1: b.z + 0.6 })),
     ];
     const free = (x: number, z: number, m: number) => !used.some((r) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m);
-    const swIn = MAIN_N[0] - oz;
+    const swIn = MAIN_N[0] - NORTH_Z;
     const trees = ['nature/tree-oak', 'nature/tree-default', 'nature/tree-detailed', 'suburban/tree-small'];
     const bushes = ['nature/plant-bush', 'nature/plant-bushdetailed', 'nature/plant-bushsmall'];
     const flowers = ['nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea'];
@@ -318,9 +328,10 @@ export class StoreView {
   /** Per frame: wall cut-down (cinematic camera only), fixtures, stock, boxes, spills. */
   update(state: GameState, cameraYaw: number | null): void {
     const shop = state.shop;
-    if (this.shellKey !== `${shop.name}|${shop.originX}|${shop.sizeId}|${shop.lotRows}`) this.buildShell(shop);
+    if (this.shellKey !== `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}`) this.buildShell(shop);
+    const flip = shop.flip ? -1 : 1;
     for (const s of this.sides) {
-      const facing = cameraYaw !== null && s.nx * Math.sin(cameraYaw) + s.nz * Math.cos(cameraYaw) > 0.25;
+      const facing = cameraYaw !== null && flip * (s.nx * Math.sin(cameraYaw) + s.nz * Math.cos(cameraYaw)) > 0.25;
       s.full.visible = !facing; s.ledge.visible = facing;
       for (const m of s.extraFull) m.visible = !facing;
     }
@@ -328,14 +339,14 @@ export class StoreView {
     const key = stockKey(shop);
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }
     const n = Math.min(8, shop.litter.length);
-    for (let i = 0; i < n; i++) { const l = shop.litter[i]!; this.dummy.position.set(l.x, 0.032, l.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1 + (l.id % 3) * 0.2, 1, 1); this.dummy.updateMatrix(); this.spills.setMatrixAt(i, this.dummy.matrix); }
+    for (let i = 0; i < n; i++) { const l = shop.litter[i]!; const lp = toLocal(shop, l.x, l.z); this.dummy.position.set(lp.x, 0.032, lp.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1 + (l.id % 3) * 0.2, 1, 1); this.dummy.updateMatrix(); this.spills.setMatrixAt(i, this.dummy.matrix); }
     this.spills.count = n; this.spills.instanceMatrix.needsUpdate = true;
   }
 
   private fixtureMatrix(shop: Shop, f: Fixture, out: Matrix4, yOffset = 0, modelOffset = false): Matrix4 {
     const yaw = f.rot * Math.PI / 2;
     const dz = modelOffset ? (MODEL_OFFSET[f.type] ?? 0) : 0;
-    this.dummy.position.set(shop.originX + f.x + 0.5 + Math.sin(yaw) * dz, yOffset, shop.originZ + f.z + 0.5 + Math.cos(yaw) * dz);
+    this.dummy.position.set(f.x + 0.5 + Math.sin(yaw) * dz, yOffset, f.z + 0.5 + Math.cos(yaw) * dz);
     this.dummy.rotation.set(0, yaw, 0);
     this.dummy.scale.set(1, 1, 1);
     this.dummy.updateMatrix();
@@ -344,7 +355,7 @@ export class StoreView {
   }
 
   private rebuildFixtures(shop: Shop): void {
-    for (const { mesh } of this.fixtureMeshes.values()) { this.group.remove(mesh); mesh.dispose(); }
+    for (const { mesh } of this.fixtureMeshes.values()) { this.root.remove(mesh); mesh.dispose(); }
     this.fixtureMeshes.clear();
     const byModel = new Map<string, Fixture[]>();
     for (const f of shop.fixtures) { const id = f.type === 'fridge' ? 'chiller' : FIXTURE_MODEL[f.type]; const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
@@ -357,13 +368,13 @@ export class StoreView {
       const ids: number[] = [];
       list.forEach((f, i) => { for (let s = 0; s < stack; s++) { mesh.setMatrixAt(i * stack + s, this.fixtureMatrix(shop, f, m, s * 0.09, true)); ids.push(f.id); } });
       mesh.userData.fixtureIds = ids;
-      this.group.add(mesh);
+      this.root.add(mesh);
       this.fixtureMeshes.set(model, { mesh, ids });
       const glass = model === 'chiller' ? null : this.assets.glassGeometry(model);
       if (glass) {
         const gm = new InstancedMesh(glass, this.assets.glass, list.length);
         list.forEach((f, i) => gm.setMatrixAt(i, this.fixtureMatrix(shop, f, m, 0, true)));
-        this.group.add(gm);
+        this.root.add(gm);
         this.fixtureMeshes.set(model + ':glass', { mesh: gm, ids: [] });
       }
     }
@@ -439,7 +450,7 @@ export class StoreView {
     const units = shop.storage.reduce((a, e) => a + e.qty, 0);
     const n = Math.min(72, Math.ceil(units / 4));
     const d = shop.delivery;
-    const ox = shop.originX, oz = shop.originZ;
+    const ox = 0, oz = 0;
     const cols = Math.max(1, Math.floor((d.x1 - d.x0 - 0.2) / 0.3)), rows = Math.max(1, Math.floor((d.z1 - d.z0 - 0.2) / 0.3));
     for (let i = 0; i < n; i++) {
       const layer = Math.floor(i / (cols * rows));
@@ -458,12 +469,12 @@ export class StoreView {
   setGhost(type: FixtureType | null, shop: Shop, x: number, z: number, rot: Rot, valid: boolean): void {
     if (!type) { if (this.ghost) this.ghost.visible = false; return; }
     const geo = type === 'fridge' && this.chillerGeo ? this.chillerGeo : this.assets.geometry(FIXTURE_MODEL[type]);
-    if (!this.ghost) { this.ghost = new Mesh(geo, this.ghostMat); this.group.add(this.ghost); }
+    if (!this.ghost) { this.ghost = new Mesh(geo, this.ghostMat); this.root.add(this.ghost); }
     this.ghost.geometry = geo;
     this.ghost.visible = true;
     this.ghostMat.color.set(valid ? '#3FA87A' : '#E8573F');
     const yaw = rot * Math.PI / 2; const dz = MODEL_OFFSET[type] ?? 0;
-    this.ghost.position.set(shop.originX + x + 0.5 + Math.sin(yaw) * dz, 0.02, shop.originZ + z + 0.5 + Math.cos(yaw) * dz);
+    this.ghost.position.set(x + 0.5 + Math.sin(yaw) * dz, 0.02, z + 0.5 + Math.cos(yaw) * dz);
     this.ghost.rotation.set(0, yaw, 0);
   }
 

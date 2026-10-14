@@ -2,6 +2,7 @@ import type { GameRuntime } from './GameRuntime';
 import { tick, TICK, applyCommand, FIXTURES, quickSetup } from '@/sim/index';
 import { PeopleView } from '@/render/People';
 import { spawnCustomer } from '@/sim/people';
+import { toWorld } from '@/sim/layout';
 
 /** Deterministic hooks for Playwright screenshots and perf runs. Harmless in production. */
 export function installTestHooks(rt: GameRuntime): void {
@@ -26,8 +27,8 @@ export function installTestHooks(rt: GameRuntime): void {
       rt.cinematic = false;
       const s = rt.state; const r = rt.renderer; if (!s || !r) return;
       const o = s.people.find((p) => p.kind === 'owner');
-      if (o && x !== undefined && z !== undefined) { o.x = o.px = s.shop.originX + x; o.z = o.pz = s.shop.originZ + z; o.path = []; o.state = 'idle'; o.moveDir = null; }
-      if (yaw !== undefined) r.fp.yaw = yaw;
+      if (o && x !== undefined && z !== undefined) { const w = toWorld(s.shop, x, z); o.x = o.px = w.x; o.z = o.pz = w.z; o.path = []; o.state = 'idle'; o.moveDir = null; }
+      if (yaw !== undefined) r.fp.yaw = yaw + (s.shop.flip ? Math.PI : 0);
       if (pitch !== undefined) r.fp.pitch = pitch;
       rt.bump();
     },
@@ -36,9 +37,10 @@ export function installTestHooks(rt: GameRuntime): void {
       rt.cinematic = false;
       const s = rt.state; const r = rt.renderer; if (!s || !r) return;
       const o = s.people.find((p) => p.kind === 'owner'); if (!o) return;
-      o.x = o.px = s.shop.originX + x; o.z = o.pz = s.shop.originZ + z; o.path = []; o.state = 'idle'; o.moveDir = null;
-      r.fp.aimAt(o.x, o.z, o.look.height, s.shop.originX + tx, ty, s.shop.originZ + tz);
-      o.yaw = Math.atan2(s.shop.originX + tx - o.x, s.shop.originZ + tz - o.z);
+      const w = toWorld(s.shop, x, z), t = toWorld(s.shop, tx, tz);
+      o.x = o.px = w.x; o.z = o.pz = w.z; o.path = []; o.state = 'idle'; o.moveDir = null;
+      r.fp.aimAt(o.x, o.z, o.look.height, t.x, ty, t.z);
+      o.yaw = Math.atan2(t.x - o.x, t.z - o.z);
       rt.bump();
     },
     /** Furnish, stock and (optionally) open the shop the quick way, through commands. */

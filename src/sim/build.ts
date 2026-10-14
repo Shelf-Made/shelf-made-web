@@ -4,7 +4,7 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone } from './layout';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone, toWorld, yawToWorld } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside } from './people';
@@ -35,7 +35,7 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const grid = buildGrid({ ...shop, fixtures }, -1);
   const from = doorInside(state);
   if (!findPath(grid, doorOutside(state), from)) return { ok: false, reason: 'Would block the door', price };
-  const back = { x: shop.originX + shop.backDoor.x, z: shop.originZ + shop.backDoor.z - 0.6 };
+  const back = toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6);
   if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
   for (const fx of fixtures) {
     if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
@@ -60,7 +60,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   shop.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
   // Fixtures keep their tiles (the shop grows back and sideways; the front wall does not move).
   const L = lotLayout(shop);
-  shop.bays = L.bays.map((b, i) => ({ x: shop.originX + b.x, z: shop.originZ + b.z, yaw: b.yaw, carId: shop.bays[i]?.carId ?? null }));
+  shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
   shop.storageCapacity = 120 + target * 100;
   shop.layoutVersion++;
   state.notices.push({ day: state.day, text: `Extension built: the shop is now a ${size.name.toLowerCase()}.`, kind: 'info' });
@@ -74,7 +74,7 @@ export function expandLot(state: GameState): string | null {
   state.cash -= LOT_EXPANSION_COST;
   shop.lotRows = 2;
   const L = lotLayout(shop);
-  shop.bays = L.bays.map((b, i) => ({ x: shop.originX + b.x, z: shop.originZ + b.z, yaw: b.yaw, carId: shop.bays[i]?.carId ?? null }));
+  shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
   shop.layoutVersion++;
   state.notices.push({ day: state.day, text: `Parking doubled: ${shop.bays.length} bays now.`, kind: 'info' });
   return null;

@@ -1,9 +1,11 @@
 /**
- * World layout constants. 1 unit = 1 store tile. x runs east, z runs south (toward the
- * camera). The main road runs east–west along z = ROAD_Z; the player's plots sit on its
- * north side (negative z).
+ * World layout constants. 1 unit = 1 store tile. x runs east, z runs south. The town is one
+ * crossroads: Main Road runs east–west along z = ROAD_Z, a side street (Elm Street) crosses it at
+ * x = 0. A shop takes each corner. North corners face south onto Main Road; south corners are
+ * the same layout turned half round (their doors face north), so shop-relative coordinates mean
+ * the same thing on every corner and only the frame (origin + flip) changes.
  */
-import type { Plot, Vec2, FixtureDef, FixtureType } from './types';
+import type { Plot, Vec2, FixtureDef, FixtureType, CornerId } from './types';
 
 export const TICK = 0.05;
 /** 12 game hours of 60 real seconds each. */
@@ -11,37 +13,117 @@ export const DAY_SECONDS = 12 * 60;
 export const OPEN_HOUR = 8;
 export const CLOSE_TIME = DAY_SECONDS;
 
+/** Main Road: westbound on the north lane, eastbound on the south lane (traffic keeps right). */
 export const ROAD_Z = 2.5;
 export const LANE_WEST_Z = 2.0;
 export const LANE_EAST_Z = 3.0;
 export const SIDEWALK_N_Z = 1.25;
 export const SIDEWALK_S_Z = 3.75;
-export const MAP_X = 44;
-export const MAP_Z = 18;
-
-/**
- * The pocket. A small green hollow ringed by cliffs. Main Street runs straight through it and
- * leaves by a tunnel at each end, out to the rest of the town; traffic appears and vanishes in
- * the dark of the tunnels. A creek runs along the foot of the south cliff.
- */
-export const TUNNEL_X = 50;
-/** Where traffic spawns and despawns, inside the tunnels. */
-export const ROAD_FAR = 64;
-/** The creek: its centre line wanders a little around z = 18. Half width of the water. */
-export const RIVER_HALF_W = 1.15;
-export function riverZ(x: number): number { return 18 + 0.8 * Math.sin(x / 9) + 0.4 * Math.sin(x / 4.1 + 1.3); }
-/** Every shop plot owns this rectangle (plot-relative), big enough for the largest shop with the doubled lot. */
+/** Elm Street: southbound on the west lane, northbound on the east lane. Kerbs at |x| = SIDE_HALF. */
+export const SIDE_X = 0;
+export const LANE_SOUTH_X = -0.5;
+export const LANE_NORTH_X = 0.5;
+export const SIDE_HALF = 1.0;
+/** Elm Street sidewalks (centre lines); between kerb and sidewalk is a parking lane on the east side, a verge on the west. */
+export const SIDEWALK_W_X = -2.2;
+export const SIDEWALK_E_X = 2.2;
+/** Zebra crossings, one on each arm, 1 unit wide: x of the two on Main Road, z of the two on Elm Street. */
+export const ZEBRA = { west: -2.2, east: 2.2, north: 0.5, south: 4.5 } as const;
+/** Where a car's centre waits at a red light, per direction of travel. */
+export const STOP_LINE = { eastbound: -3.9, westbound: 3.9, southbound: -1.1, northbound: 6.1 } as const;
+/** The town area: everything that matters lies within |x| < MAP_X, z in MAP_Z. */
+export const MAP_X = 26;
+export const MAP_Z = { north: -16, south: 21 } as const;
+/** Where traffic and walkers appear and vanish, out in the fog along each road. */
+export const ROAD_FAR = 90;
+/** Every corner owns this rectangle (shop-relative), big enough for the largest shop with the doubled lot. */
 export const PLOT_RECT = { x0: -8, z0: -11.6, x1: 12.6, z1: 2.55 };
+/** Shop-relative z of the frontage sidewalk's centre line (the same on every corner). */
+export const FRONT_WALK_Z = SIDEWALK_N_Z + 1.6;
 
 export const WALK_SPEED = 1.6;
 export const CAR_ROAD_SPEED = 6;
 export const CAR_LOT_SPEED = 2.2;
 
+/** A shop's frame: where its (0,0) sits in the world, and whether it is turned half round. */
+export interface Frame { originX: number; originZ: number; flip?: boolean }
+export function toWorld(f: Frame, x: number, z: number): Vec2 { return f.flip ? { x: f.originX - x, z: f.originZ - z } : { x: f.originX + x, z: f.originZ + z }; }
+export function toLocal(f: Frame, x: number, z: number): Vec2 { return f.flip ? { x: f.originX - x, z: f.originZ - z } : { x: x - f.originX, z: z - f.originZ }; }
+export function rectToWorld(f: Frame, r: Rect): Rect {
+  return f.flip ? { x0: f.originX - r.x1, z0: f.originZ - r.z1, x1: f.originX - r.x0, z1: f.originZ - r.z0 } : { x0: f.originX + r.x0, z0: f.originZ + r.z0, x1: f.originX + r.x1, z1: f.originZ + r.z1 };
+}
+export function yawToWorld(f: Frame, yaw: number): number { return f.flip ? yaw + Math.PI : yaw; }
+export function dirToWorld(f: Frame, d: Vec2): Vec2 { return f.flip ? { x: -d.x, z: -d.z } : d; }
+
+/** The four corners. The player picks one of the first three; the south-east corner always goes to a rival. */
+export const CORNERS: Record<CornerId, Frame & { id: CornerId; name: string }> = {
+  nw: { id: 'nw', name: 'north-west corner', originX: -15.5, originZ: -1.6 },
+  ne: { id: 'ne', name: 'north-east corner', originX: 10.9, originZ: -1.6 },
+  sw: { id: 'sw', name: 'south-west corner', originX: -10.9, originZ: 2 * ROAD_Z + 1.6, flip: true },
+  se: { id: 'se', name: 'south-east corner', originX: 15.5, originZ: 2 * ROAD_Z + 1.6, flip: true },
+};
+export const CORNER_IDS: CornerId[] = ['nw', 'ne', 'sw', 'se'];
+
 export const PLOTS: Plot[] = [
-  { id: 'main', name: 'Main Street', blurb: 'Busiest corner in town. More passing trade, higher rent, shoppers in a hurry.', x: 0, rent: 40, traffic: 1.2, mix: { bargain: 0.9, convenience: 1.4, loyalist: 0.9, impulse: 1.1 } },
-  { id: 'hill', name: 'Hillside', blurb: 'Quiet street of families. Loyal regulars who notice prices; less passing traffic.', x: -22, rent: 30, traffic: 0.8, mix: { bargain: 1.3, convenience: 0.7, loyalist: 1.3, impulse: 0.8 } },
-  { id: 'east', name: 'East End', blurb: 'By the school and the park. Snacks and drinks fly off the shelf after three.', x: 22, rent: 35, traffic: 1.0, mix: { bargain: 0.9, convenience: 1.0, loyalist: 0.8, impulse: 1.5 } },
+  { id: 'main', name: 'Main Road corner', corner: 'ne', blurb: 'On the busy side of Main Road. Drivers pull in on the way past: more trade, higher rent, shoppers in a hurry.', rent: 40, traffic: 1.2, mix: { bargain: 0.9, convenience: 1.4, loyalist: 0.9, impulse: 1.1 } },
+  { id: 'elm', name: 'Elm Street corner', corner: 'nw', blurb: 'Where Elm Street comes down from the houses. Regulars who notice prices and stay loyal; less passing trade.', rent: 30, traffic: 0.8, mix: { bargain: 1.3, convenience: 0.7, loyalist: 1.3, impulse: 0.8 } },
+  { id: 'bus', name: 'Bus stop corner', corner: 'sw', blurb: 'Right by the bus stop. Commuters and the after-school crowd: snacks and drinks fly off the shelf.', rent: 35, traffic: 1.0, mix: { bargain: 0.9, convenience: 1.0, loyalist: 0.8, impulse: 1.5 } },
 ];
+/** The corner nobody can buy: whatever it faces, it trades like the town average. */
+export const RIVAL_CORNER: CornerId = 'se';
+
+export function plotDef(plotId: string): Plot { return PLOTS.find((p) => p.id === plotId) ?? PLOTS[0]!; }
+export function cornerOfPlot(plotId: string): CornerId { return plotDef(plotId).corner; }
+
+/** The bus stop: a shelter on the south sidewalk of Main Road, west of the crossing. */
+export const BUS_STOP: Vec2 = { x: -6.2, z: SIDEWALK_S_Z };
+/** Shared parallel bays on Elm Street's east kerb, north of the crossing; cars park facing north. */
+export const STREET_BAYS: { x: number; z: number; yaw: number }[] = [-4.6, -7.1, -9.6].map((z) => ({ x: SIDE_HALF + 0.5, z, yaw: Math.PI }));
+
+/**
+ * The neighbourhoods the roads lead to, off the map: each has a road sign at the edge of town.
+ * Flyers go out there; franchises and MegaMart's extra branches open there.
+ */
+export const OFFMAP_SITES: { id: string; name: string; km: number; dir: 'east' | 'west' | 'north' | 'south'; traffic: number }[] = [
+  { id: 'hillside', name: 'Hillside', km: 1, dir: 'west', traffic: 0.85 },
+  { id: 'eastend', name: 'East End', km: 2, dir: 'east', traffic: 1.1 },
+  { id: 'elmheights', name: 'Elm Heights', km: 1, dir: 'north', traffic: 0.9 },
+  { id: 'riverside', name: 'Riverside', km: 3, dir: 'south', traffic: 1.0 },
+];
+
+/** Billboards standing on the crossroads, each a real board: by the bus shelter, at the town edge on Main Road, on a rooftop. */
+export const BILLBOARDS: { id: string; name: string; rent: number; reach: number; x: number; z: number; y: number; yaw: number }[] = [
+  { id: 'bus', name: 'Bus shelter', rent: 35, reach: 0.05, x: BUS_STOP.x - 2.1, z: SIDEWALK_S_Z + 0.55, y: 0, yaw: Math.PI },
+  { id: 'edge', name: 'Main Road, edge of town', rent: 45, reach: 0.06, x: -27.5, z: ROAD_Z - 3.2, y: 0, yaw: Math.PI / 2 },
+  { id: 'roof', name: 'Rooftop over Elm Street', rent: 30, reach: 0.04, x: 6, z: -19.5, y: 6.2, yaw: 0 },
+];
+
+/**
+ * The traffic light: one timed cycle in sim seconds (it keeps running while the clock is stopped
+ * for setup). Main Road green, Elm Street green, then an all-walk phase when every car waits and
+ * walkers may use any zebra. Amber and all-red gaps clear the junction between phases.
+ */
+export const LIGHT_PHASES: { phase: LightPhase; len: number }[] = [
+  { phase: 'main', len: 14 }, { phase: 'mainAmber', len: 2 }, { phase: 'allRed', len: 1 },
+  { phase: 'side', len: 8 }, { phase: 'sideAmber', len: 2 }, { phase: 'allRed', len: 1 },
+  { phase: 'walk', len: 7 }, { phase: 'allRed', len: 1 },
+];
+export type LightPhase = 'main' | 'mainAmber' | 'side' | 'sideAmber' | 'walk' | 'allRed';
+export const LIGHT_CYCLE = LIGHT_PHASES.reduce((a, p) => a + p.len, 0);
+export function lightAt(tick: number): { phase: LightPhase; left: number } {
+  let t = (tick * TICK) % LIGHT_CYCLE;
+  for (const p of LIGHT_PHASES) { if (t < p.len) return { phase: p.phase, left: p.len - t }; t -= p.len; }
+  return { phase: 'allRed', left: 0 };
+}
+/** May a car on this road cross its stop line now? Amber counts as stop unless the car is already at the line. */
+export function greenFor(road: 'main' | 'side', tick: number): 'go' | 'amber' | 'stop' {
+  const { phase } = lightAt(tick);
+  if (phase === road) return 'go';
+  if (phase === `${road}Amber`) return 'amber';
+  return 'stop';
+}
+/** Walkers may step onto a zebra only in the walk phase, with time to get across. */
+export function walkMayStart(tick: number): boolean { const l = lightAt(tick); return l.phase === 'walk' && l.left > 2.2; }
 
 /**
  * Store-relative layout of the starter shop. (0,0) is the front door tile centre; the shop extends
@@ -115,9 +197,10 @@ export const SHOP_SIZES: { id: string; name: string; floor: Rect; storeroom: Rec
 ];
 export const LOT_EXPANSION_COST = 500;
 
-/** Where the store's origin sits in world space for a plot: the front door tile centre, just north of the apron. */
-export function storeOrigin(plotX: number): Vec2 {
-  return { x: plotX, z: -1.6 };
+/** Where the store's frame sits for a plot: the front door tile centre, just behind the apron. */
+export function storeFrame(plotId: string): Frame {
+  const c = CORNERS[cornerOfPlot(plotId)];
+  return { originX: c.originX, originZ: c.originZ, flip: !!c.flip };
 }
 
 export const FIXTURES: Record<FixtureType, FixtureDef> = {

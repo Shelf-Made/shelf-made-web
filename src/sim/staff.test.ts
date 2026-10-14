@@ -22,7 +22,7 @@ describe('staff', () => {
     expect(s.history[0]!.wages).toBeGreaterThan(0);
   });
   it('unlocks arrive on schedule with New! badges and a hint always says something', () => {
-    const s = openGame({ seed: 22, plotId: 'hill', name: 'T', tutorial: false });
+    const s = openGame({ seed: 22, plotId: 'elm', name: 'T', tutorial: false });
     resetGridCache();
     expect(s.unlocks.build).toBe(true); // you build your own shop from minute one
     expect(s.unlocks.staff).toBe(false);

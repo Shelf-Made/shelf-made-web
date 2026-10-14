@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { AssetLibrary } from './assets';
 import { TOWN_MODEL_IDS, type TownPlan, type Placement, type ScatterKind } from './town';
 import { box, paint } from './geometry';
-import { terrainGeometry, waterGeometry, waterMaterial, structuresGeometry } from './terrain';
+import { terrainGeometry, structuresGeometry } from './terrain';
 
 /** Wind: grass, flowers and leaves sway with height above their base. One clock for all of them. */
 export const wind = { value: 0 };
@@ -88,11 +88,9 @@ export class StaticWorld {
     if (!this.terrain) {
       const land = new Mesh(terrainGeometry(), new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true }));
       land.receiveShadow = true;
-      const water = new Mesh(waterGeometry(plan), waterMaterial(wind));
-      water.receiveShadow = true;
       this.terrain = land;
-      this.group.add(land, water);
-      const st = structuresGeometry(pal, plan);
+      this.group.add(land);
+      const st = structuresGeometry(pal);
       const lit = new Mesh(st.lit, this.assets.material); lit.castShadow = true; lit.receiveShadow = true;
       this.group.add(lit, new Mesh(st.dark, this.assets.unlit), new Mesh(st.glow, this.assets.unlit));
       this.grassMat = swaying(this.assets.material, 0.22, true);
@@ -161,7 +159,7 @@ export class StaticWorld {
     const buckets = new Map<string, Placement[]>();
     for (const t of plan.forest) {
       if (!this.assets.has(t.model)) continue;
-      const k = `${t.model}|${t.x < 0 ? 'w' : 'e'}${t.z < 6 ? 'n' : 's'}`;
+      const k = `${t.model}|${t.x < 0 ? 'w' : 'e'}${t.z < 2.5 ? 'n' : 's'}`;
       const arr = buckets.get(k) ?? []; arr.push(t); buckets.set(k, arr);
     }
     for (const [k, trees] of buckets) {
