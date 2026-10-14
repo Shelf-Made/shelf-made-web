@@ -4,7 +4,7 @@ import { WINDOW_GLOW, SPILL, spillGeometry } from './glow';
 import { cornerProps } from './dressing';
 import { trolleyShelterGeometry, posterGeometry, buntingGeometry, PROP_MODELS } from './props';
 import type { AssetLibrary } from './assets';
-import type { GameState } from '@/sim/types';
+import type { GameState, RivalMove } from '@/sim/types';
 import type { TownPlan, RivalSite } from './town';
 import { MAIN_N, PAVEMENT } from './town';
 import { box, merge, place } from './geometry';
@@ -15,6 +15,16 @@ import { rivalScheme, RIVAL_SCHEMES, type Scheme } from '@/sim/schemes';
 
 /** Each rival's fixed colours live with the sim's schemes (bags use them too); the lettering face is the accent. */
 export { RIVAL_SCHEMES } from '@/sim/schemes';
+
+/** The banner each move puts up out front, facing the road. */
+const BANNERS: Partial<Record<RivalMove, { text: string; bg: string; fg: string }>> = {
+  renovation: { text: 'CLOSED FOR A REFIT', bg: '#FFC044', fg: '#38383D' },
+  priceMatch: { text: 'WE MATCH ANY PRICE!', bg: '#E8573F', fg: '#FFFFFF' },
+  tasting: { text: 'FREE TASTING TODAY', bg: '#FFF3DC', fg: '#2E6B4F' },
+  loyalty: { text: 'LOYALTY CARDS HERE', bg: '#2E6B4F', fg: '#FFF3DC' },
+  bigSale: { text: 'MEGA SALE', bg: '#FFC044', fg: '#E8573F' },
+  longHours: { text: 'OPEN LATE', bg: '#3570BC', fg: '#FFFFFF' },
+};
 
 /** Models the rival sites use beyond the shop's own. */
 export const RIVAL_MODELS = ['market/shopping-cart', 'roads/cone', 'roads/dumpster', 'suburban/fence', 'furniture/bench', 'furniture/trashcan', ...PROP_MODELS];
@@ -27,6 +37,8 @@ interface Site {
   id: string; corner: string; key: string; root: Group;
   lot: Group; build: Group; open: Group;
   sale: Mesh; soon: Mesh; forSale: Mesh; name: Mesh; windows: Mesh; spill: Mesh; posters: Mesh; salePosters: Mesh; bunting: Mesh;
+  /** Banners across the storefront and scaffolding, built the first time a move needs them. */
+  banners: Partial<Record<RivalMove, Mesh>>; scaffold: Mesh | null; front: { x0: number; x1: number; z: number };
   /** The building at full height and as waist-high stubs (when it would hide the manager), and its footprint. */
   full: Mesh; stub: Mesh; footprint: Rect;
 }
@@ -100,19 +112,60 @@ export class RivalsView {
       }
       if (!s) { s = this.site({ id: r.id, name: w.name, kind: r.kind, corner: r.corner }, w.scheme, w.name); s.key = w.key; this.sites.push(s); }
       const bought = r.boughtDay !== undefined, closed = r.closedDay !== undefined && !bought;
+      const renovating = r.renovatingUntil !== undefined;
       // A challenger fits out the old building: it stays up, signless, behind a "coming soon" board.
       const trading = r.open || bought;
-      const stage = trading || closed || r.challenger ? 'open' : state.day >= r.opensDay - 2 ? 'build' : 'lot';
+      const stage = trading || closed || renovating || r.challenger ? 'open' : state.day >= r.opensDay - 2 ? 'build' : 'lot';
       s.lot.visible = stage === 'lot'; s.build.visible = stage === 'build'; s.open.visible = stage === 'open';
-      s.soon.visible = !trading && !closed;
+      s.soon.visible = !trading && !closed && !renovating;
       s.forSale.visible = closed;
-      s.name.visible = trading;
+      s.name.visible = trading || renovating;
+      // Its moves in answer to the player, on the storefront: a banner while one runs, scaffolding while it renovates.
+      const active = new Set((r.responses ?? []).filter((x) => x.from <= state.day && x.until >= state.day).map((x) => x.move));
+      for (const move of Object.keys(BANNERS) as RivalMove[]) {
+        const on = active.has(move) && (trading || move === 'renovation');
+        if (on && !s.banners[move]) s.banners[move] = this.banner(s, BANNERS[move]!);
+        const b = s.banners[move]; if (b) b.visible = on;
+      }
+      if (renovating && !s.scaffold) s.scaffold = this.scaffolding(s);
+      if (s.scaffold) s.scaffold.visible = renovating;
       s.sale.visible = r.open && r.saleDaysLeft > 0;
       s.salePosters.visible = s.sale.visible; s.posters.visible = trading && !s.sale.visible;
       s.bunting.visible = (r.open && state.day <= r.opensDay) || (bought && state.day <= (r.boughtDay ?? 0) + 1);
       s.windows.visible = trading && this.night;
       s.spill.visible = trading && this.night;
     }
+  }
+
+  /**
+   * A cloth banner on two poles out on the apron, facing the road (where the "Coming soon" board stood),
+   * so it reads from the street and from above; the awning would hide one hung on the front.
+   */
+  private banner(s: Site, b: { text: string; bg: string; fg: string }): Mesh {
+    const pal = this.assets.palette;
+    const w = 2.7, x = 1.8, z = 2.2;
+    const size = Math.min(0.22, (w - 0.3) / (b.text.length * 0.8));
+    const g = merge([
+      box(pal, '#38383D', 0.08, 1.4, 0.08, x - w / 2 - 0.06, 0, z), box(pal, '#38383D', 0.08, 1.4, 0.08, x + w / 2 + 0.06, 0, z),
+      box(pal, b.bg, w, 0.42, 0.03, x, 0.86, z),
+      box(pal, '#FFFFFF', w + 0.04, 0.03, 0.04, x, 1.27, z), box(pal, '#FFFFFF', w + 0.04, 0.03, 0.04, x, 0.84, z),
+      place(textGeometry(pal, b.text, size, 0.03, b.fg, b.fg), x, 1.07 - size * 0.45, z + 0.03),
+    ]);
+    const m = new Mesh(g, this.assets.material); m.name = 'rival-banner'; m.visible = false; m.castShadow = true;
+    s.root.add(m);
+    return m;
+  }
+
+  /** Scaffolding up the storefront while it renovates (the banner out front says why). */
+  private scaffolding(s: Site): Mesh {
+    const pal = this.assets.palette;
+    const g: BufferGeometry[] = [];
+    const z = s.front.z + 0.75;
+    for (let x = s.front.x0 - 0.3; x <= s.front.x1 + 0.31; x += 1.0) g.push(box(pal, '#9AA0A8', 0.05, 1.5, 0.05, x, 0, z), box(pal, '#9AA0A8', 0.05, 1.5, 0.05, x, 0, z - 0.5));
+    for (const y of [0.5, 1.0]) g.push(box(pal, '#C8925A', s.front.x1 - s.front.x0 + 0.7, 0.05, 0.55, (s.front.x0 + s.front.x1) / 2, y, z - 0.25));
+    const m = new Mesh(merge(g), this.assets.material); m.name = 'rival-scaffold'; m.castShadow = true; m.visible = false;
+    s.open.add(m);
+    return m;
   }
 
   private text(text: string, size: number, face: string, side: string): BufferGeometry {
@@ -273,6 +326,6 @@ export class RivalsView {
     const sale = board('SALE!', '#FFC044', '#E8573F', '#B8402E', -L.halfW - 0.6 + 3.2);
     const forSale = board('FOR SALE', '#FFFFFF', '#E8573F', '#B8402E', 1.8);
     const footprint = rectToWorld(c, { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T + 0.5 });
-    return { id: r.id, corner: r.corner, key: '', root, lot, build, open, sale, soon, forSale, name, windows, spill, posters: posterMesh, salePosters: salePosterMesh, bunting, full, stub, footprint };
+    return { id: r.id, corner: r.corner, key: '', root, lot, build, open, sale, soon, forSale, name, windows, spill, posters: posterMesh, salePosters: salePosterMesh, bunting, full, stub, footprint, banners: {}, scaffold: null, front: { x0: f.x0, x1: f.x1, z: f.z1 + WALL_T } };
   }
 }

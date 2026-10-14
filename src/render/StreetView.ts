@@ -11,7 +11,7 @@ type Lamp = 'mainR' | 'mainA' | 'mainG' | 'sideR' | 'sideA' | 'sideG' | 'walk' |
 
 /**
  * The live parts of the street: traffic-light lamps and walk signals following the sim's light,
- * billboard faces (your ad while rented, otherwise a rival's, otherwise "Space to let"), and road
+ * billboard faces (your ad while rented, MegaMart's on a board it bought, otherwise "Space to let"), and road
  * signs at the edge of town pointing to the neighbourhoods and to every branch out there.
  */
 export class StreetView {
@@ -117,10 +117,11 @@ export class StreetView {
     for (const [k, m] of this.lamps) m.visible = vis[k];
     const bk = state.shop.name;
     if (bk !== this.boardKey) { this.boardKey = bk; this.buildBoards(state.shop.name); }
-    const megaOpen = state.rivals.some((r) => r.kind === 'chain' && r.open);
+    // MegaMart's ad goes up only on a board it has bought (one of its moves); the rest are yours or to let.
     for (const [id, b] of this.boards) {
       const mine = state.marketing.billboards.includes(id);
-      b.mine.visible = mine; b.rival.visible = !mine && megaOpen; b.empty.visible = !mine && !megaOpen;
+      const theirs = !mine && state.rivals.some((r) => r.billboard === id && r.open);
+      b.mine.visible = mine; b.rival.visible = theirs; b.empty.visible = !mine && !theirs;
     }
     const sk = state.franchises.map((f) => f.siteId + f.name).join(',') + '|' + state.rivals.map((r) => r.branches.join('+')).join(',');
     if (sk !== this.signKey) { this.signKey = sk; this.buildSigns(state); }

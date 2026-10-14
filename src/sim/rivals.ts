@@ -192,6 +192,9 @@ function startMove(state: GameState, r: RivalState, move: RivalMove, site?: stri
   cue(state, 'bad');
 }
 
+/** Start a move this minute, as if it had been planned last night (screenshots and the debug views). */
+export function startRivalMove(state: GameState, r: RivalState, move: RivalMove): void { startMove(state, r, move); refreshMods(state, r); }
+
 /** Each morning: drop finished moves and work out what the active ones add to the rival's scores. */
 function refreshMods(state: GameState, r: RivalState): void {
   if (r.responses?.length) r.responses = r.responses.filter((x) => x.until >= state.day);
