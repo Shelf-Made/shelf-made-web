@@ -6,6 +6,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim } from '@/sim/types';
 import { box, merge } from './geometry';
+import { bagsGeometry } from './props';
+import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
+import { paintStrips } from './recolor';
 
 export const PEOPLE_MODELS = ['people/female-a', 'people/male-a', 'people/female-b', 'people/male-b', 'people/female-c', 'people/male-c', 'people/female-d', 'people/male-d', 'people/female-e', 'people/male-e', 'people/female-f', 'people/male-f', 'market/character-employee'];
 
@@ -33,11 +36,11 @@ interface Instance {
   bagKey: string;
 }
 
+/** The staff's model: its green apron takes the shop's colour. */
+const UNIFORM_MODEL = 'market/character-employee';
 const SHIRTS = ['#E8573F', '#3570BC', '#FFC044', '#3FA87A', '#9B6FE0', '#F27CC1', '#38383D', '#FFFFFF', '#D9A066', '#4FA3C7'];
 const SKINS = ['#F2C9A0', '#D9A066', '#A87B45', '#7A5236', '#F5D7B8'];
 
-/** Bag colours: the player's shop, then each rival (by id). The art pass adds per-shop schemes. */
-export const BAG_COLOURS: Record<string, string> = { player: '#3FA87A', discount: '#FFC044', premium: '#2E6B4F', chain: '#3570BC' };
 
 /**
  * Skinned character pool. One mesh per person (Kenney's head and body share a skeleton, so they are
@@ -53,12 +56,15 @@ export class PeopleView {
   private readonly mergedGeo = new Map<string, BufferGeometry>();
   private dogGeo: BufferGeometry | null = null;
   private frame = 0;
-  private readonly blobs = new BlobShadows(this.group, 192);
+  // Above the tallest paving (the sidewalks top out at 0.048), so the blob never hides under a slab.
+  private readonly blobs = new BlobShadows(this.group, 192, 0.42, 0.05);
   private readonly sphere = new Sphere(new V3(), 0.9);
   /** Seen from far off, people are drawn as little stand-ins in two instanced draws: a body in their shirt colour, a head. */
   static readonly FAR = 40;
   private pawnBody: InstancedMesh | null = null;
   private pawnHead: InstancedMesh | null = null;
+  private pawnBags: InstancedMesh | null = null;
+  private pawnBagN = 0;
   private pawnN = 0;
   private readonly pd = new Object3D();
   private readonly tint = new Color();
@@ -69,11 +75,14 @@ export class PeopleView {
     const pal = this.assets.palette;
     const body = merge([box(pal, '#FFFFFF', 0.3, 0.26, 0.2, 0, 0.2, 0), box(pal, '#55555E', 0.24, 0.2, 0.16, 0, 0, 0)]);
     const head = box(pal, '#FFFFFF', 0.22, 0.22, 0.2, 0, 0.46, 0);
+    // Bags beside the stand-in, a little bigger than life so the store's colour reads from the overview.
+    const bag = box(pal, '#FFFFFF', 0.16, 0.18, 0.08, 0.24, 0.02, 0);
     this.pawnBody = new InstancedMesh(body, this.assets.material, 192);
     this.pawnHead = new InstancedMesh(head, this.assets.material, 192);
-    for (const m of [this.pawnBody, this.pawnHead]) { m.count = 0; m.frustumCulled = false; this.group.add(m); }
+    this.pawnBags = new InstancedMesh(bag, this.assets.material, 192);
+    for (const m of [this.pawnBody, this.pawnHead, this.pawnBags]) { m.count = 0; m.frustumCulled = false; this.group.add(m); }
   }
-  private pawn(p: Person, x: number, z: number, moving: boolean): void {
+  private pawn(state: GameState, p: Person, x: number, z: number, moving: boolean): void {
     this.pawns();
     const b = this.pawnBody!, h = this.pawnHead!;
     if (this.pawnN >= b.instanceMatrix.count) return;
@@ -83,15 +92,28 @@ export class PeopleView {
     b.setColorAt(this.pawnN, this.tint.set(SHIRTS[(p.look.model * 3 + p.look.variant) % SHIRTS.length]!));
     h.setColorAt(this.pawnN, this.tint.set(SKINS[(p.look.model + p.look.variant * 2) % SKINS.length]!));
     this.pawnN++;
+    const bags = shoppingBags(p);
+    if (bags && this.pawnBagN < this.pawnBags!.instanceMatrix.count) {
+      this.pawnBags!.setMatrixAt(this.pawnBagN, d.matrix);
+      this.pawnBags!.setColorAt(this.pawnBagN, this.tint.set(storeScheme(state, bags.store).primary));
+      this.pawnBagN++;
+    }
+  }
+
+  private readonly uniformGeo = new Map<string, BufferGeometry>();
+  private uniform(geo: BufferGeometry, key: string, hex: string): BufferGeometry {
+    const k = `${key}|${hex}`;
+    let g = this.uniformGeo.get(k);
+    if (!g) { g = paintStrips(geo, this.assets.palette, { '2:1': hex }); this.uniformGeo.set(k, g); }
+    return g;
   }
 
   /** Head and body as one geometry (same skeleton, same bind pose): one draw call per person. */
-  private mergedGeometry(model: string, variant: number, parts: SkinnedMesh[]): BufferGeometry | null {
-    const key = `${model}|${variant}`;
+  private mergedGeometry(key: string, parts: SkinnedMesh[]): BufferGeometry | null {
     const cached = this.mergedGeo.get(key);
     if (cached) return cached;
     const geos = parts.map((m) => {
-      const g = this.variantGeometry(model, variant, m.geometry, m.name).clone();
+      const g = m.geometry.clone();
       for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(name)) g.deleteAttribute(name);
       return g;
     });
@@ -154,7 +176,7 @@ export class PeopleView {
     return new Mesh(this.dogGeo, this.assets.material);
   }
 
-  private spawn(p: Person): Instance {
+  private spawn(state: GameState, p: Person): Instance {
     const model = PEOPLE_MODELS[Math.min(p.look.model, PEOPLE_MODELS.length - 1)]!;
     const asset = this.assets.character(model);
     const root = skeletonClone(asset.scene) as Group;
@@ -164,13 +186,16 @@ export class PeopleView {
       if (m.isSkinnedMesh) {
         skinned.push(m);
         m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name);
+        // The shop's staff (and you) wear its colour: Kenney's green apron, repainted.
+        if ((p.kind === 'staff' || p.kind === 'owner') && model === UNIFORM_MODEL) m.geometry = this.uniform(m.geometry, `${model}|${p.look.variant}|${m.name}`, shopScheme(state).primary);
         m.material = this.assets.material;
         m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false;
       } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.material; (o as Mesh).castShadow = false; }
     });
     const first = skinned[0];
     if (first && skinned.length > 1 && skinned.every((m) => m.skeleton.bones.every((b, i) => b === first.skeleton.bones[i]))) {
-      const merged = this.mergedGeometry(model, p.look.variant, skinned);
+      const uniformed = (p.kind === 'staff' || p.kind === 'owner') && model === UNIFORM_MODEL;
+      const merged = this.mergedGeometry(`${model}|${p.look.variant}|${uniformed ? shopScheme(state).primary : ''}`, skinned);
       if (merged) { first.geometry = merged; for (const m of skinned.slice(1)) m.removeFromParent(); }
     }
     const scale = p.look.height;
@@ -221,31 +246,25 @@ export class PeopleView {
     return m;
   }
 
+  /** Bags in one hand, in the colour of the store they came from; the geometry is shared per colour and count. */
+  private bagGeo = new Map<string, BufferGeometry>();
   private bagMesh(hex: string, n: number): Mesh {
-    const pal = this.assets.palette;
-    const parts: BufferGeometry[] = [];
-    for (let i = 0; i < n; i++) {
-      const x = 0.17 + i * 0.03, z = -0.04 + i * 0.07;
-      parts.push(box(pal, hex, 0.06, 0.1, 0.09, x, 0.06 - i * 0.01, z), box(pal, '#FFFFFF', 0.062, 0.02, 0.092, x, 0.12 - i * 0.01, z), box(pal, '#38383D', 0.01, 0.06, 0.01, x, 0.16 - i * 0.01, z));
-    }
-    return new Mesh(merge(parts), this.assets.material);
-  }
-
-  /** Who a person's bags are from and how many: a rival shopper's, or a happy customer of ours on the way out. */
-  private bagsFor(p: Person): { key: string; n: number } | null {
-    if (p.bags && p.rivalId) return { key: p.rivalId, n: 1 + (p.id % 2) };
-    if (p.kind === 'customer' && p.anim === 'carry' && (p.basket?.length ?? 0) > 0) return { key: 'player', n: Math.max(1, Math.min(3, Math.ceil(p.basket!.reduce((a, b) => a + b.qty, 0) / 3))) };
-    return null;
+    const k = `${hex}:${n}`;
+    let g = this.bagGeo.get(k);
+    if (!g) { g = bagsGeometry(this.assets.palette, hex, n); this.bagGeo.set(k, g); }
+    return new Mesh(g, this.assets.material);
   }
 
   /** far: people beyond this distance from the focus are not drawn; nor is anyone outside the camera's view. */
   update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0, far = 48, view: Frustum | null = null, eye: Vector3 | null = null): void {
     this.frame++;
+    // A different game (new, loaded, or the lobby's demo): ids start again, so nothing carries over.
+    if (state !== this.lastState) { this.clear(); this.lastState = state; }
     this.blobs.begin();
-    this.pawnN = 0;
+    this.pawnN = 0; this.pawnBagN = 0;
     for (const p of state.people) {
       let inst = this.live.get(p.id);
-      if (!inst) { inst = this.spawn(p); this.live.set(p.id, inst); }
+      if (!inst) { inst = this.spawn(state, p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
       const x = p.px + (p.x - p.px) * alpha, z = p.pz + (p.z - p.pz) * alpha;
       const hidden = p.state === 'driving' || p.state === 'inRival' || p.id === hideId;
@@ -259,18 +278,23 @@ export class PeopleView {
       this.blobs.add(x, z, 0.62 * p.look.height);
       if (eye && Math.hypot(x - eye.x, eye.y, z - eye.z) > PeopleView.FAR) {
         inst.root.visible = false; if (inst.dog) inst.dog.visible = false;
-        this.pawn(p, x, z, Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4);
+        this.pawn(state, p, x, z, Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4);
         continue;
       }
       // In their arms: a box (the manager and stockers), or bags in the colour of the shop they came from.
       const carryBox = !!p.carrying;
       if (carryBox && !inst.box) { inst.box = this.boxMesh(); inst.root.add(inst.box); }
       if (inst.box) inst.box.visible = carryBox;
-      const bags = this.bagsFor(p);
-      const bk = bags ? `${bags.key}:${bags.n}` : '';
+      const bags = shoppingBags(p);
+      const bk = bags ? `${bags.store}:${bags.n}` : '';
       if (bk !== inst.bagKey) {
-        if (inst.bags) { inst.root.remove(inst.bags); inst.bags.geometry.dispose(); inst.bags = null; }
-        if (bags) { inst.bags = this.bagMesh(BAG_COLOURS[bags.key] ?? '#FFFFFF', bags.n); inst.root.add(inst.bags); }
+        if (inst.bags) { inst.bags.removeFromParent(); inst.bags = null; }
+        if (bags) {
+          // Hanging from the right hand, so they swing as the arm does.
+          inst.bags = this.bagMesh(storeScheme(state, bags.store).primary, bags.n);
+          const hand = inst.root.getObjectByName('arm-right');
+          if (hand) { inst.bags.position.set(0, -0.11, 0.0); hand.add(inst.bags); } else { inst.bags.position.set(0.17, 0.2, 0); inst.root.add(inst.bags); }
+        }
         inst.bagKey = bk;
       }
       const moving = Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
@@ -287,7 +311,7 @@ export class PeopleView {
       }
     }
     this.blobs.end();
-    if (this.pawnBody && this.pawnHead) for (const m of [this.pawnBody, this.pawnHead]) { m.count = this.pawnN; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    if (this.pawnBody && this.pawnHead && this.pawnBags) for (const m of [this.pawnBody, this.pawnHead, this.pawnBags]) { m.count = m === this.pawnBags ? this.pawnBagN : this.pawnN; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
     for (const [id, inst] of this.live) {
       if (inst.seen !== this.frame) {
         this.group.remove(inst.root);
@@ -296,6 +320,12 @@ export class PeopleView {
         this.live.delete(id);
       }
     }
+  }
+
+  private lastState: GameState | null = null;
+  private clear(): void {
+    for (const inst of this.live.values()) { this.group.remove(inst.root); if (inst.dog) this.group.remove(inst.dog); inst.mixer.stopAllAction(); }
+    this.live.clear();
   }
 
   get count(): number { return this.live.size; }

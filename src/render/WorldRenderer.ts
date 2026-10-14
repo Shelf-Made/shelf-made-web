@@ -3,6 +3,7 @@ import { FollowCamera } from './FollowCamera';
 import { TargetMarker } from './TargetMarker';
 import { AssetLibrary } from './assets';
 import { CameraRig } from './CameraRig';
+import { PostFX } from './PostFX';
 import { StaticWorld } from './StaticWorld';
 import { StoreView, STORE_MODELS, type StoreHit } from './StoreView';
 import { PeopleView, PEOPLE_MODELS } from './People';
@@ -74,8 +75,12 @@ export class WorldRenderer {
     this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
     this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group);
+    // Post passes render several times a frame: count the whole frame, not just the last pass.
+    this.renderer.info.autoReset = false;
+    this.post = new PostFX(this.renderer, this.scene, this.follow.camera);
     this.resize();
   }
+  private post: PostFX;
 
   async load(onProgress: (fraction: number, label: string) => void): Promise<void> {
     onProgress(0.02, 'Loading palette');
@@ -155,7 +160,10 @@ export class WorldRenderer {
     this.clock += Math.min(dt, 0.1);
     this.statics.update(this.clock);
     this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky);
-    this.renderer.render(this.scene, this.activeCamera);
+    this.renderer.info.reset();
+    // Tilt-shift fades in only as the camera pulls right out over the town.
+    const far = fp ? this.follow.distance : this.camera.goalDistance;
+    this.post.render(this.scene, this.activeCamera, Math.max(0, Math.min(1, (far - 34) / 26)));
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
   }
@@ -229,12 +237,14 @@ export class WorldRenderer {
     this.renderer.shadowMap.enabled = q !== 'low';
     this.lighting.sun.shadow.mapSize.set(q === 'high' ? 2048 : 1024, q === 'high' ? 2048 : 1024);
     if (this.lighting.sun.shadow.map) { this.lighting.sun.shadow.map.dispose(); this.lighting.sun.shadow.map = null; }
+    this.post.setQuality(q);
     this.resize();
   }
 
   resize(): void {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
+    this.post?.setSize(w, h);
     this.camera.resize(w / Math.max(1, h));
     this.follow.resize(w / Math.max(1, h));
   }

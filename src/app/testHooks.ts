@@ -11,7 +11,7 @@ export function installTestHooks(rt: GameRuntime): void {
   const hooks = {
     runtime: rt,
     ready: () => rt.getSnapshot().loaded,
-    newGame: (seed: number, plotId?: string, name?: string, opts: { tutorial?: boolean; sandbox?: boolean } = {}) => rt.startNew({ seed, plotId, name, tutorial: opts.tutorial, sandbox: opts.sandbox }),
+    newGame: (seed: number, plotId?: string, name?: string, opts: { tutorial?: boolean; sandbox?: boolean; scheme?: string } = {}) => rt.startNew({ seed, plotId, name, tutorial: opts.tutorial, sandbox: opts.sandbox, scheme: opts.scheme }),
     /** Advance the simulation by game seconds without rendering (fast). */
     advance: (seconds: number) => { const s = rt.state; if (!s) return; const n = Math.round(seconds / TICK); for (let i = 0; i < n; i++) { tick(s); if (i % 5 === 0) applyCommand(s, { type: 'scan' }); } s.sounds.length = 0; rt.bump(); },
     /** Advance, scanning one item every `every` game seconds (a slow cashier, so a line forms). */

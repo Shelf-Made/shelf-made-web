@@ -4,6 +4,7 @@
  * are appended during conversion.
  */
 import { ATLAS_COLS, ATLAS_ROWS, PALETTE_CELLS, PALETTE_SLOT } from './manifest';
+import { schemeColours } from '../../src/sim/schemes';
 
 export const BRAND = {
   white: '#FFFFFF',
@@ -68,6 +69,21 @@ export const BRAND = {
 } as const;
 
 export type BrandColor = keyof typeof BRAND;
+
+/**
+ * Colours added after the packs' own (so no earlier cell moves and no model needs new UVs): every
+ * shop and rival scheme, and the toy-town interior (checker lino, painted fixtures, warm light).
+ */
+export const LATE: string[] = [
+  ...schemeColours(),
+  '#F3DEC0', // checker lino, the warm square
+  '#EBD2B0', // checker lino joints
+  '#E9DCC4', // cream-painted metal
+  '#FFE6A8', // window glow
+  '#FFD27A', // light spill on the pavement
+  '#F7EFE2', // enamel white
+  '#C48A52', // skirting wood
+];
 
 export class Palette {
   readonly colors: string[] = [];

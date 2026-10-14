@@ -9,6 +9,7 @@
  * purple. Row 3: charcoal, slate, dark slate, lavender grey, white, skin, brown, peach.
  */
 import { Float32BufferAttribute, type BufferGeometry } from 'three';
+import type { PaletteMap } from './palette';
 
 export interface Strip { row: number; strip: number }
 export type StripMap = (from: Strip) => Strip | null;
@@ -59,6 +60,28 @@ export function recolor(geo: BufferGeometry, map: StripMap): BufferGeometry {
     if (!to || (to.row === from.row && to.strip === from.strip)) continue;
     const du = (to.strip - from.strip) / 8 / 4, dv = (to.row - from.row) / 4 / 2;
     for (const vtx of [a, b, c]) { dst[vtx * 2] = src[vtx * 2]! + du; dst[vtx * 2 + 1] = src[vtx * 2 + 1]! + dv; }
+  }
+  out.setAttribute('uv', new Float32BufferAttribute(dst, 2));
+  return out;
+}
+
+/**
+ * Repaint triangles by the colormap strip they sit in with flat palette colours ("row:strip" → hex),
+ * for colours Kenney's strips do not have: the shop's scheme, honey wood, enamel. Every colour must
+ * be baked into the palette (see tools/lib/palette.ts); others fall back to the nearest one.
+ */
+export function paintStrips(geo: BufferGeometry, pal: PaletteMap, map: Record<string, string>): BufferGeometry {
+  const out = geo.index ? geo.toNonIndexed() : geo.clone();
+  const uv = out.getAttribute('uv');
+  if (!uv) return out;
+  const dst = new Float32Array(uv.count * 2);
+  for (let i = 0; i < uv.count; i++) { dst[i * 2] = uv.getX(i); dst[i * 2 + 1] = uv.getY(i); }
+  for (let t = 0; t < uv.count / 3; t++) {
+    const s = stripOf((dst[t * 6]! + dst[t * 6 + 2]! + dst[t * 6 + 4]!) / 3, (dst[t * 6 + 1]! + dst[t * 6 + 3]! + dst[t * 6 + 5]!) / 3);
+    const hex = s && map[`${s.row}:${s.strip}`];
+    if (!hex) continue;
+    const [u, v] = pal.uv(hex);
+    for (let k = 0; k < 3; k++) { dst[(t * 3 + k) * 2] = u; dst[(t * 3 + k) * 2 + 1] = v; }
   }
   out.setAttribute('uv', new Float32BufferAttribute(dst, 2));
   return out;

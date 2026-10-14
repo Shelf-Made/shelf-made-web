@@ -100,6 +100,8 @@ export interface Person {
   /** Shoppers bound for a rival: which one, and whether they carry its bags home. */
   rivalId?: string;
   bags?: boolean;
+  /** Our customers: paid at the till, so they leave with our bags. */
+  paid?: boolean;
   /** The walk animation to resume after waiting at a kerb. */
   heldAnim?: Anim;
 }
@@ -200,6 +202,8 @@ export interface Shop {
   lotRows: number;
   /** Store-relative tiles where delivered boxes are stacked. */
   delivery: { x0: number; z0: number; x1: number; z1: number };
+  /** The shop's colour scheme (an id from SHOP_SCHEMES). */
+  scheme: string;
 }
 
 export interface DayStats {

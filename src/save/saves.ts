@@ -36,6 +36,8 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => { const shop = raw.shop as { floor: { x0: number; z0: number }; storeroom: { z0: number }; delivery?: unknown }; shop.delivery ??= { x0: shop.floor.x0, z0: shop.storeroom.z0, x1: shop.floor.x0 + 2, z1: shop.storeroom.z0 + 1 }; return { timeScale: 1, ...raw, version: 8 }; },
   // v8 → v9: the crossroads. Plots became corners, rivals took the other corners, franchises moved off the map.
   (raw) => migrateToCrossroads(raw),
+  // v9 → v10: shop colour schemes; every older shop keeps today's green.
+  (raw) => { const shop = raw.shop as { scheme?: string }; shop.scheme ??= 'green'; return { ...raw, version: 10 }; },
 ];
 
 /** Old plot ids to the corners that replaced them; old franchise plots to off-map sites. */

@@ -65,6 +65,28 @@ export function productGeometry(assets: AssetLibrary, productId: string): Buffer
   });
 }
 
+/**
+ * Fixtures painted for a warm shop instead of Kenney's slate and lavender grey: honey-wood shelving,
+ * a cream-painted counter with a wood top, white-enamel chillers with sky-blue trim, wooden produce
+ * crates. Keys are colormap strips ("row:strip"): 3:1 slate, 3:2 dark slate, 3:3 lavender grey.
+ */
+export const FIXTURE_PAINT: Record<string, Record<string, string>> = {
+  'market/shelf-boxes': { '3:3': '#D9A066', '3:1': '#B8824C' },
+  'market/shelf-bags': { '3:3': '#D9A066', '3:1': '#B8824C' },
+  'market/shelf-end': { '3:3': '#D9A066', '3:1': '#B8824C' },
+  'market/cash-register': { '3:3': '#E9DCC4', '3:1': '#D9A066' },
+  chiller: { '3:3': '#F7EFE2', '3:1': '#A9D8F5' },
+  'market/freezers-standing': { '3:3': '#F7EFE2', '3:1': '#A9D8F5' },
+  'market/display-bread': { '3:1': '#C8925A', '3:3': '#B8824C' },
+  'market/bottle-return': { '3:3': '#E9DCC4', '3:1': '#B8824C' },
+  'market/column': { '3:1': '#E9DCC4' },
+};
+
+/** The checker lino and the inside walls' bands (heights in tile units; the wall top is at 1). */
+export const LINO = { a: '#FFF3DC', b: '#F3DEC0', joint: '#EBD2B0' };
+export const WALL_BANDS = { skirting: [0, 0.07], lower: [0.07, 0.45], rail: [0.45, 0.5], upper: [0.5, 0.97] } as const;
+export const SKIRTING = '#C48A52', RAIL = '#FFF3DC';
+
 /** Wall recolour: Kenney's slate walls become white with the brand-green stripe, charcoal trim kept. */
 export const WALL_COLOURS = (from: { row: number; strip: number }) => {
   if (from.row !== 3) return null;

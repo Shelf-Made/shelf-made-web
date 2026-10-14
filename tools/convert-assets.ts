@@ -22,7 +22,7 @@ import sharp, { type OverlayOptions } from 'sharp';
 import { PACKS, ATLAS_COLS, ATLAS_ROWS, ATLAS_SLOT, ATLAS_SLOTS, PALETTE_SLOT, PALETTE_CELLS, type PackSpec } from './lib/manifest';
 import { readZip, findEntry } from './lib/zip';
 import { tmpdir } from 'node:os';
-import { Palette, rgbToHex, linearToSrgb } from './lib/palette';
+import { Palette, LATE, rgbToHex, linearToSrgb } from './lib/palette';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const OUT = pjoin(ROOT, 'public', 'assets');
@@ -277,6 +277,7 @@ async function main(): Promise<void> {
     console.log(`pack ${pack.id} (${pack.title} ${pack.version}) x${pack.scale}`);
     await convertPack(pack, infos, layers);
   }
+  for (const hex of LATE) palette.cell(hex);
   await writeAtlas(layers);
   infos.sort((a, b) => (a.pack + a.name).localeCompare(b.pack + b.name));
   writeFileSync(pjoin(OUT, 'models', 'index.json'), JSON.stringify({ generatedAt: new Date().toISOString(), models: infos }, null, 1));

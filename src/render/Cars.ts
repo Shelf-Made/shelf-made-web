@@ -9,7 +9,7 @@ export class CarsView {
   readonly group = new Group();
   private meshes: InstancedMesh[] = [];
   private readonly dummy = new Object3D();
-  private readonly blobs = new BlobShadows(this.group, 64, 0.5);
+  private readonly blobs = new BlobShadows(this.group, 64, 0.5, 0.05);
   constructor(private readonly assets: AssetLibrary) {}
 
   init(): void {

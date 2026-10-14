@@ -9,7 +9,7 @@ export class BlobShadows {
   private mesh: InstancedMesh;
   private readonly d = new Object3D();
   private n = 0;
-  constructor(private readonly parent: Group, capacity = 128, private readonly strength = 0.42) {
+  constructor(private readonly parent: Group, capacity = 128, private readonly strength = 0.42, private readonly y = 0.012) {
     this.mesh = this.make(capacity);
     parent.add(this.mesh);
   }
@@ -33,7 +33,7 @@ export class BlobShadows {
       for (let i = 0; i < this.n; i++) { this.mesh.getMatrixAt(i, this.d.matrix); bigger.setMatrixAt(i, this.d.matrix); }
       this.parent.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh = bigger; this.parent.add(bigger);
     }
-    const d = this.d; d.position.set(x, 0.012, z); d.rotation.set(0, yaw, 0); d.scale.set(sx, 1, sz); d.updateMatrix();
+    const d = this.d; d.position.set(x, this.y, z); d.rotation.set(0, yaw, 0); d.scale.set(sx, 1, sz); d.updateMatrix();
     this.mesh.setMatrixAt(this.n++, d.matrix);
   }
 

@@ -16,11 +16,13 @@ import { hire, fire, giveRaise, setShift } from './staff';
 import { canPlace, expandShop, expandLot, moveFixture } from './build';
 import { startFlyers, toggleBillboard, setPromotion, setAd } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
+import { schemeById } from './schemes';
 import { seatRivals } from './rivals';
 import type { Promotion, AdTemplate } from './types';
 
 export type Command =
-  | { type: 'choosePlot'; plotId: string; name: string }
+  | { type: 'choosePlot'; plotId: string; name: string; scheme?: string }
+  | { type: 'setScheme'; scheme: string }
   | { type: 'scan'; registerId?: number }
   | { type: 'moveDir'; x: number; z: number }
   | { type: 'walkTo'; x: number; z: number }
@@ -65,7 +67,7 @@ export interface CommandResult { ok: boolean; message?: string }
 const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
   removeFixture: 'sell', moveFixture: 'place', setPrice: 'tick', flyers: 'paper', billboard: 'build', promotion: 'order', ad: 'order',
   outsideSign: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
-  setShift: 'tick', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward',
+  setShift: 'tick', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
 };
 
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
@@ -78,12 +80,18 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
 
 function apply(state: GameState, cmd: Command): CommandResult {
   switch (cmd.type) {
+    case 'setScheme': {
+      // Before the doors first open: the picker previews it, and you can still change your mind while setting up.
+      if (state.phase !== 'picking' && state.phase !== 'setup') return { ok: false, message: 'The paint is dry: colours are chosen before opening.' };
+      state.shop.scheme = schemeById(cmd.scheme).id;
+      return { ok: true };
+    }
     case 'choosePlot': {
       if (state.phase !== 'picking') return { ok: false, message: 'Already open.' };
       const plot = PLOTS.find((p) => p.id === cmd.plotId);
       if (!plot) return { ok: false, message: 'No such plot.' };
       const name = cmd.name.trim().slice(0, 18) || 'Shelf Made';
-      state.shop = makeShop(plot.id, name);
+      state.shop = makeShop(plot.id, name, cmd.scheme);
       seatRivals(state);
       state.cars = state.cars.filter((c) => c.state === 'passing');
       state.people = state.people.filter((p) => p.kind === 'walker' && !p.rivalId);

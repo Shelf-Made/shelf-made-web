@@ -208,6 +208,11 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 .plot.selected { border-color: var(--green); background: #e9f7f0; }
 .plot b { display: block; font-size: 1.05em; }
 .plot small { display: block; line-height: 1.3; opacity: 0.8; margin-top: 3px; }
+/* Shop colours in the picker: one round swatch per scheme (primary, accent and trim in a wedge). */
+.schemes { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.12); padding: 0; }
+.swatch.selected { box-shadow: 0 0 0 3px var(--slate, #38383D); transform: scale(1.08); }
+.scheme-name { margin-left: 4px; }
 
 /* Lobby: the shop front. Awning on top, the manager and the name on the left, the menu as shelf labels on the right, a ticker underneath. The live 3D shop shows through. */
 .lobby { position: absolute; inset: 0; z-index: 10; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); align-items: center; gap: 32px; padding: 110px max(32px, 6vw) 84px; background: linear-gradient(180deg, #BFE3FF 0%, #E6F4FF 100%); overflow: hidden; }

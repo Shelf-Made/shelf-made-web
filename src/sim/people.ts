@@ -281,6 +281,7 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   state.cash += total - fee;
   state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.004);
   state.today.revenue += total; state.today.cogs += cogs; state.today.itemsSold += units; state.today.served++;
+  p.paid = true;
   const waited = p.maxPatience && p.patience !== undefined ? 1 - p.patience / p.maxPatience : 0;
   if (p.queuedTick !== undefined) {
     const w = (state.tick - p.queuedTick) * TICK;

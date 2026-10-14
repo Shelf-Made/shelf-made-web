@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react';
+import { schemeById } from '@/sim/schemes';
 import type { GameRuntime, Snapshot, CardId, Speed } from '@/app/GameRuntime';
 import { keyLabel } from '@/save/settings';
 import { money } from './useRuntime';
@@ -60,6 +61,15 @@ const SPEED_NAMES: Record<Speed, string> = { 0: 'Pause', 1: 'Play', 2: 'Fast', 4
  * The heads-up display: what you have (cash, the day, whether you are open) top left, time
  * controls top right, and every tool as a big labelled tile on a shelf along the bottom.
  */
+/** The logo is drawn in the brand's green; turn its hue (and soften it for cocoa) to the shop's colours. */
+function logoTint(id: string): string | undefined {
+  const sc = schemeById(id);
+  if (sc.id === 'green') return undefined;
+  const hue = (hex: string) => { const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (!d) return 0; const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
+  const sat = (hex: string) => { const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16); const mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mx ? (mx - mn) / mx : 0; };
+  return `hue-rotate(${Math.round(hue(sc.primary) - hue('#3FA87A'))}deg) saturate(${(sat(sc.primary) / sat('#3FA87A')).toFixed(2)})`;
+}
+
 export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const shown = useTicking(snap.cash);
   const speeds: Speed[] = [0, 1, 2, 4];
@@ -69,7 +79,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
   return (
     <>
       <div className="hud-status" role="group" aria-label="Your shop">
-        <img className="hud-logo" src="/brand/logo-small.svg" alt="Shelf Made" width={48} height={48} />
+        <img className="hud-logo" src="/brand/logo-small.svg" alt="Shelf Made" width={48} height={48} style={{ filter: logoTint(snap.scheme) }} />
         <div className="pill cash" aria-live="polite" aria-label="Cash">
           <span className="coin" aria-hidden="true">$</span>
           <span className="money">{money(shown)}</span>

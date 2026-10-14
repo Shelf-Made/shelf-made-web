@@ -47,4 +47,13 @@ describe('saves', () => {
     for (let i = 0; i < 600; i++) tick(f.state);
     expect(f.state.stuckRescues).toBe(0);
   });
+  it('keeps the shop colour scheme through a save, and gives older shops the green (v9 → v10)', async () => {
+    const b = new MemoryBackend();
+    const s = openGame({ seed: 5, plotId: 'bus', name: 'Berry Mart', scheme: 'berry' });
+    await saveGame(b, 'slot2', s);
+    expect((await loadGame(b, 'slot2'))!.shop.scheme).toBe('berry');
+    const raw = JSON.parse(serialize(s)) as { version: number; state: { version: number; shop: { scheme?: string } } };
+    raw.version = 9; raw.state.version = 9; delete raw.state.shop.scheme;
+    expect(parse(JSON.stringify(raw)).state.shop.scheme).toBe('green');
+  });
 });

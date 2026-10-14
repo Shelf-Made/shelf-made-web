@@ -1,19 +1,18 @@
-import { Group, Mesh, MeshBasicMaterial, type BufferGeometry } from 'three';
+import { Group, Mesh, type BufferGeometry } from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { WINDOW_GLOW, SPILL, spillGeometry } from './glow';
 import type { AssetLibrary } from './assets';
-import type { GameState, RivalState } from '@/sim/types';
+import type { GameState } from '@/sim/types';
 import type { TownPlan, RivalSite } from './town';
 import { MAIN_N, PAVEMENT } from './town';
 import { box, merge, place } from './geometry';
 import { textGeometry } from './letters';
 import { CORNERS, PLOT_RECT, ROAD_Z, WALL_T, lotLayout, rectToWorld, type Rect } from '@/sim/layout';
 import { rivalShape } from '@/sim/rivals';
+import { RIVAL_SCHEMES } from '@/sim/schemes';
 
-/** Each rival's fixed colours: primary (awning, fascia), accent (stripes, lot paint), trim and lettering. */
-export const RIVAL_SCHEMES: Record<RivalState['kind'], { primary: string; accent: string; trim: string; text: string }> = {
-  discount: { primary: '#FFC044', accent: '#E8573F', trim: '#FFFFFF', text: '#E8573F' },
-  premium: { primary: '#2E6B4F', accent: '#FFF3DC', trim: '#D9A066', text: '#FFF3DC' },
-  chain: { primary: '#3570BC', accent: '#FFFFFF', trim: '#FFC044', text: '#FFFFFF' },
-};
+/** Each rival's fixed colours live with the sim's schemes (bags use them too); the lettering face is the accent. */
+export { RIVAL_SCHEMES } from '@/sim/schemes';
 
 /** Models the rival sites use beyond the shop's own. */
 export const RIVAL_MODELS = ['market/shopping-cart', 'roads/cone', 'roads/dumpster', 'suburban/fence', 'furniture/bench', 'furniture/trashcan'];
@@ -25,7 +24,7 @@ const SW_IN = MAIN_N[0] - NORTH_Z, SW_OUT = MAIN_N[1] - NORTH_Z, KERB = ROAD_Z -
 interface Site {
   id: string; root: Group;
   lot: Group; build: Group; open: Group;
-  sale: Mesh; soon: Mesh; windows: Mesh;
+  sale: Mesh; soon: Mesh; windows: Mesh; spill: Mesh;
   /** The building at full height and as waist-high stubs (when it would hide the manager), and its footprint. */
   full: Mesh; stub: Mesh; footprint: Rect;
 }
@@ -54,7 +53,6 @@ function shell(pal: Parameters<typeof box>[0], f: Rect, backZ: number, h: number
 export class RivalsView {
   readonly group = new Group();
   private sites: Site[] = [];
-  private glowMat = new MeshBasicMaterial({ color: '#FFE6A8' });
   private night = false;
   constructor(private readonly assets: AssetLibrary, private readonly letters: Letters | null = null) {}
 
@@ -88,6 +86,7 @@ export class RivalsView {
       s.soon.visible = stage !== 'open';
       s.sale.visible = r.open && r.saleDaysLeft > 0;
       s.windows.visible = r.open && this.night;
+      s.spill.visible = r.open && this.night;
     }
   }
 
@@ -197,12 +196,12 @@ export class RivalsView {
       const width = f.x1 - f.x0;
       g.push(box(pal, sc.primary, width + 0.5, 0.5, 0.1, cx, 1.0, fz - 0.02), box(pal, sc.trim, width + 0.54, 0.05, 0.14, cx, 1.48, fz - 0.02));
       const size = Math.min(0.3, (width - 0.6) / Math.max(4, r.name.length * 0.62));
-      g.push(place(this.text(r.name, size, sc.text, sc.trim), cx, 1.25 - size * 0.4, fz + 0.04));
+      g.push(place(this.text(r.name, size, sc.accent, sc.trim), cx, 1.25 - size * 0.4, fz + 0.04));
       // Pylon by the sidewalk, readable both ways down Main Road.
       const px = -L.halfW - 0.6, pz = 1.85, bw = 2.6;
       g.push(box(pal, '#38383D', 0.12, 1.5, 0.12, px - bw / 2 + 0.2, 0, pz), box(pal, '#38383D', 0.12, 1.5, 0.12, px + bw / 2 - 0.2, 0, pz), box(pal, sc.primary, bw, 0.55, 0.12, px, 1.0, pz), box(pal, sc.trim, bw + 0.06, 0.05, 0.16, px, 1.55, pz));
       const ps = Math.min(0.26, (bw - 0.35) / Math.max(4, r.name.length * 0.62));
-      for (const yaw of [0, Math.PI]) g.push(place(this.text(r.name, ps, sc.text, sc.trim), px, 1.24 - ps * 0.4, pz + (yaw === 0 ? 0.07 : -0.07), yaw));
+      for (const yaw of [0, Math.PI]) g.push(place(this.text(r.name, ps, sc.accent, sc.trim), px, 1.24 - ps * 0.4, pz + (yaw === 0 ? 0.07 : -0.07), yaw));
       // Trolley bay, bench and bins by the door.
       if (this.assets.has('furniture/bench')) g.push(place(this.assets.geometry('furniture/bench').clone(), -1.7, 0, f.z1 + WALL_T + 0.42));
       if (this.assets.has('furniture/trashcan')) g.push(place(this.assets.geometry('furniture/trashcan').clone(), 1.25, 0, f.z1 + WALL_T + 0.3));
@@ -212,9 +211,14 @@ export class RivalsView {
     const full = Object.assign(mesh(wallsFull), { name: 'rival-walls' }), stub = Object.assign(mesh(wallsStub), { name: 'rival-stubs' });
     stub.visible = false;
     open.add(full, stub);
-    const windows = new Mesh(merge(lit), this.glowMat);
+    const windows = new Mesh(merge(lit), WINDOW_GLOW);
     windows.visible = false;
     open.add(windows);
+    // At night the windows throw a warm pool across the apron and the pavement in front.
+    const fw = f.x1 - f.x0, fzn = f.z1 + WALL_T;
+    const spill = new Mesh(mergeGeometries([spillGeometry(fw * 0.55, 1.5, (f.x0 + f.x1) / 2, 0.03, fzn + 1.2), spillGeometry(1.0, 0.8, 0, 0.031, fzn + 0.5, 0.7)]), SPILL);
+    spill.visible = false; spill.renderOrder = 1;
+    open.add(spill);
 
     // ---- Boards facing the road: "Coming soon" before opening, "SALE!" while one runs.
     const board = (text: string, bg: string, fg: string, side: string, x: number) => {
@@ -224,6 +228,6 @@ export class RivalsView {
     const soon = board(`${r.name.toUpperCase()} - SOON`, '#FFFFFF', '#38383D', sc.primary, 1.8);
     const sale = board('SALE!', '#FFC044', '#E8573F', '#B8402E', -L.halfW - 0.6 + 3.2);
     const footprint = rectToWorld(c, { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T + 0.5 });
-    return { id: r.id, root, lot, build, open, sale, soon, windows, full, stub, footprint };
+    return { id: r.id, root, lot, build, open, sale, soon, windows, spill, full, stub, footprint };
   }
 }

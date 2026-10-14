@@ -41,6 +41,8 @@ export interface Snapshot {
   tip: TipInfo | null;
   toast: { id: number; text: string } | null;
   shopName: string;
+  /** The shop's colour scheme id. */
+  scheme: string;
   night: { day: number; profit: number; revenue: number; costs: number; customers: number; served: number; walkedOut: number; turnedAway: number; cash: number } | null;
   unlocks: GameState['unlocks'];
   stateVersion: number;
@@ -140,6 +142,7 @@ export class GameRuntime {
       tip: s ? this.currentTip(s) : null,
       toast: this.toast,
       shopName: s ? s.shop.name : '',
+      scheme: s?.shop.scheme ?? 'green',
       night: s && s.phase === 'night' && today ? { day: today.day, profit: today.profit, revenue: today.revenue, costs: today.rent + today.utilities + today.wages + today.cogs, customers: today.customers, served: today.served, walkedOut: today.walkedOut, turnedAway: today.turnedAway, cash: s.cash } : null,
       unlocks: s ? s.unlocks : { prices: true, stock: true, build: false, staff: false, marketing: false, stats: true, newBadges: [] },
       stateVersion: this.stateVersion,
@@ -201,10 +204,10 @@ export class GameRuntime {
 
   detach(): void { cancelAnimationFrame(this.raf); this.renderer?.dispose(); this.renderer = null; }
 
-  startNew(opts: { seed?: number; difficulty?: Difficulty; sandbox?: boolean; plotId?: string; name?: string; tutorial?: boolean }): void {
+  startNew(opts: { seed?: number; difficulty?: Difficulty; sandbox?: boolean; plotId?: string; name?: string; tutorial?: boolean; scheme?: string }): void {
     const seed = opts.seed ?? (Math.floor(Math.random() * 0x7fffffff) >>> 0);
     resetGridCache();
-    this.state = newGame({ seed, difficulty: opts.difficulty, sandbox: opts.sandbox, plotId: opts.plotId, name: opts.name, tutorial: opts.tutorial });
+    this.state = newGame({ seed, difficulty: opts.difficulty, sandbox: opts.sandbox, plotId: opts.plotId, name: opts.name, tutorial: opts.tutorial, scheme: opts.scheme });
     this.lastPhase = null;
     this.enterGame();
   }
@@ -331,7 +334,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 

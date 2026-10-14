@@ -12,8 +12,10 @@ export class Lighting {
   private readonly topDay = new Color('#4D9BE6');
   private readonly topEve = new Color('#7A86C9');
   private readonly topNight = new Color('#141833');
-  private readonly sunDay = new Color('#FFF4E0');
-  private readonly sunEve = new Color('#FFB070');
+  private readonly sunDay = new Color('#FFF6EA');
+  private readonly sunMorning = new Color('#FFD49A');
+  private readonly sunEve = new Color('#FF9E5E');
+  private readonly skyMorning = new Color('#FFE2C2');
   private readonly sunNight = new Color('#7F90C8');
   private readonly skyDay = new Color('#BFE3FF');
   private readonly skyEve = new Color('#F9C08A');
@@ -40,7 +42,8 @@ export class Lighting {
   /** t = 0 at 08:00, 1 at 20:00. night = true after closing. */
   setTime(t: number, night: boolean, focus: Vector3, radius: number): void {
     const tt = Math.max(0, Math.min(1, t));
-    const elev = night ? 0.5 : 0.62 + 0.45 * Math.sin(Math.PI * tt);
+    // Low and golden after opening, high and neutral at noon, low and amber towards closing.
+    const elev = night ? 0.5 : 0.32 + 0.78 * Math.sin(Math.PI * tt);
     const az = -0.9 + tt * 1.8;
     const dir = new Vector3(Math.sin(az) * Math.cos(elev), Math.sin(elev), Math.cos(az) * Math.cos(elev) * 0.6 + 0.4).normalize();
     this.sun.position.copy(focus).addScaledVector(dir, 60);
@@ -50,7 +53,8 @@ export class Lighting {
     const r = Math.max(10, Math.min(radius, 34));
     cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
     cam.updateProjectionMatrix();
-    const evening = Math.max(0, (tt - 0.7) / 0.3);
+    const evening = Math.max(0, (tt - 0.62) / 0.38);
+    const morning = Math.max(0, 1 - tt / 0.3);
     if (night) {
       this.sun.color.copy(this.sunNight); this.sun.intensity = 1.1;
       this.sky.copy(this.skyNight);
@@ -58,8 +62,8 @@ export class Lighting {
       this.hemi.color.set('#6D7BB8'); this.hemi.groundColor.copy(this.groundNight); this.hemi.intensity = 1.3;
       this.ambient.color.set('#FFD9A8'); this.ambient.intensity = 0.5;
     } else {
-      this.sun.color.copy(this.sunDay).lerp(this.sunEve, evening); this.sun.intensity = 2.2 - 0.6 * evening;
-      this.sky.copy(this.skyDay).lerp(this.skyEve, evening * 0.8);
+      this.sun.color.copy(this.sunDay).lerp(this.sunMorning, morning * 0.85).lerp(this.sunEve, evening * 0.9); this.sun.intensity = 2.25 - 0.3 * morning - 0.7 * evening;
+      this.sky.copy(this.skyDay).lerp(this.skyMorning, morning * 0.55).lerp(this.skyEve, evening * 0.8);
       this.skyTop.copy(this.topDay).lerp(this.topEve, evening);
       this.hemi.color.copy(this.sky); this.hemi.groundColor.copy(this.groundDay); this.hemi.intensity = 1.4;
       this.ambient.color.set('#FFFFFF'); this.ambient.intensity = 0.45;

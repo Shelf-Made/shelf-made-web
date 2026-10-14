@@ -6,6 +6,7 @@ import type { AssetLibrary } from './assets';
 import { TOWN_MODEL_IDS, type TownPlan, type Placement, type ScatterKind } from './town';
 import { box, paint } from './geometry';
 import { terrainGeometry, structuresGeometry } from './terrain';
+import { LAMP_GLOW, SPILL, spillGeometry } from './glow';
 
 /** Wind: grass, flowers and leaves sway with height above their base. One clock for all of them. */
 export const wind = { value: 0 };
@@ -141,7 +142,7 @@ export class StaticWorld {
       const d = new Object3D();
       const parts: BufferGeometry[] = [];
       for (const it of plan.scatter) {
-        if (!geos.has(it.kind)) geos.set(it.kind, scatterGeometry(pal, it.kind).toNonIndexed());
+        if (!geos.has(it.kind)) { const g = scatterGeometry(pal, it.kind); geos.set(it.kind, g.index ? g.toNonIndexed() : g); }
         d.position.set(it.x, 0, it.z); d.rotation.set(0, it.yaw, 0); d.scale.setScalar(it.scale); d.updateMatrix();
         parts.push(geos.get(it.kind)!.clone().applyMatrix4(d.matrix));
       }
@@ -157,17 +158,20 @@ export class StaticWorld {
     const dummy = new Object3D();
     // Night: lamp heads glow. Small unlit quads at each lamp head.
     if (plan.lamps.length) {
-      const bulb = new InstancedMesh(paint(new PlaneGeometry(0.22, 0.22), pal, '#FFF3DC'), this.assets.unlit, plan.lamps.length);
+      const bulb = new InstancedMesh(paint(new PlaneGeometry(0.22, 0.22), pal, '#FFF3DC'), LAMP_GLOW, plan.lamps.length);
       plan.lamps.forEach((l, i) => { dummy.position.set(l.x, 1.3, l.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); bulb.setMatrixAt(i, dummy.matrix); });
       bulb.visible = false;
       bulb.name = 'lampGlow';
       this.group.add(bulb); this.meshes.push(bulb as unknown as Mesh);
+      // Each lamp's pool of light on the pavement below it.
+      const pools = new Mesh(mergeGeometries(plan.lamps.map((l) => spillGeometry(1.1, 1.1, l.x, 0.035, l.z, 0.42))), SPILL);
+      pools.visible = false; pools.name = 'lampPools'; pools.renderOrder = 1;
+      this.group.add(pools); this.meshes.push(pools);
     }
   }
 
   setNight(on: boolean): void {
-    const glow = this.group.getObjectByName('lampGlow');
-    if (glow) glow.visible = on;
+    for (const name of ['lampGlow', 'lampPools']) { const m = this.group.getObjectByName(name); if (m) m.visible = on; }
   }
 
   dispose(): void {

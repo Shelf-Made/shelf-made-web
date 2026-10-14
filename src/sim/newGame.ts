@@ -1,4 +1,5 @@
 import type { GameState, Difficulty, Shop, Fixture, Person, DayStats, Slot } from './types';
+import { DEFAULT_SCHEME, schemeById } from './schemes';
 import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeFrame, lotLayout, deliveryZone, toWorld, yawToWorld, STREET_BAYS } from './layout';
 import { PRODUCTS } from './products';
 import { Rng } from './rng';
@@ -7,7 +8,7 @@ import { makeMarket } from './market';
 import { DEFAULT_RULES, refreshPool } from './staff';
 import { makeMarketing } from './marketing';
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 export function emptyDayStats(day: number): DayStats {
   return { day, revenue: 0, cogs: 0, rent: 0, wages: 0, utilities: 0, other: 0, loans: 0, bills: 0, theft: 0, tax: 0, customers: 0, served: 0, walkedOut: 0, turnedAway: 0, missedItems: 0, itemsSold: 0, satisfaction: 0, satisfactionN: 0, profit: 0, endCash: 0 };
@@ -22,11 +23,11 @@ export function makeFixture(id: number, type: Fixture['type'], x: number, z: num
 }
 
 /** A bare shell: concrete floor, four walls, a front door and a back door. The player fits it out. */
-export function makeShop(plotId: string, name: string): Shop {
+export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_SCHEME): Shop {
   const plot = PLOTS.find((p) => p.id === plotId) ?? PLOTS[0]!;
   const fr = storeFrame(plot.id);
   return {
-    name, plotId: plot.id, originX: fr.originX, originZ: fr.originZ, flip: fr.flip,
+    name, plotId: plot.id, scheme: schemeById(scheme).id, originX: fr.originX, originZ: fr.originZ, flip: fr.flip,
     floor: { ...STARTER.floor }, storeroom: { ...STARTER.storeroom }, door: { ...STARTER.door }, backDoor: { ...STARTER.backDoor },
     fixtures: [],
     storage: [],
@@ -47,12 +48,12 @@ export function makeOwner(id: number, shop: Shop, rng: Rng): Person {
   };
 }
 
-export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?: boolean; plotId?: string; name?: string; tutorial?: boolean }): GameState {
+export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?: boolean; plotId?: string; name?: string; tutorial?: boolean; scheme?: string }): GameState {
   const difficulty = opts.difficulty ?? 'standard';
   const d = DIFFICULTY[difficulty];
   const rng = new Rng(opts.seed);
   const picked = opts.plotId !== undefined;
-  const shop = makeShop(opts.plotId ?? 'main', opts.name ?? 'Shelf Made');
+  const shop = makeShop(opts.plotId ?? 'main', opts.name ?? 'Shelf Made', opts.scheme);
   const prices: Record<string, number> = {};
   for (const p of PRODUCTS) prices[p.id] = p.basePrice;
   const state: GameState = {

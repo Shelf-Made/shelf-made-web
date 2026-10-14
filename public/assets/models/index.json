@@ -3549,6 +3549,24 @@
   },
   {
    "pack": "generated",
+   "name": "shopping-bag",
+   "file": "models/generated/shopping-bag.glb",
+   "size": [
+    0.092,
+    0.149,
+    0.057
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
    "name": "wall-ledge",
    "file": "models/generated/wall-ledge.glb",
    "size": [
