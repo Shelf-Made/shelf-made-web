@@ -23,6 +23,8 @@ export function installTestHooks(rt: GameRuntime): void {
     stats: () => rt.renderer?.stats(),
     state: () => rt.state,
     freezeAnim: (b: boolean) => { PeopleView.freeze = b; },
+    /** Fill every slot to capacity (screenshots). */
+    restock: () => { const s = rt.state; if (!s) return; for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = 8; rt.bump(); },
     /** Spawn n customers at once (busy-shop screenshots and queue tests). */
     crowd: (n: number, onFoot = true) => { const s = rt.state; if (!s) return; for (let i = 0; i < n; i++) spawnCustomer(s, onFoot); rt.bump(); },
     debugPeople: () => rt.renderer?.debugPeople(),

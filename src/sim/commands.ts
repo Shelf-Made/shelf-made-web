@@ -10,6 +10,7 @@ import { PLOTS, FIXTURES } from './layout';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
+import { takeLoan, repayLoan } from './money';
 
 export type Command =
   | { type: 'choosePlot'; plotId: string; name: string }
@@ -21,6 +22,8 @@ export type Command =
   | { type: 'skipTutorial' }
   | { type: 'placeFixture'; fixtureType: FixtureType; x: number; z: number; rot: Rot }
   | { type: 'removeFixture'; fixtureId: number }
+  | { type: 'takeLoan'; offerId: string }
+  | { type: 'repayLoan'; loanId: number; amount: number }
   | { type: 'cheat'; cash: number };
 
 export interface CommandResult { ok: boolean; message?: string }
@@ -111,6 +114,8 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
       state.cash += refund;
       return { ok: true };
     }
+    case 'takeLoan': { const err = takeLoan(state, cmd.offerId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'repayLoan': { const err = repayLoan(state, cmd.loanId, cmd.amount); return err ? { ok: false, message: err } : { ok: true }; }
     case 'cheat': {
       if (!state.sandbox && !import.meta.env?.DEV) return { ok: false };
       state.cash += cmd.cash;

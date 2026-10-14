@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
-import { newGame, tick } from '@/sim/index';
+import { newGame, tick, SAVE_VERSION } from '@/sim/index';
 
 describe('saves', () => {
   it('round-trips a game through the backend and keeps determinism', async () => {
@@ -19,8 +19,9 @@ describe('saves', () => {
   it('rejects foreign files and migrates old versions', () => {
     expect(() => parse('{"hello":1}')).toThrow();
     const s = newGame({ seed: 1, plotId: 'hill', name: 'Old' });
-    const text = serialize(s).replace('"version":1', '"version":0');
+    const text = serialize(s).replace(`"version":${SAVE_VERSION}`, '"version":0');
     const f = parse(text);
-    expect(f.state.version).toBe(1);
+    expect(f.state.version).toBe(SAVE_VERSION);
+    expect(f.state.rivals.length).toBe(3);
   });
 });

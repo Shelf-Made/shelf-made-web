@@ -6,6 +6,7 @@ import { StoreView, STORE_MODELS, type StoreHit } from './StoreView';
 import { PeopleView, PEOPLE_MODELS } from './People';
 import { CarsView } from './Cars';
 import { Lighting } from './Lighting';
+import { RivalsView } from './RivalsView';
 import { buildTown, type TownPlan } from './town';
 import type { GameState } from '@/sim/types';
 import { DAY_SECONDS } from '@/sim/layout';
@@ -26,6 +27,7 @@ export class WorldRenderer {
   private store: StoreView;
   private people: PeopleView;
   private cars: CarsView;
+  private rivals: RivalsView;
   private plan: TownPlan | null = null;
   private townKey = '';
   private readonly ray = new Raycaster();
@@ -47,7 +49,8 @@ export class WorldRenderer {
     this.store = new StoreView(this.assets);
     this.people = new PeopleView(this.assets);
     this.cars = new CarsView(this.assets);
-    this.scene.add(this.statics.group, this.store.group, this.people.group, this.cars.group);
+    this.rivals = new RivalsView(this.assets);
+    this.scene.add(this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group);
     this.resize();
   }
 
@@ -74,6 +77,7 @@ export class WorldRenderer {
     this.townKey = key;
     this.plan = buildTown(seed, plotId);
     this.statics.build(this.plan);
+    this.rivals.build(this.plan);
   }
 
   get town(): TownPlan | null { return this.plan; }
@@ -90,6 +94,7 @@ export class WorldRenderer {
     this.store.update(state, this.camera.yaw);
     this.people.update(state, alpha, dt, focus);
     this.cars.update(state, alpha);
+    this.rivals.update(state);
     this.renderer.render(this.scene, this.camera.camera);
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }

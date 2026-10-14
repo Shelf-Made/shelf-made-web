@@ -11,3 +11,7 @@ export { fixtureCentre, fixtureFrontWorld, fixtureBackWorld, fixtureFacing, buil
 export { findPath } from './pathfinding';
 export { queueSlot, doorInside, doorOutside, pickCarryTask } from './people';
 export { drivewayX, serviceX, TRUCK_MODEL, CAR_MODELS } from './cars';
+export { computeScores, playerShare, expectedByType, TYPE_NAMES, TYPE_WEIGHTS } from './customers';
+export { rivalOnSale, makeRivals } from './rivals';
+export { LOAN_OFFERS, upcoming } from './money';
+export { CATEGORIES, inShortage } from './market';

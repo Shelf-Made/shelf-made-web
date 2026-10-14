@@ -2,14 +2,18 @@ import type { Vec2 } from './types';
 
 interface Mover { x: number; z: number; yaw: number; path: Vec2[]; pathIdx: number }
 
-/** Advance along the path at `speed`; returns true when the end is reached this step. */
-export function followPath(m: Mover, speed: number, dt: number, turnRate = 12): boolean {
+/**
+ * Advance along the path at `speed`; returns true when the end is reached this step.
+ * `arrive` is how close counts as reaching the final waypoint (people in a crowd never land on the exact point).
+ */
+export function followPath(m: Mover, speed: number, dt: number, turnRate = 12, arrive = 0): boolean {
   let budget = speed * dt;
   while (budget > 0 && m.pathIdx < m.path.length) {
     const t = m.path[m.pathIdx]!;
     const dx = t.x - m.x, dz = t.z - m.z;
     const d = Math.hypot(dx, dz);
-    if (d < 1e-4) { m.pathIdx++; continue; }
+    const last = m.pathIdx === m.path.length - 1;
+    if (d < 1e-4 || (last && arrive > 0 && d <= arrive)) { m.pathIdx++; continue; }
     const targetYaw = Math.atan2(dx, dz);
     m.yaw = turnToward(m.yaw, targetYaw, turnRate * dt);
     if (d <= budget) { m.x = t.x; m.z = t.z; budget -= d; m.pathIdx++; }

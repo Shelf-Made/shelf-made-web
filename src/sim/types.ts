@@ -79,6 +79,7 @@ export interface Person {
   targetFixture?: number | null;
   mood?: number;
   arrivedTick?: number;
+  queuedTick?: number;
   // staff / owner
   role?: StaffRole;
   task?: { type: 'carry'; fixtureId: number; productId: string; qty: number } | null;
@@ -167,6 +168,10 @@ export interface DayStats {
   wages: number;
   utilities: number;
   other: number;
+  loans: number;
+  bills: number;
+  theft: number;
+  tax: number;
   customers: number;
   served: number;
   walkedOut: number;
@@ -178,6 +183,24 @@ export interface DayStats {
   profit: number;
   endCash: number;
 }
+
+export interface StoreScores { price: number; availability: number; layout: number; wait: number; parking: number; awareness: number }
+
+export interface RivalState {
+  id: string; name: string; kind: 'discount' | 'premium' | 'chain';
+  opensDay: number; open: boolean;
+  /** Their prices over the town average. */
+  priceIndex: number;
+  availability: number; quality: number; service: number; parking: number; awareness: number; reputation: number;
+  saleDaysLeft: number; nextSaleDay: number;
+  x: number; z: number;
+  stores: number; cash: number;
+}
+
+export interface Bill { id: number; name: string; amount: number; dueDay: number }
+export interface Loan { id: number; offerId: string; name: string; principal: number; balance: number; dailyRate: number; daysLeft: number; takenDay: number }
+
+export interface Notice { day: number; text: string; kind: 'rival' | 'event' | 'money' | 'staff' | 'info' }
 
 export interface Popup { id: number; x: number; z: number; y: number; text: string; kind: 'money' | 'info' | 'bad'; tick: number }
 
@@ -224,4 +247,18 @@ export interface GameState {
   spawn: { customer: number; traffic: number; walker: number };
   /** Price bands customers saw today, for the town-average comparison. */
   townAvgIndex: number;
+  rivals: RivalState[];
+  /** Rolling service measurements feeding the store scores. */
+  scores: { avgWait: number; waitSum: number; waitSamples: number; last: StoreScores | null };
+  notices: Notice[];
+  /** Town demand before plot, awareness and reputation multipliers. */
+  demandBase: number;
+  /** Multiplier from holidays, weather and events. */
+  eventDemand: number;
+  market: { priceMul: Record<Category, number>; shortages: Record<string, number> };
+  bills: Bill[];
+  loans: Loan[];
+  brokeDays: number;
+  rescueOffered: boolean;
+  gameOver: boolean;
 }

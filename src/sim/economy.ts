@@ -5,31 +5,41 @@ import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
 import { spawnDeliveryTruck } from './cars';
 import { doorOutside } from './people';
+import { rivalDay } from './rivals';
+import { computeScores } from './customers';
+import { marketDay, inShortage } from './market';
+import { closingCharges, checkFailState, addBill, PAYROLL_TAX } from './money';
 
-export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string }
+export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
 export const SUPPLIERS: Supplier[] = [
-  { id: 'local', name: 'Valley Wholesale', priceMul: 1.0, minOrder: 0, etaSeconds: 90, blurb: 'Fair prices, delivers within the hour and a half.' },
-  { id: 'bulk', name: 'BigBox Supply', priceMul: 0.88, minOrder: 150, etaSeconds: 180, blurb: 'Cheaper by the pallet; $150 minimum, slower truck.' },
-  { id: 'express', name: 'Dash Deliveries', priceMul: 1.15, minOrder: 0, etaSeconds: 40, blurb: 'Pricey but at your back door in forty minutes.' },
+  { id: 'local', name: 'Valley Wholesale', priceMul: 1.0, minOrder: 0, etaSeconds: 90, blurb: 'Fair prices, delivers within the hour and a half. Pay on order.', terms: 0 },
+  { id: 'bulk', name: 'BigBox Supply', priceMul: 0.88, minOrder: 150, etaSeconds: 180, blurb: 'Cheaper by the pallet; $150 minimum, slower truck, invoice due in 3 days.', terms: 3 },
+  { id: 'express', name: 'Dash Deliveries', priceMul: 1.15, minOrder: 0, etaSeconds: 40, blurb: 'Pricey but at your back door in forty minutes. Pay on order.', terms: 0 },
 ];
 
 export function supplier(id: string): Supplier { return SUPPLIERS.find((s) => s.id === id) ?? SUPPLIERS[0]!; }
 
-export function unitCost(productId: string, supplierId: string): number {
-  return Math.round(productDef(productId).cost * supplier(supplierId).priceMul * 100) / 100;
+export function unitCost(productId: string, supplierId: string, state?: GameState): number {
+  const def = productDef(productId);
+  const market = state ? state.market.priceMul[def.category] : 1;
+  return Math.round(def.cost * supplier(supplierId).priceMul * market * 100) / 100;
 }
 
 export function placeOrder(state: GameState, supplierId: string, lines: { productId: string; qty: number }[]): Order | string {
   const sup = supplier(supplierId);
-  const clean = lines.filter((l) => l.qty > 0).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: unitCost(l.productId, sup.id) }));
+  const clean = lines.filter((l) => l.qty > 0).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: unitCost(l.productId, sup.id, state) }));
   if (clean.length === 0) return 'Nothing to order.';
+  const short = clean.find((l) => inShortage(state, l.productId));
+  if (short) return `${productDef(short.productId).name} is in shortage: no supplier has it this week.`;
   const total = Math.round(clean.reduce((a, l) => a + l.qty * l.unitCost, 0) * 100) / 100;
   if (total < sup.minOrder) return `${sup.name} needs a $${sup.minOrder} minimum.`;
-  if (total > state.cash) return `Not enough cash ($${total.toFixed(2)}).`;
+  const onTerms = sup.terms > 0;
+  if (!onTerms && total > state.cash) return `Not enough cash ($${total.toFixed(2)}).`;
   const units = clean.reduce((a, l) => a + l.qty, 0);
   const inStorage = state.shop.storage.reduce((a, s) => a + s.qty, 0);
   if (inStorage + units > state.shop.storageCapacity) return `Storeroom only has room for ${state.shop.storageCapacity - inStorage} more units.`;
-  state.cash -= total;
+  if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
+  else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold
   const order: Order = { id: state.nextId++, supplierId: sup.id, lines: clean, total, placedDay: state.day, placedTime: state.time, eta: sup.etaSeconds, state: 'pending' };
   state.orders.push(order);
@@ -68,15 +78,20 @@ export function closeDay(state: GameState): void {
   t.rent = dailyRent(state);
   t.utilities = dailyUtilities(state);
   t.wages = dailyWages(state);
-  const bills = t.rent + t.utilities + t.wages;
+  t.tax = Math.round(t.wages * PAYROLL_TAX * 100) / 100;
+  const bills = t.rent + t.utilities + t.wages + t.tax;
   state.cash -= bills;
-  t.profit = Math.round((t.revenue - t.cogs - bills) * 100) / 100;
+  const extra = closingCharges(state);
+  t.loans = extra.loans; t.bills = extra.bills; t.theft = extra.theft;
+  t.profit = Math.round((t.revenue - t.cogs - bills - extra.theft - extra.loans * 0.3) * 100) / 100;
+  checkFailState(state);
   t.endCash = state.cash;
   t.satisfaction = t.satisfactionN ? t.satisfaction / t.satisfactionN : 0.5;
   // Reputation drifts toward today's satisfaction; awareness grows with served customers.
   const shop = state.shop;
   shop.reputation += Math.max(-0.03, Math.min(0.03, (t.satisfaction - shop.reputation) * 0.3));
   shop.awareness = Math.min(1, shop.awareness + 0.02 + t.served * 0.002);
+  state.scores.last = computeScores(state);
   state.history.push({ ...t });
   state.phase = 'night';
   cue(state, 'night');
@@ -89,6 +104,12 @@ export function openTomorrow(state: GameState): void {
   state.time = 0;
   state.today = emptyDayStats(state.day);
   state.phase = 'open';
+  // Yesterday's waits fade; rivals make their moves.
+  state.scores.waitSum *= 0.4; state.scores.waitSamples = Math.max(1, Math.floor(state.scores.waitSamples * 0.4));
+  state.scores.avgWait = state.scores.waitSamples ? state.scores.waitSum / state.scores.waitSamples : 20;
+  if (state.notices.length > 40) state.notices.splice(0, state.notices.length - 40);
+  rivalDay(state);
+  marketDay(state);
   // Spoilage: shelf and storage entries past their life are thrown out.
   let spoiled = 0;
   for (const f of state.shop.fixtures) for (const s of f.slots) {

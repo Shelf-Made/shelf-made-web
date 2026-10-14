@@ -6,15 +6,16 @@ import { findPath } from './pathfinding';
 import { followPath } from './movement';
 import { withRng, nextId, popup, cue, gridFor, dist } from './state';
 import { spawnCustomerCar, leaveLot } from './cars';
+import { listWeight, budgetFor } from './customers';
+import { pickType } from './tick';
 
 const CUSTOMER_MODELS = 12;
-const TYPE_BASE: Record<CustomerType, number> = { bargain: 0.3, convenience: 0.3, loyalist: 0.2, impulse: 0.2 };
 
 export function plotOf(state: GameState) { return PLOTS.find((p) => p.id === state.shop.plotId) ?? PLOTS[0]!; }
 
 /** World-space points just outside and just inside the front door. */
-export function doorOutside(state: GameState): Vec2 { const s = state.shop; return { x: s.originX + s.door.x, z: s.originZ + s.door.z + 0.7 }; }
-export function doorInside(state: GameState): Vec2 { const s = state.shop; return { x: s.originX + s.door.x, z: s.originZ + s.door.z - 0.7 }; }
+export function doorOutside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.22, z: s.originZ + s.door.z + 0.7 + (id % 2) * 0.3 }; }
+export function doorInside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.2, z: s.originZ + s.door.z - 0.8 - (id % 2) * 0.3 }; }
 export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; return { x: s.originX + (s.storeroom.x0 + s.storeroom.x1) / 2 - 1, z: s.originZ + (s.storeroom.z0 + s.storeroom.z1) / 2 }; }
 
 /** Cells occupied by parked cars, so people walk around them. */
@@ -60,17 +61,6 @@ export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   return nearestWalkable(gridFor(state), p, undefined, 4);
 }
 
-function chooseType(state: GameState): CustomerType {
-  const plot = plotOf(state);
-  return withRng(state, 'customers', (r) => {
-    const types = Object.keys(TYPE_BASE) as CustomerType[];
-    const weights = types.map((t) => TYPE_BASE[t] * plot.mix[t]);
-    let x = r.next() * weights.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < types.length; i++) { x -= weights[i]!; if (x <= 0) return types[i]!; }
-    return 'convenience';
-  });
-}
-
 function stockedProducts(state: GameState): Set<string> {
   const set = new Set<string>();
   for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId) set.add(s.productId);
@@ -81,7 +71,7 @@ function makeList(state: GameState, ctype: CustomerType): { productId: string; q
   const stocked = stockedProducts(state);
   return withRng(state, 'customers', (r) => {
     const n = r.pick([1, 2, 2, 2, 3, 3, 4]);
-    const pool = PRODUCTS.map((p) => ({ id: p.id, w: p.demand * (stocked.has(p.id) ? 4 : 1) * (ctype === 'loyalist' && p.brand ? 2.5 : 1) * (ctype === 'impulse' && p.impulse ? 2 : 1) }));
+    const pool = PRODUCTS.map((p) => ({ id: p.id, w: listWeight(ctype, p.id, stocked.has(p.id)) }));
     const list: { productId: string; qty: number }[] = [];
     for (let i = 0; i < n; i++) {
       const total = pool.reduce((a, b) => a + b.w, 0);
@@ -99,13 +89,14 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
   const diff = DIFFICULTY[state.difficulty];
   const byCar = withRng(state, 'customers', (r) => r.chance(0.55)) && !forceFoot;
   const fromWest = withRng(state, 'customers', (r) => r.chance(0.5));
-  const ctype = chooseType(state);
+  const ctype = pickType(state);
   const look = withRng(state, 'looks', (r) => ({ model: r.int(0, CUSTOMER_MODELS - 1), variant: r.int(0, 3), height: r.range(0.92, 1.08) }));
   const patience = withRng(state, 'customers', (r) => r.range(70, 150) * diff.patienceMul * (ctype === 'convenience' ? 0.75 : 1));
   const p: Person = {
     id: nextId(state), kind: 'customer', look, x: 0, z: 0, yaw: 0, px: 0, pz: 0, state: 'walking', anim: 'walk', path: [], pathIdx: 0,
     speed: WALK_SPEED * withRng(state, 'customers', (r) => r.range(0.9, 1.1)), timer: 0,
     ctype, list: makeList(state, ctype), basket: [], listIdx: 0, missed: 0, patience, maxPatience: patience, carId: null, registerId: null, mood: 1, arrivedTick: state.tick, stuckTicks: 0,
+    budget: budgetFor(ctype, withRng(state, 'customers', (r) => r.next())),
   };
   state.today.customers++;
   if (byCar) {
@@ -173,6 +164,7 @@ function finishShopping(state: GameState, p: Person): void {
   reg.queue ??= [];
   reg.queue.push(p.id);
   p.registerId = reg.id;
+  p.queuedTick = state.tick;
   p.queueSlot = reg.queue.length - 1 + (reg.serving ? 1 : 0);
   p.state = 'toQueue'; p.anim = 'walk';
   setPath(state, p, queueSlot(state, reg, p.queueSlot));
@@ -197,7 +189,7 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
     p.basket = [];
   }
   p.state = 'leaving'; p.anim = happy && p.basket && p.basket.length ? 'carry' : 'walk';
-  setPath(state, p, doorInside(state));
+  setPath(state, p, doorInside(state, p.id));
 }
 
 function completeSale(state: GameState, p: Person, reg: Fixture): void {
@@ -207,6 +199,11 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   state.cash += total;
   state.today.revenue += total; state.today.cogs += cogs; state.today.itemsSold += units; state.today.served++;
   const waited = p.maxPatience && p.patience !== undefined ? 1 - p.patience / p.maxPatience : 0;
+  if (p.queuedTick !== undefined) {
+    const w = (state.tick - p.queuedTick) * TICK;
+    state.scores.waitSum += w; state.scores.waitSamples++;
+    state.scores.avgWait = state.scores.waitSum / state.scores.waitSamples;
+  }
   const sat = Math.max(0, Math.min(1, 1 - waited * 0.6 - (p.missed ?? 0) * 0.15));
   state.today.satisfaction += sat; state.today.satisfactionN++;
   const c = fixtureCentre(state.shop, reg);
@@ -257,20 +254,20 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         const spot = nearestWalkable(gridFor(state), { x: p.x, z: p.z }, dyn);
         p.x = spot.x; p.z = spot.z;
         p.state = 'toDoor'; p.anim = 'walk';
-        setPath(state, p, doorOutside(state), dyn);
+        setPath(state, p, doorOutside(state, p.id), dyn);
       }
       break;
     }
     case 'walking': {
-      if (followPath(p, p.speed, dt)) { p.state = 'toDoor'; setPath(state, p, doorOutside(state), dyn); }
+      if (followPath(p, p.speed, dt, 12, 0.22)) { p.state = 'toDoor'; setPath(state, p, doorOutside(state, p.id), dyn); }
       break;
     }
     case 'toDoor': {
-      if (followPath(p, p.speed, dt)) { p.state = 'entering'; cue(state, 'chime'); setPath(state, p, doorInside(state), dyn); }
+      if (followPath(p, p.speed, dt, 12, 0.22)) { p.state = 'entering'; cue(state, 'chime'); setPath(state, p, doorInside(state, p.id), dyn); }
       break;
     }
     case 'entering': {
-      if (followPath(p, p.speed, dt)) {
+      if (followPath(p, p.speed, dt, 12, 0.22)) {
         if (state.phase !== 'open') { startLeaving(state, p, false); break; }
         p.state = 'shopping';
         if (state.today.served === 0 && state.today.walkedOut === 0 && state.tutorial.enabled && !state.tutorial.completed.includes('ringUp')) {
@@ -285,7 +282,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if ((p.listIdx ?? 0) >= list.length) { finishShopping(state, p); break; }
       const item = list[p.listIdx!]!;
       const f = findFixtureWith(state, item.productId);
-      if (!f) { p.missed = (p.missed ?? 0) + 1; p.listIdx!++; break; }
+      if (!f) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; p.listIdx!++; break; }
       p.targetFixture = f.id;
       p.state = 'browsing'; p.anim = 'walk'; p.timer = -1;
       setPath(state, p, fixtureFrontWorld(state.shop, f), dyn);
@@ -293,7 +290,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
     }
     case 'browsing': {
       if (p.timer < 0) {
-        if (followPath(p, p.speed, dt)) {
+        if (followPath(p, p.speed, dt, 12, 0.22)) {
           p.timer = withRng(state, 'customers', (r) => r.range(1.2, 2.6));
           p.anim = 'browse';
           const f = state.shop.fixtures.find((x) => x.id === p.targetFixture);
@@ -306,12 +303,14 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         const item = (p.list ?? [])[p.listIdx ?? 0]!;
         const f = state.shop.fixtures.find((x) => x.id === p.targetFixture);
         const slot = f?.slots.find((s) => s.productId === item.productId && s.qty > 0);
-        if (slot && willBuy(state, p.ctype ?? 'convenience', item.productId)) {
-          const take = Math.min(slot.qty, item.qty);
+        const price = state.prices[item.productId] ?? productDef(item.productId).basePrice;
+        const spent = (p.basket ?? []).reduce((a, b) => a + b.price * b.qty, 0);
+        if (slot && willBuy(state, p.ctype ?? 'convenience', item.productId) && spent + price <= (p.budget ?? 999)) {
+          const take = Math.min(slot.qty, item.qty, Math.max(1, Math.floor(((p.budget ?? 999) - spent) / price)));
           slot.qty -= take;
-          p.basket!.push({ productId: item.productId, qty: take, price: state.prices[item.productId] ?? productDef(item.productId).basePrice });
+          p.basket!.push({ productId: item.productId, qty: take, price });
           cue(state, 'pick');
-        } else if (!slot) p.missed = (p.missed ?? 0) + 1;
+        } else if (!slot) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; }
         p.listIdx = (p.listIdx ?? 0) + 1;
         p.state = 'shopping'; p.anim = p.basket!.length ? 'carry' : 'walk';
       }
@@ -323,7 +322,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       const idx = reg.queue.indexOf(p.id);
       const slot = idx + (reg.serving ? 1 : 0);
       if (slot !== p.queueSlot) { p.queueSlot = slot; setPath(state, p, queueSlot(state, reg, slot), dyn); }
-      if (followPath(p, p.speed, dt)) {
+      if (followPath(p, p.speed, dt, 12, 0.22)) {
         p.state = 'queued'; p.anim = p.basket!.length ? 'carry' : 'idle';
         const c = fixtureCentre(state.shop, reg); p.yaw = Math.atan2(c.x - p.x, c.z - p.z);
       }
@@ -355,7 +354,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       const reg = registerOf(state, p);
       if (!reg) { startLeaving(state, p, false); break; }
       if (p.timer < 0) {
-        if (followPath(p, p.speed, dt)) {
+        if (followPath(p, p.speed, dt, 12, 0.22)) {
           p.timer = 0; p.anim = 'pay';
           const c = fixtureCentre(state.shop, reg); p.yaw = Math.atan2(c.x - p.x, c.z - p.z);
         }
@@ -379,7 +378,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       break;
     }
     case 'leaving': {
-      if (followPath(p, p.speed, dt)) {
+      if (followPath(p, p.speed, dt, 12, 0.22)) {
         cue(state, 'chime');
         if (p.carId !== null && p.carId !== undefined) {
           const car = state.cars.find((c) => c.id === p.carId);
@@ -396,7 +395,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       break;
     }
     case 'toCar': {
-      if (followPath(p, p.speed, dt)) {
+      if (followPath(p, p.speed, dt, 12, 0.22)) {
         const car = state.cars.find((c) => c.id === p.carId);
         if (car) leaveLot(state, car);
         p.state = 'gone';
@@ -429,12 +428,12 @@ function tickOwner(state: GameState, p: Person, dyn: Set<number>): void {
       break;
     }
     case 'toRegister': {
-      if (followPath(p, p.speed, dt)) { p.state = 'idle'; }
+      if (followPath(p, p.speed, dt, 12, 0.22)) { p.state = 'idle'; }
       if (p.task) p.state = 'idle';
       break;
     }
     case 'toStock': {
-      if (followPath(p, p.speed, dt)) { p.state = 'pickBox'; p.anim = 'browse'; p.timer = 0.8; p.yaw = Math.PI; }
+      if (followPath(p, p.speed, dt, 12, 0.22)) { p.state = 'pickBox'; p.anim = 'browse'; p.timer = 0.8; p.yaw = Math.PI; }
       break;
     }
     case 'pickBox': {
@@ -455,7 +454,7 @@ function tickOwner(state: GameState, p: Person, dyn: Set<number>): void {
       break;
     }
     case 'carrying': {
-      if (followPath(p, p.speed, dt)) {
+      if (followPath(p, p.speed, dt, 12, 0.22)) {
         p.state = 'stocking'; p.anim = 'browse'; p.timer = 1.2;
         const f = state.shop.fixtures.find((x) => x.id === p.task?.fixtureId);
         if (f) { const c = fixtureCentre(state.shop, f); p.yaw = Math.atan2(c.x - p.x, c.z - p.z); }

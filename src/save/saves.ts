@@ -1,5 +1,7 @@
 import type { GameState } from '@/sim/types';
 import { SAVE_VERSION } from '@/sim/newGame';
+import { makeRivals } from '@/sim/rivals';
+import { makeMarket } from '@/sim/market';
 import type { StorageBackend } from './storage';
 
 export interface SaveFile { format: 'shelf-made-save'; version: number; savedAt: string; name: string; day: number; cash: number; state: GameState }
@@ -12,6 +14,13 @@ export type Slot = typeof SLOTS[number];
 const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] = [
   // v0 → v1: the first public format; nothing to do.
   (raw) => ({ ...raw, version: 1 }),
+  // v1 → v2: rivals, store scores, notices, demand.
+  (raw) => ({
+    rivals: makeRivals(), scores: { avgWait: 20, waitSum: 0, waitSamples: 0, last: null }, notices: [], demandBase: 24, eventDemand: 1,
+    ...raw, version: 2,
+  }),
+  // v2 → v3: market, bills, loans, fail state.
+  (raw) => ({ market: makeMarket(), bills: [], loans: [], brokeDays: 0, rescueOffered: false, gameOver: false, ...raw, version: 3 }),
 ];
 
 export function migrate(file: SaveFile): SaveFile {

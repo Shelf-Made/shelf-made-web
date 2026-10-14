@@ -50,9 +50,9 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
           tipEl.classList.toggle('side-right', right);
           tipEl.classList.toggle('side-left', !right);
           const w = tipEl.offsetWidth || 280;
-          const x = right ? proj.x + 40 : proj.x - 40 - w;
+          const x = right ? proj.x + 46 : proj.x - 60 - w;
           tipEl.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, x))}px`;
-          tipEl.style.top = `${Math.max(70, proj.y - 30)}px`;
+          tipEl.style.top = `${Math.max(70, proj.y - 70)}px`;
           tipEl.style.right = '';
         } else {
           // Docked beside a top-bar button.

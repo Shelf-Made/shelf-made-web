@@ -28,6 +28,7 @@ export interface Snapshot {
   stateVersion: number;
   settings: Settings;
   saving: boolean;
+  gameOver: boolean;
 }
 
 const TIPS: TipInfo[] = [
@@ -60,6 +61,7 @@ export class GameRuntime {
   private loadProgress = 0; private loadLabel = 'Starting';
   private screen: Snapshot['screen'] = 'lobby';
   private lastPhase: GameState['phase'] | null = null;
+  private noticesSeen = 0;
   private saving = false;
   private raf = 0;
   private lastTime = 0;
@@ -88,6 +90,7 @@ export class GameRuntime {
       stateVersion: this.stateVersion,
       settings: this.settings,
       saving: this.saving,
+      gameOver: s ? s.gameOver : false,
     };
   }
 
@@ -141,6 +144,7 @@ export class GameRuntime {
     resetGridCache();
     this.state = state;
     this.lastPhase = state.phase;
+    this.noticesSeen = state.notices.length;
     this.enterGame();
   }
 
@@ -189,6 +193,11 @@ export class GameRuntime {
         this.updateSideOffset();
       }
       this.audio.setMood(s.phase === 'night' ? 'night' : s.time < 180 ? 'morning' : s.time < 540 ? 'day' : 'evening');
+      if (s.notices.length !== this.noticesSeen) {
+        const latest = s.notices[s.notices.length - 1];
+        if (latest && s.notices.length > this.noticesSeen) this.showToast(latest.text, 5200);
+        this.noticesSeen = s.notices.length;
+      }
       r.render(s, this.alpha, dt);
     }
     this.snapTimer += dt;
@@ -199,7 +208,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -220,7 +229,7 @@ export class GameRuntime {
     return res;
   }
 
-  showToast(text: string): void { this.toast = { id: ++this.toastId, text }; this.toastUntil = performance.now() + 2600; this.emit(); }
+  showToast(text: string, ms = 2600): void { this.toast = { id: ++this.toastId, text }; this.toastUntil = performance.now() + ms; this.emit(); }
 
   setSpeed(speed: Speed): void { this.speed = speed; this.emit(); }
   togglePause(): void { if (this.speed === 0) this.setSpeed(this.prevSpeed || 1); else { this.prevSpeed = this.speed; this.setSpeed(0); } }

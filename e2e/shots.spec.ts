@@ -32,6 +32,7 @@ test.describe('screenshots', () => {
 
     // Busy shop: a lunchtime crowd and a slow cashier, so a line forms.
     await hooks(page, 'advanceScan', 200, 2.0);
+    await hooks(page, 'restock');
     await hooks(page, 'crowd', 10);
     await hooks(page, 'advanceScan', 40, 5);
     await hooks(page, 'focusStore');

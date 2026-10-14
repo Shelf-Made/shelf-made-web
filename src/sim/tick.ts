@@ -4,14 +4,26 @@ import { tickCars, spawnTraffic } from './cars';
 import { tickPeople, spawnCustomer, spawnWalker, plotOf } from './people';
 import { tickOrders, closeDay, isClosingTime } from './economy';
 import { withRng } from './state';
+import { expectedByType } from './customers';
+import type { CustomerType } from './types';
 
 /** Customers per day the shop can expect, before the time-of-day curve. */
 export function expectedCustomers(state: GameState): number {
-  const plot = plotOf(state);
-  const s = state.shop;
-  const base = 24 * DIFFICULTY[state.difficulty].demandMul;
-  const growth = 1 + (state.day - 1) * 0.06;
-  return base * plot.traffic * (0.6 + 0.8 * s.awareness) * (0.7 + 0.6 * s.reputation) * Math.min(growth, 2.5);
+  const by = expectedByType(state);
+  const growth = Math.min(2.2, 1 + (state.day - 1) * 0.05);
+  return (by.bargain + by.convenience + by.loyalist + by.impulse) * DIFFICULTY[state.difficulty].demandMul * growth;
+}
+
+/** Pick a customer type in proportion to today's expected arrivals. */
+export function pickType(state: GameState): CustomerType {
+  const by = expectedByType(state);
+  const types = Object.keys(by) as CustomerType[];
+  const total = types.reduce((a, t) => a + by[t], 0) || 1;
+  return withRng(state, 'customers', (r) => {
+    let x = r.next() * total;
+    for (const t of types) { x -= by[t]; if (x <= 0) return t; }
+    return 'convenience';
+  });
 }
 
 /** Busy at lunch and after work. Integrates to roughly 1 over the day. */

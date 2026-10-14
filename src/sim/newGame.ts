@@ -2,11 +2,13 @@ import type { GameState, Difficulty, Shop, Fixture, Person, DayStats, Slot } fro
 import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeOrigin } from './layout';
 import { PRODUCTS, STARTER_SHELF, STARTER_FRIDGE } from './products';
 import { Rng } from './rng';
+import { makeRivals } from './rivals';
+import { makeMarket } from './market';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 3;
 
 export function emptyDayStats(day: number): DayStats {
-  return { day, revenue: 0, cogs: 0, rent: 0, wages: 0, utilities: 0, other: 0, customers: 0, served: 0, walkedOut: 0, turnedAway: 0, missedItems: 0, itemsSold: 0, satisfaction: 0, satisfactionN: 0, profit: 0, endCash: 0 };
+  return { day, revenue: 0, cogs: 0, rent: 0, wages: 0, utilities: 0, other: 0, loans: 0, bills: 0, theft: 0, tax: 0, customers: 0, served: 0, walkedOut: 0, turnedAway: 0, missedItems: 0, itemsSold: 0, satisfaction: 0, satisfactionN: 0, profit: 0, endCash: 0 };
 }
 
 function makeFixture(id: number, type: Fixture['type'], x: number, z: number, rot: Fixture['rot']): Fixture {
@@ -66,6 +68,8 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
     unlocks: { prices: true, stock: true, build: opts.sandbox ?? false, staff: opts.sandbox ?? false, marketing: opts.sandbox ?? false, stats: true, newBadges: [] },
     nextId: 100, rng: {}, sounds: [], stuckRescues: 0,
     spawn: { customer: 0, traffic: 0, walker: 0 }, townAvgIndex: 1,
+    rivals: makeRivals(), scores: { avgWait: 20, waitSum: 0, waitSamples: 0, last: null }, notices: [], demandBase: 24, eventDemand: 1,
+    market: makeMarket(), bills: [], loans: [], brokeDays: 0, rescueOffered: false, gameOver: false,
   };
   state.people.push(makeOwner(state.nextId++, shop, rng));
   return state;

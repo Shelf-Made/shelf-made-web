@@ -8,6 +8,7 @@ import { Cards } from './cards/Cards';
 import { NightCard } from './NightCard';
 import { PlotPicker } from './PlotPicker';
 import { Overlay } from './Overlay';
+import { GameOverCard } from './GameOverCard';
 
 export function App({ runtime }: { runtime: GameRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,7 +41,8 @@ export function App({ runtime }: { runtime: GameRuntime }) {
           <TopBar runtime={runtime} snap={snap} />
           {snap.phase === 'picking' && <PlotPicker runtime={runtime} />}
           {snap.card && <Cards runtime={runtime} snap={snap} />}
-          {snap.night && <NightCard runtime={runtime} snap={snap} />}
+          {snap.night && !snap.gameOver && <NightCard runtime={runtime} snap={snap} />}
+          {snap.gameOver && <GameOverCard runtime={runtime} snap={snap} />}
           <Overlay runtime={runtime} snap={snap} />
           {snap.toast && <div className="toast" key={snap.toast.id} role="status">{snap.toast.text}</div>}
         </div>
