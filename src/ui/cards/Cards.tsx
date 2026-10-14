@@ -6,11 +6,17 @@ import { SettingsCard } from './SettingsCard';
 import { StaffCard } from './StaffCard';
 import { BuildCard } from './BuildCard';
 import { MarketingCard } from './MarketingCard';
+import { ICONS, BLURBS } from '../TopBar';
 
 export function Card({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const id = title.toLowerCase() as keyof typeof ICONS;
   return (
-    <div className="card" role="dialog" aria-label={title}>
-      <header><span>{title}</span><button className="close" onClick={onClose} aria-label="Close">✕</button></header>
+    <div className={`card t-${id}`} role="dialog" aria-label={title}>
+      <header>
+        <span className="head-icon" aria-hidden="true">{ICONS[id]}</span>
+        <span className="head-text">{title}<small>{BLURBS[id]}</small></span>
+        <button className="close" onClick={onClose} aria-label="Close">✕</button>
+      </header>
       <div className="body">{children}</div>
     </div>
   );

@@ -130,6 +130,8 @@ export class WorldRenderer {
       inside = within(owner.x, owner.z) || within(c.x, c.z);
     }
     this.store.update(state, fp ? (this.fp.third && inside ? this.fp.yaw : null) : (this.cutaway ? this.camera.yaw : null));
+    // From high up people are specks: their shadows would only cost draw calls.
+    this.people.setShadows(fp || this.camera.goalDistance < 45);
     this.people.update(state, alpha, dt, focus, fp && !this.fp.third ? owner.id : -1, fp && !this.fp.third ? 0.3 : 0);
     this.cars.update(state, alpha);
     this.rivals.update(state);

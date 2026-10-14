@@ -1,18 +1,31 @@
 import { useEffect, useRef, useState, type JSX } from 'react';
 import type { GameRuntime, Snapshot, CardId, Speed } from '@/app/GameRuntime';
+import { keyLabel } from '@/save/settings';
 import { money } from './useRuntime';
 
-const ICONS: Record<Exclude<CardId, null>, JSX.Element> = {
-  stock: <svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z" /><path d="M3 7l9 4 9-4M12 11v10" /></svg>,
-  prices: <svg viewBox="0 0 24 24"><path d="M20 13l-7 7-10-10V3h7z" /><circle cx="7.5" cy="7.5" r="1.5" /></svg>,
-  build: <svg viewBox="0 0 24 24"><path d="M14 4l6 6-9 9H5v-6z" /><path d="M12 6l6 6" /></svg>,
-  staff: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-4 3-6 7-6s7 2 7 6" /><circle cx="17" cy="9" r="2.5" /><path d="M16 14c3 0 6 1.5 6 5" /></svg>,
-  marketing: <svg viewBox="0 0 24 24"><path d="M3 10v4h4l8 5V5l-8 5z" /><path d="M18 9a4 4 0 010 6" /></svg>,
-  stats: <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>,
+type Card = Exclude<CardId, null>;
+
+/** Chunky two-tone glyphs, drawn white on each tile's own colour. */
+export const ICONS: Record<Card | 'help', JSX.Element> = {
+  build: <svg viewBox="0 0 24 24"><path className="fill" d="M3.5 17.5l9-9 3 3-9 9h-3z" /><path d="M12 5l2.5-2.5 6.5 6.5-2.5 2.5zM3.5 17.5l9-9 3 3-9 9h-3z" /></svg>,
+  stock: <svg viewBox="0 0 24 24"><path className="fill" d="M3 7.5l9-4 9 4v9l-9 4-9-4z" /><path d="M3 7.5l9-4 9 4v9l-9 4-9-4zM3 7.5l9 4 9-4M12 11.5v9M7.5 5.5l9 4" /></svg>,
+  prices: <svg viewBox="0 0 24 24"><path className="fill" d="M20.5 12.5l-8 8-9-9v-8h8z" /><path d="M20.5 12.5l-8 8-9-9v-8h8z" /><circle cx="8" cy="8" r="1.8" /></svg>,
+  staff: <svg viewBox="0 0 24 24"><circle className="fill" cx="9" cy="8" r="3.6" /><path className="fill" d="M2.5 20c0-4 2.9-6.2 6.5-6.2s6.5 2.2 6.5 6.2z" /><circle cx="9" cy="8" r="3.6" /><path d="M2.5 20c0-4 2.9-6.2 6.5-6.2s6.5 2.2 6.5 6.2zM16 4.8a3.2 3.2 0 010 6.4M18 14c2.4.6 3.6 2.7 3.6 6" /></svg>,
+  marketing: <svg viewBox="0 0 24 24"><path className="fill" d="M3 9.5v5h3.5l8.5 5V4.5l-8.5 5z" /><path d="M3 9.5v5h3.5l8.5 5V4.5l-8.5 5zM18.5 8.5a4.5 4.5 0 010 7M7 14.5l1.5 5h3" /></svg>,
+  stats: <svg viewBox="0 0 24 24"><path className="fill" d="M4 20v-7h4v7zM10 20V5h4v15zM16 20v-10h4v10z" /><path d="M4 20v-7h4v7zM10 20V5h4v15zM16 20v-10h4v10zM2 20.5h20" /></svg>,
   settings: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 000 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.3 1 2-3.4-2-1.5c.1-.4.2-.8.2-1.3z" /></svg>,
+  help: <svg viewBox="0 0 24 24"><path className="fill" d="M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0012 3z" /><path d="M9 18.5h6M10 21.5h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0012 3z" /></svg>,
 };
-const LABELS: Record<Exclude<CardId, null>, string> = { stock: 'Stock', prices: 'Prices', build: 'Build', staff: 'Staff', marketing: 'Marketing', stats: 'Stats', settings: 'Settings' };
-const ORDER: Exclude<CardId, null>[] = ['stock', 'prices', 'build', 'staff', 'marketing', 'stats', 'settings'];
+
+const LABELS: Record<Card | 'help', string> = { stock: 'Stock', prices: 'Prices', build: 'Build', staff: 'Staff', marketing: 'Marketing', stats: 'Stats', settings: 'Settings', help: 'Help' };
+export const BLURBS: Record<Card | 'help', string> = {
+  build: 'Place counters, shelves and fridges', stock: 'Order boxes from suppliers', prices: 'Set what things cost',
+  staff: 'Hire cashiers and stockers', marketing: 'Flyers, deals and signs', stats: 'Money, sales and customers',
+  settings: 'Sound, controls, saves', help: 'What should I do next?',
+};
+const DOCK: Card[] = ['build', 'stock', 'prices', 'staff', 'marketing', 'stats'];
+const KEYS: Partial<Record<Card, string>> = { build: 'B', stock: 'Tab' };
+const UNLOCK_DAYS: Partial<Record<Card, number>> = { staff: 3, marketing: 5 };
 
 /** Money counter that ticks up toward the real value. */
 function useTicking(value: number): number {
@@ -35,31 +48,75 @@ function useTicking(value: number): number {
   return shown;
 }
 
+const SPEED_ICONS: Record<Speed, JSX.Element> = {
+  0: <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.2" /><rect x="14" y="5" width="4" height="14" rx="1.2" /></svg>,
+  1: <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" /></svg>,
+  2: <svg viewBox="0 0 24 24"><path d="M3 5l9 7-9 7zM12 5l9 7-9 7z" /></svg>,
+  4: <svg viewBox="0 0 24 24"><path d="M1 5l7.5 7L1 19zM8.5 5l7.5 7-7.5 7zM16 5l7.5 7-7.5 7z" /></svg>,
+};
+const SPEED_NAMES: Record<Speed, string> = { 0: 'Pause', 1: 'Play', 2: 'Fast', 4: 'Fastest' };
+
+/**
+ * The heads-up display: what you have (cash, the day, whether you are open) top left, time
+ * controls top right, and every tool as a big labelled tile on a shelf along the bottom.
+ */
 export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const shown = useTicking(snap.cash);
   const speeds: Speed[] = [0, 1, 2, 4];
-  const unlocked = (c: Exclude<CardId, null>) => c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || snap.unlocks[c];
+  const unlocked = (c: Card) => c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || snap.unlocks[c];
+  const status = snap.phase === 'setup' ? 'setup' : snap.phase === 'open' ? 'open' : 'closed';
+  const night = snap.phase === 'night' || snap.phase === 'closing';
   return (
-    <div className="topbar" role="toolbar" aria-label="Shop controls">
-      <div className="logo"><img className="mark" src="/brand/logo-small.svg" alt="" width={36} height={36} /><span>Shelf Made</span></div>
-      <div className="money" aria-live="polite" aria-label="Cash">{money(shown)}</div>
-      <div className="clock">Day {snap.day} · {snap.phase === 'setup' ? 'Setting up' : snap.clock}</div>
-      {snap.phase === 'setup' && <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>Open shop</button>}
-      <div className="spacer" />
-      {ORDER.map((c) => (
-        <button key={c} className={`iconbtn${snap.card === c ? ' active' : ''}${unlocked(c) ? '' : ' locked'}`} onClick={() => unlocked(c) ? runtime.openCard(c) : runtime.showToast(`${LABELS[c]} opens in a few days.`)} aria-pressed={snap.card === c} data-card={c} title={unlocked(c) ? LABELS[c] : `${LABELS[c]} (locked)`}>
-          {ICONS[c]}<span>{LABELS[c]}</span>
-          {snap.unlocks.newBadges.includes(c) && <span className="new">New!</span>}
-        </button>
-      ))}
-      <button className="iconbtn" onClick={() => runtime.showHint()} title="What should I do next?" data-card="hint">
-        <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0012 3z" /></svg><span>Hint</span>
-      </button>
-      <div className="speeds" role="group" aria-label="Game speed">
-        {speeds.map((s) => (
-          <button key={s} className={snap.speed === s ? 'active' : ''} onClick={() => runtime.setSpeed(s)} aria-pressed={snap.speed === s} aria-label={s === 0 ? 'Pause' : `${s}x speed`}>{s === 0 ? '❚❚' : `${s}x`}</button>
-        ))}
+    <>
+      <div className="hud-status" role="group" aria-label="Your shop">
+        <img className="hud-logo" src="/brand/logo-small.svg" alt="Shelf Made" width={48} height={48} />
+        <div className="pill cash" aria-live="polite" aria-label="Cash">
+          <span className="coin" aria-hidden="true">$</span>
+          <span className="money">{money(shown)}</span>
+        </div>
+        <div className="pill day" aria-label="Day and time">
+          <span className={`dial${night ? ' moon' : ''}`} aria-hidden="true" style={{ ['--t' as string]: snap.dayFrac }}><i /></span>
+          <span className="clock"><b>Day {snap.day}</b><small>{snap.phase === 'setup' ? 'Setting up' : snap.clock}</small></span>
+        </div>
+        {status !== 'setup' && <div className={`pill sign ${status}`} aria-label={`Shop is ${status}`}>{status === 'open' ? 'OPEN' : 'CLOSED'}</div>}
       </div>
-    </div>
+
+      {snap.phase === 'setup' && (
+        <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5l9-2v18zM13 5h5v16M10 12v1.5" /></svg>
+          <span>Open shop<small>Let customers in</small></span>
+        </button>
+      )}
+
+      <div className="hud-time" role="group" aria-label="Time and options">
+        <div className="speeds" role="group" aria-label="Game speed">
+          {speeds.map((s) => (
+            <button key={s} className={snap.speed === s ? 'active' : ''} onClick={() => runtime.setSpeed(s)} aria-pressed={snap.speed === s} aria-label={s === 0 ? 'Pause' : `${s}x speed`} title={`${SPEED_NAMES[s]}${s === 0 ? ` (${keyLabel(snap.settings.keys.pause)})` : ''}`}>{SPEED_ICONS[s]}</button>
+          ))}
+        </div>
+        <button className={`roundbtn${snap.card === 'settings' ? ' active' : ''}`} onClick={() => runtime.openCard('settings')} aria-pressed={snap.card === 'settings'} data-card="settings" title={BLURBS.settings} aria-label="Settings">{ICONS.settings}</button>
+      </div>
+
+      {snap.phase !== 'picking' && <nav className="dock" aria-label="Tools">
+        <div className="dock-shelf">
+          {DOCK.map((c) => {
+            const open = unlocked(c);
+            return (
+              <button key={c} className={`tile t-${c}${snap.card === c ? ' active' : ''}${open ? '' : ' locked'}`} onClick={() => open ? runtime.openCard(c) : runtime.showToast(`${LABELS[c]} opens on day ${UNLOCK_DAYS[c] ?? 2}.`)} aria-pressed={snap.card === c} data-card={c} title={open ? BLURBS[c] : `${LABELS[c]}: opens on day ${UNLOCK_DAYS[c] ?? 2}`}>
+                <span className="face">{ICONS[c]}{!open && <svg className="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 018 0v2.5" /></svg>}</span>
+                <span className="label">{LABELS[c]}</span>
+                {open && KEYS[c] && <kbd className="key-chip">{KEYS[c]}</kbd>}
+                {!open && <span className="soon">Day {UNLOCK_DAYS[c]}</span>}
+                {snap.unlocks.newBadges.includes(c) && <span className="new">New!</span>}
+              </button>
+            );
+          })}
+          <span className="dock-gap" aria-hidden="true" />
+          <button className="tile t-help" onClick={() => runtime.showHint()} title={BLURBS.help} data-card="hint">
+            <span className="face">{ICONS.help}</span><span className="label">Help</span>
+          </button>
+        </div>
+      </nav>}
+    </>
   );
 }

@@ -10,7 +10,7 @@ async function eye(page: Page, from: [number, number], to: [number, number, numb
 }
 
 test.describe('screenshots', () => {
-  test('lobby, picker, the bare shell, building, stocking, trading, the valley, night', async ({ page }) => {
+  test('lobby, picker, the bare shell, building, stocking, trading, the pocket valley, night', async ({ page }) => {
     await ready(page);
     await settle(page, 2500);
     await page.screenshot({ path: out('01-lobby') });
@@ -63,12 +63,16 @@ test.describe('screenshots', () => {
     await eye(page, [3.2, 4.4], [0, 0.9, -1.0], 1200);
     await page.screenshot({ path: out('08-main-street') });
 
-    // The valley from above, and from the bridge.
-    await hooks(page, 'camera', 2, 4, 120, 0.35, 0.82);
+    // The pocket valley from above; the tunnel out to the rest of town; the park; the waterfall.
+    await hooks(page, 'camera', 0, 2, 80, 0.45, 0.62);
     await settle(page, 1500);
     await page.screenshot({ path: out('09-valley') });
-    await eye(page, [39, 24.5], [30, 0.9, 40], 1500);
-    await page.screenshot({ path: out('10-river-bridge') });
+    await eye(page, [38, 4.8], [50, 1.8, 6], 1500);
+    await page.screenshot({ path: out('10-tunnel') });
+    await eye(page, [4, 4.8], [0, 0.5, 12], 1200);
+    await page.screenshot({ path: out('10b-park') });
+    await eye(page, [-40, 14], [-49, 3, 18.5], 1200);
+    await page.screenshot({ path: out('10c-waterfall') });
 
     // A delivery truck at the back door.
     await hooks(page, 'dispatch', { type: 'placeOrder', supplierId: 'express', lines: [{ productId: 'milk', qty: 12 }, { productId: 'chips', qty: 12 }] });
@@ -90,7 +94,7 @@ test.describe('screenshots', () => {
 
     // A rival sale across the road.
     await hooks(page, 'rivalSale', 'discount');
-    await hooks(page, 'camera', -20, 6, 14, Math.PI, 0.5);
+    await hooks(page, 'camera', -30, 6, 14, Math.PI, 0.5);
     await settle(page, 1200);
     await page.screenshot({ path: out('13-rival-sale') });
 

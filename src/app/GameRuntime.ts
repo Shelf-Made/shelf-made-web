@@ -46,9 +46,19 @@ export interface Snapshot {
   /** First person has the mouse (pointer lock). */
   locked: boolean;
   firstPerson: boolean;
+  /** The first day's checklist (tutorial steps with short titles), null once tips are off or done. */
+  jobs: { id: string; title: string; done: boolean }[] | null;
+  /** 0 at opening, 1 at closing: drives the sun on the day dial. */
+  dayFrac: number;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
+
+/** Short checklist titles for the tutorial steps. */
+const JOB_TITLES: Record<string, string> = {
+  counter: 'Place a checkout counter', shelf: 'Place a shelf', order: 'Order stock', stock: 'Stock a shelf',
+  open: 'Open the shop', ringUp: 'Ring up a customer', price: 'Check your prices', openTomorrow: 'Start day 2',
+};
 
 /** One tip per tutorial step, in order (the sim's TUTORIAL_STEPS). {B} style tokens become key labels. */
 const TIPS: TipInfo[] = [
@@ -132,6 +142,8 @@ export class GameRuntime {
       build: { active: this.card === 'build', placing: this.build.placing, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay },
       locked: this.locked,
       firstPerson: this.inFirstPerson,
+      jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
+      dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
     };
   }
 

@@ -89,7 +89,7 @@ export class PeopleView {
       ]);
     }
     const m = new Mesh(this.dogGeo, this.assets.material);
-    m.castShadow = true;
+    m.castShadow = this.shadows;
     return m;
   }
 
@@ -102,8 +102,8 @@ export class PeopleView {
       if (m.isSkinnedMesh) {
         m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name);
         m.material = this.assets.material;
-        m.castShadow = true; m.receiveShadow = false; m.frustumCulled = false;
-      } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.material; (o as Mesh).castShadow = true; }
+        m.castShadow = this.shadows; m.receiveShadow = false; m.frustumCulled = false;
+      } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.material; (o as Mesh).castShadow = this.shadows; }
     });
     const scale = p.look.height;
     root.scale.setScalar(scale);
@@ -130,6 +130,14 @@ export class PeopleView {
     action.reset().setEffectiveWeight(1).play();
     if (prev && prev !== action) prev.crossFadeTo(action, 0.18, false);
     inst.current = anim;
+  }
+
+  private shadows = true;
+  /** Shadows on or off for everyone (off when the camera is too high for them to read). */
+  setShadows(on: boolean): void {
+    if (on === this.shadows) return;
+    this.shadows = on;
+    this.group.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = on; });
   }
 
   /** nearHide: in first person, anyone closer than this to the focus (the eye) is not drawn, so no head ever fills the lens. */

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { keyLabel } from '@/save/settings';
 
@@ -13,6 +13,7 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
   const markerRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLDivElement>(null);
   const crossRef = useRef<HTMLDivElement>(null);
+  const useRef_ = useRef<HTMLButtonElement>(null);
   const tip = snap.tip;
 
   useEffect(() => {
@@ -56,6 +57,17 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
           cross.classList.toggle('active', !!a?.ok);
         }
       }
+      // The on-screen Use button mirrors the prompt, for mouse, touch and anyone who forgets the key.
+      const u = useRef_.current;
+      const ukey = a ? `${a.key}|${a.text}|${a.ok}` : '-';
+      if (u && u.dataset.k !== ukey) {
+        u.dataset.k = ukey;
+        u.classList.toggle('ready', !!a?.ok);
+        u.classList.toggle('show', !!a?.ok);
+        const label = u.querySelector('.what'), k = u.querySelector('kbd');
+        if (label) label.textContent = a?.text || 'Use';
+        if (k) k.textContent = a?.key ?? '';
+      }
 
       // Marker over the tip's target, pinned to the screen edge when it is off to the side.
       const t = runtime.getSnapshot().tip;
@@ -96,17 +108,56 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
         </div>
       )}
       {fp && <div ref={markerRef} className="marker" aria-hidden="true" style={{ display: 'none' }}><span /></div>}
-      {tip && tip.anchor !== 'night' && (
-        <div className="tip docked objective" key={tip.id} role="note">
-          <div className="label">Next up</div>
-          {tip.text}
-          <div className="skip"><button onClick={() => runtime.dispatch({ type: 'skipTutorial' })}>Skip tips</button></div>
-        </div>
+      {snap.jobs && tip && tip.anchor !== 'night' && <Jobs runtime={runtime} jobs={snap.jobs} tip={tip.text} current={tip.id} />}
+      {!snap.jobs && tip && tip.anchor !== 'night' && (
+        <div className="tip docked objective" key={tip.id} role="note"><div className="label">Next up</div>{tip.text}</div>
       )}
       {tip && tip.anchor === 'night' && (
         <div className="tip docked" key={tip.id} role="note" style={{ left: '50%', top: '30%', transform: 'translateX(-50%)' }}>{tip.text}</div>
       )}
-      {showLookHint && <div className="look-hint">Click to look around · {keyLabel(keys.forward)}{keyLabel(keys.left)}{keyLabel(keys.back)}{keyLabel(keys.right)} to walk · {keyLabel(keys.interact)} to use · Esc frees the mouse</div>}
+      {fp && !snap.card && (
+        <button ref={useRef_} className="use-btn" onClick={() => runtime.interact()} aria-label="Use">
+          <kbd />
+          <span className="what">Use</span>
+        </button>
+      )}
+      {showLookHint && (
+        <div className="look-hint" aria-label="Controls">
+          <span className="ctl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v6" /></svg>Click to look</span>
+          <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.forward)}</kbd><kbd>{keyLabel(keys.left)}</kbd><kbd>{keyLabel(keys.back)}</kbd><kbd>{keyLabel(keys.right)}</kbd></span>Walk</span>
+          <span className="ctl"><kbd>{keyLabel(keys.interact)}</kbd>Use</span>
+          <span className="ctl"><kbd>Esc</kbd>Free mouse</span>
+        </div>
+      )}
     </>
+  );
+}
+
+const JOB_ICONS: Record<string, string> = { counter: 'build', shelf: 'build', order: 'stock', stock: 'stock', open: 'open', ringUp: 'scan', price: 'prices', openTomorrow: 'open' };
+
+/** The first day as a checklist: done jobs ticked, the current one open with its how-to. */
+function Jobs({ runtime, jobs, tip, current }: { runtime: GameRuntime; jobs: NonNullable<Snapshot['jobs']>; tip: string; current: string }) {
+  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 760);
+  const done = jobs.filter((j) => j.done).length;
+  return (
+    <div className={`tip jobs${open ? '' : ' folded'}`} role="note" aria-label="Today's jobs">
+      <button className="jobs-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="label">Today&apos;s jobs</span>
+        <span className="count">{done}/{jobs.length}</span>
+        <span className="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
+      <div className="jobs-bar" aria-hidden="true"><div style={{ width: `${(done / jobs.length) * 100}%` }} /></div>
+      {open && (
+        <ol>
+          {jobs.map((j) => (
+            <li key={j.id} className={`${j.done ? 'done' : ''}${j.id === current ? ' now' : ''} j-${JOB_ICONS[j.id] ?? 'build'}`}>
+              <span className="check" aria-hidden="true">{j.done ? '✓' : ''}</span>
+              <span className="t">{j.title}{j.id === current && <small key={tip}>{tip}</small>}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {open && <div className="skip"><button onClick={() => runtime.dispatch({ type: 'skipTutorial' })}>I know what I&apos;m doing, hide this</button></div>}
+    </div>
   );
 }

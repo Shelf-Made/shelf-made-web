@@ -139,14 +139,14 @@ export class StaticWorld {
       if (g) { const mesh = new Mesh(g, this.assets.glass); this.group.add(mesh); this.meshes.push(mesh); }
     }
 
-    // Meadows: grass tufts, flowers and pebbles by the thousand, one instanced mesh per kind and map half.
+    // Meadows: grass tufts, flowers and pebbles by the thousand, one instanced mesh per kind.
     {
       const byKind = new Map<string, typeof plan.scatter>();
-      for (const sc of plan.scatter) { const k = `${sc.kind}|${sc.x < 0 ? 'w' : 'e'}`; const arr = byKind.get(k) ?? []; arr.push(sc); byKind.set(k, arr); }
+      for (const sc of plan.scatter) { const k = sc.kind; const arr = byKind.get(k) ?? []; arr.push(sc); byKind.set(k, arr); }
       const geos = new Map<ScatterKind, BufferGeometry>();
       const d = new Object3D();
       for (const [k, items] of byKind) {
-        const kind = k.split('|')[0] as ScatterKind;
+        const kind = k as ScatterKind;
         if (!geos.has(kind)) geos.set(kind, scatterGeometry(pal, kind));
         const im = new InstancedMesh(geos.get(kind)!, kind === 'pebble' ? this.assets.material : this.grassMat!, items.length);
         items.forEach((it, i) => { d.position.set(it.x, 0, it.z); d.rotation.set(0, it.yaw, 0); d.scale.setScalar(it.scale); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });

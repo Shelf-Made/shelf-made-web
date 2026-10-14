@@ -17,10 +17,10 @@ export class AmbientView {
   readonly group = new Group();
   private critters: Critter[] = [];
   private drops: InstancedMesh | null = null;
-  private foam: Mesh[] = [];
+  private foam: InstancedMesh | null = null;
   private readonly streamTime = { value: 0 };
   private readonly streamMat = streamMaterial(this.streamTime);
-  private clouds: Mesh[] = [];
+  private clouds: Mesh | null = null;
   private sky: Mesh;
   private skyMat: ShaderMaterial;
   private fountain = { x: 0, z: 0 };
@@ -40,7 +40,7 @@ export class AmbientView {
 
   build(plan: TownPlan): void {
     this.group.clear();
-    this.critters = []; this.clouds = [];
+    this.critters = [];
     this.group.add(this.sky);
     const mat = this.assets.material;
     for (const [i, home] of plan.animals.entries()) {
@@ -59,14 +59,11 @@ export class AmbientView {
     // white streaks race down it. Foam churns at the foot.
     this.waterfall = plan.waterfall;
     this.group.add(new Mesh(streamGeometry(), this.streamMat));
-    this.foam = [];
-    for (let k = 0; k < 7; k++) {
-      const g = paint(new IcosahedronGeometry(0.22 + h01(k) * 0.16, 0), this.assets.palette, '#FFFFFF');
-      const m = new Mesh(g, this.assets.unlit);
-      m.position.set(-BASIN.x + 0.2 + h01(k + 9) * 1.1, -0.1, riverZ(-BASIN.x) + (k - 3) * 0.32);
-      this.foam.push(m); this.group.add(m);
-    }
-    // Clouds: lumpy white puffs high over the pocket, drifting east.
+    this.foam = new InstancedMesh(paint(new IcosahedronGeometry(0.3, 0), this.assets.palette, '#FFFFFF'), this.assets.unlit, 7);
+    this.foam.frustumCulled = false;
+    this.group.add(this.foam);
+    // Clouds: lumpy white puffs high over the pocket, one mesh turning slowly round the valley.
+    const sky: BufferGeometry[] = [];
     for (let c = 0; c < 12; c++) {
       const puffs: BufferGeometry[] = [];
       for (let k = 0; k < 5; k++) {
@@ -74,11 +71,14 @@ export class AmbientView {
         g.translate((k - 2) * 2.6, h01(c + k * 3) * 1.4, h01(c * 2 + k) * 2.4 - 1.2);
         puffs.push(g);
       }
-      const m = new Mesh(merge(puffs), mat);
-      m.position.set(-160 + c * 28 + h01(c) * 20, 46 + h01(c + 40) * 16, -70 + h01(c + 80) * 130);
-      m.scale.set(1, 0.55, 1);
-      this.clouds.push(m); this.group.add(m);
+      const g = merge(puffs);
+      g.scale(1, 0.55, 1);
+      g.translate(-160 + c * 28 + h01(c) * 20, 46 + h01(c + 40) * 16, -70 + h01(c + 80) * 130);
+      sky.push(g);
     }
+    this.clouds = new Mesh(merge(sky), mat);
+    this.clouds.castShadow = false;
+    this.group.add(this.clouds);
   }
 
   /** Low-poly animals out of a few boxes each; `parts` are the bits that move (legs, wings, heads). */
@@ -90,9 +90,10 @@ export class AmbientView {
     switch (kind) {
       case 'duck': {
         const drake = i % 2 === 0;
-        add(merge([box(pal, drake ? '#B9BCC4' : '#B58A5C', 0.16, 0.08, 0.26, 0, 0, 0), box(pal, drake ? '#8B5A3C' : '#A87B45', 0.14, 0.06, 0.08, 0, 0.04, 0.1), box(pal, '#38383D', 0.12, 0.05, 0.06, 0, 0.05, -0.13)]));
-        const head = add(merge([box(pal, drake ? '#2E8560' : '#A87B45', 0.08, 0.09, 0.09, 0, 0, 0), box(pal, '#FF8C42', 0.04, 0.025, 0.07, 0, 0.02, 0.07)]), 0, 0.08, 0.12);
-        parts.push(head);
+        // One mesh: the whole duck tips forward to dabble.
+        add(merge([box(pal, drake ? '#B9BCC4' : '#B58A5C', 0.16, 0.08, 0.26, 0, 0, 0), box(pal, drake ? '#8B5A3C' : '#A87B45', 0.14, 0.06, 0.08, 0, 0.04, 0.1), box(pal, '#38383D', 0.12, 0.05, 0.06, 0, 0.05, -0.13),
+          box(pal, drake ? '#2E8560' : '#A87B45', 0.08, 0.09, 0.09, 0, 0.08, 0.12), box(pal, '#FF8C42', 0.04, 0.025, 0.07, 0, 0.1, 0.19)]));
+        g.rotation.order = 'YXZ';
         break;
       }
       case 'rabbit': {
@@ -112,8 +113,8 @@ export class AmbientView {
       }
       case 'butterfly': {
         const wing = ['#FFC044', '#F27CC1', '#4F8FE0', '#FF8C42', '#FFFFFF'][i % 5]!;
-        add(box(pal, '#38383D', 0.012, 0.012, 0.06, 0, 0, 0));
-        parts.push(add(box(pal, wing, 0.07, 0.004, 0.06, -0.035, 0, 0)), add(box(pal, wing, 0.07, 0.004, 0.06, 0.035, 0, 0)));
+        // Two wings (the body is a dark stripe on one of them).
+        parts.push(add(merge([box(pal, wing, 0.07, 0.004, 0.06, -0.035, 0, 0), box(pal, '#38383D', 0.012, 0.012, 0.06, -0.003, 0, 0)])), add(box(pal, wing, 0.07, 0.004, 0.06, 0.035, 0, 0)));
         break;
       }
       case 'bird': {
@@ -128,7 +129,8 @@ export class AmbientView {
         break;
       }
     }
-    if (kind === 'butterfly' || kind === 'bird') g.traverse((o) => { (o as Mesh).castShadow = false; });
+    // Only the deer is big enough for its shadow to read; the rest would double their draw calls for a speck.
+    if (kind !== 'deer') g.traverse((o) => { (o as Mesh).castShadow = false; });
     return { obj: g, parts };
   }
 
@@ -136,7 +138,14 @@ export class AmbientView {
     this.sky.position.copy(camera.position);
     this.skyMat.uniforms.top!.value.copy(skyTop);
     this.skyMat.uniforms.bottom!.value.copy(skyBottom);
-    for (const c of this.critters) this.animate(c, t, dt);
+    // Animals far from the camera are too small to see and cost a draw call per part: skip them.
+    const cp = camera.position;
+    for (const c of this.critters) {
+      const far = c.home.kind === 'bird' ? 90 : c.home.kind === 'deer' ? 36 : 24;
+      const vis = Math.hypot(c.obj.position.x - cp.x, c.obj.position.z - cp.z) < far;
+      c.obj.visible = vis;
+      if (vis) this.animate(c, t, dt);
+    }
     if (this.drops) {
       for (let i = 0; i < 40; i++) {
         const ph = ((t * 0.9 + i / 40) % 1), a = (i / 40) * Math.PI * 2 * 3.1;
@@ -148,8 +157,17 @@ export class AmbientView {
       this.drops.instanceMatrix.needsUpdate = true;
     }
     this.streamTime.value = t;
-    this.foam.forEach((m, i) => { const ph = t * 2.2 + i * 1.7; m.scale.set(1 + 0.25 * Math.sin(ph), 0.6 + 0.3 * Math.sin(ph * 1.3), 1 + 0.25 * Math.cos(ph)); });
-    for (const c of this.clouds) { c.position.x += dt * 0.6; if (c.position.x > 180) c.position.x = -180; }
+    if (this.foam) {
+      for (let i = 0; i < 7; i++) {
+        const ph = t * 2.2 + i * 1.7, k = 0.75 + h01(i) * 0.5;
+        this.dummy.position.set(-BASIN.x + 0.2 + h01(i + 9) * 1.1, -0.1, riverZ(-BASIN.x) + (i - 3) * 0.32);
+        this.dummy.rotation.set(0, i, 0);
+        this.dummy.scale.set(k * (1 + 0.25 * Math.sin(ph)), k * (0.6 + 0.3 * Math.sin(ph * 1.3)), k * (1 + 0.25 * Math.cos(ph)));
+        this.dummy.updateMatrix(); this.foam.setMatrixAt(i, this.dummy.matrix);
+      }
+      this.foam.instanceMatrix.needsUpdate = true;
+    }
+    if (this.clouds) this.clouds.rotation.y = t * 0.004;
   }
 
   private animate(c: Critter, t: number, dt: number): void {
@@ -192,7 +210,7 @@ export class AmbientView {
     o.rotation.y = c.heading;
     if (k === 'rabbit') { o.position.y = y0 + (moving ? Math.abs(Math.sin(t * 9 + s)) * 0.12 : 0); c.parts[0]!.rotation.x = moving ? -0.4 : Math.sin(t * 2 + s) * 0.15; }
     if (k === 'squirrel') { o.position.y = moving ? Math.abs(Math.sin(t * 14 + s)) * 0.05 : 0; c.parts[0]!.rotation.x = 0.4 + Math.sin(t * 3 + s) * 0.3; }
-    if (k === 'duck') { o.position.y = y0 + Math.sin(t * 2.2 + s) * 0.008; c.parts[0]!.rotation.x = !moving && Math.sin(t * 0.7 + s) > 0.85 ? 1.2 : 0; }
+    if (k === 'duck') { o.position.y = y0 + Math.sin(t * 2.2 + s) * 0.008; o.rotation.x = !moving && Math.sin(t * 0.7 + s) > 0.85 ? 0.9 : 0; }
     if (k === 'deer') {
       // Graze while standing, look up now and then; legs swing while walking.
       const graze = !moving && Math.sin(t * 0.4 + s) > -0.3;
