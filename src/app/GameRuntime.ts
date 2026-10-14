@@ -346,7 +346,7 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer;
     if (!s || !r) return;
     const cx = s.shop.originX, cz = s.shop.originZ - 1.4;
-    r.camera.focus(cx, cz, 17.5, 0, 0.98);
+    r.camera.focus(cx, cz, 18.5, 0, 0.98);
     if (snap) r.camera.snap();
   }
 

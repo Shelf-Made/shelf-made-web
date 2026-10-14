@@ -42,7 +42,7 @@ an empty repository in this session.
 | Perf (`docs/screens/perf.json`) | draw calls 67 starter / 152 busy at 4x / 163 zoomed out (budget 250); triangles 244k / 289k / 316k; bundle 1.6 MB gzipped (three.js 159 KB, app 45 KB) + 1.8 MB models + 93 KB atlas, well under 15 MB |
 | FPS | SwiftShader software GL in the container gives 10–42 fps, which says nothing about a laptop GPU; the draw-call and triangle counts are the budget that was checked |
 
-Screenshots in `docs/screens/`: `01-lobby`, `02-plot-picker`, `03-first-tip`, `04-shop-default-zoom`, `05-busy-shop`, `06-neighbourhood`, `07-delivery`, `08-night-card`, `09-stock-card`, `10-prices-card`, `11-build-mode`, `12-finance-card`, `13-rival-sale`.
+Screenshots in `docs/screens/`: `01-lobby`, `02-plot-picker`, `03-first-tip`, `04-shop-default-zoom`, `05-busy-shop`, `06-neighbourhood`, `07-delivery`, `08-night-card`, `09-stock-card`, `10-prices-card`, `11-build-mode`, `12-finance-card`, `13-rival-sale`, `14-staff-on-floor`, `15-expanded-shop` (market hall with a doubled lot), `16-franchise-branch`.
 
 Visual checklist, as of the last run: store ≈ 45% of the screen at default zoom with every room readable; no see-through walls; shelves show what they hold and empty shelves are bare; the busy shot has eight distinct people in a line; brand colours; only the top bar is always on; text ≥ 14 px; the neighbourhood is lived in. The night card and docked cards slide the world aside so nothing covers the store.
 

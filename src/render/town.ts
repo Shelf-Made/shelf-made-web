@@ -101,13 +101,14 @@ export function buildTown(seed: number, plotId: string, branchPlots: string[] = 
     house(plot.x - 4, northZ, true, 8);
     house(plot.x + 4, northZ, true, 8);
   }
-  for (const x of [-10.6, 10.6]) house(x, northZ, true, 5.2, false);
+  // Fillers sit far enough out that a market-hall shop with a doubled lot still fits.
+  for (const x of [-13.4, 13.4]) house(x, northZ, true, 5.2, false);
   for (const x of [-33, 33, -41, 41, -48, 48]) house(x, northZ, true, 7);
   // Second row behind, facing away (we only see their backs and roofs).
   for (let x = -46; x <= 46; x += 7.5) {
     if (Math.abs(x + 36) < 2.5 || Math.abs(x - 36) < 2.5) continue;
-    P.push({ model: HOUSES[houseIdx()]!, x: x + rng.range(-0.3, 0.3), z: -12.5, yaw: Math.PI });
-    P.push({ model: TREES[rng.int(0, TREES.length - 1)]!, x: x + 3.4, z: -10.5 + rng.range(-0.5, 0.5), yaw: rng.range(0, 6.28) });
+    P.push({ model: HOUSES[houseIdx()]!, x: x + rng.range(-0.3, 0.3), z: -15.8, yaw: Math.PI });
+    P.push({ model: TREES[rng.int(0, TREES.length - 1)]!, x: x + 3.4, z: -13.6 + rng.range(-0.5, 0.5), yaw: rng.range(0, 6.28) });
   }
 
   // South side: rivals and houses.

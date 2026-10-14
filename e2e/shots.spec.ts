@@ -74,6 +74,36 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('13-rival-sale') });
     await hooks(page, 'focusStore');
 
+    // Staff on the floor, an expanded shop with a doubled lot, and a franchise branch.
+    await page.evaluate(() => {
+      const h = (window as unknown as { __shelf: { state: () => { staffPool: { id: number; role: string }[] }; dispatch: (c: unknown) => unknown } }).__shelf;
+      for (const role of ['cashier', 'stocker', 'cleaner']) { const c = h.state().staffPool.find((x) => x.role === role); if (c) h.dispatch({ type: 'hire', candidateId: c.id }); }
+    });
+    await hooks(page, 'dispatch', { type: 'cheat', cash: 20000 });
+    await hooks(page, 'advanceScan', 60, 3);
+    await hooks(page, 'focusStore');
+    await settle(page, 700);
+    await page.screenshot({ path: out('14-staff-on-floor') });
+    await hooks(page, 'dispatch', { type: 'expandShop', sizeId: 'large' });
+    await hooks(page, 'dispatch', { type: 'expandLot' });
+    for (const [x, z, t] of [[-1.5, -5, 'shelf'], [0.5, -5, 'shelf'], [2.5, -5, 'produce'], [-3.5, -3, 'fridge'], [-1.5, -3, 'endcap'], [0.5, -3, 'shelf'], [2.5, -3, 'shelf']] as [number, number, string][]) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType: t, x, z, rot: 0 });
+    await hooks(page, 'crowd', 8);
+    await hooks(page, 'advanceScan', 40, 3);
+    await hooks(page, 'camera', 1, -3.2, 24, 0, 0.98);
+    await settle(page, 900);
+    await page.screenshot({ path: out('15-expanded-shop') });
+    await page.evaluate(() => {
+      const h = (window as unknown as { __shelf: { state: () => { staffPool: { id: number; role: string }[] }; dispatch: (c: unknown) => unknown } }).__shelf;
+      const s = h.state();
+      if (!s.staffPool.some((c) => c.role === 'manager')) s.staffPool.push({ id: 99999, name: 'Mo Larsen', role: 'manager', skill: 0.8, speed: 1, wage: 95, look: { model: 1, variant: 1, height: 1 } } as never);
+      const m = s.staffPool.find((c) => c.role === 'manager')!;
+      h.dispatch({ type: 'openFranchise', plotId: 'hill', managerId: m.id });
+    });
+    await hooks(page, 'camera', -22, -1, 22, 0.2, 0.95);
+    await settle(page, 1200);
+    await page.screenshot({ path: out('16-franchise-branch') });
+    await hooks(page, 'focusStore');
+
     // Night card.
     await hooks(page, 'advance', 800);
     await settle(page, 500);

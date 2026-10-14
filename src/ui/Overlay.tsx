@@ -81,7 +81,7 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
           ) : null}
         </div>
       )}
-      {snap.phase === 'open' && snap.day === 1 && !tip && snap.cash < 1e9 && <div className="hint">Drag to pan · wheel to zoom · right-drag to rotate · F focuses the shop · Space scans</div>}
+      {snap.phase === 'open' && snap.day === 1 && !tip && !snap.toast && <div className="hint">Drag to pan · wheel to zoom · right-drag to rotate · F focuses the shop · Space scans</div>}
     </>
   );
 }
