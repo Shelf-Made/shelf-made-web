@@ -5,14 +5,14 @@ Build log for the unattended build session. Updated after every slice.
 ## Slices
 
 ### Part 1: the look and the first five minutes
-- [ ] S0 Scaffold: Vite + strict TS + React + three.js, lint, tests, e2e, CI, docs.
-- [ ] S1 Assets: Kenney packs converted to optimised GLB; style guide; art audit.
-- [ ] S2 World: neighbourhood (road, lot, houses, rivals, trees, lamps), camera, lighting.
-- [ ] S3 Store: walls with ledges, floors, sign, register, shelf, fridge, storeroom, products.
-- [ ] S4 People & cars: paths, queueing, animations, traffic, parking.
-- [ ] S5 Core loop: scan, pay, order, deliver, carry, price, day/night, night card.
-- [ ] S6 First five minutes: lobby, plot picker, naming, guided tips, rewards.
-- [ ] S7 UI polish, audio, saves, settings, screenshots, perf.
+- [x] S0 Scaffold: Vite + strict TS + React + three.js, lint, tests, e2e, CI, docs.
+- [x] S1 Assets: Kenney packs converted to optimised GLB; style guide; art audit.
+- [x] S2 World: neighbourhood (road, lot, houses, rivals, trees, lamps), camera, lighting.
+- [x] S3 Store: walls with ledges, floors, sign, register, shelf, fridge, storeroom, products.
+- [x] S4 People & cars: paths, queueing, animations, traffic, parking.
+- [x] S5 Core loop: scan, pay, order, deliver, carry, price, day/night, night card.
+- [x] S6 First five minutes: lobby, plot picker, naming, guided tips, rewards.
+- [x] S7 UI polish, audio, saves, settings, screenshots, perf (first pass; polish continues alongside Part 2).
 
 ### Part 2: deeper systems
 - [ ] P1 Customers (four types, scoring, patience, reputation)

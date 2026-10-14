@@ -39,18 +39,25 @@ function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): bool
   return true;
 }
 
-/** Queue slot k for a register: straight back from the front, then bending sideways. */
+/** Queue slot k for a register: straight back from the front, then bending toward the middle of the shop. */
 export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   const front = fixtureFrontWorld(state.shop, reg);
   const f = fixtureFacing(reg.rot);
   const straight = 3;
-  const spacing = 0.62;
-  if (k < straight) return { x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing };
-  // Bend: perpendicular, to the left of the facing direction.
-  const side = { x: -f.z, z: f.x };
-  const base = { x: front.x + f.x * (straight - 1) * spacing, z: front.z + f.z * (straight - 1) * spacing };
-  const j = k - straight + 1;
-  return { x: base.x + side.x * j * spacing, z: base.z + side.z * j * spacing };
+  const spacing = 0.7;
+  let p: Vec2;
+  if (k < straight) p = { x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing };
+  else {
+    // Bend toward the shop's centre so the line never runs into a wall.
+    const base = { x: front.x + f.x * (straight - 1) * spacing, z: front.z + f.z * (straight - 1) * spacing };
+    const cx = state.shop.originX + (state.shop.floor.x0 + state.shop.floor.x1) / 2;
+    const cz = state.shop.originZ + (state.shop.floor.z0 + state.shop.floor.z1) / 2;
+    let side = { x: -f.z, z: f.x };
+    if ((cx - base.x) * side.x + (cz - base.z) * side.z < 0) side = { x: f.z, z: -f.x };
+    const j = k - straight + 1;
+    p = { x: base.x + side.x * j * spacing, z: base.z + side.z * j * spacing };
+  }
+  return nearestWalkable(gridFor(state), p, undefined, 4);
 }
 
 function chooseType(state: GameState): CustomerType {

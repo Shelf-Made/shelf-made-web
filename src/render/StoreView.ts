@@ -35,7 +35,7 @@ const SLOT_LAYOUT: Partial<Record<FixtureType, SlotLayout>> = {
 export class StoreView {
   readonly group = new Group();
   private shell = new Group();
-  private sides: { full: Mesh; ledge: Mesh; nx: number; nz: number }[] = [];
+  private sides: { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull?: Mesh[] }[] = [];
   private fixtureMeshes = new Map<string, { mesh: InstancedMesh; ids: number[] }>();
   private shapes!: Record<Shape, ShapeGeo>;
   private productMeshes = new Map<Shape, { body: InstancedMesh; accent: InstancedMesh }>();
@@ -208,42 +208,65 @@ export class StoreView {
     part.castShadow = true; part.receiveShadow = true;
     this.shell.add(part);
 
-    // Sign fascia: two posts, a slate board with the name in cream letters, a green-white awning over the windows.
+    // Awnings: a low one on the ledge (always, so the front keeps its stripes without hiding the floor)
+    // and a high one under the fascia when the front wall is shown at full height.
     const width = f.x1 - f.x0;
-    const fascia: BufferGeometry[] = [];
     const fz = oz + f.z1 + 0.12;
-    fascia.push(box(pal, SLATE, 0.1, 1.55, 0.1, ox + f.x0 + 0.08, 0, fz));
-    fascia.push(box(pal, SLATE, 0.1, 1.55, 0.1, ox + f.x1 - 0.08, 0, fz));
-    fascia.push(box(pal, SLATE, width + 0.2, 0.62, 0.16, ox + (f.x0 + f.x1) / 2, 1.08, fz));
-    fascia.push(box(pal, GREEN, width + 0.24, 0.06, 0.2, ox + (f.x0 + f.x1) / 2, 1.68, fz));
-    fascia.push(box(pal, GREEN, width + 0.24, 0.05, 0.2, ox + (f.x0 + f.x1) / 2, 1.04, fz));
-    // Awning: striped, sloping out over each window side.
-    for (const sideSign of [-1, 1]) {
-      const ax0 = ox + (sideSign < 0 ? f.x0 + 0.15 : shop.door.x + 0.6);
-      const ax1 = ox + (sideSign < 0 ? shop.door.x - 0.6 : f.x1 - 0.15);
-      let k = 0;
-      for (let x = ax0; x < ax1 - 0.01; x += 0.3, k++) {
-        const w = Math.min(0.3, ax1 - x);
-        const g = box(pal, k % 2 ? WHITE : GREEN, w, 0.04, 0.5, 0, 0, 0);
-        g.rotateX(0.35);
-        g.translate(x + w / 2, 0.98, fz + 0.26);
-        fascia.push(g);
+    const awning = (y: number): BufferGeometry[] => {
+      const parts: BufferGeometry[] = [];
+      for (const sideSign of [-1, 1]) {
+        const ax0 = ox + (sideSign < 0 ? f.x0 + 0.12 : shop.door.x + 0.6);
+        const ax1 = ox + (sideSign < 0 ? shop.door.x - 0.6 : f.x1 - 0.12);
+        let k = 0;
+        for (let x = ax0; x < ax1 - 0.01; x += 0.3, k++) {
+          const w = Math.min(0.3, ax1 - x);
+          const g = box(pal, k % 2 ? WHITE : GREEN, w, 0.04, 0.46, 0, 0, 0);
+          g.rotateX(0.38);
+          g.translate(x + w / 2, y, fz + 0.2);
+          parts.push(g);
+        }
       }
-    }
+      return parts;
+    };
+    const lowAwning = new Mesh(merge(awning(LEDGE_HEIGHT + 0.08)), this.assets.material);
+    lowAwning.castShadow = true;
+    this.shell.add(lowAwning);
+    const front = this.sides[0]!;
+    // Fascia (full-height front only): slate board with the name, high awning.
+    const fascia: BufferGeometry[] = [];
+    fascia.push(box(pal, SLATE, width + 0.2, 0.62, 0.16, ox + (f.x0 + f.x1) / 2, 1.0, fz));
+    fascia.push(box(pal, GREEN, width + 0.24, 0.06, 0.2, ox + (f.x0 + f.x1) / 2, 1.6, fz));
+    fascia.push(box(pal, GREEN, width + 0.24, 0.05, 0.2, ox + (f.x0 + f.x1) / 2, 0.96, fz));
+    fascia.push(...awning(0.9));
+    const name = shop.name.toUpperCase();
+    const h = Math.min(0.4, ((width - 0.5) * 7) / (6 * Math.max(1, name.length)));
+    const fasciaLetters = textGeometry(pal, name, h, 0.06, CREAM, YELLOW);
+    place(fasciaLetters, ox + (f.x0 + f.x1) / 2, 1.0 + 0.31 - h / 2, fz + 0.11, 0);
+    fascia.push(fasciaLetters);
     const fasciaMesh = new Mesh(merge(fascia), this.assets.material);
     fasciaMesh.castShadow = true;
     this.shell.add(fasciaMesh);
-    // Letters.
-    const name = shop.name.toUpperCase();
-    const h = Math.min(0.4, ((width - 0.5) * 7) / (6 * Math.max(1, name.length)));
-    const letters = textGeometry(pal, name, h, 0.06, CREAM, YELLOW);
-    void textWidth;
-    place(letters, ox + (f.x0 + f.x1) / 2, 1.08 + 0.31 - h / 2, fz + 0.11, 0);
-    this.signMesh = new Mesh(letters, this.assets.material);
+    front.extraFull = [fasciaMesh];
+    // Pylon sign on the front lawn by the sidewalk: the name reads from the street in every view.
+    const px = ox + 2.9, pz = oz + 2.05;
+    const boardW = 3.0;
+    const pylon: BufferGeometry[] = [];
+    pylon.push(box(pal, SLATE, 0.12, 0.95, 0.12, px - boardW / 2 + 0.2, 0, pz));
+    pylon.push(box(pal, SLATE, 0.12, 0.95, 0.12, px + boardW / 2 - 0.2, 0, pz));
+    pylon.push(box(pal, SLATE, boardW, 0.62, 0.14, px, 0.9, pz));
+    pylon.push(box(pal, GREEN, boardW + 0.06, 0.06, 0.18, px, 1.5, pz));
+    pylon.push(box(pal, GREEN, boardW + 0.06, 0.05, 0.18, px, 0.86, pz));
+    const ph = Math.min(0.34, ((boardW - 0.3) * 7) / (6 * Math.max(1, name.length)));
+    for (const sideYaw of [0, Math.PI]) {
+      const letters = textGeometry(pal, name, ph, 0.05, CREAM, YELLOW);
+      place(letters, px, 0.9 + 0.31 - ph / 2, pz + (sideYaw === 0 ? 0.09 : -0.09), sideYaw);
+      pylon.push(letters);
+      const bracket = box(pal, GREEN, Math.min(boardW - 0.4, textWidth(name, ph) + 0.2), 0.03, 0.04, px, 0.9 + 0.31 - ph / 2 - 0.06, pz + (sideYaw === 0 ? 0.08 : -0.08));
+      pylon.push(bracket);
+    }
+    this.signMesh = new Mesh(merge(pylon), this.assets.material);
+    this.signMesh.castShadow = true;
     this.shell.add(this.signMesh);
-    // Little shelf-bracket underline under the wordmark.
-    const bracket = box(pal, GREEN, Math.min(width - 0.6, textWidth(name, h) + 0.2), 0.035, 0.05, ox + (f.x0 + f.x1) / 2, 1.08 + 0.31 - h / 2 - 0.07, fz + 0.1);
-    this.shell.add(new Mesh(bracket, this.assets.material));
     this.layoutVersion = -1;
     this.stockKey = '';
   }
@@ -256,6 +279,7 @@ export class StoreView {
     for (const s of this.sides) {
       const facing = s.nx * sx + s.nz * cz > 0.25;
       s.full.visible = !facing; s.ledge.visible = facing;
+      if (s.extraFull) for (const m of s.extraFull) m.visible = !facing;
     }
     if (shop.layoutVersion !== this.layoutVersion) { this.rebuildFixtures(shop); this.layoutVersion = shop.layoutVersion; this.stockKey = ''; }
     const key = stockKey(shop);
@@ -411,7 +435,7 @@ export class StoreView {
 
   /** Debug: instanced fixture meshes and their counts. */
   debugFixtures(): unknown {
-    return [...this.fixtureMeshes.entries()].map(([k, v]) => ({ model: k, count: v.mesh.count, ids: v.ids, visible: v.mesh.visible, box: v.mesh.geometry.boundingBox ? 'yes' : (v.mesh.geometry.computeBoundingBox(), v.mesh.geometry.boundingBox?.max.toArray()) }));
+    return [...this.fixtureMeshes.entries()].map(([k, v]) => ({ model: k, count: v.mesh.count, ids: v.ids, visible: v.mesh.visible }));
   }
 
   /** World position of a fixture's top, for tip anchors. */

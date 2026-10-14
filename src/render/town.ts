@@ -145,8 +145,8 @@ export function buildTown(seed: number, plotId: string): TownPlan {
   for (let i = 0; i < 4; i++) P.push({ model: BUSHES[i % BUSHES.length]!, x: sx0 + 0.6 + i * 0.75, z: -1.6 + 0.7, yaw: rng.range(0, 6.28) });
   for (let i = 0; i < 3; i++) P.push({ model: BUSHES[(i + 1) % BUSHES.length]!, x: shopX - 3.1 - i * 0.05, z: -1.6 - 1.0 - i * 1.1, yaw: rng.range(0, 6.28) });
   // Street furniture near the shop: a bench and a bin by the sidewalk, a street sign at the corner.
-  P.push({ model: 'furniture/bench', x: shopX - 2.6, z: ROAD_Z - 1.75, yaw: 0 });
-  P.push({ model: 'furniture/trashcan', x: shopX - 3.3, z: ROAD_Z - 1.75, yaw: 0 });
+  P.push({ model: 'furniture/bench', x: shopX - 2.4, z: ROAD_Z - 1.8, yaw: 0 });
+  P.push({ model: 'furniture/trashcan', x: shopX - 3.1, z: ROAD_Z - 1.8, yaw: 0 });
   P.push({ model: 'roads/sign-street', x: crossXs[0]! + 1.9, z: ROAD_Z - 1.9, yaw: 0 });
   P.push({ model: 'roads/sign-street', x: crossXs[1]! - 1.9, z: ROAD_Z + 1.9, yaw: Math.PI });
   P.push({ model: 'roads/dumpster', x: shopX + STARTER.backYard.x1 - 1.0, z: -1.6 + STARTER.backYard.z0 + 0.8, yaw: Math.PI / 2 });
