@@ -30,6 +30,8 @@ export function installTestHooks(rt: GameRuntime): void {
     /** Spawn n customers at once (busy-shop screenshots and queue tests). */
     crowd: (n: number, onFoot = true) => { const s = rt.state; if (!s) return; for (let i = 0; i < n; i++) spawnCustomer(s, onFoot); rt.bump(); },
     debugPeople: () => rt.renderer?.debugPeople(),
+    /** Force a rival sale for screenshots. */
+    rivalSale: (id: string) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) { r.open = true; r.saleDaysLeft = 2; } rt.bump(); },
     startPlacing: (t: Parameters<GameRuntime['startPlacing']>[0]) => rt.startPlacing(t),
     hover: (x: number, z: number) => rt.hoverWorld(x, z),
     debugFixtures: () => rt.renderer?.debugFixtures(),

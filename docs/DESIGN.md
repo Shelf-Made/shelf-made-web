@@ -82,14 +82,21 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Sim tick | 50 ms game time | smooth at 4x, cheap |
 | Starter shop | 5 × 4 shop + 5 × 2 storeroom, door front-centre, back door rear | tiny, no empty floor |
 | Starting cash | $500 (Standard), $900 (Relaxed), $300 (Hard) | first order + a day of rent |
+| Town demand | 48 shoppers/day base × plot traffic × awareness × reputation × events; +75% pool per open rival | balance harness: guided player nets ≈ $75/day in week one |
 | Rent | $40 / day, charged at close | ~20% of day-1 revenue |
 | Utilities | $6 / day per fridge, $2 per freezer extra | visible cost of chilled goods |
 | Wholesale margin | retail ≈ 1.6 × cost at base price | grocers run 25–40% gross |
-| Customers/day (day 1) | 24 ± 6, rising with awareness and reputation | ~1 every 30 s |
+| Customers/day (day 1) | ≈ 35–45, rising with awareness and reputation | ~1 every 18 s |
 | Walking speed | 1.6 units/s | reads natural in the mini scale |
 | Car speed | 6 units/s on the road, 2.5 in the lot | |
 | Patience | 90–180 s per customer, type-dependent | lines visibly back up |
-| Day-1 shelf | 1 shelf (6 facings × 8 units), 1 fridge (4 × 6) | |
+| Day-1 shelf | 1 shelf (6 facings × 10 units), 1 fridge (4 × 8), 42 units in the storeroom | |
+| Fixture prices | shelf $85, produce crate $60, end cap $70, fridge $220, freezer $300, register $280, kiosk $650 | each ≤ 5 days of a guided player's income |
+| Shop sizes | 5×4 (start), 7×5 for $900, 9×6 for $2 400; lot doubles for $500 | |
+| Staff | cashier ≈ $48/day, stocker $42, cleaner $36, orderer $52, manager $90, +12% payroll tax | |
+| Loans | $600 at 1.2%/day over 10 days, $1 800 at 1.0% over 15, $5 000 at 0.9% over 20 | one rescue offered when broke |
+| Rivals | Cheapo opens day 3 (prices −14%), Fresh & Fine day 6 (+22%), MegaMart day 10 (expands) | sales every 4–8 days |
+| Franchise | $2 800 + a manager from the pool; lighter daily roll | |
 | Upgrade cap | any early upgrade ≤ 5 × average daily profit (balance harness asserts) | no grind walls |
 
 ### 3.1 Customer scoring (Part 2)
@@ -104,7 +111,8 @@ clean/layout, wait, parking, awareness. Score → visit probability via softmax 
 | Loyalist | 0.10 | 0.45 | 0.10 | 0.10 | 0.05 | 0.20 |
 | Impulse | 0.15 | 0.15 | 0.35 | 0.10 | 0.05 | 0.20 |
 
-Reputation moves at most ±0.02 per day toward the day's average satisfaction.
+Reputation moves at most ±0.03 per day toward the day's average satisfaction. The player's share of
+each type is a softmax (k = 4) over weighted scores against open rivals, who count 0.5 each.
 
 ## 4. Art plan
 

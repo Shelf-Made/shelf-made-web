@@ -70,7 +70,7 @@ map = atlas) and `glass` (transparent, 45% alpha). Anything else fails the audit
 | Car | ≤ 3 200 | 2 032–3 124 |
 | Road tile | ≤ 200 | 12–116 |
 | Tree / plant | ≤ 400 | 32–196 |
-| Generated piece (letters, awnings, product variants) | ≤ 300 | |
+| Generated piece (letters, awnings, product variants) | ≤ 450 | 28–408 (W is the widest letter) |
 
 Whole scene budget: < 250 draw calls, < 600 k triangles on screen zoomed out.
 

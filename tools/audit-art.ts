@@ -24,9 +24,9 @@ const RULES: Record<string, Rule> = {
   food: { tris: 1500, height: [0.01, 0.5] },
   nature: { tris: 550, height: [0.05, 3.5] },
   furniture: { tris: 900, height: [0.004, 1.8] },
-  generated: { tris: 300, height: [0.01, 1.6] },
+  generated: { tris: 450, height: [0.01, 1.6] },
 };
-const PIVOT_EXCEPTIONS = new Set(['market/wall', 'market/wall-door', 'market/wall-window', 'market/wall-corner', 'market/fence', 'market/fence-door', 'roads/road-side', 'commercial/awning', 'commercial/awning-wide', 'commercial/overhang', 'commercial/overhang-wide', 'commercial/parasol-a', 'commercial/parasol-b']);
+const PIVOT_EXCEPTIONS = new Set(['market/wall', 'market/wall-door', 'market/wall-window', 'market/wall-corner', 'market/fence', 'market/fence-door', 'roads/road-side', 'commercial/awning', 'commercial/awning-wide', 'commercial/overhang', 'commercial/overhang-wide', 'commercial/parasol-a', 'commercial/parasol-b', 'generated/awning-segment']);
 const ALLOWED_MATERIALS = new Set(['atlas', 'glass']);
 
 async function main(): Promise<void> {

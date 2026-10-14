@@ -17,3 +17,10 @@ One line each, newest at the bottom.
 - Screenshot runs disable CSS animations: headless SwiftShader renders so slowly that fades were caught half-way.
 - Kenney's cash register, standing fridge and end cap have their pivot on the front face; the renderer centres them in their tile with a per-type offset rather than editing the packs.
 - The checkout line bends toward the shop's centre and every slot snaps to a walkable cell, so lines never run through a wall.
+- Finance lives inside the Stats card and franchises inside Build, so the top bar keeps exactly the seven buttons the brief lists (plus a small Hint button for "what should I do next?").
+- Staff work whole days; morale, raises and quitting carry the "imperfect staff" feeling without a shift scheduler.
+- Rivals are a daily state machine (open, sale, drift, expand) issued through the same tick rather than a full agent replaying player commands; the balance harness checks they neither crush nor ignore the player.
+- Franchises are a lighter daily roll with reports and alerts; their town buildings are stock shop fronts with a name board.
+- Guided-player income of about $75/day in week one is the balance anchor: fixtures cost at most five days of that, the shop needs restocking daily, and rivals cost a third of trade at most.
+- Shortages drop a line from an order instead of rejecting the order; the first version rejected whole orders and starved the shop.
+- `cheat` commands only work in sandbox or under a test harness (`navigator.webdriver`), never in normal play.

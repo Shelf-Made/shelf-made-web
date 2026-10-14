@@ -67,6 +67,13 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('12-finance-card') });
     await hooks(page, 'openCard', 'stats');
 
+    // A rival sale across the road.
+    await hooks(page, 'rivalSale', 'discount');
+    await hooks(page, 'camera', -14, 4, 22, -0.5, 0.9);
+    await settle(page, 700);
+    await page.screenshot({ path: out('13-rival-sale') });
+    await hooks(page, 'focusStore');
+
     // Night card.
     await hooks(page, 'advance', 800);
     await settle(page, 500);

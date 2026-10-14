@@ -15,8 +15,9 @@
     "shots": "playwright test e2e/shots.spec.ts",
     "perf": "playwright test e2e/perf.spec.ts",
     "audit:art": "tsx tools/audit-art.ts",
-    "assets": "tsx tools/convert-assets.ts",
-    "balance": "tsx tools/balance.ts"
+    "assets": "tsx tools/convert-assets.ts && tsx tools/gen-models.ts",
+    "balance": "tsx tools/balance.ts",
+    "gen:models": "tsx tools/gen-models.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

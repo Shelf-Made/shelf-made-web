@@ -2558,6 +2558,924 @@
    "clips": []
   },
   {
+   "pack": "generated",
+   "name": "awning-segment",
+   "file": "models/generated/awning-segment.glb",
+   "size": [
+    1.2,
+    0.208,
+    0.442
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 48,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "dog",
+   "file": "models/generated/dog.glb",
+   "size": [
+    0.12,
+    0.28,
+    0.425
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 84,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-0",
+   "file": "models/generated/letter-0.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 312,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-1",
+   "file": "models/generated/letter-1.glb",
+   "size": [
+    0.18,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-2",
+   "file": "models/generated/letter-2.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 192,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-3",
+   "file": "models/generated/letter-3.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-4",
+   "file": "models/generated/letter-4.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 216,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-5",
+   "file": "models/generated/letter-5.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 192,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-6",
+   "file": "models/generated/letter-6.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 240,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-7",
+   "file": "models/generated/letter-7.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-8",
+   "file": "models/generated/letter-8.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 264,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-9",
+   "file": "models/generated/letter-9.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 216,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-A",
+   "file": "models/generated/letter-A.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 288,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-amp",
+   "file": "models/generated/letter-amp.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 312,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-B",
+   "file": "models/generated/letter-B.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 264,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-C",
+   "file": "models/generated/letter-C.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-D",
+   "file": "models/generated/letter-D.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 288,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-E",
+   "file": "models/generated/letter-E.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-F",
+   "file": "models/generated/letter-F.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-G",
+   "file": "models/generated/letter-G.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 240,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-H",
+   "file": "models/generated/letter-H.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 312,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-I",
+   "file": "models/generated/letter-I.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-J",
+   "file": "models/generated/letter-J.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 216,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-K",
+   "file": "models/generated/letter-K.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 312,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-L",
+   "file": "models/generated/letter-L.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-M",
+   "file": "models/generated/letter-M.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 384,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-N",
+   "file": "models/generated/letter-N.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 360,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-O",
+   "file": "models/generated/letter-O.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 288,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-P",
+   "file": "models/generated/letter-P.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 216,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-Q",
+   "file": "models/generated/letter-Q.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 336,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-R",
+   "file": "models/generated/letter-R.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 288,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-S",
+   "file": "models/generated/letter-S.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-T",
+   "file": "models/generated/letter-T.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-U",
+   "file": "models/generated/letter-U.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 312,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-V",
+   "file": "models/generated/letter-V.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 312,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-W",
+   "file": "models/generated/letter-W.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 408,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-X",
+   "file": "models/generated/letter-X.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 264,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-Y",
+   "file": "models/generated/letter-Y.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 216,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "letter-Z",
+   "file": "models/generated/letter-Z.glb",
+   "size": [
+    0.3,
+    0.42,
+    0.1
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 168,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-bag",
+   "file": "models/generated/product-bag.glb",
+   "size": [
+    0.205,
+    0.3,
+    0.105
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-bottle",
+   "file": "models/generated/product-bottle.glb",
+   "size": [
+    0.104,
+    0.27,
+    0.104
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 88,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-box",
+   "file": "models/generated/product-box.glb",
+   "size": [
+    0.165,
+    0.22,
+    0.105
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-bread",
+   "file": "models/generated/product-bread.glb",
+   "size": [
+    0.43,
+    0.18,
+    0.125
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 56,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-can",
+   "file": "models/generated/product-can.glb",
+   "size": [
+    0.099,
+    0.16,
+    0.104
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 80,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-carton",
+   "file": "models/generated/product-carton.glb",
+   "size": [
+    0.125,
+    0.27,
+    0.125
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-fruit",
+   "file": "models/generated/product-fruit.glb",
+   "size": [
+    0.11,
+    0.13,
+    0.11
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 100,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-jar",
+   "file": "models/generated/product-jar.glb",
+   "size": [
+    0.11,
+    0.17,
+    0.11
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 64,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-jug",
+   "file": "models/generated/product-jug.glb",
+   "size": [
+    0.125,
+    0.24,
+    0.105
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 48,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "product-tray",
+   "file": "models/generated/product-tray.glb",
+   "size": [
+    0.21,
+    0.075,
+    0.15
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 24,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "pylon-sign",
+   "file": "models/generated/pylon-sign.glb",
+   "size": [
+    3.06,
+    1.56,
+    0.18
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 48,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "wall-ledge",
+   "file": "models/generated/wall-ledge.glb",
+   "size": [
+    1.002,
+    0.3,
+    0.16
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
    "pack": "market",
    "name": "bottle-return",
    "file": "models/market/bottle-return.glb",
