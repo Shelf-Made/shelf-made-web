@@ -22,6 +22,24 @@ export const ROLE_BLURB: Record<StaffRole, string> = {
 };
 const BASE_WAGE: Record<StaffRole, number> = { cashier: 48, stocker: 42, cleaner: 36, orderer: 52, manager: 90 };
 
+export const SHIFT_NAMES = { full: 'All day', morning: 'Mornings (8–2)', evening: 'Evenings (2–8)' } as const;
+
+/** Is this employee on shift right now? */
+export function onShift(p: Person, time: number): boolean {
+  const half = 6 * 60;
+  return p.shift === 'morning' ? time < half : p.shift === 'evening' ? time >= half : true;
+}
+
+export function setShift(state: GameState, staffId: number, shift: 'full' | 'morning' | 'evening'): string | null {
+  const p = state.people.find((x) => x.id === staffId && x.kind === 'staff');
+  if (!p) return 'No such employee.';
+  p.shift = shift;
+  return null;
+}
+
+/** Daily wage after the shift pattern. */
+export function wageFor(p: Person): number { return Math.round((p.wage ?? 0) * (p.shift && p.shift !== 'full' ? 0.55 : 1)); }
+
 export const DEFAULT_RULES: ManagerRules = { reorderPoint: 1.0, spendCap: 300, priceMin: 0.95, priceMax: 1.15, wageCap: 70, adBudget: 0 };
 
 export function makeCandidate(state: GameState, role?: StaffRole): Candidate {
@@ -52,7 +70,7 @@ export function hire(state: GameState, candidateId: number): string | null {
   const p: Person = {
     id: c.id, kind: 'staff', look: { model: 12, variant: c.look.variant, height: c.look.height }, x: d.x, z: d.z + 1.5, yaw: Math.PI, px: d.x, pz: d.z + 1.5,
     state: 'idle', anim: 'walk', path: [], pathIdx: 0, speed: 1.6 * c.speed, timer: 0,
-    role: c.role, wage: c.wage, skill: c.skill, morale: 0.85, name: c.name, task: null, carrying: null, stuckTicks: 0, hiredDay: state.day,
+    role: c.role, wage: c.wage, skill: c.skill, morale: 0.85, name: c.name, task: null, carrying: null, stuckTicks: 0, hiredDay: state.day, shift: 'full',
   };
   state.people.push(p);
   if (c.role === 'cashier') { const reg = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && !f.staffId); if (reg) reg.staffId = p.id; }

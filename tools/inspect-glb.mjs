@@ -1,7 +1,6 @@
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { getBounds } from '@gltf-transform/core';
-import fs from 'node:fs';
 import path from 'node:path';
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 for (const file of process.argv.slice(2)) {

@@ -19,7 +19,7 @@ an empty repository in this session.
 - [x] P1 Customers: four types with the design's weights, six store scores (price vs town average, availability, clean & layout, wait, parking, awareness), softmax share against rivals, budgets, patience, abandoned baskets as visible litter, slow reputation. Stats card shows the scores and shares.
 - [x] P2 Supply: 48 products across six categories, three suppliers (price, speed, minimums, invoice terms), daily wholesale swings, shortages, spoilage, shelf and storeroom limits, chilled goods need fridges.
 - [x] P3 Money: rent, power per fridge, wages + 12% payroll tax, invoices with terms, three loans with interest and one rescue, shoplifting, card fees, finance section (P&L, cash, upcoming bills, loans), fail state with a game-over card.
-- [x] P4 Staff: hiring pool refreshed daily, five roles, wage / skill / speed / morale, cashier slips and dropped boxes, raises, quitting, stockers restock, cleaners clear litter, orderers reorder to a point, managers follow rules (reorder point, spend cap, price range, wage cap).
+- [x] P4 Staff: hiring pool refreshed daily, five roles, wage / skill / speed / morale, shifts (all day, mornings, evenings at 55% pay; the owner covers the till when the cashier is off), cashier slips and dropped boxes, raises, quitting, stockers restock, cleaners clear litter, orderers reorder to a point, managers follow rules (reorder point, spend cap, price range, wage cap).
 - [x] P5 Build mode: twelve-item catalog, ghost with valid/invalid colour, the reason in words and the price, rotate, move, copy, sell at 60%, undo/redo, placement that never blocks a path, three shop sizes, lot expansion, heat-map / exposure / path overlays. Layout matters: exposure near the door and on end caps, impulse grabs, walking distance and crowding penalties.
 - [x] P6 Rivals: discounter, premium grocer and expanding chain open on days 3 / 6 / 10, run sales that visibly pull bargain hunters (SALE board across the road, notices), reputations drift; MegaMart opens more branches.
 - [x] P7 Balance harness: `npm run balance -- --check` runs cautious, aggressive, delegator, franchiser, careless-builder and guided-new-player strategies over six seeds and asserts the brief's six rules. Passing.
@@ -36,7 +36,7 @@ an empty repository in this session.
 |---|---|
 | `npm run lint` (ESLint + tsc, sim isolation) | clean |
 | `npm test` (Vitest) | 15 passed: determinism, full day with nobody stuck, deliveries, paths through doors, plot pick, saves round-trip + migration, scoring, rivals, budgets, staff, unlocks, franchises, kiosks + fees |
-| `npm run e2e` (Playwright, SwiftShader) | 3 passed: gameplay flow, screenshots, perf |
+| `npm run e2e` (Playwright, SwiftShader) | 3 passed: gameplay flow (real clicks on the register, a Stock-card order, a pointer-placed shelf, Esc, save & quit), screenshots, perf |
 | `npm run audit:art` | 332 models audited, passed |
 | `npm run balance -- --check` | passed; guided player ≈ $75/day in week one, no sensible strategy bust, careless builder 2 of 6 bust |
 | Perf (`docs/screens/perf.json`) | draw calls 67 starter / 152 busy at 4x / 163 zoomed out (budget 250); triangles 244k / 289k / 316k; bundle 1.6 MB gzipped (three.js 159 KB, app 45 KB) + 1.8 MB models + 93 KB atlas, well under 15 MB |
@@ -49,15 +49,15 @@ Visual checklist, as of the last run: store ≈ 45% of the screen at default zoo
 ## Missing or broken
 - **Push to GitHub is blocked** (403: the Claude GitHub App is not installed on `Shelf-Made/shelf-made-web`). Every commit is on the local branch `claude/shelf-made-game-build-1kjvrp`; the container is ephemeral, so this needs fixing first (see "Decisions needing you").
 - Real-GPU frame rate was never measured; SwiftShader only. The 60 / 45 fps targets are plausible from the draw-call counts but unverified.
-- Staff shifts are always full-day; raises and quitting work, scheduling does not exist.
 - Rival AI is a small state machine (sales, expansion, drift), not a full copy of the player's command set.
 - Franchise stores are a daily roll, not a second simulated floor; their buildings are stock Kenney shop fronts with a name board.
 - Kiosk hiccups and cashier slips are popups only; there is no "mistake" animation.
+- A late find: the popup layer was swallowing clicks on the world until the last hour; the gameplay spec now clicks the register, a floor tile and the cards for real so this cannot regress silently.
 - Audio is synthesised and was never heard in this session (no speakers): levels may need a pass.
 - The Electron wrapper and Steam layer were written but not launched here (no display; `npm install` in `desktop/` not run).
 - GitHub Actions workflow is untested on GitHub (nothing pushed).
 - Mobile layout works at phone width but was not tested on a touch device; pinch zoom is implemented.
-- Colour-blind markers only add a CSS class today; the product accent bands already differ in shape, but no extra markers are drawn.
+- Colour-blind markers cover the UI (symbols on every coloured tag, striped bars); product blocks in the world differ by shape and accent band but carry no extra marker.
 - No localisation; English only.
 
 ## Decisions needing you

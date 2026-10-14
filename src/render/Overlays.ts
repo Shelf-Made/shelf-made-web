@@ -42,7 +42,7 @@ export class Overlays {
     const d = doorInside(state);
     for (let x = f.x0; x < f.x1; x++) for (let z = f.z0; z < f.z1; z++) {
       const wx = shop.originX + x + 0.5, wz = shop.originZ + z + 0.5;
-      let v = 0;
+      let v: number;
       if (this.kind === 'heat') v = (this.heat.get(`${Math.floor(wx)},${Math.floor(wz)}`) ?? 0) / max;
       else if (this.kind === 'exposure') {
         const near = Math.max(0, 1 - Math.hypot(wx - d.x, wz - d.z) / 6);

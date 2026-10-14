@@ -131,3 +131,10 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 .tip.anim-pop { animation: pop 0.25s ease; }
 .centre.anim-slide { animation: slide 0.25s ease; }
 @media (max-width: 760px) { .lobby .panel { grid-template-columns: 1fr; } .plots { grid-template-columns: 1fr; } .clock { display: none; } .iconbtn { min-width: 52px; } }
+
+/* Colour-blind markers: every coloured tag also carries a symbol. */
+html.colour-blind .tag.good::before { content: '✓ '; }
+html.colour-blind .tag.bad::before { content: '! '; }
+html.colour-blind .tag.cold::before { content: '❄ '; }
+html.colour-blind .bar > div { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
+html.colour-blind .iconbtn.active { outline: 3px solid var(--yellow); }

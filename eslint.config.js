@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'desktop/dist/**', 'desktop/node_modules/**', 'public/**', 'third_party/**', 'playwright-report/**', 'test-results/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'desktop/**', 'public/**', 'third_party/**', 'playwright-report/**', 'test-results/**', 'tools/inspect-glb.mjs'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -5,6 +5,27 @@ test('new game → scan a customer → night → open tomorrow → autosave show
   await ready(page);
   await hooks(page, 'newGame', 5, 'main', 'E2E Mart', { tutorial: true });
   await expect(page.locator('.money')).toContainText('$');
+  // A real click on the register scans one item for the customer being served.
+  await hooks(page, 'setSpeed', 0);
+  await hooks(page, 'advanceNoScan', 90);
+  const regPt = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { runtime: { renderer: { project: (x: number, y: number, z: number, out: { x: number; y: number; visible: boolean }) => void } | null }; state: () => { shop: { originX: number; originZ: number; fixtures: { type: string; x: number; z: number; serving: number | null; scanned: number }[] } } } }).__shelf;
+    const s = h.state().shop; const reg = s.fixtures.find((f) => f.type === 'register')!; const out = { x: 0, y: 0, visible: false };
+    h.runtime.renderer!.project(s.originX + reg.x + 0.5, 0.5, s.originZ + reg.z + 0.5, out); return { ...out, serving: reg.serving, scanned: reg.scanned };
+  });
+  expect(regPt.serving).not.toBeNull();
+  await page.mouse.click(regPt.x, regPt.y);
+  await page.waitForTimeout(200);
+  const scanned = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { shop: { fixtures: { type: string; scanned: number }[] } } } }).__shelf.state().shop.fixtures.find((f) => f.type === 'register')!.scanned);
+  expect(scanned).toBe(regPt.scanned + 1);
+  // Ordering through the Stock card.
+  await page.getByRole('button', { name: /^stock/i }).first().click();
+  await page.getByRole('button', { name: /more apples/i }).click();
+  await page.getByRole('button', { name: /place order/i }).click();
+  const orders = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { orders: unknown[] } } }).__shelf.state().orders.length);
+  expect(orders).toBe(1);
+  await page.keyboard.press('Escape');
+  await hooks(page, 'setSpeed', 1);
   await hooks(page, 'advance', 400);
   const served = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { today: { served: number } } } }).__shelf.state().today.served);
   expect(served).toBeGreaterThan(0);

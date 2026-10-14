@@ -92,6 +92,7 @@ export interface Person {
   name?: string;
   stuckTicks?: number;
   hiredDay?: number;
+  shift?: 'full' | 'morning' | 'evening';
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';

@@ -1,5 +1,5 @@
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { ROLE_NAMES, ROLE_BLURB } from '@/sim/staff';
+import { ROLE_NAMES, ROLE_BLURB, SHIFT_NAMES, wageFor } from '@/sim/staff';
 import { money } from '../useRuntime';
 
 export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
@@ -18,7 +18,10 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           <div className="item" key={p.id}>
             <div>
               <div className="name">{p.name} <span className="tag">{ROLE_NAMES[p.role ?? 'cashier']}</span></div>
-              <div className="sub">{money(p.wage ?? 0)}/day · skill {pct(p.skill ?? 0)} · morale {pct(p.morale ?? 0)}{(p.morale ?? 1) < 0.35 ? ' (about to quit)' : ''}</div>
+              <div className="sub">{money(wageFor(p))}/day · skill {pct(p.skill ?? 0)} · morale {pct(p.morale ?? 0)}{(p.morale ?? 1) < 0.35 ? ' (about to quit)' : ''}</div>
+              <select value={p.shift ?? 'full'} onChange={(e) => runtime.dispatch({ type: 'setShift', staffId: p.id, shift: e.target.value as 'full' | 'morning' | 'evening' })} aria-label={`${p.name} shift`} style={{ marginTop: 4 }}>
+                {(Object.keys(SHIFT_NAMES) as (keyof typeof SHIFT_NAMES)[]).map((k) => <option key={k} value={k}>{SHIFT_NAMES[k]}</option>)}
+              </select>
             </div>
             <div className="row">
               <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'raise', staffId: p.id })} title="+10% wage, happier">Raise</button>
@@ -45,7 +48,7 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <label className="row between"><span>Daily spend cap</span><span className="row"><span className="key">{money(r.spendCap)}</span><button className="btn small ghost" onClick={() => set({ spendCap: Math.max(50, r.spendCap - 50) })}>−</button><button className="btn small ghost" onClick={() => set({ spendCap: r.spendCap + 50 })}>+</button></span></label>
       <label className="row between"><span>Price range (vs average)</span><span className="row"><span className="key">{pct(r.priceMin)}–{pct(r.priceMax)}</span><button className="btn small ghost" onClick={() => set({ priceMin: Math.max(0.7, r.priceMin - 0.05), priceMax: Math.max(0.8, r.priceMax - 0.05) })}>−</button><button className="btn small ghost" onClick={() => set({ priceMin: Math.min(1.3, r.priceMin + 0.05), priceMax: Math.min(1.6, r.priceMax + 0.05) })}>+</button></span></label>
       <label className="row between"><span>Wage cap for hires</span><span className="row"><span className="key">{money(r.wageCap)}</span><button className="btn small ghost" onClick={() => set({ wageCap: Math.max(30, r.wageCap - 5) })}>−</button><button className="btn small ghost" onClick={() => set({ wageCap: r.wageCap + 5 })}>+</button></span></label>
-      <p className="muted">Wages come out each night plus 12% payroll tax. Morale drops when the shop is slammed or pay is low.</p>
+      <p className="muted">Wages come out each night plus 12% payroll tax; half shifts pay 55%. Morale drops when the shop is slammed or pay is low.</p>
     </>
   );
 }

@@ -14,7 +14,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 1,
     launchOptions: {
-      executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium',
+      // Local: the preinstalled Chromium. CI sets CHROMIUM_PATH to an empty string to use Playwright's own download.
+      executablePath: process.env.CHROMIUM_PATH === undefined ? '/opt/pw-browsers/chromium' : (process.env.CHROMIUM_PATH || undefined),
       args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
     },
   },

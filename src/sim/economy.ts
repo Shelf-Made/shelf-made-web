@@ -9,7 +9,7 @@ import { rivalDay } from './rivals';
 import { computeScores } from './customers';
 import { marketDay, inShortage } from './market';
 import { closingCharges, checkFailState, addBill, PAYROLL_TAX } from './money';
-import { staffNight, autoOrder, managerPrices } from './staff';
+import { staffNight, autoOrder, managerPrices, wageFor } from './staff';
 import { applyUnlocks } from './progression';
 import { marketingDay } from './marketing';
 import { franchiseDay } from './franchise';
@@ -73,7 +73,7 @@ export function dailyUtilities(state: GameState): number {
 }
 
 export function dailyWages(state: GameState): number {
-  return state.people.filter((p) => p.kind === 'staff').reduce((a, p) => a + (p.wage ?? 0), 0);
+  return state.people.filter((p) => p.kind === 'staff').reduce((a, p) => a + wageFor(p), 0);
 }
 
 /** Close the books for the day. Called once when the last customer has left. */

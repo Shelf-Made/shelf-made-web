@@ -9,7 +9,7 @@ import { spawnCustomerCar, leaveLot } from './cars';
 import { listWeight, budgetFor } from './customers';
 import { pickType } from './tick';
 import { effectivePrice } from './marketing';
-import { cashierMistake } from './staff';
+import { cashierMistake, onShift } from './staff';
 import { CARD_FEE } from './money';
 
 const CUSTOMER_MODELS = 12;
@@ -402,7 +402,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         break;
       }
       // A cashier scans automatically; at a kiosk the shopper does it (slowly, with the odd hiccup); otherwise the player clicks.
-      const cashier = state.people.find((s) => s.id === reg.staffId && s.kind === 'staff' && dist(s, fixtureBackWorld(state.shop, reg)) < 0.8);
+      const cashier = state.people.find((s) => s.id === reg.staffId && s.kind === 'staff' && onShift(s, state.time) && dist(s, fixtureBackWorld(state.shop, reg)) < 0.8);
       if (cashier) {
         p.timer += dt;
         const rate = 0.55 / (0.6 + (cashier.skill ?? 0.5));
@@ -464,7 +464,7 @@ function tickWalker(state: GameState, p: Person): void {
 function homeOf(state: GameState, p: Person): Vec2 {
   const reg = state.shop.fixtures.find((f) => f.type === 'register');
   if (p.kind === 'owner') {
-    const cashier = reg && reg.staffId !== null && reg.staffId !== undefined && state.people.some((x) => x.id === reg.staffId && x.kind === 'staff');
+    const cashier = reg && reg.staffId !== null && reg.staffId !== undefined && state.people.some((x) => x.id === reg.staffId && x.kind === 'staff' && onShift(x, state.time));
     if (reg && !cashier) return fixtureBackWorld(state.shop, reg);
     const sp = storeroomPoint(state); return { x: sp.x + 1.5, z: sp.z };
   }
@@ -479,6 +479,14 @@ function homeOf(state: GameState, p: Person): Vec2 {
 /** Workers (the owner and staff): stand at their post, carry stock, clean up. */
 function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   const dt = TICK;
+  // Off shift: stand out by the back door (or walk there), do nothing else.
+  if (p.kind === 'staff' && !onShift(p, state.time)) {
+    const s = state.shop; const off = { x: s.originX + s.backDoor.x + 1.6, z: s.originZ + s.backDoor.z - 1.0 };
+    if (p.task || p.carrying) { if (p.carrying) { state.shop.storage.push({ productId: p.carrying.productId, qty: p.carrying.qty, day: state.day }); p.carrying = null; } p.task = null; }
+    if (dist(p, off) > 0.4) { if (p.state !== 'toRegister' || p.pathIdx >= p.path.length) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, off, dyn); } followPath(p, p.speed, dt, 12, 0.22); }
+    else { p.state = 'idle'; p.anim = 'idle'; }
+    return;
+  }
   const home = homeOf(state, p);
   // Stockers and the free owner look for shelves to fill; cleaners look for litter.
   if ((p.state === 'idle' || p.state === 'toRegister') && !p.task) {

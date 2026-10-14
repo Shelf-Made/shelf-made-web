@@ -11,7 +11,7 @@ import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
-import { hire, fire, giveRaise } from './staff';
+import { hire, fire, giveRaise, setShift } from './staff';
 import { canPlace, expandShop, expandLot, moveFixture } from './build';
 import { startFlyers, toggleBillboard, setPromotion, setAd } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
@@ -43,6 +43,7 @@ export type Command =
   | { type: 'hire'; candidateId: number }
   | { type: 'fire'; staffId: number }
   | { type: 'raise'; staffId: number }
+  | { type: 'setShift'; staffId: number; shift: 'full' | 'morning' | 'evening' }
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
   | { type: 'clean'; litterId: number }
@@ -150,6 +151,7 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
     case 'repayLoan': { const err = repayLoan(state, cmd.loanId, cmd.amount); return err ? { ok: false, message: err } : { ok: true }; }
     case 'hire': { const err = hire(state, cmd.candidateId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'fire': { const err = fire(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'setShift': { const err = setShift(state, cmd.staffId, cmd.shift); return err ? { ok: false, message: err } : { ok: true }; }
     case 'raise': { const err = giveRaise(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setRules': { state.rules = { ...state.rules, ...cmd.rules }; return { ok: true }; }
     case 'ackBadge': { state.unlocks.newBadges = state.unlocks.newBadges.filter((b) => b !== cmd.card); return { ok: true }; }
