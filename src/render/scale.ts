@@ -1,0 +1,10 @@
+/** Shared size constants (see docs/STYLE_GUIDE.md). 1 unit = 1 store tile. */
+export const WALL_HEIGHT = 1.0;
+export const WALL_THICK = 0.14;
+export const LEDGE_HEIGHT = 0.3;
+export const STRIPE_BOTTOM = 0.62;
+export const STRIPE_TOP = 0.74;
+export const SHELF_TIER = 0.25;
+export const STOREY = 1.2;
+export const LANE = 1.0;
+export const SIDEWALK = 0.6;

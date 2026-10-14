@@ -1,0 +1,74 @@
+import type { GameState } from './types';
+import { TICK, DAY_SECONDS, DIFFICULTY } from './layout';
+import { tickCars, spawnTraffic } from './cars';
+import { tickPeople, spawnCustomer, spawnWalker, plotOf } from './people';
+import { tickOrders, closeDay, isClosingTime } from './economy';
+import { withRng } from './state';
+
+/** Customers per day the shop can expect, before the time-of-day curve. */
+export function expectedCustomers(state: GameState): number {
+  const plot = plotOf(state);
+  const s = state.shop;
+  const base = 24 * DIFFICULTY[state.difficulty].demandMul;
+  const growth = 1 + (state.day - 1) * 0.06;
+  return base * plot.traffic * (0.6 + 0.8 * s.awareness) * (0.7 + 0.6 * s.reputation) * Math.min(growth, 2.5);
+}
+
+/** Busy at lunch and after work. Integrates to roughly 1 over the day. */
+export function dayCurve(time: number): number {
+  const h = time / 60; // 0..12 → 8am..8pm
+  const lunch = Math.exp(-((h - 4.5) ** 2) / 2.2);
+  const evening = Math.exp(-((h - 9.5) ** 2) / 2.8);
+  return 0.55 + 0.8 * lunch + 0.9 * evening;
+}
+
+/** Advance the simulation by one fixed step. */
+export function tick(state: GameState): void {
+  state.tick++;
+  if (state.phase === 'picking' || state.phase === 'night') {
+    // The world keeps breathing: traffic and walkers only.
+    ambient(state, state.phase === 'night' ? 0.4 : 1);
+    tickCars(state);
+    tickPeople(state);
+    trimPopups(state);
+    return;
+  }
+  state.time += TICK;
+  if (state.phase === 'open') {
+    const perSecond = (expectedCustomers(state) / DAY_SECONDS) * dayCurve(state.time) * 1.15;
+    state.spawn.customer += perSecond * TICK;
+    if (state.spawn.customer >= 1) {
+      state.spawn.customer -= 1;
+      spawnCustomer(state);
+    } else if (withRng(state, 'customers', (r) => r.chance(perSecond * TICK * 0.35))) {
+      spawnCustomer(state);
+    }
+    if (isClosingTime(state)) state.phase = 'closing';
+  }
+  ambient(state, 1);
+  tickOrders(state, TICK);
+  tickCars(state);
+  tickPeople(state);
+  if (state.phase === 'closing') {
+    const customersLeft = state.people.some((p) => p.kind === 'customer');
+    if (!customersLeft || state.time > DAY_SECONDS + 120) {
+      for (const p of state.people) if (p.kind === 'customer') p.state = 'gone';
+      state.people = state.people.filter((p) => p.state !== 'gone');
+      closeDay(state);
+    }
+  }
+  trimPopups(state);
+}
+
+function ambient(state: GameState, scale: number): void {
+  const plot = plotOf(state);
+  state.spawn.traffic += TICK * 0.09 * plot.traffic * scale;
+  if (state.spawn.traffic >= 1) { state.spawn.traffic -= 1; spawnTraffic(state); }
+  state.spawn.walker += TICK * 0.05 * scale;
+  if (state.spawn.walker >= 1) { state.spawn.walker -= 1; spawnWalker(state); }
+}
+
+function trimPopups(state: GameState): void {
+  const maxAge = 2.2 / TICK;
+  if (state.popups.length && state.tick - state.popups[0]!.tick > maxAge) state.popups = state.popups.filter((p) => state.tick - p.tick <= maxAge);
+}

@@ -18,7 +18,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, prune, flatten, clearNodeTransform, transformMesh, getBounds, join, cloneDocument, quantize } from '@gltf-transform/functions';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join as pjoin, dirname, resolve } from 'node:path';
-import sharp from 'sharp';
+import sharp, { type OverlayOptions } from 'sharp';
 import { PACKS, ATLAS_COLS, ATLAS_ROWS, ATLAS_SLOT, ATLAS_SLOTS, PALETTE_SLOT, PALETTE_CELLS, type PackSpec } from './lib/manifest';
 import { readZip, findEntry } from './lib/zip';
 import { tmpdir } from 'node:os';
@@ -61,34 +61,26 @@ function remapUVs(prim: Primitive, slot: number): void {
   uv.setArray(out);
 }
 
-/** Give every vertex of a flat-coloured primitive the UV of its palette cell. */
-function bakeFlatColour(prim: Primitive): void {
+/** Kenney's Nature Kit greens are mint; pull them to the town's grass greens so trees match the roofs and lawns. */
+const COLOUR_OVERRIDES: Record<string, string> = {
+  leafsGreen: '#4FAE62', leafsDark: '#3C8F4E', leafsFall: '#E8903F', grass: '#63A854', treeBark: '#8B5A3C', woodBark: '#8B5A3C', woodBarkDark: '#6E4630',
+  colorRed: '#E8573F', colorYellow: '#FFC044', colorPurple: '#9B6FE0', dirt: '#B58A5C', stone: '#9A9DA6', rock: '#8E9199',
+};
+
+/** Give every vertex of a flat-coloured primitive the UV of its palette cell (always a fresh accessor: packs share UV accessors between primitives). */
+function bakeFlatColour(doc: Document, prim: Primitive): void {
   const mat = prim.getMaterial();
   const base = mat ? mat.getBaseColorFactor() : [0.8, 0.8, 0.8, 1];
-  const hex = rgbToHex(linearToSrgb(base[0]), linearToSrgb(base[1]), linearToSrgb(base[2]));
+  const override = mat ? COLOUR_OVERRIDES[mat.getName()] : undefined;
+  const hex = override ?? rgbToHex(linearToSrgb(base[0] ?? 0.8), linearToSrgb(base[1] ?? 0.8), linearToSrgb(base[2] ?? 0.8));
   const cell = palette.cell(hex);
   const [u, v] = Palette.uv(cell);
   const pos = prim.getAttribute('POSITION')!;
   const n = pos.getCount();
   const arr = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) { arr[i * 2] = u; arr[i * 2 + 1] = v; }
-  const existing = prim.getAttribute('TEXCOORD_0');
-  if (existing) existing.setArray(arr);
-  else {
-    const doc = prim.getGraph() as unknown as { getRoot?: unknown };
-    void doc;
-    const acc = (prim as unknown as { _document?: Document })._document; // unused
-    void acc;
-    throw new Error('expected TEXCOORD_0 to exist; create it with document.createAccessor instead');
-  }
-}
-
-function ensureUVs(doc: Document, prim: Primitive): void {
-  if (prim.getAttribute('TEXCOORD_0')) return;
-  const pos = prim.getAttribute('POSITION')!;
-  const acc = doc.createAccessor('uv').setType('VEC2').setArray(new Float32Array(pos.getCount() * 2));
   const buffer = doc.getRoot().listBuffers()[0] ?? doc.createBuffer();
-  acc.setBuffer(buffer);
+  const acc = doc.createAccessor('uv').setType('VEC2').setArray(arr).setBuffer(buffer);
   prim.setAttribute('TEXCOORD_0', acc);
 }
 
@@ -106,8 +98,7 @@ function unifyMaterials(doc: Document, pack: PackSpec): void {
           prim.setMaterial(glassMat);
         } else prim.setMaterial(atlasMat);
       } else {
-        ensureUVs(doc, prim);
-        bakeFlatColour(prim);
+        bakeFlatColour(doc, prim);
         prim.setMaterial(atlasMat);
       }
     }
@@ -165,7 +156,7 @@ async function finalize(doc: Document, pack: PackSpec, name: string, skinned: bo
       const m: number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -cx, -b0.min[1], -cz, 1];
       for (const mesh of doc.getRoot().listMeshes()) transformMesh(mesh, m as unknown as Parameters<typeof transformMesh>[1]);
     }
-  } else {
+  } else if (process.env.SKIN_RAW !== '1') {
     await doc.transform(dedup(), prune({ keepAttributes: true }));
   }
   // 16-bit positions / UVs and 8-bit normals roughly halve the download (KHR_mesh_quantization).
@@ -223,7 +214,7 @@ function isDescendant(ancestor: Node, node: Node): boolean {
   return false;
 }
 
-async function convertPack(pack: PackSpec, infos: ModelInfo[], atlasLayers: sharp.OverlayOptions[]): Promise<void> {
+async function convertPack(pack: PackSpec, infos: ModelInfo[], atlasLayers: OverlayOptions[]): Promise<void> {
   const zipPath = pjoin(ROOT, 'third_party', 'kenney', pack.zip);
   if (!existsSync(zipPath)) throw new Error(`missing ${zipPath}`);
   const files = readZip(zipPath);
@@ -252,13 +243,13 @@ async function convertPack(pack: PackSpec, infos: ModelInfo[], atlasLayers: shar
     const doc = await io.read(pjoin(cache, pack.modelDir, `${src}.glb`));
     dropIgnoredNodes(doc);
     const skinned = doc.getRoot().listSkins().length > 0;
-    const clips = skinned ? pruneClips(doc) : (doc.getRoot().listAnimations().forEach((a) => a.dispose()), []);
+    const clips = skinned ? (process.env.SKIN_RAW === '1' ? doc.getRoot().listAnimations().map((a) => a.getName()) : pruneClips(doc)) : (doc.getRoot().listAnimations().forEach((a) => a.dispose()), []);
     if (pack.id === 'market') await splitProducts(doc, pack, infos, seenProducts);
     await finalize(doc, pack, name, skinned, clips, infos);
   }
 }
 
-async function writeAtlas(layers: sharp.OverlayOptions[]): Promise<void> {
+async function writeAtlas(layers: OverlayOptions[]): Promise<void> {
   // Palette slot: PALETTE_CELLS x PALETTE_CELLS cells.
   const cell = ATLAS_SLOT / PALETTE_CELLS;
   const raw = Buffer.alloc(ATLAS_SLOT * ATLAS_SLOT * 4, 0);
@@ -280,7 +271,7 @@ async function writeAtlas(layers: sharp.OverlayOptions[]): Promise<void> {
 
 async function main(): Promise<void> {
   const infos: ModelInfo[] = [];
-  const layers: sharp.OverlayOptions[] = [];
+  const layers: OverlayOptions[] = [];
   const t0 = Date.now();
   for (const pack of PACKS) {
     console.log(`pack ${pack.id} (${pack.title} ${pack.version}) x${pack.scale}`);
