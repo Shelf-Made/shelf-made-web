@@ -1,0 +1,5258 @@
+{
+ "generatedAt": "2026-10-14T11:40:40.403Z",
+ "models": [
+  {
+   "pack": "cars",
+   "name": "delivery",
+   "file": "models/cars/delivery.glb",
+   "size": [
+    0.8249,
+    0.9076,
+    1.7875
+   ],
+   "min": [
+    -0.4124,
+    -0.0001,
+    -0.9075
+   ],
+   "tris": 2476,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "delivery-flat",
+   "file": "models/cars/delivery-flat.glb",
+   "size": [
+    0.8249,
+    0.7424,
+    1.7875
+   ],
+   "min": [
+    -0.4124,
+    0.0001,
+    -0.9075
+   ],
+   "tris": 2574,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "garbage-truck",
+   "file": "models/cars/garbage-truck.glb",
+   "size": [
+    0.88,
+    0.88,
+    1.8975
+   ],
+   "min": [
+    -0.44,
+    0,
+    -0.935
+   ],
+   "tris": 3124,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "hatchback",
+   "file": "models/cars/hatchback.glb",
+   "size": [
+    0.7149,
+    0.6049,
+    1.5675
+   ],
+   "min": [
+    -0.3575,
+    0,
+    -0.7975
+   ],
+   "tris": 2088,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "sedan",
+   "file": "models/cars/sedan.glb",
+   "size": [
+    0.825,
+    0.7151,
+    1.4025
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.715
+   ],
+   "tris": 2032,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "sedan-sports",
+   "file": "models/cars/sedan-sports.glb",
+   "size": [
+    0.7151,
+    0.6049,
+    1.4025
+   ],
+   "min": [
+    -0.3575,
+    0,
+    -0.715
+   ],
+   "tris": 2088,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "suv",
+   "file": "models/cars/suv.glb",
+   "size": [
+    0.8251,
+    0.715,
+    1.485
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.7425
+   ],
+   "tris": 2474,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "suv-luxury",
+   "file": "models/cars/suv-luxury.glb",
+   "size": [
+    0.825,
+    0.7149,
+    1.5675
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.77
+   ],
+   "tris": 2086,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "taxi",
+   "file": "models/cars/taxi.glb",
+   "size": [
+    0.8251,
+    0.8251,
+    1.5125
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.77
+   ],
+   "tris": 2072,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "truck",
+   "file": "models/cars/truck.glb",
+   "size": [
+    0.825,
+    0.7151,
+    1.6225
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.825
+   ],
+   "tris": 2082,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "truck-flat",
+   "file": "models/cars/truck-flat.glb",
+   "size": [
+    0.8251,
+    0.715,
+    1.5098
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.7549
+   ],
+   "tris": 2488,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "cars",
+   "name": "van",
+   "file": "models/cars/van.glb",
+   "size": [
+    0.8251,
+    0.7425,
+    1.5125
+   ],
+   "min": [
+    -0.4125,
+    0,
+    -0.77
+   ],
+   "tris": 2082,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "awning",
+   "file": "models/commercial/awning.glb",
+   "size": [
+    1.2,
+    1.2,
+    0.4436
+   ],
+   "min": [
+    -0.6,
+    0,
+    0.3
+   ],
+   "tris": 40,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "awning-wide",
+   "file": "models/commercial/awning-wide.glb",
+   "size": [
+    2.4,
+    1.2002,
+    0.4436
+   ],
+   "min": [
+    -1.2,
+    -0.0001,
+    0.3001
+   ],
+   "tris": 40,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-a",
+   "file": "models/commercial/far-a.glb",
+   "size": [
+    1.5002,
+    6,
+    1.5002
+   ],
+   "min": [
+    -0.7501,
+    0,
+    -0.7501
+   ],
+   "tris": 188,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-b",
+   "file": "models/commercial/far-b.glb",
+   "size": [
+    1.5001,
+    6.675,
+    1.5001
+   ],
+   "min": [
+    -0.7501,
+    0,
+    -0.7501
+   ],
+   "tris": 200,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-c",
+   "file": "models/commercial/far-c.glb",
+   "size": [
+    1.4997,
+    6.75,
+    1.4997
+   ],
+   "min": [
+    -0.7498,
+    0,
+    -0.7498
+   ],
+   "tris": 142,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-d",
+   "file": "models/commercial/far-d.glb",
+   "size": [
+    1.4998,
+    5.25,
+    1.4998
+   ],
+   "min": [
+    -0.7499,
+    0,
+    -0.7499
+   ],
+   "tris": 106,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-e",
+   "file": "models/commercial/far-e.glb",
+   "size": [
+    1.4998,
+    5.4,
+    1.4998
+   ],
+   "min": [
+    -0.7499,
+    0,
+    -0.7499
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-f",
+   "file": "models/commercial/far-f.glb",
+   "size": [
+    1.5002,
+    6,
+    1.5002
+   ],
+   "min": [
+    -0.7501,
+    0,
+    -0.7501
+   ],
+   "tris": 88,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-g",
+   "file": "models/commercial/far-g.glb",
+   "size": [
+    1.5002,
+    6,
+    1.5002
+   ],
+   "min": [
+    -0.7501,
+    0,
+    -0.7501
+   ],
+   "tris": 200,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "far-h",
+   "file": "models/commercial/far-h.glb",
+   "size": [
+    1.4997,
+    6.3,
+    1.4997
+   ],
+   "min": [
+    -0.7498,
+    0,
+    -0.7498
+   ],
+   "tris": 378,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "overhang",
+   "file": "models/commercial/overhang.glb",
+   "size": [
+    1.5,
+    1.2001,
+    0.5999
+   ],
+   "min": [
+    -0.75,
+    0,
+    0.15
+   ],
+   "tris": 64,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "overhang-wide",
+   "file": "models/commercial/overhang-wide.glb",
+   "size": [
+    3,
+    1.1998,
+    0.5999
+   ],
+   "min": [
+    -1.5,
+    0.0001,
+    0.1501
+   ],
+   "tris": 64,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "parasol-a",
+   "file": "models/commercial/parasol-a.glb",
+   "size": [
+    1.0392,
+    1.35,
+    1.2
+   ],
+   "min": [
+    -0.5196,
+    0,
+    -0.6
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "parasol-b",
+   "file": "models/commercial/parasol-b.glb",
+   "size": [
+    1.0392,
+    1.35,
+    1.2
+   ],
+   "min": [
+    -0.5196,
+    0,
+    -0.6
+   ],
+   "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-a",
+   "file": "models/commercial/shop-a.glb",
+   "size": [
+    2.6506,
+    3.879,
+    2.8201
+   ],
+   "min": [
+    -1.3253,
+    0,
+    -1.41
+   ],
+   "tris": 1252,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-b",
+   "file": "models/commercial/shop-b.glb",
+   "size": [
+    2.9102,
+    3.879,
+    2.8201
+   ],
+   "min": [
+    -1.4551,
+    0,
+    -1.41
+   ],
+   "tris": 1276,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-c",
+   "file": "models/commercial/shop-c.glb",
+   "size": [
+    2.6509,
+    2.6792,
+    3.27
+   ],
+   "min": [
+    -1.3254,
+    -0.0001,
+    -1.635
+   ],
+   "tris": 1195,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-d",
+   "file": "models/commercial/shop-d.glb",
+   "size": [
+    2.5199,
+    3.879,
+    2.6998
+   ],
+   "min": [
+    -1.2599,
+    0,
+    -1.3499
+   ],
+   "tris": 1100,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-e",
+   "file": "models/commercial/shop-e.glb",
+   "size": [
+    4.92,
+    2.679,
+    3.0237
+   ],
+   "min": [
+    -2.46,
+    0,
+    -1.5119
+   ],
+   "tris": 1509,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-f",
+   "file": "models/commercial/shop-f.glb",
+   "size": [
+    2.5199,
+    5.079,
+    3.0898
+   ],
+   "min": [
+    -1.2599,
+    0,
+    -1.5449
+   ],
+   "tris": 1794,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-g",
+   "file": "models/commercial/shop-g.glb",
+   "size": [
+    2.91,
+    5.079,
+    2.7662
+   ],
+   "min": [
+    -1.455,
+    0,
+    -1.3831
+   ],
+   "tris": 2006,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-h",
+   "file": "models/commercial/shop-h.glb",
+   "size": [
+    2.6506,
+    3.879,
+    3.0238
+   ],
+   "min": [
+    -1.3253,
+    0,
+    -1.5119
+   ],
+   "tris": 1512,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-i",
+   "file": "models/commercial/shop-i.glb",
+   "size": [
+    3.7201,
+    5.04,
+    3.9061
+   ],
+   "min": [
+    -1.8601,
+    0,
+    -1.953
+   ],
+   "tris": 2544,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-j",
+   "file": "models/commercial/shop-j.glb",
+   "size": [
+    6.2508,
+    5.0795,
+    4.0202
+   ],
+   "min": [
+    -3.1254,
+    -0.0002,
+    -2.0101
+   ],
+   "tris": 5246,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-k",
+   "file": "models/commercial/shop-k.glb",
+   "size": [
+    6.2508,
+    4.4101,
+    2.8258
+   ],
+   "min": [
+    -3.1254,
+    0,
+    -1.4129
+   ],
+   "tris": 2960,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-l",
+   "file": "models/commercial/shop-l.glb",
+   "size": [
+    4.1097,
+    6.81,
+    4.2061
+   ],
+   "min": [
+    -2.0548,
+    0,
+    -2.103
+   ],
+   "tris": 3512,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-m",
+   "file": "models/commercial/shop-m.glb",
+   "size": [
+    3.7195,
+    9.45,
+    3.7264
+   ],
+   "min": [
+    -1.8597,
+    0,
+    -1.8632
+   ],
+   "tris": 3740,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "commercial",
+   "name": "shop-n",
+   "file": "models/commercial/shop-n.glb",
+   "size": [
+    6.9605,
+    7.44,
+    5.4598
+   ],
+   "min": [
+    -3.4802,
+    0,
+    -2.7299
+   ],
+   "tris": 4350,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "apple",
+   "file": "models/food/apple.glb",
+   "size": [
+    0.0981,
+    0.0954,
+    0.0981
+   ],
+   "min": [
+    -0.0491,
+    0,
+    -0.0491
+   ],
+   "tris": 136,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "avocado",
+   "file": "models/food/avocado.glb",
+   "size": [
+    0.0751,
+    0.1069,
+    0.0867
+   ],
+   "min": [
+    -0.0375,
+    0,
+    -0.0434
+   ],
+   "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bacon",
+   "file": "models/food/bacon.glb",
+   "size": [
+    0.065,
+    0.015,
+    0.26
+   ],
+   "min": [
+    -0.0325,
+    0,
+    -0.13
+   ],
+   "tris": 40,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bag",
+   "file": "models/food/bag.glb",
+   "size": [
+    0.1101,
+    0.2999,
+    0.2059
+   ],
+   "min": [
+    -0.055,
+    0,
+    -0.1029
+   ],
+   "tris": 46,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bag-flat",
+   "file": "models/food/bag-flat.glb",
+   "size": [
+    0.325,
+    0.0953,
+    0.2337
+   ],
+   "min": [
+    -0.1625,
+    0,
+    -0.1169
+   ],
+   "tris": 114,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "banana",
+   "file": "models/food/banana.glb",
+   "size": [
+    0.0688,
+    0.0979,
+    0.3149
+   ],
+   "min": [
+    -0.0344,
+    0,
+    -0.1575
+   ],
+   "tris": 104,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "barrel",
+   "file": "models/food/barrel.glb",
+   "size": [
+    0.38,
+    0.3395,
+    0.3395
+   ],
+   "min": [
+    -0.19,
+    0,
+    -0.1697
+   ],
+   "tris": 308,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bottle-ketchup",
+   "file": "models/food/bottle-ketchup.glb",
+   "size": [
+    0.0721,
+    0.1966,
+    0.0832
+   ],
+   "min": [
+    -0.036,
+    0,
+    -0.0416
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bottle-musterd",
+   "file": "models/food/bottle-musterd.glb",
+   "size": [
+    0.0721,
+    0.1966,
+    0.0832
+   ],
+   "min": [
+    -0.036,
+    0,
+    -0.0416
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bottle-oil",
+   "file": "models/food/bottle-oil.glb",
+   "size": [
+    0.07,
+    0.3109,
+    0.07
+   ],
+   "min": [
+    -0.035,
+    0,
+    -0.035
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bowl-cereal",
+   "file": "models/food/bowl-cereal.glb",
+   "size": [
+    0.2511,
+    0.2096,
+    0.3173
+   ],
+   "min": [
+    -0.1255,
+    0,
+    -0.1723
+   ],
+   "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "bread",
+   "file": "models/food/bread.glb",
+   "size": [
+    0.2212,
+    0.0199,
+    0.183
+   ],
+   "min": [
+    -0.1106,
+    0,
+    -0.0915
+   ],
+   "tris": 116,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "broccoli",
+   "file": "models/food/broccoli.glb",
+   "size": [
+    0.1876,
+    0.2108,
+    0.1876
+   ],
+   "min": [
+    -0.0938,
+    0,
+    -0.0938
+   ],
+   "tris": 220,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cabbage",
+   "file": "models/food/cabbage.glb",
+   "size": [
+    0.1897,
+    0.1537,
+    0.2018
+   ],
+   "min": [
+    -0.0949,
+    0,
+    -0.1009
+   ],
+   "tris": 140,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cake",
+   "file": "models/food/cake.glb",
+   "size": [
+    0.3196,
+    0.1365,
+    0.3196
+   ],
+   "min": [
+    -0.1598,
+    0,
+    -0.1598
+   ],
+   "tris": 750,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "can",
+   "file": "models/food/can.glb",
+   "size": [
+    0.15,
+    0.16,
+    0.15
+   ],
+   "min": [
+    -0.075,
+    0,
+    -0.075
+   ],
+   "tris": 156,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "can-small",
+   "file": "models/food/can-small.glb",
+   "size": [
+    0.15,
+    0.0806,
+    0.15
+   ],
+   "min": [
+    -0.075,
+    0,
+    -0.075
+   ],
+   "tris": 154,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "candy-bar",
+   "file": "models/food/candy-bar.glb",
+   "size": [
+    0.1462,
+    0.0326,
+    0.0373
+   ],
+   "min": [
+    -0.0731,
+    0,
+    -0.0186
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "carrot",
+   "file": "models/food/carrot.glb",
+   "size": [
+    0.1716,
+    0.3582,
+    0.1716
+   ],
+   "min": [
+    -0.0858,
+    0,
+    -0.0858
+   ],
+   "tris": 148,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "carton",
+   "file": "models/food/carton.glb",
+   "size": [
+    0.115,
+    0.2953,
+    0.115
+   ],
+   "min": [
+    -0.0575,
+    0,
+    -0.0575
+   ],
+   "tris": 94,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "carton-small",
+   "file": "models/food/carton-small.glb",
+   "size": [
+    0.115,
+    0.1953,
+    0.115
+   ],
+   "min": [
+    -0.0575,
+    0,
+    -0.0575
+   ],
+   "tris": 74,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cauliflower",
+   "file": "models/food/cauliflower.glb",
+   "size": [
+    0.1897,
+    0.1537,
+    0.2018
+   ],
+   "min": [
+    -0.0949,
+    0,
+    -0.1009
+   ],
+   "tris": 152,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cheese",
+   "file": "models/food/cheese.glb",
+   "size": [
+    0.34,
+    0.11,
+    0.34
+   ],
+   "min": [
+    -0.17,
+    0,
+    -0.17
+   ],
+   "tris": 576,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cherries",
+   "file": "models/food/cherries.glb",
+   "size": [
+    0.044,
+    0.0854,
+    0.081
+   ],
+   "min": [
+    -0.022,
+    0,
+    -0.0405
+   ],
+   "tris": 134,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "chocolate",
+   "file": "models/food/chocolate.glb",
+   "size": [
+    0.1462,
+    0.0169,
+    0.0731
+   ],
+   "min": [
+    -0.0731,
+    0,
+    -0.0366
+   ],
+   "tris": 140,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "coconut",
+   "file": "models/food/coconut.glb",
+   "size": [
+    0.1242,
+    0.1242,
+    0.1242
+   ],
+   "min": [
+    -0.0621,
+    0,
+    -0.0621
+   ],
+   "tris": 76,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cookie",
+   "file": "models/food/cookie.glb",
+   "size": [
+    0.1099,
+    0.0249,
+    0.0952
+   ],
+   "min": [
+    -0.0549,
+    0,
+    -0.0476
+   ],
+   "tris": 68,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "corn",
+   "file": "models/food/corn.glb",
+   "size": [
+    0.1716,
+    0.1581,
+    0.1501
+   ],
+   "min": [
+    -0.0891,
+    0,
+    -0.0779
+   ],
+   "tris": 128,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "croissant",
+   "file": "models/food/croissant.glb",
+   "size": [
+    0.173,
+    0.0968,
+    0.2388
+   ],
+   "min": [
+    -0.0865,
+    0,
+    -0.1194
+   ],
+   "tris": 162,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cup-coffee",
+   "file": "models/food/cup-coffee.glb",
+   "size": [
+    0.1081,
+    0.07,
+    0.1433
+   ],
+   "min": [
+    -0.0541,
+    0,
+    -0.0822
+   ],
+   "tris": 108,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "cupcake",
+   "file": "models/food/cupcake.glb",
+   "size": [
+    0.1776,
+    0.2119,
+    0.1538
+   ],
+   "min": [
+    -0.0888,
+    0,
+    -0.0769
+   ],
+   "tris": 204,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "donut",
+   "file": "models/food/donut.glb",
+   "size": [
+    0.1225,
+    0.0444,
+    0.1415
+   ],
+   "min": [
+    -0.0613,
+    0,
+    -0.0707
+   ],
+   "tris": 108,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "egg",
+   "file": "models/food/egg.glb",
+   "size": [
+    0.058,
+    0.0826,
+    0.067
+   ],
+   "min": [
+    -0.029,
+    0,
+    -0.0335
+   ],
+   "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "eggplant",
+   "file": "models/food/eggplant.glb",
+   "size": [
+    0.102,
+    0.2026,
+    0.1078
+   ],
+   "min": [
+    -0.051,
+    0,
+    -0.0539
+   ],
+   "tris": 124,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "fish",
+   "file": "models/food/fish.glb",
+   "size": [
+    0.0989,
+    0.1611,
+    0.3104
+   ],
+   "min": [
+    -0.0495,
+    0,
+    -0.1552
+   ],
+   "tris": 233,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "grapes",
+   "file": "models/food/grapes.glb",
+   "size": [
+    0.1395,
+    0.2113,
+    0.1193
+   ],
+   "min": [
+    -0.0697,
+    0,
+    -0.0596
+   ],
+   "tris": 592,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "honey",
+   "file": "models/food/honey.glb",
+   "size": [
+    0.163,
+    0.158,
+    0.163
+   ],
+   "min": [
+    -0.0815,
+    0,
+    -0.0815
+   ],
+   "tris": 140,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "leek",
+   "file": "models/food/leek.glb",
+   "size": [
+    0.1365,
+    0.4237,
+    0.1365
+   ],
+   "min": [
+    -0.0682,
+    0,
+    -0.0682
+   ],
+   "tris": 172,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "lemon",
+   "file": "models/food/lemon.glb",
+   "size": [
+    0.0866,
+    0.112,
+    0.1
+   ],
+   "min": [
+    -0.0433,
+    0,
+    -0.05
+   ],
+   "tris": 104,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "loaf",
+   "file": "models/food/loaf.glb",
+   "size": [
+    0.2899,
+    0.2212,
+    0.183
+   ],
+   "min": [
+    -0.1449,
+    0,
+    -0.0915
+   ],
+   "tris": 116,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "loaf-baguette",
+   "file": "models/food/loaf-baguette.glb",
+   "size": [
+    0.415,
+    0.125,
+    0.125
+   ],
+   "min": [
+    -0.2075,
+    0,
+    -0.0625
+   ],
+   "tris": 122,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "loaf-round",
+   "file": "models/food/loaf-round.glb",
+   "size": [
+    0.3859,
+    0.1466,
+    0.2573
+   ],
+   "min": [
+    -0.1929,
+    0,
+    -0.1286
+   ],
+   "tris": 116,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "meat-raw",
+   "file": "models/food/meat-raw.glb",
+   "size": [
+    0.2393,
+    0.0322,
+    0.2877
+   ],
+   "min": [
+    -0.1196,
+    0,
+    -0.1438
+   ],
+   "tris": 110,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "meat-sausage",
+   "file": "models/food/meat-sausage.glb",
+   "size": [
+    0.0758,
+    0.0364,
+    0.1958
+   ],
+   "min": [
+    -0.0379,
+    0,
+    -0.0979
+   ],
+   "tris": 320,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "muffin",
+   "file": "models/food/muffin.glb",
+   "size": [
+    0.1524,
+    0.1243,
+    0.132
+   ],
+   "min": [
+    -0.0762,
+    0,
+    -0.066
+   ],
+   "tris": 84,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "mug",
+   "file": "models/food/mug.glb",
+   "size": [
+    0.1718,
+    0.1367,
+    0.1426
+   ],
+   "min": [
+    -0.0617,
+    0,
+    -0.0713
+   ],
+   "tris": 232,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "mushroom",
+   "file": "models/food/mushroom.glb",
+   "size": [
+    0.0624,
+    0.0696,
+    0.0721
+   ],
+   "min": [
+    -0.0312,
+    0,
+    -0.036
+   ],
+   "tris": 80,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "onion",
+   "file": "models/food/onion.glb",
+   "size": [
+    0.1065,
+    0.125,
+    0.123
+   ],
+   "min": [
+    -0.0533,
+    0,
+    -0.0615
+   ],
+   "tris": 68,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "orange",
+   "file": "models/food/orange.glb",
+   "size": [
+    0.0848,
+    0.0836,
+    0.0848
+   ],
+   "min": [
+    -0.0424,
+    0,
+    -0.0424
+   ],
+   "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "paprika",
+   "file": "models/food/paprika.glb",
+   "size": [
+    0.084,
+    0.0997,
+    0.084
+   ],
+   "min": [
+    -0.042,
+    0,
+    -0.042
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "peanut-butter",
+   "file": "models/food/peanut-butter.glb",
+   "size": [
+    0.118,
+    0.1479,
+    0.118
+   ],
+   "min": [
+    -0.059,
+    0,
+    -0.059
+   ],
+   "tris": 172,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "pear",
+   "file": "models/food/pear.glb",
+   "size": [
+    0.0981,
+    0.1354,
+    0.0981
+   ],
+   "min": [
+    -0.0491,
+    0,
+    -0.0491
+   ],
+   "tris": 136,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "pie",
+   "file": "models/food/pie.glb",
+   "size": [
+    0.4752,
+    0.0748,
+    0.4752
+   ],
+   "min": [
+    -0.2376,
+    0,
+    -0.2376
+   ],
+   "tris": 292,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "pineapple",
+   "file": "models/food/pineapple.glb",
+   "size": [
+    0.1206,
+    0.2358,
+    0.1224
+   ],
+   "min": [
+    -0.0603,
+    0,
+    -0.0612
+   ],
+   "tris": 196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "pizza-box",
+   "file": "models/food/pizza-box.glb",
+   "size": [
+    0.4709,
+    0.4408,
+    0.4759
+   ],
+   "min": [
+    -0.2355,
+    0,
+    -0.238
+   ],
+   "tris": 84,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "pumpkin",
+   "file": "models/food/pumpkin.glb",
+   "size": [
+    0.2094,
+    0.1146,
+    0.2094
+   ],
+   "min": [
+    -0.1047,
+    0,
+    -0.1047
+   ],
+   "tris": 188,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "sausage",
+   "file": "models/food/sausage.glb",
+   "size": [
+    0.1853,
+    0.0594,
+    0.0686
+   ],
+   "min": [
+    -0.0927,
+    0,
+    -0.0343
+   ],
+   "tris": 92,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "soda-bottle",
+   "file": "models/food/soda-bottle.glb",
+   "size": [
+    0.0902,
+    0.2902,
+    0.0782
+   ],
+   "min": [
+    -0.0451,
+    0,
+    -0.0391
+   ],
+   "tris": 100,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "soda-can",
+   "file": "models/food/soda-can.glb",
+   "size": [
+    0.1123,
+    0.1753,
+    0.1123
+   ],
+   "min": [
+    -0.0562,
+    0,
+    -0.0562
+   ],
+   "tris": 164,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "strawberry",
+   "file": "models/food/strawberry.glb",
+   "size": [
+    0.0598,
+    0.091,
+    0.0598
+   ],
+   "min": [
+    -0.0299,
+    0,
+    -0.0299
+   ],
+   "tris": 156,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "styrofoam",
+   "file": "models/food/styrofoam.glb",
+   "size": [
+    0.6296,
+    0.411,
+    0.3795
+   ],
+   "min": [
+    -0.4399,
+    0,
+    -0.1897
+   ],
+   "tris": 152,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "tomato",
+   "file": "models/food/tomato.glb",
+   "size": [
+    0.0848,
+    0.0713,
+    0.0848
+   ],
+   "min": [
+    -0.0424,
+    0,
+    -0.0424
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "waffle",
+   "file": "models/food/waffle.glb",
+   "size": [
+    0.1602,
+    0.02,
+    0.1602
+   ],
+   "min": [
+    -0.0801,
+    0,
+    -0.0801
+   ],
+   "tris": 588,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "watermelon",
+   "file": "models/food/watermelon.glb",
+   "size": [
+    0.2277,
+    0.238,
+    0.2277
+   ],
+   "min": [
+    -0.1139,
+    0,
+    -0.1139
+   ],
+   "tris": 1376,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "whole-ham",
+   "file": "models/food/whole-ham.glb",
+   "size": [
+    0.1905,
+    0.2199,
+    0.3199
+   ],
+   "min": [
+    -0.0952,
+    0,
+    -0.1599
+   ],
+   "tris": 128,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "wine-red",
+   "file": "models/food/wine-red.glb",
+   "size": [
+    0.0954,
+    0.3494,
+    0.0826
+   ],
+   "min": [
+    -0.0477,
+    0,
+    -0.0413
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "wine-white",
+   "file": "models/food/wine-white.glb",
+   "size": [
+    0.1014,
+    0.3278,
+    0.0878
+   ],
+   "min": [
+    -0.0507,
+    -0.0108,
+    -0.0439
+   ],
+   "tris": 124,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "bench",
+   "file": "models/furniture/bench.glb",
+   "size": [
+    0.32,
+    0.376,
+    0.16
+   ],
+   "min": [
+    -0.16,
+    0,
+    -0.08
+   ],
+   "tris": 170,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "bench-cushion",
+   "file": "models/furniture/bench-cushion.glb",
+   "size": [
+    0.32,
+    0.368,
+    0.16
+   ],
+   "min": [
+    -0.16,
+    0,
+    -0.08
+   ],
+   "tris": 196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "bookcase-open",
+   "file": "models/furniture/bookcase-open.glb",
+   "size": [
+    0.32,
+    0.704,
+    0.2
+   ],
+   "min": [
+    -0.16,
+    0,
+    -0.1
+   ],
+   "tris": 320,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "books",
+   "file": "models/furniture/books.glb",
+   "size": [
+    0.1204,
+    0.0831,
+    0.0756
+   ],
+   "min": [
+    -0.0602,
+    0,
+    -0.0378
+   ],
+   "tris": 62,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "cabinet-television",
+   "file": "models/furniture/cabinet-television.glb",
+   "size": [
+    0.64,
+    0.248,
+    0.2
+   ],
+   "min": [
+    -0.32,
+    0,
+    -0.1
+   ],
+   "tris": 154,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "cardboard-box-closed",
+   "file": "models/furniture/cardboard-box-closed.glb",
+   "size": [
+    0.17,
+    0.2248,
+    0.17
+   ],
+   "min": [
+    -0.085,
+    0,
+    -0.085
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "cardboard-box-open",
+   "file": "models/furniture/cardboard-box-open.glb",
+   "size": [
+    0.2975,
+    0.2248,
+    0.17
+   ],
+   "min": [
+    -0.1487,
+    0,
+    -0.085
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "ceiling-fan",
+   "file": "models/furniture/ceiling-fan.glb",
+   "size": [
+    0.3638,
+    0.107,
+    0.4201
+   ],
+   "min": [
+    -0.1819,
+    0,
+    -0.21
+   ],
+   "tris": 214,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "chair",
+   "file": "models/furniture/chair.glb",
+   "size": [
+    0.16,
+    0.376,
+    0.16
+   ],
+   "min": [
+    -0.08,
+    0,
+    -0.08
+   ],
+   "tris": 170,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "chair-desk",
+   "file": "models/furniture/chair-desk.glb",
+   "size": [
+    0.2679,
+    0.4861,
+    0.2514
+   ],
+   "min": [
+    -0.134,
+    0,
+    -0.1257
+   ],
+   "tris": 588,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "coat-rack-standing",
+   "file": "models/furniture/coat-rack-standing.glb",
+   "size": [
+    0.2182,
+    0.616,
+    0.2182
+   ],
+   "min": [
+    -0.1091,
+    0,
+    -0.1091
+   ],
+   "tris": 190,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "computer-keyboard",
+   "file": "models/furniture/computer-keyboard.glb",
+   "size": [
+    0.2258,
+    0.022,
+    0.0946
+   ],
+   "min": [
+    -0.1129,
+    0,
+    -0.0473
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "computer-screen",
+   "file": "models/furniture/computer-screen.glb",
+   "size": [
+    0.3142,
+    0.2354,
+    0.0832
+   ],
+   "min": [
+    -0.1571,
+    0,
+    -0.0416
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "desk",
+   "file": "models/furniture/desk.glb",
+   "size": [
+    0.5876,
+    0.3075,
+    0.3138
+   ],
+   "min": [
+    -0.2938,
+    0,
+    -0.1569
+   ],
+   "tris": 198,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "floor-full",
+   "file": "models/furniture/floor-full.glb",
+   "size": [
+    0.8,
+    0.04,
+    0.8
+   ],
+   "min": [
+    -0.4,
+    0,
+    -0.4
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "kitchen-fridge",
+   "file": "models/furniture/kitchen-fridge.glb",
+   "size": [
+    0.344,
+    0.736,
+    0.2335
+   ],
+   "min": [
+    -0.172,
+    0,
+    -0.1168
+   ],
+   "tris": 250,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "kitchen-fridge-large",
+   "file": "models/furniture/kitchen-fridge-large.glb",
+   "size": [
+    0.416,
+    0.736,
+    0.3245
+   ],
+   "min": [
+    -0.208,
+    0,
+    -0.1622
+   ],
+   "tris": 436,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "lamp-square-ceiling",
+   "file": "models/furniture/lamp-square-ceiling.glb",
+   "size": [
+    0.096,
+    0.184,
+    0.096
+   ],
+   "min": [
+    -0.048,
+    0,
+    -0.048
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "lamp-wall",
+   "file": "models/furniture/lamp-wall.glb",
+   "size": [
+    0.1813,
+    0.0742,
+    0.1203
+   ],
+   "min": [
+    -0.0907,
+    0,
+    -0.0601
+   ],
+   "tris": 42,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "paneling",
+   "file": "models/furniture/paneling.glb",
+   "size": [
+    0.4,
+    0.4758,
+    0.024
+   ],
+   "min": [
+    -0.2,
+    0,
+    -0.012
+   ],
+   "tris": 40,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "plant-small-1",
+   "file": "models/furniture/plant-small-1.glb",
+   "size": [
+    0.0757,
+    0.112,
+    0.0757
+   ],
+   "min": [
+    -0.0379,
+    0,
+    -0.0379
+   ],
+   "tris": 102,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "plant-small-2",
+   "file": "models/furniture/plant-small-2.glb",
+   "size": [
+    0.0757,
+    0.112,
+    0.0757
+   ],
+   "min": [
+    -0.0379,
+    0,
+    -0.0379
+   ],
+   "tris": 158,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "plant-small-3",
+   "file": "models/furniture/plant-small-3.glb",
+   "size": [
+    0.0784,
+    0.116,
+    0.0679
+   ],
+   "min": [
+    -0.0392,
+    0,
+    -0.0339
+   ],
+   "tris": 98,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "potted-plant",
+   "file": "models/furniture/potted-plant.glb",
+   "size": [
+    0.1697,
+    0.5232,
+    0.1932
+   ],
+   "min": [
+    -0.0848,
+    0,
+    -0.0966
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "radio",
+   "file": "models/furniture/radio.glb",
+   "size": [
+    0.252,
+    0.1826,
+    0.078
+   ],
+   "min": [
+    -0.126,
+    0,
+    -0.039
+   ],
+   "tris": 432,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "rug-doormat",
+   "file": "models/furniture/rug-doormat.glb",
+   "size": [
+    0.3434,
+    0.008,
+    0.1896
+   ],
+   "min": [
+    -0.1717,
+    0,
+    -0.0948
+   ],
+   "tris": 204,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "rug-rectangle",
+   "file": "models/furniture/rug-rectangle.glb",
+   "size": [
+    1.256,
+    0.008,
+    0.736
+   ],
+   "min": [
+    -0.628,
+    0,
+    -0.368
+   ],
+   "tris": 28,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "side-table",
+   "file": "models/furniture/side-table.glb",
+   "size": [
+    0.4276,
+    0.3075,
+    0.176
+   ],
+   "min": [
+    -0.2138,
+    0,
+    -0.088
+   ],
+   "tris": 118,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "speaker",
+   "file": "models/furniture/speaker.glb",
+   "size": [
+    0.1184,
+    0.5091,
+    0.1184
+   ],
+   "min": [
+    -0.0592,
+    0,
+    -0.0592
+   ],
+   "tris": 228,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "speaker-small",
+   "file": "models/furniture/speaker-small.glb",
+   "size": [
+    0.1184,
+    0.2384,
+    0.1065
+   ],
+   "min": [
+    -0.0592,
+    0,
+    -0.0533
+   ],
+   "tris": 220,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "stool-bar",
+   "file": "models/furniture/stool-bar.glb",
+   "size": [
+    0.2123,
+    0.348,
+    0.1839
+   ],
+   "min": [
+    -0.1062,
+    0,
+    -0.092
+   ],
+   "tris": 176,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "table-coffee",
+   "file": "models/furniture/table-coffee.glb",
+   "size": [
+    0.5288,
+    0.184,
+    0.32
+   ],
+   "min": [
+    -0.2644,
+    0,
+    -0.16
+   ],
+   "tris": 124,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "television-modern",
+   "file": "models/furniture/television-modern.glb",
+   "size": [
+    0.5478,
+    0.3638,
+    0.1027
+   ],
+   "min": [
+    -0.2739,
+    0,
+    -0.0514
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "trashcan",
+   "file": "models/furniture/trashcan.glb",
+   "size": [
+    0.1661,
+    0.3423,
+    0.1873
+   ],
+   "min": [
+    -0.0831,
+    0,
+    -0.0937
+   ],
+   "tris": 68,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "furniture",
+   "name": "washer",
+   "file": "models/furniture/washer.glb",
+   "size": [
+    0.312,
+    0.376,
+    0.312
+   ],
+   "min": [
+    -0.156,
+    0,
+    -0.156
+   ],
+   "tris": 720,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "bottle-return",
+   "file": "models/market/bottle-return.glb",
+   "size": [
+    0.45,
+    1.0925,
+    0.481
+   ],
+   "min": [
+    -0.225,
+    0,
+    -0.2687
+   ],
+   "tris": 324,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "cash-register",
+   "file": "models/market/cash-register.glb",
+   "size": [
+    0.85,
+    0.5949,
+    0.85
+   ],
+   "min": [
+    -0.4,
+    0,
+    -0.4
+   ],
+   "tris": 203,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "character-employee",
+   "file": "models/market/character-employee.glb",
+   "size": [
+    0.7806,
+    0.7234,
+    0.4014
+   ],
+   "min": [
+    -0.3903,
+    0,
+    -0.2109
+   ],
+   "tris": 520,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "market",
+   "name": "column",
+   "file": "models/market/column.glb",
+   "size": [
+    0.7258,
+    1,
+    0.7258
+   ],
+   "min": [
+    -0.3629,
+    0,
+    -0.3629
+   ],
+   "tris": 188,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "display-bread",
+   "file": "models/market/display-bread.glb",
+   "size": [
+    0.7,
+    0.5,
+    0.6
+   ],
+   "min": [
+    -0.35,
+    0,
+    -0.3
+   ],
+   "tris": 98,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "display-fruit",
+   "file": "models/market/display-fruit.glb",
+   "size": [
+    0.6,
+    0.516,
+    0.6
+   ],
+   "min": [
+    -0.3,
+    0,
+    -0.3
+   ],
+   "tris": 650,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "fence",
+   "file": "models/market/fence.glb",
+   "size": [
+    0.575,
+    0.379,
+    0.15
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.075
+   ],
+   "tris": 76,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "fence-door",
+   "file": "models/market/fence-door.glb",
+   "size": [
+    1,
+    0.379,
+    0.15
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.075
+   ],
+   "tris": 288,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "floor",
+   "file": "models/market/floor.glb",
+   "size": [
+    1,
+    0.025,
+    1
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.5
+   ],
+   "tris": 24,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "freezer",
+   "file": "models/market/freezer.glb",
+   "size": [
+    0.8,
+    0.35,
+    0.6
+   ],
+   "min": [
+    -0.4,
+    0,
+    -0.3
+   ],
+   "tris": 180,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "freezers-standing",
+   "file": "models/market/freezers-standing.glb",
+   "size": [
+    1,
+    0.9,
+    0.5001
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.5
+   ],
+   "tris": 156,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "product-bag",
+   "file": "models/market/product-bag.glb",
+   "size": [
+    0.249,
+    0.137,
+    0.35
+   ],
+   "min": [
+    -0.1245,
+    0,
+    -0.175
+   ],
+   "tris": 92,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "product-bottle",
+   "file": "models/market/product-bottle.glb",
+   "size": [
+    0.136,
+    0.272,
+    0.136
+   ],
+   "min": [
+    -0.068,
+    0,
+    -0.068
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "product-box",
+   "file": "models/market/product-box.glb",
+   "size": [
+    0.249,
+    0.3,
+    0.1
+   ],
+   "min": [
+    -0.1245,
+    0,
+    -0.05
+   ],
+   "tris": 28,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "product-bread",
+   "file": "models/market/product-bread.glb",
+   "size": [
+    0.5814,
+    0.3336,
+    0.333
+   ],
+   "min": [
+    -0.2907,
+    0,
+    -0.1665
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "product-carton",
+   "file": "models/market/product-carton.glb",
+   "size": [
+    0.154,
+    0.2864,
+    0.154
+   ],
+   "min": [
+    -0.077,
+    0,
+    -0.077
+   ],
+   "tris": 28,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "shelf-bags",
+   "file": "models/market/shelf-bags.glb",
+   "size": [
+    0.8,
+    0.8,
+    0.7
+   ],
+   "min": [
+    -0.4,
+    0,
+    -0.35
+   ],
+   "tris": 156,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "shelf-boxes",
+   "file": "models/market/shelf-boxes.glb",
+   "size": [
+    0.8,
+    0.8,
+    0.7
+   ],
+   "min": [
+    -0.4,
+    0,
+    -0.35
+   ],
+   "tris": 156,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "shelf-end",
+   "file": "models/market/shelf-end.glb",
+   "size": [
+    0.8001,
+    1.05,
+    0.3999
+   ],
+   "min": [
+    -0.4,
+    0,
+    -0.4011
+   ],
+   "tris": 98,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "shopping-basket",
+   "file": "models/market/shopping-basket.glb",
+   "size": [
+    0.35,
+    0.25,
+    0.35
+   ],
+   "min": [
+    -0.175,
+    0,
+    -0.175
+   ],
+   "tris": 288,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "shopping-cart",
+   "file": "models/market/shopping-cart.glb",
+   "size": [
+    0.3,
+    0.3906,
+    0.4789
+   ],
+   "min": [
+    -0.15,
+    0,
+    -0.2539
+   ],
+   "tris": 384,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "wall",
+   "file": "models/market/wall.glb",
+   "size": [
+    1,
+    1,
+    0.6001
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.3
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "wall-corner",
+   "file": "models/market/wall-corner.glb",
+   "size": [
+    0.8,
+    1,
+    0.8
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.3
+   ],
+   "tris": 66,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "wall-door",
+   "file": "models/market/wall-door.glb",
+   "size": [
+    1,
+    1,
+    0.6001
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.3
+   ],
+   "tris": 316,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "market",
+   "name": "wall-window",
+   "file": "models/market/wall-window.glb",
+   "size": [
+    1,
+    1,
+    0.6001
+   ],
+   "min": [
+    -0.5,
+    0,
+    -0.3
+   ],
+   "tris": 142,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "bed",
+   "file": "models/nature/bed.glb",
+   "size": [
+    0.4688,
+    0.3832,
+    1.0463
+   ],
+   "min": [
+    -0.2344,
+    0,
+    -0.5231
+   ],
+   "tris": 268,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "crop-carrot",
+   "file": "models/nature/crop-carrot.glb",
+   "size": [
+    0.4804,
+    0.8672,
+    0.4804
+   ],
+   "min": [
+    -0.2402,
+    0,
+    -0.2402
+   ],
+   "tris": 148,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "crop-pumpkin",
+   "file": "models/nature/crop-pumpkin.glb",
+   "size": [
+    0.6178,
+    0.4673,
+    0.6327
+   ],
+   "min": [
+    -0.3089,
+    0,
+    -0.3164
+   ],
+   "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "fence-gate",
+   "file": "models/nature/fence-gate.glb",
+   "size": [
+    1.4,
+    0.483,
+    0.0979
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.049
+   ],
+   "tris": 524,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "fence-planks",
+   "file": "models/nature/fence-planks.glb",
+   "size": [
+    1.4,
+    0.483,
+    0.1343
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.0672
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "fence-simple",
+   "file": "models/nature/fence-simple.glb",
+   "size": [
+    1.4,
+    0.483,
+    0.0979
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.049
+   ],
+   "tris": 64,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "flower-purplea",
+   "file": "models/nature/flower-purplea.glb",
+   "size": [
+    0.2227,
+    0.3395,
+    0.2535
+   ],
+   "min": [
+    -0.1114,
+    0,
+    -0.1267
+   ],
+   "tris": 76,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "flower-reda",
+   "file": "models/nature/flower-reda.glb",
+   "size": [
+    0.2227,
+    0.4095,
+    0.2535
+   ],
+   "min": [
+    -0.1114,
+    0,
+    -0.1267
+   ],
+   "tris": 76,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "flower-redb",
+   "file": "models/nature/flower-redb.glb",
+   "size": [
+    0.2903,
+    0.3619,
+    0.3349
+   ],
+   "min": [
+    -0.1451,
+    0,
+    -0.1674
+   ],
+   "tris": 98,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "flower-yellowa",
+   "file": "models/nature/flower-yellowa.glb",
+   "size": [
+    0.2228,
+    0.2695,
+    0.2535
+   ],
+   "min": [
+    -0.1114,
+    0,
+    -0.1267
+   ],
+   "tris": 76,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "flower-yellowb",
+   "file": "models/nature/flower-yellowb.glb",
+   "size": [
+    0.2903,
+    0.2219,
+    0.3349
+   ],
+   "min": [
+    -0.1451,
+    0,
+    -0.1674
+   ],
+   "tris": 154,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "grass",
+   "file": "models/nature/grass.glb",
+   "size": [
+    0.5335,
+    0.3556,
+    0.5491
+   ],
+   "min": [
+    -0.2668,
+    0,
+    -0.2745
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "grass-large",
+   "file": "models/nature/grass-large.glb",
+   "size": [
+    0.5726,
+    0.3556,
+    0.5711
+   ],
+   "min": [
+    -0.2863,
+    0,
+    -0.2855
+   ],
+   "tris": 224,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "grass-leafs",
+   "file": "models/nature/grass-leafs.glb",
+   "size": [
+    0.3283,
+    0.1995,
+    0.3602
+   ],
+   "min": [
+    -0.1641,
+    0,
+    -0.1801
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "log",
+   "file": "models/nature/log.glb",
+   "size": [
+    0.3275,
+    0.2424,
+    0.994
+   ],
+   "min": [
+    -0.1638,
+    0,
+    -0.497
+   ],
+   "tris": 200,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "plant-bush",
+   "file": "models/nature/plant-bush.glb",
+   "size": [
+    0.5544,
+    0.3422,
+    0.5544
+   ],
+   "min": [
+    -0.2772,
+    0,
+    -0.2772
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "plant-bushdetailed",
+   "file": "models/nature/plant-bushdetailed.glb",
+   "size": [
+    0.8436,
+    0.5045,
+    0.8436
+   ],
+   "min": [
+    -0.4218,
+    0,
+    -0.4218
+   ],
+   "tris": 104,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "plant-bushlarge",
+   "file": "models/nature/plant-bushlarge.glb",
+   "size": [
+    0.524,
+    0.3401,
+    0.47
+   ],
+   "min": [
+    -0.262,
+    0,
+    -0.235
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "plant-bushsmall",
+   "file": "models/nature/plant-bushsmall.glb",
+   "size": [
+    0.5362,
+    0.2902,
+    0.4709
+   ],
+   "min": [
+    -0.2681,
+    0,
+    -0.2355
+   ],
+   "tris": 16,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "pot-large",
+   "file": "models/nature/pot-large.glb",
+   "size": [
+    0.789,
+    0.28,
+    0.6834
+   ],
+   "min": [
+    -0.3945,
+    0,
+    -0.3417
+   ],
+   "tris": 68,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "pot-small",
+   "file": "models/nature/pot-small.glb",
+   "size": [
+    0.4528,
+    0.3752,
+    0.3922
+   ],
+   "min": [
+    -0.2264,
+    0,
+    -0.1961
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-largea",
+   "file": "models/nature/rock-largea.glb",
+   "size": [
+    1.0989,
+    0.3636,
+    1.4216
+   ],
+   "min": [
+    -0.5494,
+    0,
+    -0.7108
+   ],
+   "tris": 80,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-smalla",
+   "file": "models/nature/rock-smalla.glb",
+   "size": [
+    0.5051,
+    0.2677,
+    0.5051
+   ],
+   "min": [
+    -0.2526,
+    0,
+    -0.2526
+   ],
+   "tris": 16,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-smallb",
+   "file": "models/nature/rock-smallb.glb",
+   "size": [
+    0.5051,
+    0.2475,
+    0.5051
+   ],
+   "min": [
+    -0.2526,
+    0,
+    -0.2526
+   ],
+   "tris": 24,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "sign",
+   "file": "models/nature/sign.glb",
+   "size": [
+    0.42,
+    0.5723,
+    0.098
+   ],
+   "min": [
+    -0.21,
+    0,
+    -0.049
+   ],
+   "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "stone-smalla",
+   "file": "models/nature/stone-smalla.glb",
+   "size": [
+    0.5051,
+    0.2677,
+    0.5051
+   ],
+   "min": [
+    -0.2526,
+    0,
+    -0.2526
+   ],
+   "tris": 16,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "stump-round",
+   "file": "models/nature/stump-round.glb",
+   "size": [
+    0.4498,
+    0.2891,
+    0.5194
+   ],
+   "min": [
+    -0.2249,
+    0,
+    -0.2597
+   ],
+   "tris": 56,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-blocks",
+   "file": "models/nature/tree-blocks.glb",
+   "size": [
+    0.84,
+    1.659,
+    0.84
+   ],
+   "min": [
+    -0.42,
+    0,
+    -0.42
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-cone",
+   "file": "models/nature/tree-cone.glb",
+   "size": [
+    0.7415,
+    2.0025,
+    0.7415
+   ],
+   "min": [
+    -0.3707,
+    0,
+    -0.3707
+   ],
+   "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-default",
+   "file": "models/nature/tree-default.glb",
+   "size": [
+    1.057,
+    2.391,
+    0.9154
+   ],
+   "min": [
+    -0.5285,
+    0,
+    -0.4577
+   ],
+   "tris": 114,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-default-fall",
+   "file": "models/nature/tree-default-fall.glb",
+   "size": [
+    1.057,
+    2.391,
+    0.9154
+   ],
+   "min": [
+    -0.5285,
+    0,
+    -0.4577
+   ],
+   "tris": 228,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-detailed",
+   "file": "models/nature/tree-detailed.glb",
+   "size": [
+    1.1861,
+    1.8654,
+    1.0663
+   ],
+   "min": [
+    -0.593,
+    0,
+    -0.5331
+   ],
+   "tris": 402,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-fat",
+   "file": "models/nature/tree-fat.glb",
+   "size": [
+    1.057,
+    1.6105,
+    0.9155
+   ],
+   "min": [
+    -0.5285,
+    0,
+    -0.4577
+   ],
+   "tris": 50,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-oak",
+   "file": "models/nature/tree-oak.glb",
+   "size": [
+    0.8969,
+    1.7167,
+    1.0356
+   ],
+   "min": [
+    -0.4484,
+    0,
+    -0.5178
+   ],
+   "tris": 196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-oak-fall",
+   "file": "models/nature/tree-oak-fall.glb",
+   "size": [
+    0.8969,
+    1.7167,
+    1.0356
+   ],
+   "min": [
+    -0.4484,
+    0,
+    -0.5178
+   ],
+   "tris": 196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinerounda",
+   "file": "models/nature/tree-pinerounda.glb",
+   "size": [
+    0.8639,
+    1.913,
+    0.9975
+   ],
+   "min": [
+    -0.4319,
+    0,
+    -0.4988
+   ],
+   "tris": 204,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pineroundb",
+   "file": "models/nature/tree-pineroundb.glb",
+   "size": [
+    0.745,
+    1.6743,
+    0.8585
+   ],
+   "min": [
+    -0.3725,
+    0,
+    -0.4293
+   ],
+   "tris": 262,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-plateau",
+   "file": "models/nature/tree-plateau.glb",
+   "size": [
+    0.8565,
+    1.7491,
+    0.9169
+   ],
+   "min": [
+    -0.4282,
+    0,
+    -0.4585
+   ],
+   "tris": 215,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-simple",
+   "file": "models/nature/tree-simple.glb",
+   "size": [
+    0.4965,
+    2.1272,
+    0.5734
+   ],
+   "min": [
+    -0.2483,
+    0,
+    -0.2867
+   ],
+   "tris": 62,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-small",
+   "file": "models/nature/tree-small.glb",
+   "size": [
+    0.4965,
+    1.5541,
+    0.5733
+   ],
+   "min": [
+    -0.2483,
+    0,
+    -0.2867
+   ],
+   "tris": 62,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-small-fall",
+   "file": "models/nature/tree-small-fall.glb",
+   "size": [
+    0.4965,
+    1.5541,
+    0.5733
+   ],
+   "min": [
+    -0.2483,
+    0,
+    -0.2867
+   ],
+   "tris": 62,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-tall",
+   "file": "models/nature/tree-tall.glb",
+   "size": [
+    0.5593,
+    2.3628,
+    0.6459
+   ],
+   "min": [
+    -0.2796,
+    0,
+    -0.3229
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-thin",
+   "file": "models/nature/tree-thin.glb",
+   "size": [
+    0.9526,
+    2.0864,
+    0.8632
+   ],
+   "min": [
+    -0.4763,
+    0,
+    -0.4316
+   ],
+   "tris": 228,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "people",
+   "name": "female-a",
+   "file": "models/people/female-a.glb",
+   "size": [
+    1.0988,
+    0.7755,
+    0.4995
+   ],
+   "min": [
+    -0.5494,
+    0,
+    -0.2919
+   ],
+   "tris": 876,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "female-b",
+   "file": "models/people/female-b.glb",
+   "size": [
+    0.7672,
+    0.7234,
+    0.4185
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.2109
+   ],
+   "tris": 742,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "female-c",
+   "file": "models/people/female-c.glb",
+   "size": [
+    0.7672,
+    0.7755,
+    0.4995
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.2919
+   ],
+   "tris": 732,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "female-d",
+   "file": "models/people/female-d.glb",
+   "size": [
+    0.7672,
+    0.7755,
+    0.4995
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.2919
+   ],
+   "tris": 797,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "female-e",
+   "file": "models/people/female-e.glb",
+   "size": [
+    0.7672,
+    0.7165,
+    0.5271
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.3194
+   ],
+   "tris": 756,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "female-f",
+   "file": "models/people/female-f.glb",
+   "size": [
+    0.7672,
+    0.6713,
+    0.4411
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.2335
+   ],
+   "tris": 788,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "male-a",
+   "file": "models/people/male-a.glb",
+   "size": [
+    0.7672,
+    0.6713,
+    0.34
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.1724
+   ],
+   "tris": 723,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "male-b",
+   "file": "models/people/male-b.glb",
+   "size": [
+    0.7672,
+    0.6613,
+    0.3895
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.1629
+   ],
+   "tris": 690,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "male-c",
+   "file": "models/people/male-c.glb",
+   "size": [
+    0.7672,
+    0.7928,
+    0.4607
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.188
+   ],
+   "tris": 793,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "male-d",
+   "file": "models/people/male-d.glb",
+   "size": [
+    0.7672,
+    0.7218,
+    0.34
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.1724
+   ],
+   "tris": 711,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "male-e",
+   "file": "models/people/male-e.glb",
+   "size": [
+    0.7672,
+    0.676,
+    0.342
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.1724
+   ],
+   "tris": 710,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "people",
+   "name": "male-f",
+   "file": "models/people/male-f.glb",
+   "size": [
+    0.7672,
+    0.6713,
+    0.34
+   ],
+   "min": [
+    -0.3836,
+    0,
+    -0.1724
+   ],
+   "tris": 701,
+   "skinned": true,
+   "clips": [
+    "static",
+    "idle",
+    "walk",
+    "sprint",
+    "sit",
+    "drive",
+    "pick-up",
+    "emote-yes",
+    "emote-no",
+    "holding-right",
+    "holding-left",
+    "holding-both",
+    "interact-right",
+    "interact-left"
+   ]
+  },
+  {
+   "pack": "roads",
+   "name": "barrier",
+   "file": "models/roads/barrier.glb",
+   "size": [
+    0.271,
+    0.26,
+    0.45
+   ],
+   "min": [
+    -0.1355,
+    0,
+    -0.225
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "cone",
+   "file": "models/roads/cone.glb",
+   "size": [
+    0.15,
+    0.1875,
+    0.15
+   ],
+   "min": [
+    -0.075,
+    0,
+    -0.075
+   ],
+   "tris": 66,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "dumpster",
+   "file": "models/roads/dumpster.glb",
+   "size": [
+    0.55,
+    0.4189,
+    0.74
+   ],
+   "min": [
+    -0.26,
+    0,
+    -0.37
+   ],
+   "tris": 234,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "electricity-pole",
+   "file": "models/roads/electricity-pole.glb",
+   "size": [
+    1.1582,
+    1.05,
+    0.4284
+   ],
+   "min": [
+    -0.5947,
+    0,
+    -0.2142
+   ],
+   "tris": 416,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "lamp",
+   "file": "models/roads/lamp.glb",
+   "size": [
+    0.1,
+    1.35,
+    0.4499
+   ],
+   "min": [
+    -0.05,
+    0,
+    -0.4
+   ],
+   "tris": 92,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "lamp-double",
+   "file": "models/roads/lamp-double.glb",
+   "size": [
+    0.1,
+    1.35,
+    0.8
+   ],
+   "min": [
+    -0.05,
+    0,
+    -0.4
+   ],
+   "tris": 152,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "lamp-square",
+   "file": "models/roads/lamp-square.glb",
+   "size": [
+    0.1001,
+    1.2,
+    0.475
+   ],
+   "min": [
+    -0.05,
+    0,
+    -0.425
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-bend",
+   "file": "models/roads/road-bend.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 260,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-crossing",
+   "file": "models/roads/road-crossing.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 104,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-crossroad",
+   "file": "models/roads/road-crossroad.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 116,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-curve",
+   "file": "models/roads/road-curve.glb",
+   "size": [
+    4,
+    0.04,
+    4
+   ],
+   "min": [
+    -2,
+    0,
+    -2
+   ],
+   "tris": 308,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-driveway-double",
+   "file": "models/roads/road-driveway-double.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-driveway-single",
+   "file": "models/roads/road-driveway-single.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-end",
+   "file": "models/roads/road-end.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 42,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-end-round",
+   "file": "models/roads/road-end-round.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 218,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-intersection",
+   "file": "models/roads/road-intersection.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 84,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-side",
+   "file": "models/roads/road-side.glb",
+   "size": [
+    2.0002,
+    0.04,
+    2.62
+   ],
+   "min": [
+    -1.0001,
+    0,
+    -1.62
+   ],
+   "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-square",
+   "file": "models/roads/road-square.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-straight",
+   "file": "models/roads/road-straight.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-straight-half",
+   "file": "models/roads/road-straight-half.glb",
+   "size": [
+    1.0002,
+    0.04,
+    2
+   ],
+   "min": [
+    -0.5001,
+    0,
+    -1
+   ],
+   "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "sign-empty",
+   "file": "models/roads/sign-empty.glb",
+   "size": [
+    0.1,
+    0.95,
+    0.1
+   ],
+   "min": [
+    -0.05,
+    0,
+    -0.05
+   ],
+   "tris": 42,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "sign-highway",
+   "file": "models/roads/sign-highway.glb",
+   "size": [
+    0.2647,
+    1.4147,
+    2
+   ],
+   "min": [
+    -0.2147,
+    0,
+    -1
+   ],
+   "tris": 180,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "sign-stop",
+   "file": "models/roads/sign-stop.glb",
+   "size": [
+    0.155,
+    0.9881,
+    0.2764
+   ],
+   "min": [
+    -0.1028,
+    0,
+    -0.1382
+   ],
+   "tris": 104,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "sign-street",
+   "file": "models/roads/sign-street.glb",
+   "size": [
+    0.3925,
+    0.95,
+    0.3925
+   ],
+   "min": [
+    -0.3425,
+    0,
+    -0.05
+   ],
+   "tris": 154,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "tile-low",
+   "file": "models/roads/tile-low.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "traffic-light",
+   "file": "models/roads/traffic-light.glb",
+   "size": [
+    0.2351,
+    1.03,
+    0.1799
+   ],
+   "min": [
+    -0.1452,
+    0,
+    -0.09
+   ],
+   "tris": 212,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "driveway-long",
+   "file": "models/suburban/driveway-long.glb",
+   "size": [
+    1.08,
+    0.03,
+    1.2
+   ],
+   "min": [
+    -0.54,
+    0,
+    -0.6
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "driveway-short",
+   "file": "models/suburban/driveway-short.glb",
+   "size": [
+    1.08,
+    0.0301,
+    0.6001
+   ],
+   "min": [
+    -0.54,
+    0,
+    -0.3
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence",
+   "file": "models/suburban/fence.glb",
+   "size": [
+    1.425,
+    0.81,
+    0.2249
+   ],
+   "min": [
+    -0.7125,
+    0,
+    -0.1125
+   ],
+   "tris": 88,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-1x2",
+   "file": "models/suburban/fence-1x2.glb",
+   "size": [
+    2.625,
+    0.8102,
+    1.3127
+   ],
+   "min": [
+    -1.3125,
+    -0.0001,
+    -0.6001
+   ],
+   "tris": 156,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-1x3",
+   "file": "models/suburban/fence-1x3.glb",
+   "size": [
+    3.825,
+    0.8101,
+    1.3127
+   ],
+   "min": [
+    -1.9125,
+    -0.0001,
+    -0.6001
+   ],
+   "tris": 204,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-1x4",
+   "file": "models/suburban/fence-1x4.glb",
+   "size": [
+    5.025,
+    0.8097,
+    1.3123
+   ],
+   "min": [
+    -2.5125,
+    0.0001,
+    -0.5999
+   ],
+   "tris": 252,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-low",
+   "file": "models/suburban/fence-low.glb",
+   "size": [
+    3.825,
+    0.5099,
+    2.5123
+   ],
+   "min": [
+    -1.9125,
+    0.0001,
+    -1.3124
+   ],
+   "tris": 180,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-a",
+   "file": "models/suburban/house-a.glb",
+   "size": [
+    3.9,
+    2.5007,
+    3.0845
+   ],
+   "min": [
+    -1.95,
+    0,
+    -1.5422
+   ],
+   "tris": 1174,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-b",
+   "file": "models/suburban/house-b.glb",
+   "size": [
+    5.484,
+    3.4125,
+    3.4199
+   ],
+   "min": [
+    -2.742,
+    0,
+    -1.71
+   ],
+   "tris": 1748,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-c",
+   "file": "models/suburban/house-c.glb",
+   "size": [
+    3.8591,
+    3.1007,
+    3.0847
+   ],
+   "min": [
+    -1.9296,
+    0,
+    -1.5423
+   ],
+   "tris": 1196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-d",
+   "file": "models/suburban/house-d.glb",
+   "size": [
+    5.2691,
+    3.7124,
+    3.0839
+   ],
+   "min": [
+    -2.6346,
+    0.0001,
+    -1.542
+   ],
+   "tris": 1757,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-e",
+   "file": "models/suburban/house-e.glb",
+   "size": [
+    3.9,
+    3.4125,
+    3.084
+   ],
+   "min": [
+    -1.95,
+    0,
+    -1.542
+   ],
+   "tris": 1731,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-f",
+   "file": "models/suburban/house-f.glb",
+   "size": [
+    4.284,
+    3.4127,
+    4.2176
+   ],
+   "min": [
+    -2.142,
+    -0.0001,
+    -2.1088
+   ],
+   "tris": 1616,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-g",
+   "file": "models/suburban/house-g.glb",
+   "size": [
+    4.35,
+    2.3049,
+    3.5338
+   ],
+   "min": [
+    -2.175,
+    -0.0001,
+    -1.7669
+   ],
+   "tris": 1067,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-h",
+   "file": "models/suburban/house-h.glb",
+   "size": [
+    3.9,
+    2.2126,
+    2.7482
+   ],
+   "min": [
+    -1.95,
+    -0.0001,
+    -1.3741
+   ],
+   "tris": 770,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-i",
+   "file": "models/suburban/house-i.glb",
+   "size": [
+    3.8591,
+    2.2125,
+    3.0842
+   ],
+   "min": [
+    -1.9296,
+    0,
+    -1.5421
+   ],
+   "tris": 800,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-j",
+   "file": "models/suburban/house-j.glb",
+   "size": [
+    4.11,
+    3.1126,
+    2.7482
+   ],
+   "min": [
+    -2.055,
+    0,
+    -1.3741
+   ],
+   "tris": 1210,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-k",
+   "file": "models/suburban/house-k.glb",
+   "size": [
+    2.763,
+    3.4488,
+    3.0602
+   ],
+   "min": [
+    -1.3815,
+    0,
+    -1.5301
+   ],
+   "tris": 1024,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-l",
+   "file": "models/suburban/house-l.glb",
+   "size": [
+    3.1007,
+    3.1476,
+    3.06
+   ],
+   "min": [
+    -1.5504,
+    0,
+    -1.53
+   ],
+   "tris": 1310,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-m",
+   "file": "models/suburban/house-m.glb",
+   "size": [
+    4.284,
+    2.2124,
+    4.284
+   ],
+   "min": [
+    -2.142,
+    0,
+    -2.142
+   ],
+   "tris": 1112,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-n",
+   "file": "models/suburban/house-n.glb",
+   "size": [
+    5.3528,
+    3.4126,
+    4.1335
+   ],
+   "min": [
+    -2.6764,
+    0,
+    -2.0667
+   ],
+   "tris": 1612,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-o",
+   "file": "models/suburban/house-o.glb",
+   "size": [
+    3.81,
+    3.4123,
+    3.084
+   ],
+   "min": [
+    -1.905,
+    0.0001,
+    -1.542
+   ],
+   "tris": 1326,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-p",
+   "file": "models/suburban/house-p.glb",
+   "size": [
+    3.72,
+    2.754,
+    2.9703
+   ],
+   "min": [
+    -1.86,
+    0,
+    -1.4851
+   ],
+   "tris": 1282,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-q",
+   "file": "models/suburban/house-q.glb",
+   "size": [
+    3.72,
+    2.754,
+    2.6568
+   ],
+   "min": [
+    -1.86,
+    0,
+    -1.266
+   ],
+   "tris": 1140,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-r",
+   "file": "models/suburban/house-r.glb",
+   "size": [
+    3.0841,
+    3.4234,
+    3.0598
+   ],
+   "min": [
+    -1.542,
+    0,
+    -1.5299
+   ],
+   "tris": 1030,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-s",
+   "file": "models/suburban/house-s.glb",
+   "size": [
+    4.2181,
+    3.4128,
+    3.2593
+   ],
+   "min": [
+    -2.109,
+    -0.0001,
+    -1.6297
+   ],
+   "tris": 1212,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-t",
+   "file": "models/suburban/house-t.glb",
+   "size": [
+    3.941,
+    3.4692,
+    4.2191
+   ],
+   "min": [
+    -1.9909,
+    -0.0001,
+    -2.1096
+   ],
+   "tris": 2062,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "house-u",
+   "file": "models/suburban/house-u.glb",
+   "size": [
+    4.284,
+    3.4127,
+    3.2611
+   ],
+   "min": [
+    -2.142,
+    -0.0001,
+    -1.6305
+   ],
+   "tris": 1332,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "path-long",
+   "file": "models/suburban/path-long.glb",
+   "size": [
+    0.6001,
+    0.03,
+    1.2
+   ],
+   "min": [
+    -0.3,
+    0,
+    -0.6
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "path-short",
+   "file": "models/suburban/path-short.glb",
+   "size": [
+    0.6,
+    0.03,
+    0.6
+   ],
+   "min": [
+    -0.3,
+    0,
+    -0.3
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "planter",
+   "file": "models/suburban/planter.glb",
+   "size": [
+    1.2,
+    0.5314,
+    0.9
+   ],
+   "min": [
+    -0.6,
+    0,
+    -0.4517
+   ],
+   "tris": 204,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "tree-large",
+   "file": "models/suburban/tree-large.glb",
+   "size": [
+    0.6312,
+    2.301,
+    0.729
+   ],
+   "min": [
+    -0.3156,
+    0,
+    -0.3645
+   ],
+   "tris": 42,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "tree-small",
+   "file": "models/suburban/tree-small.glb",
+   "size": [
+    0.6313,
+    1.701,
+    0.7289
+   ],
+   "min": [
+    -0.3157,
+    0,
+    -0.3644
+   ],
+   "tris": 42,
+   "skinned": false,
+   "clips": []
+  }
+ ]
+}

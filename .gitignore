@@ -1,0 +1,10 @@
+node_modules/
+dist/
+desktop/dist/
+desktop/node_modules/
+test-results/
+playwright-report/
+.vite/
+*.log
+.DS_Store
+docs/screens/perf.json

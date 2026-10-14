@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run audit:art
+      - run: npm run balance -- --check
+      - run: npm run build
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end, screenshots and perf
+        run: CHROMIUM_PATH= npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens
+          path: docs/screens
+          if-no-files-found: ignore

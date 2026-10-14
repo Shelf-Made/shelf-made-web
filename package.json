@@ -1,0 +1,46 @@
+{
+  "name": "shelf-made",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shelf Made - a cheerful grocery tycoon",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . && tsc --noEmit -p tsconfig.json",
+    "e2e": "playwright test",
+    "shots": "playwright test e2e/shots.spec.ts",
+    "perf": "playwright test e2e/perf.spec.ts",
+    "audit:art": "tsx tools/audit-art.ts",
+    "assets": "tsx tools/convert-assets.ts",
+    "balance": "tsx tools/balance.ts"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "@playwright/test": "^1.64.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "fflate": "^0.8.3",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
