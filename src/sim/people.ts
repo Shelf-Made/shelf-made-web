@@ -8,7 +8,7 @@ import { withRng, nextId, popup, cue, gridFor, dist, react, complain } from './s
 import { spawnCustomerCar, leaveLot } from './cars';
 import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
 import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
-import { listWeight, budgetFor } from './customers';
+import { listWeight, budgetFor, explainChoice, computeScores } from './customers';
 import { pickType } from './tick';
 import { effectivePrice } from './marketing';
 import { cashierMistake, onShift } from './staff';
@@ -106,6 +106,16 @@ function makeList(state: GameState, ctype: CustomerType): { productId: string; q
   });
 }
 
+/**
+ * A hint of who someone is, without new meshes: impulse buyers are kids and teens (smaller), convenience
+ * shoppers walk a little faster (and wear workwear, drawn by the renderer), regulars are older (grey hair),
+ * bargain hunters carry a reusable bag and a coupon. Deterministic: no random draws.
+ */
+export function typeLook(p: Person): void {
+  if (p.ctype === 'impulse') p.look = { ...p.look, height: Math.round(p.look.height * 0.84 * 1000) / 1000 };
+  if (p.ctype === 'convenience') p.speed *= 1.12;
+}
+
 export function spawnCustomer(state: GameState, forceFoot = false): Person | null {
   const diff = DIFFICULTY[state.difficulty];
   const byCar = withRng(state, 'customers', (r) => r.chance(0.55)) && !forceFoot;
@@ -120,6 +130,11 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
     budget: budgetFor(ctype, withRng(state, 'customers', (r) => r.next())),
   };
   state.today.customers++;
+  const bt = (state.today.byType ??= { bargain: 0, convenience: 0, loyalist: 0, impulse: 0 });
+  bt[ctype]++;
+  // Why they came: the two scores that most drove their choice of this store, kept for the inspect panel.
+  p.store = 'player'; p.why = explainChoice(ctype, computeScores(state));
+  typeLook(p);
   if (byCar) {
     const { car, onward } = spawnCustomerCar(state, p.id, fromWest);
     if (!car || onward?.kind === 'rival') {
@@ -127,7 +142,7 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
       state.today.turnedAway++;
       complain(state, 'lotFull');
       { const L = lotLayout(state.shop); popup(state, toWorld(state.shop, L.driveway.x0 + 1, L.driveway.z1), 'Lot full!', 'bad', 0.8); }
-      if (car && onward?.kind === 'rival') rivalShopperInCar(state, car, onward.rival.id, look);
+      if (car && onward?.kind === 'rival') rivalShopperInCar(state, car, onward.rival.id, look, ctype);
       return null;
     }
     p.carId = car.id; p.state = 'driving'; p.anim = 'sit'; p.x = car.x; p.z = car.z;

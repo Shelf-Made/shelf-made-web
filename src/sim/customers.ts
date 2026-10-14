@@ -66,12 +66,60 @@ export function computeScores(state: GameState): StoreScores {
   };
 }
 
+/**
+ * A rival's six scores. Its moves in answer to the player (price matching, a renovation, longer hours...)
+ * shift its own scores through `r.mods`; the weights and the softmax never change.
+ */
 export function rivalScores(r: RivalState): StoreScores {
   const sale = r.saleDaysLeft > 0;
+  const m = r.mods;
+  const idx = r.priceIndex * (1 - (m?.price ?? 0)) * (sale ? 0.82 - (m?.saleDepth ?? 0) : 1);
   return {
-    price: clamp01(0.5 + (1 - (sale ? r.priceIndex * 0.82 : r.priceIndex)) * 1.6),
-    availability: r.availability, layout: r.quality, wait: r.service, parking: r.parking, awareness: clamp01(r.awareness + (sale ? 0.15 : 0)),
+    price: clamp01(0.5 + (1 - idx) * 1.6),
+    availability: clamp01(r.availability + (m?.availability ?? 0)), layout: clamp01(r.quality + (m?.quality ?? 0)), wait: clamp01(r.service + (m?.service ?? 0)), parking: r.parking,
+    awareness: clamp01(r.awareness + (m?.awareness ?? 0) + (sale ? 0.15 + (m?.saleDepth ?? 0) : 0)),
   };
+}
+
+/** A rival's price index today, after any price match (sales aside). */
+export function rivalPriceIndex(r: RivalState): number { return r.priceIndex * (1 - (r.mods?.price ?? 0)); }
+
+const SCORE_ORDER: (keyof StoreScores)[] = ['price', 'availability', 'layout', 'wait', 'parking', 'awareness'];
+
+/**
+ * Why a shopper of this type chose a store: the two scores that contributed most (weight × score, the weights
+ * of the table in docs/DESIGN.md §3.2), biggest first. Ties go in the table's column order.
+ */
+export function explainChoice(type: CustomerType, scores: StoreScores): (keyof StoreScores)[] {
+  const w = TYPE_WEIGHTS[type];
+  return SCORE_ORDER.map((k, i) => ({ k, v: w[k] * scores[k], i })).sort((a, b) => b.v - a.v || a.i - b.i).slice(0, 2).map((x) => x.k);
+}
+
+/** A reason in plain words, as the shopper would say it. `item` is something on their list, when there is one. */
+export function reasonText(key: keyof StoreScores, type: CustomerType, opts: { item?: string; drove?: boolean; rival?: boolean } = {}): string {
+  switch (key) {
+    case 'price': return opts.item ? `Cheapest ${opts.item.toLowerCase()} in town` : type === 'bargain' ? 'The lowest prices around' : 'Fair prices';
+    case 'availability': return type === 'loyalist' ? 'Always has my brands' : 'Always has what I need';
+    case 'layout': return type === 'impulse' ? 'Fun to look around' : 'Clean and easy to find things';
+    case 'wait': return 'In and out fast';
+    case 'parking': return opts.drove ? 'Easy to park' : 'Close to home';
+    case 'awareness': return opts.rival ? 'Saw their ads everywhere' : 'Heard good things about it';
+  }
+}
+
+/** Each open rival's shoppers today by customer type (the same model as `rivalShoppersToday`). */
+export function rivalShoppersByType(state: GameState, scores = computeScores(state)): Record<string, Record<CustomerType, number>> {
+  const open = state.rivals.filter((r) => r.open);
+  const shares = rivalShares(state, scores);
+  const pool = state.demandBase * (1 + 0.75 * open.length) * state.eventDemand * townGrowth(state.day) * DIFFICULTY[state.difficulty].demandMul * ARRIVALS_PER_EXPECTED;
+  const out: Record<string, Record<CustomerType, number>> = {};
+  for (const r of open) {
+    const plot = PLOTS.find((p) => p.corner === r.corner);
+    const k = pool * (plot?.traffic ?? 1) * (0.55 + 0.45 * r.awareness) * (0.7 + 0.6 * r.reputation);
+    out[r.id] = {} as Record<CustomerType, number>;
+    for (const t of Object.keys(TYPE_BASE) as CustomerType[]) out[r.id]![t] = k * TYPE_BASE[t] * (plot?.mix[t] ?? 1) * (shares[r.id]?.[t] ?? 0);
+  }
+  return out;
 }
 
 export function weighted(scores: StoreScores, type: CustomerType): number {
@@ -152,15 +200,8 @@ export const ARRIVALS_PER_EXPECTED = 1.46;
  * the player's own count them. On the same scale as the player's arrivals, so shares compare fairly.
  */
 export function rivalShoppersToday(state: GameState, scores = computeScores(state)): Record<string, number> {
-  const open = state.rivals.filter((r) => r.open);
-  const shares = rivalShares(state, scores);
-  const pool = state.demandBase * (1 + 0.75 * open.length) * state.eventDemand * townGrowth(state.day) * DIFFICULTY[state.difficulty].demandMul * ARRIVALS_PER_EXPECTED;
+  const by = rivalShoppersByType(state, scores);
   const out: Record<string, number> = {};
-  for (const r of open) {
-    const plot = PLOTS.find((p) => p.corner === r.corner);
-    let n = 0;
-    for (const t of Object.keys(TYPE_BASE) as CustomerType[]) n += TYPE_BASE[t] * (plot?.mix[t] ?? 1) * (shares[r.id]?.[t] ?? 0);
-    out[r.id] = pool * (plot?.traffic ?? 1) * n * (0.55 + 0.45 * r.awareness) * (0.7 + 0.6 * r.reputation);
-  }
+  for (const [id, t] of Object.entries(by)) out[id] = Object.values(t).reduce((a, b) => a + b, 0);
   return out;
 }

@@ -42,6 +42,8 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => { const shop = raw.shop as { scheme?: string }; shop.scheme ??= 'green'; return { reactions: [], ...raw, version: 10 }; },
   // v10 → v11: the goal ladder (ticked off from history where it can tell), rival books, complaints, tomorrow's plan.
   (raw) => migrateGoals(raw),
+  // v11 → v12: rivals answer the player (no moves yet); shoppers carry why they chose a store (new ones only).
+  (raw) => { for (const r of (raw as unknown as GameState).rivals) { r.responses ??= []; r.moveCooldown ??= {}; r.cooldown ??= 0; } return { ...raw, version: 12 }; },
 ];
 
 /** Old plot ids to the corners that replaced them; old franchise plots to off-map sites. */

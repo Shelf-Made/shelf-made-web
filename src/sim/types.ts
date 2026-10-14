@@ -104,6 +104,9 @@ export interface Person {
   paid?: boolean;
   /** The walk animation to resume after waiting at a kerb. */
   heldAnim?: Anim;
+  /** Shoppers: the store they chose ('player' or a rival id) and the two scores that most drove it. */
+  store?: string;
+  why?: (keyof StoreScores)[];
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -247,6 +250,10 @@ export interface DayStats {
   complaints: Complaints;
   /** Shoppers at each store on the crossroads today ('player', a rival's id, or 'corner-<id>' for a bought corner), filled at close. */
   shoppers?: Record<string, number>;
+  /** The player's customers today by type (counted as they arrive). */
+  byType?: Record<CustomerType, number>;
+  /** What the rivals watch, recorded at close: the player's price index, share of each type, and reputation. */
+  mine?: { priceIndex: number; share: Record<CustomerType, number>; reputation: number };
 }
 
 export interface StoreScores { price: number; availability: number; layout: number; wait: number; parking: number; awareness: number }
@@ -275,11 +282,28 @@ export interface RivalState {
   boughtDay?: number;
   /** A challenger that took over an empty corner (its own colours). */
   challenger?: boolean;
+  /** Moves made in answer to the player (each fades out by its last day). */
+  responses?: RivalResponse[];
+  /** The day this rival may make its next move, and per move. */
+  cooldown?: number;
+  moveCooldown?: Partial<Record<RivalMove, number>>;
+  /** Today's effect of its moves on its own scores (recomputed each morning). */
+  mods?: RivalMods;
+  /** Closed for a renovation until this day (Fresh & Fine). */
+  renovatingUntil?: number;
+  /** A billboard site it holds (MegaMart). */
+  billboard?: string;
   /** Yesterday's trade, from the daily P&L. */
   lastShoppers?: number;
   lastSales?: number;
   lastProfit?: number;
 }
+
+/** What a rival does in answer to the player. */
+export type RivalMove = 'priceMatch' | 'renovation' | 'renovated' | 'tasting' | 'loyalty' | 'bigSale' | 'billboard' | 'longHours';
+export interface RivalResponse { move: RivalMove; from: number; until: number }
+/** A rival's moves added to its own scores: a lower price index, better quality and service, more awareness, fuller shelves. */
+export interface RivalMods { price: number; quality: number; service: number; awareness: number; availability: number; saleDepth: number }
 
 export interface Bill { id: number; name: string; amount: number; dueDay: number }
 export interface Loan { id: number; offerId: string; name: string; principal: number; balance: number; dailyRate: number; daysLeft: number; takenDay: number }
@@ -335,7 +359,7 @@ export interface DayPlan {
   event: { text: string; rep?: number; spoil?: boolean } | null;
   /** Notices that go up when the day opens (weekday, festival, holiday, weather). */
   notices: string[];
-  rivals: { id: string; opens?: boolean; sale?: number; nextSaleDay?: number; branch?: boolean }[];
+  rivals: { id: string; opens?: boolean; sale?: number; nextSaleDay?: number; branch?: boolean; move?: RivalMove; site?: string }[];
   /** What the town is saying tonight: "Cheapo is printing flyers...". */
   rumours: string[];
 }

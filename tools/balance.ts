@@ -6,7 +6,7 @@
  */
 import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, GOALS, playerShareOf, SHOP_SIZES, LOT_EXPANSION_COST, type GameState, type Difficulty, type FixtureType } from '../src/sim/index';
 import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
-import { TYPE_BASE } from '../src/sim/customers';
+import { TYPE_BASE, priceIndex, rivalPriceIndex } from '../src/sim/customers';
 import { plotDef } from '../src/sim/layout';
 import { writeFileSync } from 'node:fs';
 
@@ -97,6 +97,9 @@ function placeSomewhere(s: GameState, fixtureType: FixtureType): boolean {
   return false;
 }
 
+/** The undercutter cuts every price to 80% of the town's from day 4 (Cheapo opens on day 3). */
+const UNDERCUT_FROM = 4;
+
 const STRATEGIES: Record<string, Strategy> = {
   cautious: (s, day) => { if (day % 2 === 1 && s.cash > 150) orderToFill(s, 'local', 2.0, 160); },
   aggressive: (s, day) => {
@@ -145,9 +148,14 @@ const STRATEGIES: Record<string, Strategy> = {
     if (s.shop.sizeId !== 'starter' && s.shop.lotRows > 1 && can(100) && has('cashier') && !has('stocker')) { const c = s.staffPool.find((x) => x.role === 'stocker'); if (c) applyCommand(s, { type: 'hire', candidateId: c.id }); }
     if (s.unlocks.marketing && s.shop.awareness < 0.8 && can(150) && day % 4 === 1) applyCommand(s, { type: 'flyers', areaId: ['hillside', 'eastend', 'elmheights', 'riverside'][day % 4]! });
   },
+  undercutter: (s, day) => {
+    // Plays like the guided player, but prices everything 20% under the town from day 4 on.
+    STRATEGIES.guided!(s, day);
+    if (day === UNDERCUT_FROM) for (const p of PRODUCTS) applyCommand(s, { type: 'setPrice', productId: p.id, price: p.basePrice * 0.8 });
+  },
 };
 
-interface Run { bust8: boolean; trace: { day: number; shoppers: Record<string, number>; sale: Record<string, boolean>; open: Record<string, boolean>; revenue: number }[]; strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; cash8: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number; rivalTake: number; goalDays: Record<string, number>; closed: { id: string; day: number }[] }
+interface Run { matchDay: number; gapBefore: number; gapAfter: number; bust8: boolean; trace: { day: number; shoppers: Record<string, number>; sale: Record<string, boolean>; open: Record<string, boolean>; revenue: number }[]; strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; cash8: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number; rivalTake: number; goalDays: Record<string, number>; closed: { id: string; day: number }[] }
 
 function runGame(strategy: string, seed: number, days: number, difficulty: Difficulty = 'standard'): Run {
   resetGridCache();
@@ -155,7 +163,7 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
   fitOut(s);
   const fitOutLeft = s.cash;
   const act = STRATEGIES[strategy]!;
-  let minCash = s.cash, profitableBy = 0, totalServed = 0, cash8 = 0, bust8 = false;
+  let minCash = s.cash, profitableBy = 0, totalServed = 0, cash8 = 0, bust8 = false, matchDay = 0, gapBefore = 0, gapAfter = Infinity;
   const closed: { id: string; day: number }[] = [];
   const dayLog: Run['trace'] = [];
   const history: number[] = [];
@@ -215,11 +223,19 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
     }
     if (d.profit > 0 && !profitableBy) profitableBy = day;
     if (day === 8) { cash8 = s.cash; bust8 = s.gameOver; }
+    // The undercutter: when does Cheapo answer, and how much of the price gap is left a week on?
+    { const c = s.rivals.find((r) => r.id === 'discount');
+      if (c && strategy === 'undercutter') {
+        if (!matchDay && c.responses?.some((x) => x.move === 'priceMatch')) matchDay = s.day;
+        const gap = rivalPriceIndex(c) - priceIndex(s);
+        if (day === UNDERCUT_FROM) gapBefore = c.priceIndex - priceIndex(s);
+        if (day > UNDERCUT_FROM && day <= UNDERCUT_FROM + 7) gapAfter = Math.min(gapAfter, gap);
+      } }
     dayLog.push({ day, shoppers: { ...(d.shoppers ?? {}) }, sale: Object.fromEntries(s.rivals.map((r) => [r.id, r.saleDaysLeft > 0])), open: Object.fromEntries(s.rivals.map((r) => [r.id, r.open])), revenue: d.revenue });
     for (const r of s.rivals) if (r.closedDay === s.day && !closed.some((c) => c.id === r.id)) closed.push({ id: r.id, day: s.day });
     if (trace || process.argv.includes('--goals')) {
       const share = playerShareOf(d);
-      console.log(`    day ${String(day).padStart(2)} ${s.shop.sizeId.padEnd(7)}${s.shop.lotRows > 1 ? '+lot' : ''} goal ${GOALS[s.goals.index]?.id ?? 'done'} run ${s.goals.run} share ${share === null ? '-' : (share * 100).toFixed(0) + '%'} you ${d.shoppers?.player ?? 0} srv ${d.served} out ${d.walkedOut} lot ${d.turnedAway} miss ${d.missedItems} fx ${sellers(s).length} tills ${s.shop.fixtures.filter((f) => f.type === 'register').length} st ${s.people.filter((p) => p.kind === 'staff').length} sold $${d.revenue.toFixed(0)} net $${d.profit.toFixed(0)} cash $${s.cash.toFixed(0)} rep ${(s.shop.reputation * 100).toFixed(0)}% | ${s.rivals.map((r) => `${r.name} ${r.open ? `${r.lastShoppers ?? 0} $${r.lastSales ?? 0} ${(r.lastProfit ?? 0) >= 0 ? '+' : ''}${r.lastProfit ?? 0} cash ${Math.round(r.cash)}${r.saleDaysLeft ? ' SALE' : ''}` : r.closedDay !== undefined ? `CLOSED d${r.closedDay}` : '-'}`).join(' | ')}`);
+      console.log(`    day ${String(day).padStart(2)} ${s.shop.sizeId.padEnd(7)}${s.shop.lotRows > 1 ? '+lot' : ''} goal ${GOALS[s.goals.index]?.id ?? 'done'} run ${s.goals.run} share ${share === null ? '-' : (share * 100).toFixed(0) + '%'} you ${d.shoppers?.player ?? 0} srv ${d.served} out ${d.walkedOut} lot ${d.turnedAway} miss ${d.missedItems} fx ${sellers(s).length} tills ${s.shop.fixtures.filter((f) => f.type === 'register').length} st ${s.people.filter((p) => p.kind === 'staff').length} sold $${d.revenue.toFixed(0)} net $${d.profit.toFixed(0)} cash $${s.cash.toFixed(0)} rep ${(s.shop.reputation * 100).toFixed(0)}% stuck ${s.stuckRescues} | ${s.rivals.map((r) => `${r.name} ${r.open ? `${r.lastShoppers ?? 0} $${r.lastSales ?? 0} ${(r.lastProfit ?? 0) >= 0 ? '+' : ''}${r.lastProfit ?? 0} cash ${Math.round(r.cash)}${r.saleDaysLeft ? ' SALE' : ''}` : r.closedDay !== undefined ? `CLOSED d${r.closedDay}` : '-'}`).join(' | ')}`);
     }
     if (s.gameOver) break;
     applyCommand(s, { type: 'openTomorrow' });
@@ -228,7 +244,7 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
   if (process.argv.includes('--shares')) console.log(`  ${strategy} seed ${seed} (${s.shop.plotId}): rivals take ${takes.map((t) => (t * 100).toFixed(0) + '%').join(' ')} by day; week one ${(rivalTake * 100).toFixed(0)}%`);
   const goalDays: Record<string, number> = {};
   for (const g of s.goals.done) goalDays[g.id] = g.day;
-  return { bust8: bust8 || (s.gameOver && days <= 8), trace: dayLog, strategy, seed, days, fitOutLeft, endCash: s.cash, cash8: cash8 || s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull, rivalTake, goalDays, closed };
+  return { matchDay, gapBefore, gapAfter, bust8: bust8 || (s.gameOver && days <= 8), trace: dayLog, strategy, seed, days, fitOutLeft, endCash: s.cash, cash8: cash8 || s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull, rivalTake, goalDays, closed };
 }
 
 /** One game in a child process (the parent runs several at once): prints the run as JSON on its last line. */
@@ -268,7 +284,7 @@ async function main(): Promise<void> {
   const check = process.argv.includes('--check');
   const seeds = [1, 2, 3, 4, 5, 6];
   // Everyone plays twelve days (no rival may close before day 12); the guided player plays forty, up the goal ladder.
-  const daysFor = (strategy: string) => Number(process.argv[process.argv.indexOf('--days') + 1]) || (strategy === 'guided' ? 40 : 12);
+  const daysFor = (strategy: string) => Number(process.argv[process.argv.indexOf('--days') + 1]) || (strategy === 'guided' ? 40 : strategy === 'undercutter' ? 14 : 12);
   const t0 = Date.now();
   // --only guided:3 (one strategy and seed), --only cautious,careless (several strategies). Played in this process, so --trace works.
   const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1]!.split(',').map((x) => x.split(':')) : null;
@@ -318,8 +334,15 @@ async function main(): Promise<void> {
   // 6. Nobody gets stuck.
   // Rivals take at most a third of the corner's trade from a guided player over week one.
   { const g = by('guided'); const take = g.reduce((a, r) => a + r.rivalTake, 0) / Math.max(1, g.length);
-    console.log(`rivals' share of trade against a guided player in week one: ${(take * 100).toFixed(0)}%`);
+    console.log(`rivals' share of trade against a guided player in week one (rivals answering the player): ${(take * 100).toFixed(0)}%`);
     if (g.length && take > 1 / 3) failures.push(`rivals take ${(take * 100).toFixed(0)}% of trade from a guided player (at most a third)`); }
+  // 10. Undercut Cheapo and it answers: a price match within a week of the cut that closes most of the price gap (at its strongest that week).
+  { const u = by('undercutter');
+    if (u.length) console.log(`undercutter: Cheapo price-matched on day ${u.map((r) => r.matchDay || '-').join('/')}; Cheapo's price gap over you ${u.map((r) => `${(r.gapBefore * 100).toFixed(0)}→${(r.gapAfter * 100).toFixed(0)}`).join(' ')} points`);
+    for (const r of u) {
+      if (!r.matchDay || r.matchDay > UNDERCUT_FROM + 7) failures.push(`undercutter seed ${r.seed}: Cheapo never price-matched within a week (${r.matchDay || 'never'})`);
+      else if (r.gapAfter > r.gapBefore * 0.4) failures.push(`undercutter seed ${r.seed}: Cheapo's price match left ${(r.gapAfter * 100).toFixed(1)} of ${(r.gapBefore * 100).toFixed(1)} points of your price lead`);
+    } }
   for (const r of runs) if (r.stuck > 0) failures.push(`${r.strategy} seed ${r.seed}: ${r.stuck} stuck rescues`);
   // 8. The goal ladder: a guided player reaches "Busiest corner" (goal 5) by day 25 on every seed.
   for (const r of by('guided')) { const d = r.goalDays.busiest; if (r.days >= 25 && (!d || d > 25)) failures.push(`guided seed ${r.seed}: Busiest corner ${d ? `only on day ${d}` : 'never reached'} (by day 25)`); }

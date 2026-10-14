@@ -7,7 +7,7 @@ import type { GameState, FixtureType, Rot, Fixture } from './types';
 import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld } from './grid';
 import { findPath } from './pathfinding';
-import { doorInside, doorOutside } from './people';
+import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
 
 export interface PlaceCheck { ok: boolean; reason: string; price: number }
@@ -42,7 +42,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   // Nor boxing the manager in.
   if (owner && !findPath(grid, { x: owner.x, z: owner.z }, doorOutside(state))) return { ok: false, reason: 'Would box you in', price };
   const back = toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6);
-  if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
+  if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the back door', price };
+  // The pallet where deliveries land: whoever stocks the shelves must be able to reach it.
+  if (!findPath(grid, from, storeroomPoint(state))) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
   for (const fx of fixtures) {
     if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
     if (!findPath(grid, from, fixtureFrontWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'Nobody could reach its front' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };

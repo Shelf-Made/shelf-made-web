@@ -30,6 +30,8 @@ export function toggleBillboard(state: GameState, siteId: string): string | null
   if (!site) return 'No such site.';
   const i = state.marketing.billboards.indexOf(site.id);
   if (i >= 0) { state.marketing.billboards.splice(i, 1); return null; }
+  const holder = state.rivals.find((r) => r.billboard === site.id);
+  if (holder) return `${holder.name} has that board for now.`;
   if (state.cash < site.rent) return `Need ${dollars(site.rent)} for the first day.`;
   state.marketing.billboards.push(site.id);
   state.notices.push({ day: state.day, text: `Billboard rented at the ${site.name.toLowerCase()}: ${dollars(site.rent)} a day.`, kind: 'event' });

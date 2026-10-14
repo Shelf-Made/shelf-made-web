@@ -150,13 +150,18 @@ describe('simulation', () => {
     const s = newGame({ seed: 9, plotId: 'main', name: 'Boxed' });
     s.cash = 5000;
     const o = s.people.find((p) => p.kind === 'owner')!;
-    const at = toWorld(s.shop, -1.0, -3.5);
+    const at = toWorld(s.shop, 1.0, -3.5);
     o.x = o.px = at.x; o.z = o.pz = at.z;
-    expect(canPlace(s, 'shelf', -1.5, -4, 0).reason).toBe('You are standing there');
+    expect(canPlace(s, 'shelf', 0.5, -4, 0).reason).toBe('You are standing there');
     // Walls of shelves round the manager's tile: the last one that would close the ring is refused.
-    const ring: [number, number][] = [[-2.5, -4], [-0.5, -4], [-1.5, -5], [-2.5, -5], [-0.5, -5], [-2.5, -3], [-0.5, -3]];
+    const ring: [number, number][] = [[-0.5, -4], [1.5, -4], [0.5, -5], [-0.5, -5], [1.5, -5], [-0.5, -3], [1.5, -3]];
     for (const [x, z] of ring) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x, z, rot: 0 }).ok, `${x},${z}`).toBe(true);
-    expect(canPlace(s, 'shelf', -1.5, -3, 0).reason).toBe('Would box you in');
+    expect(canPlace(s, 'shelf', 0.5, -3, 0).reason).toBe('Would box you in');
+    // Nor sealing the spot in front of the pallet into a pocket (the stock has to come off it).
+    const t = newGame({ seed: 9, plotId: 'main', name: 'Pallet' });
+    t.cash = 5000;
+    expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: -4, rot: 0 }).ok).toBe(true);
+    expect(canPlace(t, 'shelf', -1.5, -5, 0).reason).toBe('Would block the way to the delivery pallet');
   });
 
   it('clicking a shelf against the wall walks you to its room side', () => {

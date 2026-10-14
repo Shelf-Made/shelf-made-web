@@ -3,10 +3,10 @@
  * of the crossroads. They open over the first days, keep a simple state, and act through the
  * same command layer as the player. MegaMart's extra branches open off the map.
  */
-import type { GameState, RivalState, CornerId, ParkingBay, DayPlan } from './types';
+import type { GameState, RivalState, CornerId, ParkingBay, DayPlan, RivalMove, RivalMods, CustomerType } from './types';
 import { withRng, popup, cue } from './state';
-import { CORNERS, RIVAL_CORNER, SHOP_SIZES, OFFMAP_SITES, PLOTS, cornerOfPlot, lotLayout, toWorld, yawToWorld, type Frame } from './layout';
-import { rivalShoppersToday, townGrowth } from './customers';
+import { CORNERS, RIVAL_CORNER, SHOP_SIZES, OFFMAP_SITES, PLOTS, BILLBOARDS, cornerOfPlot, lotLayout, toWorld, yawToWorld, type Frame } from './layout';
+import { rivalShoppersToday, townGrowth, rivalPriceIndex } from './customers';
 import { dollars } from './money';
 
 type RivalDef = Omit<RivalState, 'open' | 'saleDaysLeft' | 'nextSaleDay' | 'cash' | 'reputation' | 'corner' | 'x' | 'z' | 'bays' | 'branches' | 'brokeDays'>;
@@ -85,6 +85,120 @@ export function whereIs(state: GameState, r: RivalState): string {
   return `across Elm Street, on the ${name}`;
 }
 
+// ---- Moves in answer to the player.
+
+/** How long each move lasts (days), and how long before the same rival makes it again. */
+export const MOVE_DAYS: Record<RivalMove, number> = { priceMatch: 7, renovation: 2, renovated: 14, tasting: 1, loyalty: 10, bigSale: 2, billboard: 10, longHours: 10 };
+export const MOVE_COOLDOWN: Record<RivalMove, number> = { priceMatch: 10, renovation: 24, renovated: 0, tasting: 7, loyalty: 14, bigSale: 10, billboard: 14, longHours: 14 };
+/** Days between any two moves by the same rival. */
+export const RIVAL_REST = 4;
+
+/** The moves each kind of store makes: the discounter matches prices, the premium grocer polishes, the chain spends. */
+export const MOVES_OF: Record<RivalState['kind'], RivalMove[]> = { discount: ['priceMatch'], premium: ['renovation', 'tasting', 'loyalty'], chain: ['bigSale', 'billboard', 'longHours'] };
+
+/** The player's last three closes, as the rivals read them. */
+function watched(state: GameState) { return state.history.slice(-3).filter((d) => d.mine); }
+
+/** What this rival would do about the player right now (before cooldowns and pacing). */
+export function triggeredMoves(state: GameState, r: RivalState): RivalMove[] {
+  const d = watched(state);
+  if (d.length < 2) return [];
+  const first = d[0]!.mine!, last = d[d.length - 1]!.mine!;
+  const avg = (f: (m: NonNullable<typeof first>) => number) => d.reduce((a, x) => a + f(x.mine!), 0) / d.length;
+  const rising = (t: CustomerType) => last.share[t] - first.share[t];
+  const out: RivalMove[] = [];
+  if (r.kind === 'discount') {
+    // Your prices below theirs, or bargain hunters drifting your way.
+    if (avg((m) => m.priceIndex) < rivalPriceIndex(r) - 0.01 || rising('bargain') >= 0.04) out.push('priceMatch');
+  } else if (r.kind === 'premium') {
+    if (avg((m) => m.reputation) > r.reputation + 0.05) out.push('renovation');
+    if (rising('impulse') >= 0.03) out.push('tasting');
+    if (rising('loyalist') >= 0.03) out.push('loyalty');
+  } else {
+    // More of the crossroads than MegaMart over the last days.
+    const share = (id: string) => d.reduce((a, x) => { const sh = x.shoppers ?? {}; const all = Object.values(sh).reduce((p, q) => p + q, 0) || 1; return a + (sh[id] ?? 0) / all; }, 0) / d.length;
+    if (share('player') > share(r.id)) {
+      if (r.saleDaysLeft === 0) out.push('bigSale');
+      if (freeBillboard(state)) out.push('billboard');
+      out.push('longHours');
+    }
+  }
+  return out;
+}
+
+/** A billboard site nobody holds (MegaMart buys the first one free). */
+function freeBillboard(state: GameState): string | undefined {
+  return BILLBOARDS.find((b) => !state.marketing.billboards.includes(b.id) && !state.rivals.some((r) => r.billboard === b.id))?.id;
+}
+
+/** Moves this rival may make tomorrow: triggered and off cooldown. */
+function readyMoves(state: GameState, r: RivalState, day: number): RivalMove[] {
+  if (!r.open || r.renovatingUntil !== undefined || (r.cooldown ?? 0) > day) return [];
+  return triggeredMoves(state, r).filter((m) => (r.moveCooldown?.[m] ?? 0) <= day);
+}
+
+const MOVE_RUMOURS: Record<RivalMove, (r: RivalState, site?: string) => string> = {
+  priceMatch: (r) => `${r.name}'s staff are relabelling the shelves: a price match is coming.`,
+  renovation: (r) => `Scaffolders are booked at ${r.name}.`,
+  renovated: (r) => `${r.name} reopens tomorrow after its makeover.`,
+  tasting: (r) => `${r.name} is handing out tickets for a free tasting tomorrow.`,
+  loyalty: (r) => `${r.name} is printing loyalty cards.`,
+  bigSale: (r) => `${r.name} is hanging MEGA SALE banners.`,
+  billboard: (r, site) => `${r.name} is pasting up a poster on the ${(BILLBOARDS.find((b) => b.id === site)?.name ?? 'billboard').toLowerCase()}.`,
+  longHours: (r) => `${r.name} is hiring night staff.`,
+};
+const MOVE_NOTICES: Record<RivalMove, (r: RivalState) => string> = {
+  priceMatch: (r) => `${r.name} is matching your prices: "We match any price!" banners are up, and its sales will be louder for a week.`,
+  renovation: (r) => `${r.name} has closed for two days to renovate. Their shoppers are looking elsewhere for now.`,
+  renovated: (r) => `${r.name} has reopened: brighter, better stocked, better served.`,
+  tasting: (r) => `${r.name} is running a free tasting today. Impulse buyers are flocking over.`,
+  loyalty: (r) => `${r.name} launched a loyalty card: regulars get points for coming back.`,
+  bigSale: (r) => `${r.name} is running a MEGA SALE: deep cuts for two days.`,
+  billboard: (r) => `${r.name} bought a billboard on the crossroads.`,
+  longHours: (r) => `${r.name} is open late now: shorter queues at the busy times.`,
+};
+
+/** A rival's move today, from its active responses: full strength, fading over the last three days. */
+export function computeMods(r: RivalState, day: number): RivalMods {
+  const m: RivalMods = { price: 0, quality: 0, service: 0, awareness: 0, availability: 0, saleDepth: 0 };
+  for (const x of r.responses ?? []) {
+    if (day < x.from || day > x.until) continue;
+    const f = Math.min(1, (x.until - day + 1) / 3);
+    switch (x.move) {
+      case 'priceMatch': m.price += 0.05 * f; m.saleDepth += 0.04; m.awareness += 0.04 * f; break;
+      case 'renovated': m.quality += 0.08 * f; m.service += 0.06 * f; break;
+      case 'tasting': m.awareness += 0.2; break;
+      case 'loyalty': m.availability += 0.08 * f; break;
+      case 'bigSale': m.saleDepth += 0.07; m.awareness += 0.1; break;
+      case 'billboard': m.awareness += 0.08 * f; break;
+      case 'longHours': m.service += 0.1 * f; break;
+      case 'renovation': break;
+    }
+  }
+  return m;
+}
+
+/** Start a move this morning. */
+function startMove(state: GameState, r: RivalState, move: RivalMove, site?: string): void {
+  r.responses ??= []; r.moveCooldown ??= {};
+  r.responses.push({ move, from: state.day, until: state.day + MOVE_DAYS[move] - 1 });
+  r.cooldown = state.day + RIVAL_REST;
+  r.moveCooldown[move] = state.day + MOVE_COOLDOWN[move];
+  if (move === 'renovation') { r.open = false; r.renovatingUntil = state.day + MOVE_DAYS.renovation; r.saleDaysLeft = 0; }
+  if (move === 'bigSale') { r.saleDaysLeft = 2; r.nextSaleDay = state.day + 8; }
+  if (move === 'billboard') r.billboard = site && !state.marketing.billboards.includes(site) ? site : freeBillboard(state);
+  if (move !== 'renovated') popup(state, { x: r.x, z: r.z }, move === 'priceMatch' ? 'We match any price!' : move === 'renovation' ? 'Closed for renovation' : move === 'tasting' ? 'Free tasting!' : move === 'loyalty' ? 'Loyalty cards!' : move === 'bigSale' ? 'MEGA SALE!' : move === 'longHours' ? 'Open late!' : 'New billboard', 'bad', 2.4);
+  state.notices.push({ day: state.day, text: MOVE_NOTICES[move](r), kind: 'rival' });
+  cue(state, 'bad');
+}
+
+/** Each morning: drop finished moves and work out what the active ones add to the rival's scores. */
+function refreshMods(state: GameState, r: RivalState): void {
+  if (r.responses?.length) r.responses = r.responses.filter((x) => x.until >= state.day);
+  if (r.billboard && !r.responses?.some((x) => x.move === 'billboard')) r.billboard = undefined;
+  r.mods = computeMods(r, state.day);
+}
+
 /** A closed rival whose corner is up for sale (at most one at a time). */
 export function forSale(state: GameState): RivalState | undefined { return state.rivals.find((r) => r.closedDay !== undefined && r.boughtDay === undefined); }
 
@@ -101,6 +215,10 @@ export function planRivals(state: GameState, day: number): Pick<DayPlan, 'rivals
   const rumours: string[] = [];
   for (const r of state.rivals) {
     if (r.closedDay !== undefined || r.boughtDay !== undefined) continue;
+    if (r.renovatingUntil !== undefined) {
+      if (day >= r.renovatingUntil) { rivals.push({ id: r.id, opens: true }); rumours.push(MOVE_RUMOURS.renovated(r)); }
+      continue;
+    }
     if (!r.open) {
       if (day >= r.opensDay) { rivals.push({ id: r.id, opens: true }); rumours.push(r.challenger ? `A new store, ${r.name}, opens on the ${cornerLabel(r)} tomorrow.` : `${r.name} opens tomorrow ${whereIs(state, r)}.`); }
       continue;
@@ -117,6 +235,17 @@ export function planRivals(state: GameState, day: number): Pick<DayPlan, 'rivals
     else if (r.brokeDays >= 1) rumours.push(`Word is ${r.name} is behind on the rent.`);
     rivals.push(plan);
   }
+  // At most one move in answer to the player, across all the rivals (the 'rivals' stream picks when several are ready).
+  const ready = state.rivals.flatMap((r) => readyMoves(state, r, day).map((move) => ({ r, move })));
+  if (ready.length) {
+    const pick = ready.length === 1 ? ready[0]! : withRng(state, 'rivals', (rr) => rr.pick(ready));
+    const entry = rivals.find((x) => x.id === pick.r.id);
+    if (entry && !(pick.move === 'bigSale' && entry.sale)) {
+      entry.move = pick.move;
+      if (pick.move === 'billboard') entry.site = freeBillboard(state);
+      rumours.push(MOVE_RUMOURS[pick.move](pick.r, entry.site));
+    }
+  }
   const fs = forSale(state);
   if (fs) rumours.push(day - fs.closedDay! >= CHALLENGER_AFTER - 1 ? `Builders are measuring up the old ${fs.name} on the ${cornerLabel(fs)}.` : `The old ${fs.name} on the ${cornerLabel(fs)} is for sale: ${dollars(CORNER_PRICE[fs.kind])}.`);
   return { rivals, rumours };
@@ -126,6 +255,12 @@ export function planRivals(state: GameState, day: number): Pick<DayPlan, 'rivals
 export function rivalDay(state: GameState, plan: Pick<DayPlan, 'rivals'>): void {
   for (const r of state.rivals) {
     const p = plan.rivals.find((x) => x.id === r.id);
+    if (!r.open && p?.opens && r.renovatingUntil !== undefined) {
+      r.open = true; r.renovatingUntil = undefined;
+      startMove(state, r, 'renovated');
+      refreshMods(state, r);
+      continue;
+    }
     if (!r.open && p?.opens) {
       r.open = true;
       popup(state, { x: r.x, z: r.z }, `${r.name} just opened`, 'info', 2.2);
@@ -153,6 +288,8 @@ export function rivalDay(state: GameState, plan: Pick<DayPlan, 'rivals'>): void 
     }
     // Reputation drifts toward quality, dented by the player's reputation lead.
     r.reputation += (r.quality * 0.6 + r.service * 0.4 - r.reputation) * 0.1 - Math.max(0, state.shop.reputation - r.reputation) * 0.02;
+    if (p?.move) startMove(state, r, p.move, p.site);
+    refreshMods(state, r);
   }
 }
 

@@ -56,6 +56,17 @@ describe('saves', () => {
     raw.version = 9; raw.state.version = 9; delete raw.state.shop.scheme;
     expect(parse(JSON.stringify(raw)).state.shop.scheme).toBe('green');
   });
+  it('gives older rivals an empty book of moves (v11 → v12)', () => {
+    const s = openGame({ seed: 9, plotId: 'main', name: 'Older' });
+    const raw = JSON.parse(serialize(s)) as { version: number; state: { version: number; rivals: Record<string, unknown>[] } };
+    raw.version = 11; raw.state.version = 11;
+    for (const r of raw.state.rivals) { delete r.responses; delete r.moveCooldown; delete r.cooldown; delete r.mods; }
+    const st = parse(JSON.stringify(raw)).state;
+    expect(st.version).toBe(SAVE_VERSION);
+    for (const r of st.rivals) { expect(r.responses).toEqual([]); expect(r.moveCooldown).toEqual({}); expect(r.cooldown).toBe(0); }
+    for (let i = 0; i < 300; i++) tick(st);
+    expect(st.stuckRescues).toBe(0);
+  });
   it('gives older saves the goal ladder, ticking off what their history shows (v10 → v11)', () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'Old Hand' });
     for (let i = 0; i < 400; i++) tick(s);

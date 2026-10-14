@@ -249,6 +249,18 @@ function headroom(state: GameState, car: Car): number {
     }
     return 1;
   }
+  // Lot manners: a car coming into a lot gives way to one driving out whose next stretch crosses its own.
+  if (car.state === 'arriving' && !onRoad(car.x, car.z)) {
+    const mine = car.path.slice(car.pathIdx, car.pathIdx + 4);
+    for (const o of state.cars) {
+      if (o === car || o.state !== 'leaving' || o.reversing || onRoad(o.x, o.z)) continue;
+      if (Math.abs(o.x - car.x) > 3.5 || Math.abs(o.z - car.z) > 3.5) continue;
+      // Two cars head to head in their own lanes of the driveway just pass; only a car turning across waits.
+      if (Math.sin(car.yaw) * Math.sin(o.yaw) + Math.cos(car.yaw) * Math.cos(o.yaw) < -0.85) continue;
+      const theirs = o.path.slice(o.pathIdx, o.pathIdx + 6);
+      if (theirs.some((q) => mine.some((m) => Math.hypot(q.x - m.x, q.z - m.z) < 0.9))) { car.gap = 0; car.blocker = o.id; return 0; }
+    }
+  }
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
   let gap = Infinity;
   for (const o of state.cars) {

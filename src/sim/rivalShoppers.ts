@@ -7,7 +7,8 @@
 import type { GameState, Person, Car, CustomerType, RivalState } from './types';
 import { DAY_SECONDS, TICK, WALK_SPEED, FRONT_WALK_Z, SIDEWALK_E_X, PLOTS, toWorld, toLocal, lotLayout } from './layout';
 import { withRng, nextId } from './state';
-import { rivalShares, TYPE_BASE } from './customers';
+import { rivalShares, rivalScores, computeScores, explainChoice, TYPE_BASE } from './customers';
+import { typeLook } from './people';
 import { rivalFrame, rivalShape } from './rivals';
 import { route, walkStreet, LEG_END, LEGS } from './streets';
 import { carTo, onwardDestination, leaveLot } from './cars';
@@ -51,8 +52,23 @@ export function tickRivalSpawns(state: GameState, curve: number): void {
 
 function look(state: GameState) { return withRng(state, 'rivalCustomers', (r) => ({ model: r.int(0, MODELS - 1), variant: r.int(0, 3), height: r.range(0.92, 1.08) })); }
 
-function shopper(state: GameState, rivalId: string, lk: Person['look'], x: number, z: number): Person {
-  const p: Person = { id: nextId(state), kind: 'walker', rivalId, look: lk, x, z, yaw: 0, px: x, pz: z, state: 'walking', anim: 'walk', path: [], pathIdx: 0, speed: WALK_SPEED * withRng(state, 'rivalCustomers', (r) => r.range(0.85, 1.05)), timer: 0 };
+/** Which kind of shopper a rival draws: by its share of each type at its corner (the visual stream only). */
+function rivalType(state: GameState, r: RivalState): CustomerType {
+  const types = Object.keys(TYPE_BASE) as CustomerType[];
+  const mix = PLOTS.find((p) => p.corner === r.corner)?.mix;
+  const share = r.open ? rivalShares(state)[r.id] : null;
+  const w = types.map((t) => TYPE_BASE[t] * (mix?.[t] ?? 1) * (share ? share[t] : 1));
+  const total = w.reduce((a, b) => a + b, 0) || 1;
+  return withRng(state, 'rivalCustomers', (rr) => { let x = rr.next() * total; for (let i = 0; i < types.length; i++) { x -= w[i]!; if (x <= 0) return types[i]!; } return types[0]!; });
+}
+
+function shopper(state: GameState, rivalId: string, lk: Person['look'], x: number, z: number, ctype?: CustomerType): Person {
+  const r = state.rivals.find((q) => q.id === rivalId)!;
+  const type = ctype ?? rivalType(state, r);
+  const p: Person = { id: nextId(state), kind: 'walker', rivalId, look: lk, x, z, yaw: 0, px: x, pz: z, state: 'walking', anim: 'walk', path: [], pathIdx: 0, speed: WALK_SPEED * withRng(state, 'rivalCustomers', (rr) => rr.range(0.85, 1.05)), timer: 0, ctype: type };
+  // Why this store: the two scores that most drove the choice (a bought corner trades on the player's own).
+  p.store = rivalId; p.why = explainChoice(type, r.boughtDay !== undefined ? computeScores(state) : rivalScores(r));
+  typeLook(p);
   state.people.push(p);
   return p;
 }
@@ -82,8 +98,8 @@ export function spawnRivalShopper(state: GameState, r: RivalState): void {
 }
 
 /** A car that found the player's lot full and went to a rival instead: its driver shops there. */
-export function rivalShopperInCar(state: GameState, car: Car, rivalId: string, lk: Person['look']): void {
-  const p = shopper(state, rivalId, lk, car.x, car.z);
+export function rivalShopperInCar(state: GameState, car: Car, rivalId: string, lk: Person['look'], ctype?: CustomerType): void {
+  const p = shopper(state, rivalId, lk, car.x, car.z, ctype);
   car.ownerId = p.id;
   p.carId = car.id; p.state = 'driving'; p.anim = 'sit';
 }

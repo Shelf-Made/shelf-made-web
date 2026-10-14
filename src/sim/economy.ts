@@ -6,7 +6,7 @@ import { popup, cue, withRng } from './state';
 import { spawnDeliveryTruck } from './cars';
 import { doorOutside } from './people';
 import { rivalDay, rivalsNight, planRivals } from './rivals';
-import { computeScores } from './customers';
+import { computeScores, priceIndex, playerShare } from './customers';
 import { marketDay, inShortage } from './market';
 import { closingCharges, checkFailState, addBill, PAYROLL_TAX, formatMoney, dollars } from './money';
 import { staffNight, autoOrder, managerPrices, wageFor } from './staff';
@@ -99,6 +99,8 @@ export function closeDay(state: GameState): void {
   shop.reputation += Math.max(-0.03, Math.min(0.03, (t.satisfaction - shop.reputation) * 0.3));
   shop.awareness = Math.min(1, shop.awareness + 0.02 + t.served * 0.002);
   state.scores.last = computeScores(state);
+  // What the rivals watch: your prices, your share of each kind of shopper, your reputation.
+  t.mine = { priceIndex: Math.round(priceIndex(state) * 1000) / 1000, share: playerShare(state, state.scores.last), reputation: shop.reputation };
   staffNight(state);
   franchiseDay(state);
   // The rivals' books, and everyone's shoppers at the crossroads today (the share the night card and goals use).
