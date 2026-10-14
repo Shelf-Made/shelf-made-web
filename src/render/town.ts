@@ -108,6 +108,7 @@ export const TOWN_MODEL_IDS: string[] = [...new Set([
   'suburban/fence', 'suburban/planter', 'nature/fence-simple', 'nature/sign', 'nature/log', 'nature/stump-old', 'nature/stump-round',
   'nature/grass-large', 'nature/plant-flattall', 'nature/mushroom-red', 'nature/tree-small', 'nature/tree-simple', 'nature/plant-bushdetailed', 'nature/rock-smalla', 'nature/rock-smallb',
   'furniture/bench', 'furniture/trashcan', 'commercial/parasol-a', 'commercial/parasol-b',
+  'generated/hydrant', 'generated/recycling-bins', 'generated/bike-rack',
 ])];
 
 export function buildTown(seed: number, plotId: string): TownPlan {
@@ -180,6 +181,13 @@ export function buildTown(seed: number, plotId: string): TownPlan {
   }
   for (const z of [-8, -20, -32, 12, 24, 36]) { lampAt(SIDEWALK_W_X - 0.42, z, Math.PI / 2); lampAt(SIDEWALK_E_X + 0.42, z + 3, -Math.PI / 2); }
 
+  // Hydrants on Elm Street's verge, bins and racks on the verges along Main Road out of town.
+  for (const z of [-8.5, 16.5]) P.push({ model: 'generated/hydrant', x: -SIDE_HALF - 0.45, z, yaw: 0 });
+  for (const sx of [-1, 1]) {
+    P.push({ model: 'generated/hydrant', x: sx * 30, z: MAIN_N[0] - 0.4, yaw: 0 });
+    P.push({ model: 'generated/recycling-bins', x: sx * 33, z: MAIN_S[1] + 0.45, yaw: 0 });
+    P.push({ model: 'generated/bike-rack', x: sx * 36.5, z: MAIN_N[0] - 0.55, yaw: Math.PI / 2 });
+  }
   // Street trees on Elm Street's west verge, both arms.
   for (const z of [-6, -11, -16, 9, 14, 19]) P.push({ model: rng.pick(STREET_TREES), x: -SIDE_HALF - 0.45, z, yaw: rng.range(0, 6.28), scale: 0.9 });
 

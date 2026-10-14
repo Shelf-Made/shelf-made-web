@@ -20,8 +20,12 @@ test.describe('screenshots', () => {
 
     await page.getByRole('button', { name: /new shop/i }).click();
     await page.getByRole('button', { name: /pick a plot/i }).click();
-    await settle(page, 1200);
+    await settle(page, 800);
+    // The colour picker: the shop on the corner takes the colours as you click them.
+    await page.getByRole('radio', { name: 'Plum' }).click();
+    await settle(page, 1500);
     await page.screenshot({ path: out('02-plot-picker') });
+    await page.getByRole('radio', { name: 'Fresh green' }).click();
 
     await page.getByRole('button', { name: /main road corner/i }).click();
     await page.getByPlaceholder(/shop name/i).fill('Corner Fresh');
@@ -131,6 +135,8 @@ test.describe('screenshots', () => {
     await hooks(page, 'crowd', 14, false);
     let onward: Car | undefined;
     for (let i = 0; i < 40 && !onward; i++) {
+      // Only about half of a crowd drives: keep them coming until the lot is full and one is sent on.
+      if (i % 4 === 3) await hooks(page, 'crowd', 4, false);
       await hooks(page, 'advanceScan', 1.5, 30);
       onward = (await st(page)).cars.find((c) => c.state === 'arriving' && c.lot !== undefined && c.lot !== 'street');
     }
@@ -152,6 +158,47 @@ test.describe('screenshots', () => {
     await hooks(page, 'viewWorld', 25.5, -0.6, -1.15, 9, 0.62);
     await settle(page, 1500);
     await page.screenshot({ path: out('18-franchise-sign') });
+
+    // Shoppers' reactions over their heads at a long queue.
+    await hooks(page, 'crowd', 12);
+    type R = { reactions: { kind: string; tick: number; personId: number }[]; tick: number };
+    for (let i = 0; i < 120; i++) {
+      await hooks(page, 'advanceScan', 1, 12);
+      const st = await hooks<R>(page, 'state');
+      if (st.reactions.filter((r) => st.tick - r.tick < 12).length >= 2) break;
+    }
+    await follow(page, 0.5, -1.0, 14, 0, 900);
+    await page.screenshot({ path: out('22-reactions-queue') });
+
+    // Bags in Cheapo's colours on the pavement during its sale, beside ours.
+    const cheapo = (await st(page)).rivals.find((r) => r.id === 'discount')!;
+    await hooks(page, 'setTime', 300); // early afternoon: the street is busy and nobody is closing
+    await hooks(page, 'rivalSale', 'discount');
+    await hooks(page, 'advanceScan', 90, 2);
+    // Cheapo's frontage: its corner's origin (north corners face south, south ones are turned round), the pavement in front.
+    const origin: Record<string, [number, number, number]> = { nw: [-15.5, -1.6, 1], ne: [10.9, -1.6, 1], sw: [-10.9, 6.6, -1], se: [15.5, 6.6, -1] };
+    const [cx, cz, facing] = origin[cheapo.corner]!;
+    // Wait for a couple of Cheapo's shoppers to come out with their bags.
+    type P = { people: { rivalId?: string; bags?: boolean; x: number; z: number; state: string }[] };
+    let seen: { x: number; z: number }[] = [];
+    for (let i = 0; i < 200; i++) {
+      // Out on the walkway or the pavement (past the pylon), not still in the doorway.
+      seen = (await hooks<P>(page, 'state')).people.filter((p) => p.rivalId === 'discount' && p.bags && (p.state === 'leaving' || p.state === 'toCar')
+        && Math.hypot(p.x - cx, p.z - (cz + 2 * facing)) < 7 && (p.z - cz) * facing > 2.2);
+      if (seen.length >= 2 || (seen.length && i > 100)) break;
+      await hooks(page, 'advanceScan', 1, 2);
+    }
+    expect(seen.length, 'a Cheapo shopper with bags on the pavement').toBeGreaterThan(0);
+    // Centre on one of them (not the sale sign over the pavement), from in front of the store and to one side.
+    await hooks(page, 'viewWorld', seen[0]!.x, seen[0]!.z, facing > 0 ? 0.8 : Math.PI + 0.8, 8, 0.75);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('23-bags-cheapo-sale') });
+
+    // The crossroads at dusk: shop windows, signs and lamps lit, light spilling onto the pavement.
+    await hooks(page, 'setTime', 700);
+    await hooks(page, 'viewWorld', 2, 2, 0.3, 42, 0.92);
+    await settle(page, 1800);
+    await page.screenshot({ path: out('24-dusk-glow') });
 
     // Night card.
     await follow(page, 0.4, -1.0, 12, 0, 300);

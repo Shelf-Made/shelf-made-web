@@ -3,7 +3,48 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Follow camera and the crossroads (latest)
+## Toy-town art pass (latest)
+
+- [x] **A warm shop.** Cream checker lino, walls banded in the shop's colour with skirting and a
+  rail, painted wood shelves, cream counters, pale blue chillers, warm light. The default zoom has
+  no large grey surfaces left.
+- [x] **Colour schemes.** Six to pick from beside the shop's name (Fresh green, Berry, Tangerine,
+  Plum, Teal, Cocoa); the scheme paints the awning, fascia, pylon, inner walls, staff aprons and
+  the logo. Rivals keep their own: Cheapo yellow and red, Fresh & Fine deep green and cream,
+  MegaMart blue and white, on storefronts, signs, staff and lot paint. Save version 10.
+- [x] **Coloured bags.** Everyone leaving a till carries one to three bags in the store's colour at the hand,
+  rivals' shoppers too; drivers load them into the boot. From the overview, the bag colours on
+  the pavements show who is winning.
+- [x] **Light and time of day.** Low warm sun in the morning, orange in the evening; at dusk the
+  windows, fascias and lamps glow and spill light onto the pavement. A mild bloom on what glows and
+  a tilt-shift at the far zoom (off on Low).
+- [x] **Shadows.** Blob contact shadows under people, cars and fixtures.
+- [x] **Street dressing.** Benches, bins, recycling, bikes in racks, planters, hydrants, sandwich
+  boards, pallets of crates, a trolley shelter, a stray trolley, window posters (sale posters
+  during a rival's sale) and bunting on opening days. More of it as the shop grows; none of it on
+  a path or a bay.
+- [x] **Reactions.** Bubbles over shoppers' heads from what happens in the sim: too pricey, out of
+  stock, long queue, great deal, love this place; at most four at once.
+- [x] **Street life.** Joggers, parents with a child, drivers loading bags.
+
+Checks on the latest run:
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 65 passed; new: a bag's colour is its store's, player schemes stay clear of rival colours, the scheme survives a save and old saves become Fresh green, props never stand on a path, the paving or a bay on any corner or shop size |
+| `npm run e2e` | 8 passed, 24 screenshots |
+| `npm run audit:art` | passed, with the new generated pieces (bag, hydrant, recycling, bike rack, sandwich board, pallet, trolley shelter, poster, bunting) |
+| `npm run balance -- --check` | passed: nobody sensible goes bust, nobody stuck; guided ≈ $63/day in week one; rivals take 24% of a guided player's trade over week one |
+| Perf (`npm run perf`) | default zoom 97 draw calls / 136k triangles; busy at 4x 118 / 170k; mid zoom 122 / 186k; full overview 156 / 254k, post passes included (budget 250 / 900k) |
+
+New screenshots: `22-reactions-queue`, `23-bags-cheapo-sale`, `24-dusk-glow`; `02-plot-picker`
+shows the scheme swatches, `06-close-shop` the new shop at default zoom.
+
+Still open from this round:
+- The bloom and tilt-shift were tuned in SwiftShader; they want a look on a real GPU.
+
+## Follow camera and the crossroads
 
 - [x] **Follow camera.** A narrow lens looks down at the manager from behind and above, 12 units
   back by default: the manager, the shelves, the queue and the door in view. The wheel, + and −,
@@ -62,7 +103,7 @@ Still open from this round:
   a balance number (cheaper extra bays, or a bigger starter lot); see Decisions needing you.
 - The camera was driven by tests and screenshots in headless Chromium; zoom speed, follow
   smoothing and the turn steps want a human pass with a real mouse and a phone.
-- The rival buildings are plain boxes with window panes; the toy-town art pass is next.
+- The rival buildings are plain boxes with window panes (dressed and coloured in the art pass).
 
 ## Rework after the first play
 

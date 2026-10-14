@@ -14,7 +14,7 @@ import { carTo, onwardDestination, leaveLot } from './cars';
 import { followPath } from './movement';
 
 /** Of the town's shoppers who pick a rival, how many we draw. */
-export const RIVAL_VISIBLE = 0.45;
+export const RIVAL_VISIBLE = 0.7;
 const MODELS = 12;
 
 /** Expected visible shoppers per day for each open rival. */

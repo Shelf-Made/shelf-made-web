@@ -46,7 +46,7 @@ export type CustomerType = 'bargain' | 'convenience' | 'loyalist' | 'impulse';
 
 export type PersonState =
   | 'driving' | 'toDoor' | 'entering' | 'shopping' | 'browsing' | 'toQueue' | 'queued' | 'paying' | 'leaving' | 'toCar' | 'walking' | 'gone'
-  | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working' | 'inRival';
+  | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working' | 'inRival' | 'loading';
 
 export type Anim = 'idle' | 'walk' | 'browse' | 'carry' | 'pay' | 'sit';
 
@@ -265,6 +265,10 @@ export interface Franchise {
   alerts: string[];
 }
 
+/** "Too pricey", "Out of stock", "Long queue", "Great deal", "Love this place". */
+export type ReactionKind = 'pricey' | 'outOfStock' | 'queue' | 'deal' | 'love';
+export interface Reaction { id: number; personId: number; kind: ReactionKind; tick: number }
+
 export interface Notice { day: number; text: string; kind: 'rival' | 'event' | 'money' | 'staff' | 'info' }
 
 export interface Popup { id: number; x: number; z: number; y: number; text: string; kind: 'money' | 'info' | 'bad'; tick: number }
@@ -303,6 +307,8 @@ export interface GameState {
   today: DayStats;
   history: DayStats[];
   popups: Popup[];
+  /** Short-lived reactions (what a shopper thinks), shown as icon bubbles over their head. Newest last; trimmed to a few. */
+  reactions: Reaction[];
   tutorial: TutorialState;
   unlocks: Unlocks;
   nextId: number;

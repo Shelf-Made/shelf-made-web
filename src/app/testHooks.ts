@@ -76,6 +76,8 @@ export function installTestHooks(rt: GameRuntime): void {
       rt.bump();
     },
     /** Open every rival's doors today (screenshots of a busy crossroads). */
+    /** Set the clock (game seconds since opening) for lighting screenshots. */
+    setTime: (t: number) => { const s = rt.state; if (!s) return; s.time = t; rt.bump(); },
     openRivals: () => { const s = rt.state; if (!s) return; for (const r of s.rivals) r.open = true; rt.bump(); },
     /** Click (or tap) at a world point given shop-relative, as the player would. */
     clickWorld: (x: number, z: number, y = 0) => {

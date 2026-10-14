@@ -1,6 +1,8 @@
 import { Group, Mesh, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { WINDOW_GLOW, SPILL, spillGeometry } from './glow';
+import { cornerProps } from './dressing';
+import { trolleyShelterGeometry, posterGeometry, buntingGeometry, PROP_MODELS } from './props';
 import type { AssetLibrary } from './assets';
 import type { GameState } from '@/sim/types';
 import type { TownPlan, RivalSite } from './town';
@@ -15,7 +17,7 @@ import { RIVAL_SCHEMES } from '@/sim/schemes';
 export { RIVAL_SCHEMES } from '@/sim/schemes';
 
 /** Models the rival sites use beyond the shop's own. */
-export const RIVAL_MODELS = ['market/shopping-cart', 'roads/cone', 'roads/dumpster', 'suburban/fence', 'furniture/bench', 'furniture/trashcan'];
+export const RIVAL_MODELS = ['market/shopping-cart', 'roads/cone', 'roads/dumpster', 'suburban/fence', 'furniture/bench', 'furniture/trashcan', ...PROP_MODELS];
 
 /** Frontage maths as if every shop faced south (the root carries the real frame). */
 const NORTH_Z = -1.6;
@@ -24,7 +26,7 @@ const SW_IN = MAIN_N[0] - NORTH_Z, SW_OUT = MAIN_N[1] - NORTH_Z, KERB = ROAD_Z -
 interface Site {
   id: string; root: Group;
   lot: Group; build: Group; open: Group;
-  sale: Mesh; soon: Mesh; windows: Mesh; spill: Mesh;
+  sale: Mesh; soon: Mesh; windows: Mesh; spill: Mesh; posters: Mesh; salePosters: Mesh; bunting: Mesh;
   /** The building at full height and as waist-high stubs (when it would hide the manager), and its footprint. */
   full: Mesh; stub: Mesh; footprint: Rect;
 }
@@ -85,6 +87,8 @@ export class RivalsView {
       s.lot.visible = stage === 'lot'; s.build.visible = stage === 'build'; s.open.visible = stage === 'open';
       s.soon.visible = stage !== 'open';
       s.sale.visible = r.open && r.saleDaysLeft > 0;
+      s.salePosters.visible = s.sale.visible; s.posters.visible = !s.sale.visible;
+      s.bunting.visible = r.open && state.day <= r.opensDay;
       s.windows.visible = r.open && this.night;
       s.spill.visible = r.open && this.night;
     }
@@ -147,6 +151,7 @@ export class RivalsView {
     // ---- Stage 3: open for business.
     const open = new Group();
     const lit: BufferGeometry[] = [];
+    const posters: BufferGeometry[] = [], salePosters: BufferGeometry[] = [];
     const wallsFull: BufferGeometry[] = [], wallsStub: BufferGeometry[] = [];
     { const g: BufferGeometry[] = [];
       // Lot: apron, walkway, aisle, driveway, service lane, yard, bays painted in the brand's accent.
@@ -202,15 +207,30 @@ export class RivalsView {
       g.push(box(pal, '#38383D', 0.12, 1.5, 0.12, px - bw / 2 + 0.2, 0, pz), box(pal, '#38383D', 0.12, 1.5, 0.12, px + bw / 2 - 0.2, 0, pz), box(pal, sc.primary, bw, 0.55, 0.12, px, 1.0, pz), box(pal, sc.trim, bw + 0.06, 0.05, 0.16, px, 1.55, pz));
       const ps = Math.min(0.26, (bw - 0.35) / Math.max(4, r.name.length * 0.62));
       for (const yaw of [0, Math.PI]) g.push(place(this.text(r.name, ps, sc.accent, sc.trim), px, 1.24 - ps * 0.4, pz + (yaw === 0 ? 0.07 : -0.07), yaw));
-      // Trolley bay, bench and bins by the door.
-      if (this.assets.has('furniture/bench')) g.push(place(this.assets.geometry('furniture/bench').clone(), -1.7, 0, f.z1 + WALL_T + 0.42));
-      if (this.assets.has('furniture/trashcan')) g.push(place(this.assets.geometry('furniture/trashcan').clone(), 1.25, 0, f.z1 + WALL_T + 0.3));
-      if (this.assets.has('market/shopping-cart')) for (let i = 0; i < 3; i++) g.push(place(this.assets.geometry('market/shopping-cart').clone(), L.apron.x0 + 0.5 + i * 0.18, 0, 0.9, Math.PI / 2));
+      // Street dressing on the lawn beside the paths (MegaMart has a trolley shelter with trolleys under it).
+      for (const pr of cornerProps({ ...shape, door: { x: 0, z: f.z1 } }, r.kind === 'chain' ? 2 : 1, { trolleys: r.kind === 'chain' })) {
+        const geo = pr.model === 'generated/trolley-shelter' ? trolleyShelterGeometry(pal, sc.primary) : this.assets.has(pr.model) ? this.assets.geometry(pr.model).clone() : null;
+        if (!geo) continue;
+        g.push(place(geo, pr.x, 0, pr.z, pr.yaw, pr.scale ?? 1, pr.scale ?? 1, pr.scale ?? 1));
+        if (pr.model === 'generated/trolley-shelter' && this.assets.has('market/shopping-cart')) for (let i = 0; i < 3; i++) g.push(place(this.assets.geometry('market/shopping-cart').clone(), pr.x - 0.25 + i * 0.25, 0, pr.z, pr.yaw + Math.PI / 2));
+      }
+      // Posters in the windows: the brand's offers on a normal day, big SALE sheets while a sale runs.
+      const winXs: number[] = []; for (let x = f.x0 + 0.5; x < f.x1; x++) if (Math.abs(x) > 0.01) winXs.push(x);
+      const glassZ = f.z1 + WALL_T + 0.045;
+      winXs.forEach((x, i) => { if (i % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), x - 0.12, 0.2, glassZ)); });
+      winXs.forEach((x, i) => { if (i % 2 === 1 || winXs.length < 3) salePosters.push(place(posterGeometry(pal, '#E8573F', '#FFFFFF', '#FFC044'), x + 0.1, 0.2, glassZ)); });
       open.add(Object.assign(mesh(g), { name: 'rival-front' }));
       root.add(open); }
     const full = Object.assign(mesh(wallsFull), { name: 'rival-walls' }), stub = Object.assign(mesh(wallsStub), { name: 'rival-stubs' });
     stub.visible = false;
     open.add(full, stub);
+    const posterMesh = new Mesh(merge(posters), this.assets.material), salePosterMesh = new Mesh(merge(salePosters), this.assets.material);
+    salePosterMesh.visible = false;
+    open.add(posterMesh, salePosterMesh);
+    // Bunting across the front on the day it opens.
+    const bunting = new Mesh(buntingGeometry(pal, f.x1 - f.x0 + 0.6, [sc.primary, sc.accent, sc.trim]).translate(f.x0 - 0.3, 1.0, f.z1 + WALL_T + 0.4), this.assets.material);
+    bunting.visible = false;
+    open.add(bunting);
     const windows = new Mesh(merge(lit), WINDOW_GLOW);
     windows.visible = false;
     open.add(windows);
@@ -228,6 +248,6 @@ export class RivalsView {
     const soon = board(`${r.name.toUpperCase()} - SOON`, '#FFFFFF', '#38383D', sc.primary, 1.8);
     const sale = board('SALE!', '#FFC044', '#E8573F', '#B8402E', -L.halfW - 0.6 + 3.2);
     const footprint = rectToWorld(c, { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T + 0.5 });
-    return { id: r.id, root, lot, build, open, sale, soon, windows, spill, full, stub, footprint };
+    return { id: r.id, root, lot, build, open, sale, soon, windows, spill, posters: posterMesh, salePosters: salePosterMesh, bunting, full, stub, footprint };
   }
 }

@@ -4,6 +4,7 @@ import { TargetMarker } from './TargetMarker';
 import { AssetLibrary } from './assets';
 import { CameraRig } from './CameraRig';
 import { PostFX } from './PostFX';
+import { ReactionsView } from './Reactions';
 import { StaticWorld } from './StaticWorld';
 import { StoreView, STORE_MODELS, type StoreHit } from './StoreView';
 import { PeopleView, PEOPLE_MODELS } from './People';
@@ -74,13 +75,14 @@ export class WorldRenderer {
     this.rivals = new RivalsView(this.assets, (t, sz, d, face, side, bevel) => this.store.letters(t, sz, d, face, side, bevel));
     this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
-    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group);
+    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group);
     // Post passes render several times a frame: count the whole frame, not just the last pass.
     this.renderer.info.autoReset = false;
     this.post = new PostFX(this.renderer, this.scene, this.follow.camera);
     this.resize();
   }
   private post: PostFX;
+  private readonly reactions = new ReactionsView();
 
   async load(onProgress: (fraction: number, label: string) => void): Promise<void> {
     onProgress(0.02, 'Loading palette');
@@ -128,7 +130,9 @@ export class WorldRenderer {
       focus = this.camera.target;
     }
     const night = state.phase === 'night';
-    if (night !== this.night) { this.night = night; this.statics.setNight(night); this.store.setNight(night); this.rivals.setNight(night); }
+    // The lights come on at dusk (the last part of the day) and stay on through the night.
+    const lights = night || state.time / DAY_SECONDS > 0.86;
+    if (lights !== this.night) { this.night = lights; this.statics.setNight(lights); this.store.setNight(lights); this.rivals.setNight(lights); }
     this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius());
     // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
     const fog = this.scene.fog as Fog | null;
@@ -151,6 +155,7 @@ export class WorldRenderer {
     const cam = this.activeCamera; cam.updateMatrixWorld();
     this.viewFrustum.setFromProjectionMatrix(this.viewMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     this.people.update(state, alpha, dt, focus, -1, 0, fp ? 26 + this.follow.distance : 48, this.viewFrustum, cam.position);
+    this.reactions.update(state, alpha, cam.position);
     this.marker.update(dt);
     this.cars.update(state, alpha);
     this.rivals.update(state);

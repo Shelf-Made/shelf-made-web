@@ -17,11 +17,13 @@ import { FIXTURE_MODEL, MODEL_OFFSET, SLOT_BOXES, productGeometry, productModelI
 import { schemeById, type Scheme } from '@/sim/schemes';
 import { WINDOW_GLOW, SPILL, spillGeometry } from './glow';
 import { BlobShadows } from './blobs';
+import { cornerProps } from './dressing';
+import { PROP_MODELS, posterGeometry, buntingGeometry } from './props';
 
 const SLATE = '#38383D', CREAM = '#FFF3DC', YELLOW = '#FFC044';
 const LEDGE = 0.3;
 
-export const STORE_MODELS = [...new Set(Object.values(FIXTURE_MODEL))].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds()]);
+export const STORE_MODELS = [...new Set(Object.values(FIXTURE_MODEL))].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds(), ...PROP_MODELS]);
 
 export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'delivery'; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
 
@@ -100,6 +102,7 @@ export class StoreView {
 
   setNight(on: boolean): void { this.night = on; this.nightLight.intensity = on ? 2.2 : 0; if (this.nightGlow) this.nightGlow.visible = on; }
   private night = false;
+  private bunting: Mesh | null = null;
   /** Lit windows, the strip light under the fascia and the pool of light on the apron, shown at night. */
   private nightGlow: Group | null = null;
 
@@ -212,8 +215,9 @@ export class StoreView {
     const windowG = outside('market/wall-window');
     const doorG = outside('market/wall-door');
     const windowGlass = this.assets.glassGeometry('market/wall-window');
-    let pane: { x0: number; x1: number; y0: number; y1: number } | null = null;
-    if (windowGlass) { windowGlass.computeBoundingBox(); const b = windowGlass.boundingBox!; pane = { x0: b.min.x, x1: b.max.x, y0: b.min.y, y1: b.max.y }; }
+    let pane: { x0: number; x1: number; y0: number; y1: number; z1: number } | null = null;
+    if (windowGlass) { windowGlass.computeBoundingBox(); const b = windowGlass.boundingBox!; pane = { x0: b.min.x, x1: b.max.x, y0: b.min.y, y1: b.max.y, z1: b.max.z }; }
+    const posters: BufferGeometry[] = [];
     const glassParts: BufferGeometry[] = [], litPanes: BufferGeometry[] = [];
     const side = (tiles: number[], line: number, axis: 'x' | 'z', outward: number, yaw: number, doorAt: number | null, windows: boolean) => {
       const full: BufferGeometry[] = [], ledge: BufferGeometry[] = [];
@@ -228,6 +232,8 @@ export class StoreView {
         full.push(place(src.clone(), px, 0, pz, yaw));
         ledge.push(place(isDoor ? src.clone() : cutDown(src, LEDGE), px, 0, pz, yaw));
         if (isWindow && windowGlass) glassParts.push(place(windowGlass.clone(), px, 0, pz, yaw));
+        // Offers in every other front window, on the outside of the glass.
+        if (isWindow && pane && axis === 'x' && outward > 0 && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + WALL_T / 2 + pane.z1 + 0.006));
         if (isWindow && pane && axis === 'x' && outward > 0) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, pane.y0 + 0.01, line + 0.08));
         if (!isDoor) {
           const a = Math.max(t - 0.5, lo), b = Math.min(t + 0.5, hi);
@@ -258,6 +264,7 @@ export class StoreView {
     postMesh.castShadow = true;
     this.shell.add(postMesh);
     if (glassParts.length) { const gm = new Mesh(merge(glassParts), this.assets.glass); this.shell.add(gm); front.extraFull.push(gm); }
+    if (posters.length) { const pm = new Mesh(merge(posters), this.assets.material); this.shell.add(pm); front.extraFull.push(pm); }
 
     // ---- Front: striped awning over the windows, the name on a fascia, and a pylon by the road.
     const width = f.x1 - f.x0;
@@ -312,6 +319,10 @@ export class StoreView {
       this.roof.castShadow = true; this.roof.visible = false;
       this.shell.add(this.roof); }
     this.nightLight.position.set(ox + (f.x0 + f.x1) / 2, 0.95, oz + (backZ + f.z1) / 2);
+    // Opening day: bunting in the shop's colours across the front.
+    this.bunting = new Mesh(buntingGeometry(pal, width + 0.6, [sc.primary, sc.accent, sc.trim]).translate(ox + f.x0 - 0.3, 0.97, fz + 0.48), this.assets.material);
+    this.bunting.visible = false;
+    this.shell.add(this.bunting);
     // Night: the windows glow from inside, a strip light under the fascia, and light spills out over the apron.
     { const g = new Group();
       if (litPanes.length) g.add(new Mesh(merge(litPanes), WINDOW_GLOW));
@@ -340,7 +351,11 @@ export class StoreView {
       { x0: -L.halfW - 2.0, z0: 0, x1: -L.halfW + 0.8, z1: 1.2 }, // pylon sign
       ...L.bays.map((b) => ({ x0: b.x - 0.9, z0: b.z - 0.6, x1: b.x + 0.9, z1: b.z + 0.6 })),
     ];
-    const free = (x: number, z: number, m: number) => !used.some((r) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m);
+    // Street props first (more as the shop grows), on the lawn beside the paths; then the garden round them.
+    const tier = shop.sizeId === 'large' ? 2 : shop.sizeId === 'medium' ? 1 : 0;
+    const props = cornerProps(shop, tier, { trolleys: shop.lotRows >= 2 });
+    for (const pr of props) parts.push(this.placed(pr.model, ox + pr.x, oz + pr.z, pr.yaw, pr.scale ?? 1));
+    const free = (x: number, z: number, m: number) => !used.some((r) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m) && !props.some((pr) => Math.hypot(pr.x - x, pr.z - z) < pr.r + m);
     const swIn = MAIN_N[0] - NORTH_Z;
     const trees = ['nature/tree-oak', 'nature/tree-default', 'nature/tree-detailed', 'suburban/tree-small'];
     const bushes = ['nature/plant-bush', 'nature/plant-bushdetailed', 'nature/plant-bushsmall'];
@@ -351,9 +366,6 @@ export class StoreView {
       else if ((k === 5 || k === 11) && free(x, z, 0.5)) parts.push(this.placed(bushes[Math.abs(Math.round(x * 3)) % 3]!, ox + x, oz + z, z * 2.1, 1));
       else if (k === 8 && free(x, z, 0.4)) for (let i = 0; i < 3; i++) parts.push(this.placed(flowers[i]!, ox + x + (i - 1) * 0.28, oz + z + (i % 2) * 0.2, i, 1));
     }
-    parts.push(this.placed('furniture/bench', ox + shop.door.x - 1.7, oz + f.z1 + WALL_T + 0.42, 0, 1));
-    parts.push(this.placed('furniture/trashcan', ox + shop.door.x + 1.25, oz + f.z1 + WALL_T + 0.3, 0, 1));
-    parts.push(this.placed('roads/dumpster', ox + L.backYard.x1 - 0.8, oz + L.backYard.z0 + 0.6, Math.PI / 2, 1));
   }
 
   private placed(id: string, x: number, z: number, yaw: number, s: number): BufferGeometry {
@@ -418,6 +430,7 @@ export class StoreView {
       s.full.visible = !facing; s.ledge.visible = facing;
       for (const m of s.extraFull) m.visible = !facing;
     }
+    if (this.bunting) this.bunting.visible = state.day === 1 && state.phase !== 'night' && state.phase !== 'picking';
     if (shop.layoutVersion !== this.layoutVersion) { this.rebuildFixtures(shop); this.layoutVersion = shop.layoutVersion; this.stockKey = ''; }
     const key = stockKey(shop);
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }

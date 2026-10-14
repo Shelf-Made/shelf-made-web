@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim } from '@/sim/types';
 import { box, merge } from './geometry';
-import { bagsGeometry } from './props';
+import { bagsGeometry, BAG_HEIGHT } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips } from './recolor';
 
@@ -32,8 +32,10 @@ interface Instance {
   seen: number;
   /** What they hold: a box in both arms, or shopping bags in one hand. */
   box: Mesh | null;
-  bags: Mesh | null;
+  /** The bags hang from a pivot beside the right hip that swings with the arm. */
+  bags: Group | null;
   bagKey: string;
+  arm: Object3D | null;
 }
 
 /** The staff's model: its green apron takes the shop's colour. */
@@ -59,7 +61,7 @@ export class PeopleView {
   // Above the tallest paving (the sidewalks top out at 0.048), so the blob never hides under a slab.
   private readonly blobs = new BlobShadows(this.group, 192, 0.42, 0.05);
   private readonly sphere = new Sphere(new V3(), 0.9);
-  /** Seen from far off, people are drawn as little stand-ins in two instanced draws: a body in their shirt colour, a head. */
+  /** Seen from far off, people are drawn as stand-ins in a few instanced draws (a body in their shirt colour, a head, their bags), half again life size so they read from the overview. */
   static readonly FAR = 40;
   private pawnBody: InstancedMesh | null = null;
   private pawnHead: InstancedMesh | null = null;
@@ -76,7 +78,7 @@ export class PeopleView {
     const body = merge([box(pal, '#FFFFFF', 0.3, 0.26, 0.2, 0, 0.2, 0), box(pal, '#55555E', 0.24, 0.2, 0.16, 0, 0, 0)]);
     const head = box(pal, '#FFFFFF', 0.22, 0.22, 0.2, 0, 0.46, 0);
     // Bags beside the stand-in, a little bigger than life so the store's colour reads from the overview.
-    const bag = box(pal, '#FFFFFF', 0.16, 0.18, 0.08, 0.24, 0.02, 0);
+    const bag = box(pal, '#FFFFFF', 0.24, 0.26, 0.12, 0.27, 0.02, 0);
     this.pawnBody = new InstancedMesh(body, this.assets.material, 192);
     this.pawnHead = new InstancedMesh(head, this.assets.material, 192);
     this.pawnBags = new InstancedMesh(bag, this.assets.material, 192);
@@ -87,7 +89,7 @@ export class PeopleView {
     const b = this.pawnBody!, h = this.pawnHead!;
     if (this.pawnN >= b.instanceMatrix.count) return;
     const d = this.pd;
-    d.position.set(x, moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0, z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.1 * p.look.height); d.updateMatrix();
+    d.position.set(x, moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0, z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.5 * p.look.height); d.updateMatrix();
     b.setMatrixAt(this.pawnN, d.matrix); h.setMatrixAt(this.pawnN, d.matrix);
     b.setColorAt(this.pawnN, this.tint.set(SHIRTS[(p.look.model * 3 + p.look.variant) % SHIRTS.length]!));
     h.setColorAt(this.pawnN, this.tint.set(SKINS[(p.look.model + p.look.variant * 2) % SKINS.length]!));
@@ -206,7 +208,7 @@ export class PeopleView {
       const clip = asset.clips.find((c) => c.name === clipName) ?? asset.clips.find((c) => c.name === 'idle');
       if (clip) { const a = mixer.clipAction(clip); a.setLoop(LoopRepeat, Infinity); actions[anim] = a; }
     }
-    const inst: Instance = { root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame, box: null, bags: null, bagKey: '' };
+    const inst: Instance = { root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null };
     if (p.kind === 'owner') root.add(this.badge());
     if (p.look.dog) { inst.dog = this.makeDog(); this.group.add(inst.dog); }
     // Randomise the phase so a crowd does not march in step.
@@ -244,6 +246,20 @@ export class PeopleView {
     const m = new Mesh(merge([box(pal, '#C99A62', 0.24, 0.17, 0.19, 0, 0, 0), box(pal, '#A87B45', 0.242, 0.03, 0.06, 0, 0.16, 0), box(pal, '#FFF3DC', 0.09, 0.05, 0.004, 0.05, 0.07, 0.096)]), this.assets.material);
     m.position.set(0, 0.24, 0.17);
     return m;
+  }
+
+  /**
+   * Put the bags at the right hand. Kenney's arms point sideways in the bind pose and the clips only lower them
+   * 30-45 degrees, so the hand is found along the bone (not below it), and the bags stay upright and above the ground.
+   */
+  private readonly hand = new V3();
+  private hangBags(inst: Instance): void {
+    if (!inst.bags) return;
+    if (!inst.arm) { inst.bags.position.set(-0.28, BAG_HEIGHT + 0.01, 0); return; }
+    inst.arm.updateWorldMatrix(true, false);
+    const h = inst.arm.localToWorld(this.hand.set(-0.25, -0.01, 0));
+    inst.root.worldToLocal(h);
+    inst.bags.position.set(h.x, Math.max(h.y, BAG_HEIGHT + 0.01), h.z);
   }
 
   /** Bags in one hand, in the colour of the store they came from; the geometry is shared per colour and count. */
@@ -290,10 +306,10 @@ export class PeopleView {
       if (bk !== inst.bagKey) {
         if (inst.bags) { inst.bags.removeFromParent(); inst.bags = null; }
         if (bags) {
-          // Hanging from the right hand, so they swing as the arm does.
-          inst.bags = this.bagMesh(storeScheme(state, bags.store).primary, bags.n);
-          const hand = inst.root.getObjectByName('arm-right');
-          if (hand) { inst.bags.position.set(0, -0.11, 0.0); hand.add(inst.bags); } else { inst.bags.position.set(0.17, 0.2, 0); inst.root.add(inst.bags); }
+          // Hung from the right hand (placed each frame below), upright whatever the arm is doing.
+          inst.bags = new Group();
+          inst.bags.add(this.bagMesh(storeScheme(state, bags.store).primary, bags.n));
+          inst.root.add(inst.bags);
         }
         inst.bagKey = bk;
       }
@@ -302,6 +318,7 @@ export class PeopleView {
       const anim: Anim = moving ? (p.anim === 'carry' && !bags ? 'carry' : 'walk') : p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
       this.play(inst, anim, Math.max(0.6, p.speed / 1.6));
       if (d < 30 && !PeopleView.freeze) inst.mixer.update(dt);
+      if (inst.bags) this.hangBags(inst);
       if (inst.dog) {
         const back = { x: -Math.sin(p.yaw) * 0.42 + Math.cos(p.yaw) * 0.3, z: -Math.cos(p.yaw) * 0.42 - Math.sin(p.yaw) * 0.3 };
         inst.dog.visible = true;

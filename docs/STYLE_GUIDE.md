@@ -42,7 +42,7 @@ One atlas, `public/assets/textures/atlas.png` (2048 × 1024), eight 512 px slots
 | 3 | City Kit Roads |
 | 4 | Car Kit |
 | 5 | Food Kit |
-| 6 | Flat palette: brand colours first, then Nature / Furniture material colours (32 px cells) |
+| 6 | Flat palette: brand colours first, then Nature / Furniture material colours, then the late colours (schemes, interior) (32 px cells) |
 | 7 | spare |
 
 Kenney colormaps are vertical gradient strips (64 px wide, light → dark left to right);
@@ -52,6 +52,51 @@ so strips never bleed into neighbours at a distance.
 Brand colours (slot 6, fixed cells): white `#FFFFFF`, fresh green `#3FA87A`, honey wood
 `#D9A066`, sunny yellow `#FFC044`, dark slate `#38383D`, cream `#FFF3DC`, tile grey
 `#B9BCC4`, red `#E8573F`, blue `#4F8FE0`.
+
+Late colours (`LATE` in `tools/lib/palette.ts`) are appended after the packs' colours, so adding
+one never moves an earlier cell or a model's UVs: every shop and rival scheme, the checker lino
+(`#FFF3DC` / `#F3DEC0`, joints `#EBD2B0`), cream-painted metal `#E9DCC4`, enamel `#F7EFE2`, skirting
+wood `#C48A52`, window glow `#FFE6A8` and light spill `#FFD27A`. A colour not in the palette falls
+back to the nearest one, so add it to `LATE` and run `npm run assets` rather than guessing.
+
+## The toy town
+
+Warm, small and busy, like a model railway layout: shape, colour and light do the work, never
+realism. No large grey surfaces inside a shop.
+
+- **Shop inside.** Cream checker lino, a tile per square. Walls painted in bands from the floor:
+  wood skirting (0–0.07), the shop's colour to waist height (to 0.45), a cream rail (0.45–0.5), the
+  scheme's pale tint above; cut round window panes and down to the ledge with the cut-away.
+- **Fixtures** are repainted by colormap strip (`FIXTURE_PAINT`, flat palette colours): shelving in
+  honey wood (lavender grey → `#D9A066`, slate → `#B8824C`), the counter cream with a wood top,
+  chillers white enamel with sky-blue trim, produce stands in wood.
+- **Schemes** (`src/sim/schemes.ts`): primary (awning, fascia board, walls inside, aprons, bags),
+  dark (valance, fascia top, pylon trim), light (upper wall band), accent (awning's other stripe,
+  rival lettering), trim (letter sides, the shelf-bracket underline). Player presets: fresh green,
+  berry, tangerine, plum, teal, cocoa; none within easy reach of a rival's yellow, deep green or
+  blue (a test keeps them apart). Rivals: Cheapo `#FFC044`/`#E8573F`, Fresh & Fine `#2E6B4F`/
+  `#FFF3DC`, MegaMart `#3570BC`/`#FFFFFF`.
+- **Bags** (`generated/shopping-bag`): 0.15 × 0.095 × 0.08 body in the store's primary, a white
+  folded top and dark handles, 0.125 tall in all; one to three, fanned front to back. They hang at
+  the right hand, found along the arm bone each frame (Kenney's arms point sideways in the bind
+  pose and the clips only lower them 30–45°, so the hand is low and out from the hip), kept upright
+  and never below the ground. Short and wide like a toy's so the colour reads from mid zoom.
+  Far-off stand-ins carry a bag block half again as big.
+- **Props** (`src/render/dressing.ts`) stand on the lawn beside the paths, never on paving, a path
+  or a parking bay (a test checks every corner and shop size against the sim's grid). Kenney's own
+  where they exist (bench, bin, dumpster, planter, trolley, parasol); generated in the same flat
+  style where not (hydrant, recycling bins, bike rack with bikes, sandwich board, pallet of crates,
+  trolley shelter, window poster, bunting). A bigger shop gets more. Posters go on the outside of
+  the glass; rivals swap theirs for red SALE sheets during a sale; bunting goes up on opening day.
+- **Shadows.** The sun's shadow map is for buildings, fixtures and props. People and cars sit on
+  soft instanced blob shadows; fixtures get one too. Blobs float at 0.05 so no slab hides them.
+- **Light.** Low golden sun after opening, neutral at noon, amber towards closing. From dusk the
+  windows, fascia strips and lamp heads glow (colour channels above 1, so only they bloom) and pour
+  warm pools onto the pavement. Bloom is mild; tilt-shift fades in only at the far overview; both
+  are off on Low quality.
+- **Reactions** are speech bubbles drawn once per kind on a 128 px canvas: `$$` (too pricey), a
+  crossed-out shelf (out of stock), a clock (long queue), a `%` tag (great deal), a heart (love this
+  place). At most four at once.
 
 ## Materials
 
@@ -70,15 +115,11 @@ map = atlas) and `glass` (transparent, 45% alpha). Anything else fails the audit
 | Car | ≤ 3 200 | 2 032–3 124 |
 | Road tile | ≤ 200 | 12–116 |
 | Tree / plant | ≤ 400 | 32–196 |
-| Generated piece (letters, awnings, product variants) | ≤ 450 | 28–408 (W is the widest letter) |
+| Generated piece (letters, awnings, product variants, props, bag) | ≤ 450 | 28–448 (the bike rack is the widest) |
 
-Whole scene budget: < 250 draw calls and < 900 k triangles rendered per frame (both passes),
-checked by `npm run perf` in first person, on Main Street and from high above the valley.
-Forest trees use the low-poly pine and woodland picks only (54–114 triangles).
-
-Fences: Kenney fence pieces run along x at yaw 0; they stand on property lines (front, back,
-side) and field edges, never across a garden. Every house sits inside its own lot with a 1.7-unit
-front garden; the town tests check this for every plot and several seeds.
+Whole scene budget: < 250 draw calls and < 900 k triangles rendered per frame (both passes and
+the post passes), checked by `npm run perf` at the default zoom, busy at 4x, one scroll out and at
+the full overview.
 
 ## Proportions for generated models
 
@@ -93,5 +134,8 @@ front garden; the town tests check this for every plot and several seeds.
 
 Thirteen base meshes (12 Mini Characters + the Mini Market employee). Variety comes from
 UV strip swaps on the shared colormap: outfit strips are permuted per person, skin picks
-one of three tones, hair follows its strip. Staff always keep the green apron strip.
-Heights vary ±8%. Never two identical people in one frame.
+one of three tones, hair follows its strip.
+Heights vary ±8%. Never two identical people in one frame. Staff and the manager wear the shop's
+colour: the employee model's green apron strip is repainted with the scheme's primary. Children are
+0.6–0.68 of an adult's height and walk a step behind a parent; joggers move at about twice walking
+pace.

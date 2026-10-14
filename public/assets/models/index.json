@@ -2667,6 +2667,42 @@
   },
   {
    "pack": "generated",
+   "name": "bike-rack",
+   "file": "models/generated/bike-rack.glb",
+   "size": [
+    0.44,
+    0.225,
+    0.34
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 428,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "bunting",
+   "file": "models/generated/bunting.glb",
+   "size": [
+    2,
+    0.269,
+    0.008
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 264,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
    "name": "dog",
    "file": "models/generated/dog.glb",
    "size": [
@@ -2680,6 +2716,24 @@
     0
    ],
    "tris": 84,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "hydrant",
+   "file": "models/generated/hydrant.glb",
+   "size": [
+    0.17,
+    0.25,
+    0.14
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 108,
    "skinned": false,
    "clips": []
   },
@@ -3351,6 +3405,42 @@
   },
   {
    "pack": "generated",
+   "name": "pallet",
+   "file": "models/generated/pallet.glb",
+   "size": [
+    0.5,
+    0.22,
+    0.44
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 192,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "poster",
+   "file": "models/generated/poster.glb",
+   "size": [
+    0.26,
+    0.34,
+    0.009
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 36,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
    "name": "product-bag",
    "file": "models/generated/product-bag.glb",
    "size": [
@@ -3549,12 +3639,48 @@
   },
   {
    "pack": "generated",
+   "name": "recycling-bins",
+   "file": "models/generated/recycling-bins.glb",
+   "size": [
+    0.61,
+    0.285,
+    0.225
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 144,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "sandwich-board",
+   "file": "models/generated/sandwich-board.glb",
+   "size": [
+    0.22,
+    0.298,
+    0.079
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
    "name": "shopping-bag",
    "file": "models/generated/shopping-bag.glb",
    "size": [
-    0.092,
-    0.149,
-    0.057
+    0.152,
+    0.13,
+    0.082
    ],
    "min": [
     0,
@@ -3562,6 +3688,24 @@
     0
    ],
    "tris": 60,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "generated",
+   "name": "trolley-shelter",
+   "file": "models/generated/trolley-shelter.glb",
+   "size": [
+    1,
+    0.54,
+    0.45
+   ],
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "tris": 48,
    "skinned": false,
    "clips": []
   },

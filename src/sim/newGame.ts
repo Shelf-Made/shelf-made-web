@@ -61,7 +61,7 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
     tick: 0, day: 1, time: 0, timeScale: 1, phase: picked ? 'setup' : 'picking',
     cash: opts.sandbox ? 50000 : d.cash,
     shop, prices, people: [], cars: [], orders: [],
-    today: emptyDayStats(1), history: [], popups: [],
+    today: emptyDayStats(1), history: [], popups: [], reactions: [],
     tutorial: { enabled: opts.tutorial ?? !opts.sandbox, step: 0, done: false, completed: [], rewardsPaid: 0 },
     unlocks: { prices: true, stock: true, build: true, staff: opts.sandbox ?? false, marketing: opts.sandbox ?? false, stats: true, newBadges: [] },
     nextId: 100, rng: {}, sounds: [], stuckRescues: 0,
