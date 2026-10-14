@@ -17,6 +17,27 @@ test('new game → scan a customer → night → open tomorrow → autosave show
   await expect(page.locator('.card')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.card')).toHaveCount(0);
+  // Build mode through real pointer events: pick a shelf, click a free floor tile, the fixture count grows.
+  await hooks(page, 'dispatch', { type: 'cheat', cash: 1000 });
+  await hooks(page, 'setSpeed', 0);
+  await hooks(page, 'focusStore');
+  await page.getByRole('button', { name: /build/i }).first().click();
+  await page.getByRole('button', { name: /place/i }).first().click();
+  const before = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { shop: { fixtures: unknown[] } } } }).__shelf.state().shop.fixtures.length);
+  // Project a free tile (store-relative 0.5, -3 → world (1, -2.5 + origin)) to the screen and click it.
+  const pt = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { runtime: { renderer: { project: (x: number, y: number, z: number, out: { x: number; y: number; visible: boolean }) => void } | null }; state: () => { shop: { originX: number; originZ: number } } } }).__shelf;
+    const s = h.state().shop; const out = { x: 0, y: 0, visible: false };
+    h.runtime.renderer!.project(s.originX + 1.0, 0, s.originZ - 2.5, out); return out;
+  });
+  await page.mouse.move(pt.x, pt.y);
+  await page.waitForTimeout(300);
+  await page.mouse.click(pt.x, pt.y);
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { shop: { fixtures: unknown[] } } } }).__shelf.state().shop.fixtures.length);
+  expect(after).toBe(before + 1);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   // Back to the lobby: the autosave is listed.
   await page.getByRole('button', { name: /settings/i }).click();
   await page.getByRole('button', { name: /save & quit/i }).click();

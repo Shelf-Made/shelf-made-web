@@ -69,7 +69,7 @@ test.describe('screenshots', () => {
 
     // A rival sale across the road.
     await hooks(page, 'rivalSale', 'discount');
-    await hooks(page, 'camera', -14, 4, 22, -0.5, 0.9);
+    await hooks(page, 'camera', -20, 7.5, 15, Math.PI, 0.85);
     await settle(page, 700);
     await page.screenshot({ path: out('13-rival-sale') });
     await hooks(page, 'focusStore');

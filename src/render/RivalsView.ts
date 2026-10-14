@@ -26,7 +26,7 @@ export class RivalsView {
       const post = merge([box(pal, '#38383D', 0.1, 1.2, 0.1, x - 1.1, 0, z), box(pal, '#38383D', 0.1, 1.2, 0.1, x + 1.1, 0, z)]);
       this.group.add(new Mesh(post, this.assets.material));
       const mk = (text: string, bg: string, fg: string, side: string) => {
-        const g = merge([box(pal, bg, 2.6, 0.55, 0.12, x, 1.0, z), place(textGeometry(pal, text, 0.3, 0.05, fg, side), x, 1.12, z + 0.08, 0)]);
+        const g = merge([box(pal, bg, 2.6, 0.55, 0.12, x, 1.0, z), place(textGeometry(pal, text, 0.3, 0.05, fg, side), x, 1.12, z - 0.08, Math.PI)]);
         const m = new Mesh(g, this.assets.material); m.castShadow = true; m.visible = false; this.group.add(m); return m;
       };
       this.boards.set(r.id, { closed: mk('CLOSED', '#38383D', '#B9BCC4', '#5A5A62'), sale: mk('SALE!', '#FFC044', '#E8573F', '#B8402E'), name: mk(r.name.toUpperCase(), '#FFFFFF', '#38383D', '#3FA87A') });

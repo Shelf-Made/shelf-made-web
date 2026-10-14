@@ -274,7 +274,8 @@ export class GameRuntime {
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {
     const s = this.state; if (!s) return;
-    const x = Math.floor(wx - s.shop.originX), z = Math.floor(wz - s.shop.originZ);
+    // Floor tiles sit on half-integer x (the door is at x = 0) and integer z.
+    const x = Math.floor(wx - s.shop.originX + 0.5) - 0.5, z = Math.floor(wz - s.shop.originZ);
     if (this.build.hover && this.build.hover.x === x && this.build.hover.z === z) return;
     this.build.hover = { x, z };
     this.refreshGhost();
