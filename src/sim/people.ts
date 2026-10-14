@@ -228,6 +228,15 @@ function finishShopping(state: GameState, p: Person): void {
   setPath(state, p, queueSlot(state, reg, p.queueSlot));
 }
 
+/** Take anyone no longer in the world out of every till's line (and off the till), so a line never waits on a ghost. */
+export function pruneTills(state: GameState): void {
+  const alive = new Set(state.people.map((p) => p.id));
+  for (const f of state.shop.fixtures) {
+    if (f.queue && f.queue.some((id) => !alive.has(id))) f.queue = f.queue.filter((id) => alive.has(id));
+    if (f.serving !== null && f.serving !== undefined && !alive.has(f.serving)) { f.serving = null; f.scanned = 0; }
+  }
+}
+
 function registerOf(state: GameState, p: Person): Fixture | undefined {
   return state.shop.fixtures.find((f) => f.id === p.registerId);
 }
@@ -883,5 +892,5 @@ export function tickPeople(state: GameState): void {
     watchdog(state, p, dyn);
   }
   separate(state, dyn);
-  if (state.people.some((p) => p.state === 'gone')) state.people = state.people.filter((p) => p.state !== 'gone');
+  if (state.people.some((p) => p.state === 'gone')) { state.people = state.people.filter((p) => p.state !== 'gone'); pruneTills(state); }
 }

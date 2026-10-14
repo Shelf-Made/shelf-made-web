@@ -77,8 +77,8 @@ export function cornerOfPlot(plotId: string): CornerId { return plotDef(plotId).
 
 /** The bus stop: a shelter on the south sidewalk of Main Road, west of the crossing. */
 export const BUS_STOP: Vec2 = { x: -6.2, z: SIDEWALK_S_Z };
-/** Shared parallel bays on Elm Street's east kerb, north of the crossing; cars park facing north. */
-export const STREET_BAYS: { x: number; z: number; yaw: number }[] = [-4.6, -7.1, -9.6].map((z) => ({ x: SIDE_HALF + 0.5, z, yaw: Math.PI }));
+/** Shared parallel bays on Elm Street's east kerb, north of the crossing; cars park facing north, 3.4 apart so each can pull in and out past its neighbours. */
+export const STREET_BAYS: { x: number; z: number; yaw: number }[] = [-4.6, -8.0, -11.4].map((z) => ({ x: SIDE_HALF + 0.5, z, yaw: Math.PI }));
 
 /**
  * The neighbourhoods the roads lead to, off the map: each has a road sign at the edge of town.
@@ -91,11 +91,14 @@ export const OFFMAP_SITES: { id: string; name: string; km: number; dir: 'east' |
   { id: 'riverside', name: 'Riverside', km: 3, dir: 'south', traffic: 1.0 },
 ];
 
-/** Billboards standing on the crossroads, each a real board: by the bus shelter, at the town edge on Main Road, on a rooftop. */
+/**
+ * Billboards standing on the crossroads, each a real board: by the bus shelter, at the town edge on Main Road,
+ * and up on tall legs where Elm Street leaves town (y lifts the board off the ground).
+ */
 export const BILLBOARDS: { id: string; name: string; rent: number; reach: number; x: number; z: number; y: number; yaw: number }[] = [
   { id: 'bus', name: 'Bus shelter', rent: 35, reach: 0.05, x: BUS_STOP.x - 2.1, z: SIDEWALK_S_Z + 0.55, y: 0, yaw: Math.PI },
   { id: 'edge', name: 'Main Road, edge of town', rent: 45, reach: 0.06, x: -27.5, z: ROAD_Z - 3.2, y: 0, yaw: Math.PI / 2 },
-  { id: 'roof', name: 'Rooftop over Elm Street', rent: 30, reach: 0.04, x: 6, z: -19.5, y: 6.2, yaw: 0 },
+  { id: 'roof', name: 'High board on Elm Street', rent: 30, reach: 0.04, x: 4.6, z: -16.5, y: 1.8, yaw: 0.35 },
 ];
 
 /**

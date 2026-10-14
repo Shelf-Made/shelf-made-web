@@ -89,7 +89,8 @@ function passByPath(fromWest: boolean): Vec2[] {
 
 /** Elm Street's bays are reached by a right turn from westbound Main Road (no lane to cross). */
 function pathIntoStreetBay(bay: ParkingBay): Vec2[] {
-  return [{ x: FAR, z: LANE_WEST_Z }, { x: 2.4, z: LANE_WEST_Z }, { x: LANE_NORTH_X, z: ROAD_Z - 1.2 }, { x: LANE_NORTH_X, z: bay.z + 2.4 }, { x: bay.x, z: bay.z + 0.7 }, { x: bay.x, z: bay.z }];
+  // Up the lane past the bay behind, then a short swing in to the kerb.
+  return [{ x: FAR, z: LANE_WEST_Z }, { x: 2.4, z: LANE_WEST_Z }, { x: LANE_NORTH_X, z: ROAD_Z - 1.2 }, { x: LANE_NORTH_X, z: bay.z + 1.7 }, { x: bay.x - 0.3, z: bay.z + 0.6 }, { x: bay.x, z: bay.z }];
 }
 export function freeStreetBay(state: GameState): number { return state.streetBays.findIndex((b) => b.carId === null); }
 
@@ -171,7 +172,7 @@ export function leaveLot(state: GameState, car: Car): void {
 }
 
 function leaveStreetBay(state: GameState, car: Car): void {
-  car.path = roundPath([{ x: car.x, z: car.z }, { x: car.x, z: car.z - 0.8 }, { x: LANE_NORTH_X, z: car.z - 2.4 }, { x: LANE_NORTH_X, z: -FAR }], 0.9);
+  car.path = roundPath([{ x: car.x, z: car.z }, { x: car.x, z: car.z - 0.6 }, { x: LANE_NORTH_X, z: car.z - 1.9 }, { x: LANE_NORTH_X, z: -FAR }], 0.9);
   car.pathIdx = 1; car.state = 'leaving'; car.speed = CAR_LOT_SPEED;
   freeCarBay(state, car);
 }
@@ -370,6 +371,13 @@ function lotSpeed(car: Car): boolean {
 }
 
 export function tickCars(state: GameState): void {
+  // A parked car whose driver is gone (closing time sends the last customers home) drives off by itself.
+  let drivers: Set<number> | null = null;
+  for (const car of state.cars) {
+    if (car.state !== 'parked' || car.ownerId === null) continue;
+    drivers ??= new Set(state.people.map((p) => p.id));
+    if (!drivers.has(car.ownerId)) leaveLot(state, car);
+  }
   for (const car of state.cars) {
     car.px = car.x; car.pz = car.z; car.pyaw = car.yaw;
     switch (car.state) {

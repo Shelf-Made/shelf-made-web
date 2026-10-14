@@ -84,7 +84,10 @@ export function migrate(file: SaveFile): SaveFile {
     raw = step(raw); v = raw.version as number;
   }
   if (v > SAVE_VERSION) throw new Error(`save is from a newer version (${v})`);
-  return { ...file, version: v, state: raw as unknown as GameState };
+  // Elm Street's bays moved apart (same count, same version): seat them where they stand now.
+  const st = raw as unknown as GameState;
+  if (Array.isArray(st.streetBays)) st.streetBays = STREET_BAYS.map((b, i) => ({ ...b, carId: st.streetBays[i]?.carId ?? null }));
+  return { ...file, version: v, state: st };
 }
 
 export function serialize(state: GameState): string {

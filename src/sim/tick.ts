@@ -1,7 +1,7 @@
 import type { GameState } from './types';
 import { TICK, DAY_SECONDS, DIFFICULTY } from './layout';
 import { tickCars, spawnTraffic } from './cars';
-import { tickPeople, spawnCustomer, spawnWalker, plotOf } from './people';
+import { tickPeople, spawnCustomer, spawnWalker, plotOf, pruneTills } from './people';
 import { tickOrders, closeDay, isClosingTime } from './economy';
 import { withRng } from './state';
 import { expectedByType } from './customers';
@@ -69,6 +69,7 @@ export function tick(state: GameState): void {
     if (!customersLeft || state.time > DAY_SECONDS + 120) {
       for (const p of state.people) if (p.kind === 'customer') p.state = 'gone';
       state.people = state.people.filter((p) => p.state !== 'gone');
+      pruneTills(state);
       closeDay(state);
     }
   }

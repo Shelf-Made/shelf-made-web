@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
 import { tick, applyCommand, TICK } from './index';
-import { spawnTraffic, spawnCustomerCar } from './cars';
+import { spawnTraffic, spawnCustomerCar, carTo } from './cars';
 import { STOP_LINE, greenFor, LANE_EAST_Z, LANE_WEST_Z, LANE_SOUTH_X, LANE_NORTH_X, toLocal, CORNERS } from './layout';
 import { rivalVisitors, rivalFront } from './rivalShoppers';
 import { onZebra } from './streets';
@@ -61,6 +61,30 @@ describe('crossroads traffic', () => {
       expect(c.state === 'parked' || c.state === 'leaving').toBe(true);
       expect((c.waited ?? 0)).toBeLessThan(20);
     }
+  });
+});
+
+describe('Elm Street bays', () => {
+  it('a car pulls into a bay past the car parked in the bay behind it', () => {
+    const s = openGame({ seed: 14, plotId: 'main', name: 'Kerb' });
+    const me = s.people.find((p) => p.kind === 'owner')!.id;
+    const first = carTo(s, { kind: 'street', bay: 0 }, false, 0, me)!;
+    run(s, 40);
+    expect(first.state).toBe('parked');
+    const second = carTo(s, { kind: 'street', bay: 1 }, false, 1, me)!;
+    let worst = 0;
+    run(s, 40, () => { worst = Math.max(worst, second.waited ?? 0); });
+    expect(second.state).toBe('parked');
+    expect(Math.hypot(second.x - s.streetBays[1]!.x, second.z - s.streetBays[1]!.z)).toBeLessThan(0.05);
+    expect(worst).toBeLessThan(10);
+  });
+
+  it('a parked car whose driver has gone home drives off and frees its bay', () => {
+    const s = openGame({ seed: 15, plotId: 'main', name: 'Orphan' });
+    const car = carTo(s, { kind: 'street', bay: 0 }, false, 0, 424242)!;
+    run(s, 60);
+    expect(car.state === 'leaving' || car.state === 'gone' || !s.cars.includes(car)).toBe(true);
+    expect(s.streetBays[0]!.carId).toBeNull();
   });
 });
 

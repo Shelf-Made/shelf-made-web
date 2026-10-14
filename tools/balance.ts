@@ -2,9 +2,12 @@
  * Balance harness: scripted strategies over many seeds, asserting the game is fair.
  *   npm run balance            prints a table
  *   npm run balance -- --check exits non-zero when any assertion fails
+ *   --progress prints each run's time; --only franchiser:3 runs one strategy (and seed); --trace prints it day by day
  */
 import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, type GameState, type Difficulty } from '../src/sim/index';
 import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
+import { TYPE_BASE } from '../src/sim/customers';
+import { plotDef } from '../src/sim/layout';
 
 type Strategy = (s: GameState, day: number) => void;
 
@@ -96,7 +99,7 @@ const STRATEGIES: Record<string, Strategy> = {
   },
 };
 
-interface Run { strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number }
+interface Run { strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number; rivalTake: number }
 
 function runGame(strategy: string, seed: number, days: number, difficulty: Difficulty = 'standard'): Run {
   resetGridCache();
@@ -108,31 +111,63 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
   const history: number[] = [];
   const served: number[] = [];
   let salePull = 0;
+  const takes: number[] = [];
+  const trace = process.argv.includes('--trace');
   for (let day = 1; day <= days; day++) {
+    const t0 = Date.now();
     act(s, day);
     const hasCashier = () => s.people.some((p) => p.kind === 'staff' && p.role === 'cashier');
     // In person, like a player: scan when somebody is waiting at the till, otherwise restock.
     const owner = s.people.find((p) => p.kind === 'owner')!;
     const waiting = () => s.shop.fixtures.some((f) => f.type === 'register' && (f.serving !== null && f.serving !== undefined || (f.queue?.length ?? 0) > 0));
     const busy = () => !!owner.task || !!owner.carrying;
+    let dumped = false;
     for (let i = 0; i < (DAY_SECONDS + 130) / TICK && s.phase !== 'night'; i++) {
       tick(s);
+      // --trace: at midday with nobody served yet, show the tills and who is on them.
+      if (trace && i === Math.round(DAY_SECONDS / 2 / TICK) && s.today.served === 0 && s.today.customers > 5) {
+        for (const f of s.shop.fixtures.filter((x) => x.type === 'register' || x.type === 'kiosk')) {
+          console.log(`    till ${f.id} at ${f.x},${f.z} rot ${f.rot} staff ${f.staffId ?? '-'} serving ${f.serving ?? '-'} queue ${(f.queue ?? []).length}`);
+          for (const id of (f.queue ?? []).slice(0, 4)) { const q = s.people.find((x) => x.id === id); console.log(`      in line ${id}: ${q ? `${q.state} at ${q.x.toFixed(2)},${q.z.toFixed(2)} path ${q.pathIdx}/${q.path.length} -> ${q.path[q.path.length - 1] ? q.path[q.path.length - 1]!.x.toFixed(2) + ',' + q.path[q.path.length - 1]!.z.toFixed(2) : '-'}` : 'missing'}`); }
+        }
+        for (const p of s.people.filter((x) => x.kind === 'staff' || x.kind === 'owner')) console.log(`    ${p.kind} ${p.role ?? ''} ${p.id} ${p.state} at ${p.x.toFixed(2)},${p.z.toFixed(2)} path ${p.pathIdx}/${p.path.length} task ${JSON.stringify(p.task)} shift ${p.shift ?? '-'} carrying ${JSON.stringify(p.carrying)}`);
+        for (const p of s.people.filter((x) => x.kind === 'customer').slice(0, 6)) console.log(`    customer ${p.id} ${p.state} at ${p.x.toFixed(2)},${p.z.toFixed(2)} patience ${p.patience?.toFixed?.(0)} basket ${(p.basket ?? []).length}`);
+      }
+      // --trace: the first time traffic piles up, show the longest-waiting car, its neighbours and their drivers.
+      if (trace && !dumped && s.cars.length > 40) {
+        dumped = true;
+        console.log(`    jam at day ${day} t=${s.time.toFixed(1)}`);
+        const worst = s.cars.reduce((a, c) => ((c.waited ?? 0) > (a.waited ?? 0) ? c : a));
+        const fmt = (c: typeof worst) => `      car ${c.id} ${c.state} lot=${c.lot ?? '-'} bay=${c.bay} at ${c.x.toFixed(2)},${c.z.toFixed(2)} yaw ${c.yaw.toFixed(2)} waited ${(c.waited ?? 0).toFixed(1)} rev=${!!c.reversing} yield=${!!c.yielding} gap=${c.gap?.toFixed(2)} path ${c.pathIdx}/${c.path.length} ${c.path.map((p) => p.x.toFixed(1) + ',' + p.z.toFixed(1)).join(' ')}`;
+        console.log('    near the worst:');
+        for (const c of s.cars.filter((c) => Math.hypot(c.x - worst.x, c.z - worst.z) < 3)) { console.log(fmt(c)); const o = s.people.find((p) => p.id === c.ownerId); console.log(`        owner ${c.ownerId}: ${o ? `${o.kind} ${o.state} at ${o.x.toFixed(1)},${o.z.toFixed(1)} rival=${o.rivalId ?? '-'} path ${o.pathIdx}/${o.path.length}` : 'gone'}`); }
+      }
       const scanner = !hasCashier();
       if (scanner && waiting() && !busy() && i % (strategy === 'careless' ? 14 : 6) === 0) applyCommand(s, { type: 'scan' });
       if (i % 60 === 0 && (!scanner || !waiting())) carryAll(s);
       if (s.cash < minCash) minCash = s.cash;
     }
+    if (trace) { const h = s.history[s.history.length - 1]; console.log(`    day ${day}: ${Date.now() - t0}ms, ${s.people.length} people, ${s.cars.length} cars, $${s.cash.toFixed(0)}, ${s.shop.sizeId}${h ? `, ${h.customers} came, ${h.served} served, ${h.walkedOut} walked out, ${h.turnedAway} turned away, ${h.missedItems} missed, profit ${h.profit.toFixed(0)}` : ''}, staff ${s.people.filter((p) => p.kind === 'staff').map((p) => p.role).join('/') || '-'}, rivals ${s.rivals.filter((r) => r.open).map((r) => r.id).join('/') || '-'}`); }
     if (s.phase !== 'night') break;
     const d = s.history[s.history.length - 1]!;
     history.push(d.profit); served.push(d.served); totalServed += d.served;
     // How much a rival sale pulls bargain hunters, measured on the live state.
     const open = s.rivals.find((r) => r.open);
     if (open) { const before = playerShare(s).bargain; const keep = open.saleDaysLeft; open.saleDaysLeft = 2; const during = playerShare(s).bargain; open.saleDaysLeft = keep; salePull = Math.max(salePull, before - during); }
+    // The rivals' part of this corner's trade tonight, weighted by who comes past the corner (week one only).
+    if (day <= 7) {
+      const share = playerShare(s), mix = plotDef(s.shop.plotId).mix;
+      let all = 0, mine = 0;
+      for (const t of Object.keys(TYPE_BASE) as (keyof typeof TYPE_BASE)[]) { const w = TYPE_BASE[t] * mix[t]; all += w; mine += w * share[t]; }
+      takes.push(1 - mine / all);
+    }
     if (d.profit > 0 && !profitableBy) profitableBy = day;
     if (s.gameOver) break;
     applyCommand(s, { type: 'openTomorrow' });
   }
-  return { strategy, seed, days, fitOutLeft, endCash: s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull };
+  const rivalTake = takes.length ? takes.reduce((a, b) => a + b, 0) / takes.length : 0;
+  if (process.argv.includes('--shares')) console.log(`  ${strategy} seed ${seed} (${s.shop.plotId}): rivals take ${takes.map((t) => (t * 100).toFixed(0) + '%').join(' ')} by day; week one ${(rivalTake * 100).toFixed(0)}%`);
+  return { strategy, seed, days, fitOutLeft, endCash: s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull, rivalTake };
 }
 
 function main(): void {
@@ -141,7 +176,13 @@ function main(): void {
   const days = 8;
   const runs: Run[] = [];
   const t0 = Date.now();
-  for (const strategy of Object.keys(STRATEGIES)) for (const seed of seeds) { const t = Date.now(); runs.push(runGame(strategy, seed, days)); if (process.argv.includes("--progress")) console.log(`  ${strategy} seed ${seed}: ${Date.now() - t}ms`); }
+  // --only franchiser:3 runs one strategy and seed (with --trace, day by day).
+  const only = process.argv[process.argv.indexOf('--only') + 1]?.split(':');
+  for (const strategy of Object.keys(STRATEGIES)) for (const seed of seeds) {
+    if (process.argv.includes('--only') && (only?.[0] !== strategy || (only[1] && Number(only[1]) !== seed))) continue;
+    const t = Date.now(); runs.push(runGame(strategy, seed, days));
+    if (process.argv.includes('--progress')) console.log(`  ${strategy} seed ${seed}: ${Date.now() - t}ms`);
+  }
   const failures: string[] = [];
   const by = (name: string) => runs.filter((r) => r.strategy === name);
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
@@ -169,6 +210,10 @@ function main(): void {
     if (r.salePull < 0.03) failures.push(`guided seed ${r.seed}: a rival sale barely moves bargain hunters (${(r.salePull * 100).toFixed(1)} points)`);
   }
   // 6. Nobody gets stuck.
+  // Rivals take at most a third of the corner's trade from a guided player over week one.
+  { const g = by('guided'); const take = g.reduce((a, r) => a + r.rivalTake, 0) / Math.max(1, g.length);
+    console.log(`rivals' share of trade against a guided player in week one: ${(take * 100).toFixed(0)}%`);
+    if (g.length && take > 1 / 3) failures.push(`rivals take ${(take * 100).toFixed(0)}% of trade from a guided player (at most a third)`); }
   for (const r of runs) if (r.stuck > 0) failures.push(`${r.strategy} seed ${r.seed}: ${r.stuck} stuck rescues`);
   console.log(`guided avg daily profit (first 5 days): $${guidedDaily.toFixed(0)}; cash left after the fit-out: $${avg(runs.map((r) => r.fitOutLeft)).toFixed(0)}; ${runs.length} runs in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   // 7. The fit-out leaves a cushion for the first days' rent.
