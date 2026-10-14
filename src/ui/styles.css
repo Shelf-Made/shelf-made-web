@@ -134,6 +134,88 @@ canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display:
 .card header .close { background: rgba(0,0,0,0.18); color: var(--white); width: 34px; height: 34px; border-radius: 9px; font-size: 1.1em; }
 .card .body { padding: 12px 16px 16px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 .card.night h2 { margin: 0 0 6px; font-size: 1.5em; color: var(--green-dark); }
+.card.night.loss h2 { color: #c4432d; }
+.card.night h2 .sym { font-size: 0.7em; vertical-align: 0.12em; }
+.card.night .night-body { padding: 16px 18px 6px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.card.night.report { width: min(800px, calc(100% - 32px)); }
+.card.night.report .night-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 24px; align-items: start; }
+.card.night.report .col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 860px) { .card.night.report .night-body { grid-template-columns: minmax(0, 1fr); } }
+.card.night .night-foot { padding: 10px 18px 14px; border-top: 1px solid #eef1f4; }
+.card.night section { display: flex; flex-direction: column; gap: 2px; }
+.stat.cost { align-items: center; gap: 10px; }
+.stat.cost > span:first-child { flex: 1; }
+.stat.cost .mini { width: 84px; height: 7px; background: #eef1f4; border-radius: 4px; overflow: hidden; }
+.stat.cost .mini i { display: block; height: 100%; background: #9AA0A8; }
+.stat.cost.biggest .mini i { background: #c4432d; }
+.stat.cost.biggest > span:first-child::after { content: ' (biggest)'; font-size: 0.9em; opacity: 0.7; }
+.stat.cost b { min-width: 76px; text-align: right; }
+.card.night ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.why li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.why li b { color: #c4432d; }
+.shares li { display: grid; grid-template-columns: minmax(0, 8.5em) 1fr 3em 4em; align-items: center; gap: 8px; }
+.shares .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shares li.mine .who { font-weight: 700; }
+.shares li.closed { opacity: 0.55; }
+.shares .sbar { height: 10px; background: #eef1f4; border-radius: 5px; overflow: hidden; }
+.shares .sbar i { display: block; height: 100%; border-radius: 5px; }
+.shares b { text-align: right; font-variant-numeric: tabular-nums; }
+.shares small { font-size: 0.88em; text-align: right; opacity: 0.75; }
+.shares small.up { color: var(--green-dark); opacity: 1; }
+.shares small.up::before { content: '▲ '; }
+.shares small.down { color: #c4432d; opacity: 1; }
+.shares small.down::before { content: '▼ '; }
+.tomorrow li { padding-left: 18px; position: relative; line-height: 1.35; }
+.tomorrow li::before { content: '☀'; position: absolute; left: 0; color: var(--honey); }
+.tomorrow li.rumour::before { content: '“'; font-weight: 700; color: var(--slate); }
+
+/* The goal chip under the top bar, and the ladder in Stats. */
+.goal-chip { position: absolute; left: 12px; top: calc(var(--hud-top) - 4px); z-index: 5; display: flex; align-items: center; gap: 8px; max-width: min(420px, calc(100% - 330px)); min-width: 220px; height: calc(40px * var(--ui)); padding: 0 12px 0 6px; border-radius: 12px; background: var(--white); color: var(--slate); box-shadow: 0 3px 0 rgba(56,56,61,0.2), var(--shadow); text-align: left; }
+.goal-chip .g-flag { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--yellow); flex: none; }
+.goal-chip .g-flag svg { width: 20px; height: 20px; fill: none; stroke: var(--slate); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.goal-chip .g-flag svg .fill { fill: var(--white); stroke: none; }
+.goal-chip .g-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; flex: 1; }
+.goal-chip .g-text b { font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal-chip .g-text small { font-size: 0.875em; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal-chip .g-bar { width: 64px; height: 8px; border-radius: 4px; background: #eef1f4; overflow: hidden; flex: none; }
+.goal-chip .g-bar i { display: block; height: 100%; background: var(--green); }
+.goal-chip .g-pct { font-weight: 700; font-size: 0.9em; font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; }
+.goal-chip:hover { transform: translateY(-1px); }
+.overlay.has-goal .tip.jobs, .overlay.has-goal .tip.objective { top: calc(var(--hud-top) + 44px * var(--ui)); }
+html.colour-blind .goal-chip .g-bar i, html.colour-blind .shares .sbar i, html.colour-blind .stat.cost .mini i { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
+@media (max-width: 760px) {
+  .goal-chip { top: 118px; min-width: 0; max-width: calc(100% - 24px); height: 36px; }
+  .goal-chip .g-text small { display: none; }
+  .overlay.has-goal .tip.jobs, .overlay.has-goal .tip.objective { top: 162px; }
+}
+.goal-ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.goal-ladder li { display: flex; gap: 10px; padding: 8px; border-radius: 10px; background: #f6f7f9; }
+.goal-ladder li .mark { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: #dde1e6; font-weight: 700; color: var(--slate); }
+.goal-ladder li.done .mark { background: var(--green); color: var(--white); }
+.goal-ladder li.now { background: #FFF6E0; box-shadow: inset 0 0 0 2px var(--yellow); }
+.goal-ladder li.now .mark { background: var(--yellow); }
+.goal-ladder li.later { opacity: 0.7; }
+.goal-ladder .g-body { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.goal-ladder .name { font-weight: 700; }
+.goal-ladder .tag.ok { background: #dff5ea; color: var(--green-dark); }
+.goal-ladder .sub, .goal-ladder .reward { font-size: 0.92em; }
+.goal-ladder .reward { color: var(--green-dark); }
+
+/* A goal reached: confetti from the top and a banner, over play. */
+.celebrate { position: absolute; inset: 0; pointer-events: none; z-index: 7; overflow: hidden; }
+.celebrate .banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 22px; border-radius: 16px; background: var(--white); box-shadow: 0 4px 0 rgba(56,56,61,0.25), var(--shadow); border: 3px solid var(--yellow); animation: cheer 4.2s ease both; text-align: center; }
+.celebrate .banner small { text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: var(--green-dark); font-size: 0.875em; }
+.celebrate .banner b { font-size: 1.5em; }
+.celebrate .banner .next { opacity: 0.75; font-size: 0.92em; }
+@keyframes cheer { 0% { opacity: 0; transform: translateX(-50%) scale(0.6); } 8% { opacity: 1; transform: translateX(-50%) scale(1.08); } 14% { transform: translateX(-50%) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-12px); } }
+.celebrate .confetti i { position: absolute; top: -12px; left: calc(6% + var(--i) * 2.9%); width: 9px; height: 14px; border-radius: 2px; background: var(--yellow); animation: fall 2.6s cubic-bezier(.3,.6,.5,1) calc(var(--i) * 0.025s) both; }
+.celebrate .confetti i:nth-child(4n+1) { background: var(--red); }
+.celebrate .confetti i:nth-child(4n+2) { background: var(--green); }
+.celebrate .confetti i:nth-child(4n+3) { background: var(--blue); }
+@keyframes fall { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(70vh) rotate(540deg); opacity: 0; } }
+.card.champion { left: 50%; right: auto; top: 18%; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); z-index: 8; text-align: center; align-items: center; gap: 6px; }
+.card.champion .trophy { width: 72px; height: 72px; }
+.card.champion h2 { color: #b8862b; }
 .card h3 { margin: 6px 0 2px; font-size: 1em; color: var(--green-dark); }
 .card p { margin: 0; line-height: 1.35; }
 .row { display: flex; align-items: center; gap: 8px; }

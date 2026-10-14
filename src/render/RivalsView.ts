@@ -11,7 +11,7 @@ import { box, merge, place } from './geometry';
 import { textGeometry } from './letters';
 import { CORNERS, PLOT_RECT, ROAD_Z, WALL_T, lotLayout, rectToWorld, type Rect } from '@/sim/layout';
 import { rivalShape } from '@/sim/rivals';
-import { RIVAL_SCHEMES } from '@/sim/schemes';
+import { rivalScheme, RIVAL_SCHEMES, type Scheme } from '@/sim/schemes';
 
 /** Each rival's fixed colours live with the sim's schemes (bags use them too); the lettering face is the accent. */
 export { RIVAL_SCHEMES } from '@/sim/schemes';
@@ -24,9 +24,9 @@ const NORTH_Z = -1.6;
 const SW_IN = MAIN_N[0] - NORTH_Z, SW_OUT = MAIN_N[1] - NORTH_Z, KERB = ROAD_Z - 1.0 - NORTH_Z;
 
 interface Site {
-  id: string; root: Group;
+  id: string; corner: string; key: string; root: Group;
   lot: Group; build: Group; open: Group;
-  sale: Mesh; soon: Mesh; windows: Mesh; spill: Mesh; posters: Mesh; salePosters: Mesh; bunting: Mesh;
+  sale: Mesh; soon: Mesh; forSale: Mesh; name: Mesh; windows: Mesh; spill: Mesh; posters: Mesh; salePosters: Mesh; bunting: Mesh;
   /** The building at full height and as waist-high stubs (when it would hide the manager), and its footprint. */
   full: Mesh; stub: Mesh; footprint: Rect;
 }
@@ -60,11 +60,19 @@ export class RivalsView {
 
   build(plan: TownPlan): void {
     this.group.clear(); this.sites = [];
-    for (const r of plan.rivals) this.sites.push(this.site(r));
+    // As the town starts: each rival in its own colours (the same key update() expects for it).
+    for (const r of plan.rivals) { const site = this.site(r, RIVAL_SCHEMES[r.kind], r.name); site.key = `${r.id}|${r.name}|${RIVAL_SCHEMES[r.kind].id}|false`; this.sites.push(site); }
   }
 
   setNight(on: boolean): void { this.night = on; }
 
+  /** What stands on a corner now: a rival, a challenger in its own colours, or the player's branch in theirs. */
+  private want(state: GameState, r: GameState['rivals'][number]): { name: string; scheme: Scheme; key: string } {
+    const bought = r.boughtDay !== undefined;
+    const name = bought ? (state.franchises.find((f) => f.corner === r.corner)?.name ?? state.shop.name) : r.name;
+    const scheme = rivalScheme(state, r);
+    return { name, scheme, key: `${r.id}|${name}|${scheme.id}|${bought}` };
+  }
   /** A rival's building between the camera and the manager drops to stubs, like the player's walls. */
   occlude(cam: { x: number; y: number; z: number } | null, mx: number, mz: number): void {
     for (const s of this.sites) {
@@ -81,16 +89,29 @@ export class RivalsView {
   }
 
   update(state: GameState): void {
-    for (const s of this.sites) {
-      const r = state.rivals.find((x) => x.id === s.id); if (!r) continue;
-      const stage = r.open ? 'open' : state.day >= r.opensDay - 2 ? 'build' : 'lot';
+    for (const r of state.rivals) {
+      let s = this.sites.find((x) => x.corner === r.corner);
+      const w = this.want(state, r);
+      // A challenger moved in, or the player bought the corner: put the building up again in its new colours.
+      if (s && s.key !== w.key) {
+        this.group.remove(s.root); s.root.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).geometry.dispose(); });
+        this.sites.splice(this.sites.indexOf(s), 1);
+        s = undefined;
+      }
+      if (!s) { s = this.site({ id: r.id, name: w.name, kind: r.kind, corner: r.corner }, w.scheme, w.name); s.key = w.key; this.sites.push(s); }
+      const bought = r.boughtDay !== undefined, closed = r.closedDay !== undefined && !bought;
+      // A challenger fits out the old building: it stays up, signless, behind a "coming soon" board.
+      const trading = r.open || bought;
+      const stage = trading || closed || r.challenger ? 'open' : state.day >= r.opensDay - 2 ? 'build' : 'lot';
       s.lot.visible = stage === 'lot'; s.build.visible = stage === 'build'; s.open.visible = stage === 'open';
-      s.soon.visible = stage !== 'open';
+      s.soon.visible = !trading && !closed;
+      s.forSale.visible = closed;
+      s.name.visible = trading;
       s.sale.visible = r.open && r.saleDaysLeft > 0;
-      s.salePosters.visible = s.sale.visible; s.posters.visible = !s.sale.visible;
-      s.bunting.visible = r.open && state.day <= r.opensDay;
-      s.windows.visible = r.open && this.night;
-      s.spill.visible = r.open && this.night;
+      s.salePosters.visible = s.sale.visible; s.posters.visible = trading && !s.sale.visible;
+      s.bunting.visible = (r.open && state.day <= r.opensDay) || (bought && state.day <= (r.boughtDay ?? 0) + 1);
+      s.windows.visible = trading && this.night;
+      s.spill.visible = trading && this.night;
     }
   }
 
@@ -98,7 +119,7 @@ export class RivalsView {
     return this.letters ? this.letters(text, size, 0.05, face, side, false) : textGeometry(this.assets.palette, text, size, 0.05, face, side);
   }
 
-  private site(r: RivalSite): Site {
+  private site(r: RivalSite, sc: Scheme, label: string): Site {
     const pal = this.assets.palette;
     const c = CORNERS[r.corner];
     const root = new Group();
@@ -108,7 +129,6 @@ export class RivalsView {
     const shape = rivalShape({ sizeId: r.kind === 'chain' ? 'large' : 'medium', lotRows: r.kind === 'chain' ? 2 : 1 });
     const L = lotLayout(shape);
     const f = shape.floor, backZ = Math.min(f.z0, shape.storeroom.z0);
-    const sc = RIVAL_SCHEMES[r.kind];
     const mesh = (parts: BufferGeometry[], cast = true) => { const m = new Mesh(merge(parts), this.assets.material); m.castShadow = cast; m.receiveShadow = true; return m; };
 
     // ---- Always: the frontage sidewalk with dropped kerbs where the lot meets the road.
@@ -152,6 +172,7 @@ export class RivalsView {
     const open = new Group();
     const lit: BufferGeometry[] = [];
     const posters: BufferGeometry[] = [], salePosters: BufferGeometry[] = [];
+    const nameParts: BufferGeometry[] = [];
     const wallsFull: BufferGeometry[] = [], wallsStub: BufferGeometry[] = [];
     { const g: BufferGeometry[] = [];
       // Lot: apron, walkway, aisle, driveway, service lane, yard, bays painted in the brand's accent.
@@ -200,13 +221,13 @@ export class RivalsView {
       }
       const width = f.x1 - f.x0;
       g.push(box(pal, sc.primary, width + 0.5, 0.5, 0.1, cx, 1.0, fz - 0.02), box(pal, sc.trim, width + 0.54, 0.05, 0.14, cx, 1.48, fz - 0.02));
-      const size = Math.min(0.3, (width - 0.6) / Math.max(4, r.name.length * 0.62));
-      g.push(place(this.text(r.name, size, sc.accent, sc.trim), cx, 1.25 - size * 0.4, fz + 0.04));
+      const size = Math.min(0.3, (width - 0.6) / Math.max(4, label.length * 0.62));
+      nameParts.push(place(this.text(label, size, sc.accent, sc.trim), cx, 1.25 - size * 0.4, fz + 0.04));
       // Pylon by the sidewalk, readable both ways down Main Road.
       const px = -L.halfW - 0.6, pz = 1.85, bw = 2.6;
       g.push(box(pal, '#38383D', 0.12, 1.5, 0.12, px - bw / 2 + 0.2, 0, pz), box(pal, '#38383D', 0.12, 1.5, 0.12, px + bw / 2 - 0.2, 0, pz), box(pal, sc.primary, bw, 0.55, 0.12, px, 1.0, pz), box(pal, sc.trim, bw + 0.06, 0.05, 0.16, px, 1.55, pz));
-      const ps = Math.min(0.26, (bw - 0.35) / Math.max(4, r.name.length * 0.62));
-      for (const yaw of [0, Math.PI]) g.push(place(this.text(r.name, ps, sc.accent, sc.trim), px, 1.24 - ps * 0.4, pz + (yaw === 0 ? 0.07 : -0.07), yaw));
+      const ps = Math.min(0.26, (bw - 0.35) / Math.max(4, label.length * 0.62));
+      for (const yaw of [0, Math.PI]) nameParts.push(place(this.text(label, ps, sc.accent, sc.trim), px, 1.24 - ps * 0.4, pz + (yaw === 0 ? 0.07 : -0.07), yaw));
       // Street dressing on the lawn beside the paths (MegaMart has a trolley shelter with trolleys under it).
       for (const pr of cornerProps({ ...shape, door: { x: 0, z: f.z1 } }, r.kind === 'chain' ? 2 : 1, { trolleys: r.kind === 'chain' })) {
         const geo = pr.model === 'generated/trolley-shelter' ? trolleyShelterGeometry(pal, sc.primary) : this.assets.has(pr.model) ? this.assets.geometry(pr.model).clone() : null;
@@ -221,6 +242,9 @@ export class RivalsView {
       winXs.forEach((x, i) => { if (i % 2 === 1 || winXs.length < 3) salePosters.push(place(posterGeometry(pal, '#E8573F', '#FFFFFF', '#FFC044'), x + 0.1, 0.2, glassZ)); });
       open.add(Object.assign(mesh(g), { name: 'rival-front' }));
       root.add(open); }
+    // The name on the fascia and the pylon: it comes down when the store closes.
+    const name = Object.assign(mesh(nameParts), { name: 'rival-name' });
+    open.add(name);
     const full = Object.assign(mesh(wallsFull), { name: 'rival-walls' }), stub = Object.assign(mesh(wallsStub), { name: 'rival-stubs' });
     stub.visible = false;
     open.add(full, stub);
@@ -245,9 +269,10 @@ export class RivalsView {
       const g = merge([box(pal, '#38383D', 0.1, 1.2, 0.1, x - 1.1, 0, 2.2), box(pal, '#38383D', 0.1, 1.2, 0.1, x + 1.1, 0, 2.2), box(pal, bg, 2.6, 0.55, 0.12, x, 1.0, 2.2), place(textGeometry(pal, text, 0.24, 0.05, fg, side), x, 1.15, 2.28)]);
       const m = new Mesh(g, this.assets.material); m.castShadow = true; m.visible = false; m.name = 'rival-board'; root.add(m); return m;
     };
-    const soon = board(`${r.name.toUpperCase()} - SOON`, '#FFFFFF', '#38383D', sc.primary, 1.8);
+    const soon = board(`${label.toUpperCase()} - SOON`, '#FFFFFF', '#38383D', sc.primary, 1.8);
     const sale = board('SALE!', '#FFC044', '#E8573F', '#B8402E', -L.halfW - 0.6 + 3.2);
+    const forSale = board('FOR SALE', '#FFFFFF', '#E8573F', '#B8402E', 1.8);
     const footprint = rectToWorld(c, { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T + 0.5 });
-    return { id: r.id, root, lot, build, open, sale, soon, windows, spill, posters: posterMesh, salePosters: salePosterMesh, bunting, full, stub, footprint };
+    return { id: r.id, corner: r.corner, key: '', root, lot, build, open, sale, soon, forSale, name, windows, spill, posters: posterMesh, salePosters: salePosterMesh, bunting, full, stub, footprint };
   }
 }

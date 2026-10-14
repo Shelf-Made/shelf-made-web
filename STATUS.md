@@ -3,7 +3,49 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Toy-town art pass (latest)
+## Goals, closing rivals and the night card (latest)
+
+- [x] **A goal ladder.** Seven goals, one at a time, as a chip under the top bar; a click opens
+  the ladder in Stats (done with the day, the active one with its progress, those to come).
+  Rewards: cash, lit sign letters, opening-day events, branches out of town, and the Crossroads
+  Champion ending (play carries on as a sandbox). Reaching one throws confetti and the reward
+  over play without pausing it.
+- [x] **Rivals can close.** Daily books (shoppers × basket × margin, less fixed costs); five
+  closing nights in the red and the sign comes down, a "For sale" board goes up and the shoppers
+  spread over the rest. One closed at a time; ten days unsold and a challenger (sky blue) moves in.
+- [x] **Buy the corner.** A closed rival's corner is for sale on the Build card; bought, it trades
+  as your branch in your colours and under your name, its shoppers carrying your bags.
+- [x] **A better night card.** Green for a profit, red (and ▼) for a loss; goods, rent and power,
+  staff, loans and shoplifting with small bars so the biggest cost stands out; the top three
+  complaints in plain words ("Out of milk ×12"), each opening the card that fixes it; the
+  crossroads' shares in each store's colour with the change since yesterday (closed rivals grey);
+  the goal's progress and today's change; tomorrow's weather, festivals and rumours ("Cheapo is
+  printing flyers..."), rolled at close and applied in the morning.
+- [x] **Money strings.** One sign-correct formatter in the sim ("-$140", never "$-140").
+- [x] **Save version 11** with a migration that ticks off goals the history shows.
+- [x] **Traffic fix.** Forty-day runs found MegaMart's double lot gridlocking on busy days; a
+  last-resort jam breaker keeps it moving.
+
+Checks on the latest run:
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 79 passed; new: every goal's check, a rival closing after five broke nights (one at a time), the corner for sale only once closed and bought as a branch, a challenger after ten days, complaint counts matching the day's misses, walk-outs and turned-away drivers, tomorrow's preview matching the next day over 16 days, the money formatter, the v10 → v11 migration |
+| `npm run e2e` | 9 passed; new screenshots of the goal chip, the ladder, a profitable and a loss night card, a corner for sale and a bought corner |
+| `npm run audit:art` | passed |
+| `npm run balance -- --check` | passed in 244 s (parallel): nobody sensible goes bust, nobody stuck; guided ≈ $94/day in week one; the guided player reaches goal 5 by days 12–24 (every seed by day 25); it closes Cheapo on days 20–24 (Fresh & Fine once, day 37); MegaMart never closes in 40 days; no rival closes before day 12 in any strategy |
+| Perf (`npm run perf`) | default zoom 99 draw calls / 129k triangles; busy 119 / 163k; mid zoom 124 / 178k; overview 162 / 256k (budget 250 / 900k) |
+
+New screenshots: `25-goal-chip`, `26-goals-ladder`, `27-night-card-profit`, `28-night-card-loss`,
+`29-corner-for-sale`, `30-corner-bought`.
+
+Still open from this round:
+- Goal targets 4 and 5 were tuned down from the brief's first pass ($150 → $120; 40% for seven
+  days → a third over a week); see DECISIONS.md. Say if you want them harder.
+- A bought corner is a branch with a visible building, not a second shop to walk into.
+
+## Toy-town art pass
 
 - [x] **A warm shop.** Cream checker lino, walls banded in the shop's colour with skirting and a
   rail, painted wood shelves, cream counters, pale blue chillers, warm light. The default zoom has
@@ -221,9 +263,8 @@ Visual checklist, as of the last run: store ≈ 45% of the screen at default zoo
 - No localisation; English only.
 
 ## Decisions needing you
-0. **Week-one income.** Guided play makes ≈ $61/day against a ≈ $75 target. Cheaper extra parking
-   ($500 now) or a starter lot with more bays would close most of it; say which and the harness will
-   hold the line.
+0. **Week-one income.** Resolved: the harness's guided player now reorders when the pallet runs low
+   and stocks new lines, and makes ≈ $94/day in week one.
 1. **Vercel permission.** Project creation is refused (403) for the Startups team; create the project from the repo in the Vercel dashboard or grant the permission.
 2. **Prices and pace.** A guided player nets about $75/day in week one and buys a shelf every day or two; say if you want it tighter or looser, and the harness will hold the line.
 3. **Fonts and brand.** The wordmark underline is CSS in the lobby and a green bar on the pylon sign; if you have a real logo file it drops into `TopBar.tsx` and `StoreView.ts`.

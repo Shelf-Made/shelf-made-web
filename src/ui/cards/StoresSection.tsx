@@ -21,7 +21,7 @@ export function StoresSection({ runtime, snap }: { runtime: GameRuntime; snap: S
           <div className="item" key={f.id}>
             <div>
               <div className="name">{f.name} <span className="tag">{f.manager.name}, skill {Math.round(f.manager.skill * 100)}%</span></div>
-              <div className="sub">{last ? `Yesterday ${last.served}/${last.customers} served, ${last.profit >= 0 ? '+' : ''}${money(last.profit)}` : 'Opens tomorrow'} · stock {Math.round(f.stockLevel * 100)}%{f.alerts.length ? ` · ${f.alerts.join(', ')}` : ''}</div>
+              <div className="sub">{last ? `Yesterday ${last.served}/${last.customers} served, ${money(last.profit, true)}` : 'Opens tomorrow'} · stock {Math.round(f.stockLevel * 100)}%{f.alerts.length ? ` · ${f.alerts.join(', ')}` : ''}</div>
             </div>
             <div className="row">
               {managers[0] && <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'replaceManager', franchiseId: f.id, managerId: managers[0]!.id })} title={`Replace with ${managers[0].name}`}>New manager</button>}
@@ -30,7 +30,9 @@ export function StoresSection({ runtime, snap }: { runtime: GameRuntime; snap: S
           </div>
         );
       })}
-      {free.length > 0 ? (
+      {!s.goals.unlocked.includes('franchises') && !s.sandbox ? (
+        <p className="muted">Branches out of town unlock with the Market hall goal.</p>
+      ) : free.length > 0 ? (
         <div className="item">
           <div>
             <div className="name">Open a branch · {money(FRANCHISE_COST)}</div>

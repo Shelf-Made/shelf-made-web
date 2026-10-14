@@ -4,6 +4,7 @@ import { dailyRent, dailyUtilities } from '@/sim/economy';
 import { computeScores, playerShare, TYPE_NAMES } from '@/sim/customers';
 import type { CustomerType } from '@/sim/types';
 import { MoneySection } from './MoneySection';
+import { GoalsSection } from '../Goals';
 
 export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
@@ -12,6 +13,7 @@ export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
   return (
     <>
+      <GoalsSection runtime={runtime} />
       <h3>Today</h3>
       <div className="stat"><span>Customers</span><b>{t.customers}</b></div>
       <div className="stat"><span>Served</span><b>{t.served} ({pct(t.served, t.customers)}%)</b></div>
@@ -36,7 +38,7 @@ export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <MoneySection runtime={runtime} snap={snap} />
       {s.history.length > 0 && <h3>Past days</h3>}
       {s.history.slice().reverse().slice(0, 7).map((d) => (
-        <div className="stat" key={d.day}><span>Day {d.day} · {d.served}/{d.customers} served</span><b>{d.profit >= 0 ? '+' : ''}{money(d.profit)}</b></div>
+        <div className="stat" key={d.day}><span>Day {d.day} · {d.served}/{d.customers} served</span><b>{money(d.profit, true)}</b></div>
       ))}
     </>
   );

@@ -107,7 +107,7 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Sim tick | 50 ms game time | smooth at 4x, cheap |
 | Starter shop | a bare 5 × 6 room, door front-centre, back door rear, a 2 × 1 delivery pallet inside it | the player furnishes it |
 | Starting cash | $800 (Standard), $1 200 (Relaxed), $600 (Hard) | a counter, two shelves, a chiller and a first order, with ≈ $136 left |
-| Town demand | 48 shoppers/day base × plot traffic × awareness × reputation × events; +75% pool per open rival | balance harness: guided player nets ≈ $75/day in week one |
+| Town demand | 48 shoppers/day base × plot traffic × awareness × reputation × events; +75% pool per open rival; +5% a day as the town grows (up to 2.2×) | balance harness: guided player nets ≈ $94/day in week one |
 | Rent | $40 / day, charged at close | ~20% of day-1 revenue |
 | Utilities | $6 / day per fridge, $2 per freezer extra | visible cost of chilled goods |
 | Wholesale margin | retail ≈ 1.6 × cost at base price | grocers run 25–40% gross |
@@ -123,10 +123,34 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Staff | cashier ≈ $48/day, stocker $42, cleaner $36, orderer $52, manager $90, +12% payroll tax | |
 | Loans | $600 at 1.2%/day over 10 days, $1 800 at 1.0% over 15, $5 000 at 0.9% over 20 | one rescue offered when broke |
 | Rivals | Cheapo opens day 3 (prices −14%), Fresh & Fine day 6 (+22%), MegaMart day 10 (expands) | sales every 4–8 days |
-| Franchise | $2 800 + a manager from the pool; lighter daily roll | |
+| Franchise | $2 800 + a manager from the pool; lighter daily roll; unlocked by the Market hall goal | |
+| Rival books | daily: shoppers × basket × margin − fixed costs × town growth (+$40 a day per MegaMart branch off the map); a sale halves the margin. Cheapo $3.60 × 22% − $45, Fresh & Fine $5.40 × 32% − $80, MegaMart $4.60 × 26% − $95; starting cash $600 / $900 / $2 500 | balance harness: a guided player closes Cheapo in weeks 3–4, MegaMart never in 40 days, nobody before day 12 |
+| Closing | five closing nights in a row in the red; one rival closed at a time; the corner sells for $4 500 (Cheapo's), $5 500 (Fresh & Fine's), $9 000 (MegaMart's) plus a manager; ten days unsold and a challenger moves in | |
 | Upgrade cap | any early upgrade ≤ 5 × average daily profit (balance harness asserts) | no grind walls |
 
-### 3.1 Customer scoring (Part 2)
+### 3.1 Goals
+
+One goal is active at a time; the chip under the top bar shows it, the Stats card shows the ladder.
+Goals that can happen mid-day are checked every second; the rest at close. The balance harness's
+guided player follows them for 40 days and must reach goal 5 by day 25 on every seed (it does by
+days 12–24).
+
+| # | Goal | Target | Reward |
+|---|---|---|---|
+| 1 | Open your doors | Serve 30 customers in one day | $100 |
+| 2 | Regulars | Reputation 60% | Lit sign letters |
+| 3 | Beat the discounter | Out-sell Cheapo 3 closing nights running (a closed Cheapo counts as beaten) | $250 |
+| 4 | Neighbourhood grocer | The 7×7 shop and a $120 night | Opening-day events (bunting and a crowd, $120) |
+| 5 | Busiest corner | A third of the crossroads' shoppers over the last week (seven closes with at least two rivals trading) | $500 |
+| 6 | Market hall | The 9×8 hall with the doubled lot | Branches out of town |
+| 7 | Own the crossroads | Buy a closed rival's corner | Crossroads Champion ending; play carries on as a sandbox |
+
+The crossroads share counts every store's shoppers on one scale: the player's arrivals (less
+drivers turned away from a full lot) against each rival's modelled shoppers (the town pool by
+customer type, the corner's traffic and mix, the same softmax share, awareness and reputation,
+and the same arrivals-per-expected factor the player's spawner runs at).
+
+### 3.2 Customer scoring (Part 2)
 
 Each customer type weights six store scores (0–1): price vs town average, availability,
 clean/layout, wait, parking, awareness. Score → visit probability via softmax across stores.

@@ -15,7 +15,7 @@ import { box, merge, paint, place } from './geometry';
 import { recolor, cutDown, dropTriangles, paintStrips } from './recolor';
 import { FIXTURE_MODEL, MODEL_OFFSET, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOURS, FIXTURE_PAINT, LINO, WALL_BANDS, SKIRTING, RAIL, type SlotBox } from './storeArt';
 import { schemeById, type Scheme } from '@/sim/schemes';
-import { WINDOW_GLOW, SPILL, spillGeometry } from './glow';
+import { WINDOW_GLOW, SIGN_GLOW, SPILL, spillGeometry } from './glow';
 import { BlobShadows } from './blobs';
 import { cornerProps } from './dressing';
 import { PROP_MODELS, posterGeometry, buntingGeometry } from './props';
@@ -326,7 +326,13 @@ export class StoreView {
     // Night: the windows glow from inside, a strip light under the fascia, and light spills out over the apron.
     { const g = new Group();
       if (litPanes.length) g.add(new Mesh(merge(litPanes), WINDOW_GLOW));
-      g.add(new Mesh(box(pal, '#FFE6A8', width + 0.3, 0.025, 0.03, ox + (f.x0 + f.x1) / 2, 0.735, fz + 0.03), WINDOW_GLOW));
+      g.add(new Mesh(box(pal, '#FFE6A8', width + 0.3, 0.025, 0.03, ox + (f.x0 + f.x1) / 2, 0.735, fz + 0.03), SIGN_GLOW));
+      // Lit letters (a goal reward): the name on the fascia and the pylon shines after dark.
+      if (shop.signStyle === 'lit') {
+        const lit = [place(this.letters(name, size, 0.05, CREAM, sc.trim), ox + (f.x0 + f.x1) / 2, 1.25 - size * 0.4, fz + 0.046)];
+        for (const yaw of [0, Math.PI]) lit.push(place(this.letters(name, psize, 0.04, CREAM, sc.trim, false), px, 1.24 - psize * 0.4, pz + (yaw === 0 ? 0.076 : -0.076), yaw));
+        g.add(Object.assign(new Mesh(merge(lit), SIGN_GLOW), { name: 'lit-sign' }));
+      }
       const pool = new Mesh(mergeGeometries([spillGeometry(width * 0.6, 1.4, ox + (f.x0 + f.x1) / 2, 0.035, fz + 1.1), spillGeometry(0.9, 0.7, ox + shop.door.x, 0.036, fz + 0.45, 0.7)]), SPILL);
       pool.renderOrder = 1;
       g.add(pool);
@@ -430,7 +436,7 @@ export class StoreView {
       s.full.visible = !facing; s.ledge.visible = facing;
       for (const m of s.extraFull) m.visible = !facing;
     }
-    if (this.bunting) this.bunting.visible = state.day === 1 && state.phase !== 'night' && state.phase !== 'picking';
+    if (this.bunting) this.bunting.visible = (state.day === 1 || state.marketing.openingEventDay === state.day) && state.phase !== 'night' && state.phase !== 'picking';
     if (shop.layoutVersion !== this.layoutVersion) { this.rebuildFixtures(shop); this.layoutVersion = shop.layoutVersion; this.stockKey = ''; }
     const key = stockKey(shop);
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }
@@ -607,4 +613,4 @@ function stockKey(shop: Shop): string {
 
 export { mergeGeometries, paint };
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}|${shop.scheme}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}`; }

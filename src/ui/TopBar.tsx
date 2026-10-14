@@ -3,6 +3,7 @@ import { schemeById } from '@/sim/schemes';
 import type { GameRuntime, Snapshot, CardId, Speed } from '@/app/GameRuntime';
 import { keyLabel } from '@/save/settings';
 import { money } from './useRuntime';
+import { GoalChip } from './Goals';
 
 type Card = Exclude<CardId, null>;
 
@@ -90,6 +91,8 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
         </div>
         {status !== 'setup' && <div className={`pill sign ${status}`} aria-label={`Shop is ${status}`}>{status === 'open' ? 'OPEN' : 'CLOSED'}</div>}
       </div>
+
+      {snap.phase !== 'picking' && <GoalChip runtime={runtime} snap={snap} />}
 
       {snap.phase === 'setup' && (
         <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>

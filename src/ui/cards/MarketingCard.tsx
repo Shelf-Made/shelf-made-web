@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FLYER_AREAS, BILLBOARD_SITES, AD_COST, adHeadline } from '@/sim/marketing';
+import { FLYER_AREAS, BILLBOARD_SITES, AD_COST, adHeadline, OPENING_EVENT_COST } from '@/sim/marketing';
 import { TYPE_NAMES } from '@/sim/customers';
 import { productDef } from '@/sim/products';
 import type { CustomerType, AdTemplate } from '@/sim/types';
@@ -31,6 +31,8 @@ export function MarketingCard({ runtime, snap }: { runtime: GameRuntime; snap: S
           <div className="item" key={b.id}><div><div className="name">{b.name}</div><div className="sub">{money(b.rent)}/day{on ? ' · rented' : ''}</div></div><button className={`btn small${on ? ' danger' : ''}`} onClick={() => runtime.dispatch({ type: 'billboard', siteId: b.id })}>{on ? 'Stop' : 'Rent'}</button></div>
         ); })}
       </div>
+      <h3>Opening-day event</h3>
+      <div className="item"><div><div className="name">Bunting, balloons and a crowd</div><div className="sub">{s.goals.unlocked.includes('openingEvent') || s.sandbox ? (m.openingEventDay === s.day + 1 ? 'Booked for tomorrow.' : `${money(OPENING_EVENT_COST)} for tomorrow: about a third more shoppers and a lift in awareness.`) : 'Unlocks with the Neighbourhood grocer goal.'}</div></div>{(s.goals.unlocked.includes('openingEvent') || s.sandbox) && m.openingEventDay !== s.day + 1 && <button className="btn small" disabled={s.cash < OPENING_EVENT_COST} onClick={() => runtime.dispatch({ type: 'openingEvent' })}>Book</button>}</div>
       <h3>Outside sign</h3>
       <div className="item"><div><div className="name">Lit sign over the lot</div><div className="sub">{m.outsideSign ? 'Up. Everyone on the road sees you.' : `${money(150)} once. Raises awareness every day.`}</div></div>{!m.outsideSign && <button className="btn small" disabled={s.cash < 150} onClick={() => runtime.dispatch({ type: 'outsideSign', on: true })}>Buy</button>}</div>
       <h3>Ad ({money(AD_COST)}/day)</h3>

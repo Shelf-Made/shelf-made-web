@@ -9,6 +9,7 @@ import { NightCard } from './NightCard';
 import { PlotPicker } from './PlotPicker';
 import { Overlay } from './Overlay';
 import { GameOverCard } from './GameOverCard';
+import { Celebration, ChampionCard } from './Goals';
 
 export function App({ runtime }: { runtime: GameRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,12 +38,14 @@ export function App({ runtime }: { runtime: GameRuntime }) {
       <canvas ref={canvasRef} className="world" aria-label="Shelf Made world" />
       {snap.screen === 'lobby' && <Lobby runtime={runtime} snap={snap} />}
       {snap.screen === 'game' && (
-        <div className="overlay">
+        <div className={`overlay${snap.goal && snap.phase !== 'picking' ? ' has-goal' : ''}`}>
           <TopBar runtime={runtime} snap={snap} />
           {snap.phase === 'picking' && <PlotPicker runtime={runtime} />}
           {snap.card && <Cards runtime={runtime} snap={snap} />}
           {snap.night && !snap.gameOver && <NightCard runtime={runtime} snap={snap} />}
           {snap.gameOver && <GameOverCard runtime={runtime} snap={snap} />}
+          {snap.champion && !snap.gameOver && <ChampionCard runtime={runtime} />}
+          <Celebration snap={snap} />
           <Overlay runtime={runtime} snap={snap} />
           {snap.toast && <div className="toast" key={snap.toast.id} role="status">{snap.toast.text}</div>}
         </div>

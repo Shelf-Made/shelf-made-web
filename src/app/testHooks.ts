@@ -3,6 +3,9 @@ import { tick, TICK, applyCommand, FIXTURES, quickSetup } from '@/sim/index';
 import { PeopleView } from '@/render/People';
 import { spawnCustomer } from '@/sim/people';
 import { toWorld, toLocal } from '@/sim/layout';
+import { closeRival } from '@/sim/rivals';
+import { spawnRivalShopper } from '@/sim/rivalShoppers';
+import { GOALS } from '@/sim/goals';
 
 /** Deterministic hooks for Playwright screenshots and perf runs. Harmless in production. */
 export function installTestHooks(rt: GameRuntime): void {
@@ -107,6 +110,20 @@ export function installTestHooks(rt: GameRuntime): void {
     crowd: (n: number, onFoot = true) => { const s = rt.state; if (!s) return; for (let i = 0; i < n; i++) spawnCustomer(s, onFoot); rt.bump(); },
     debugPeople: () => rt.renderer?.debugPeople(),
     /** Force a rival sale for screenshots. */
+    /** Send n shoppers to a rival now (screenshots of its bags on the pavement). */
+    rivalShoppers: (id: string, n: number) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) for (let i = 0; i < n; i++) spawnRivalShopper(s, r); rt.bump(); },
+    /** Shut a rival for good (its corner goes up for sale), for screenshots. */
+    closeRival: (id: string) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) { r.open = true; closeRival(s, r); } rt.bump(); },
+    /** Buy a closed rival's corner with a manager conjured for the purpose (screenshots). */
+    buyCorner: (id: string) => {
+      const s = rt.state; if (!s) return false;
+      const m = { id: s.nextId++, name: 'Robin', role: 'manager' as const, skill: 0.7, speed: 1, wage: 80, look: { model: 1, variant: 0, height: 1 } };
+      s.staffPool.push(m); s.cash += 10000;
+      const ok = applyCommand(s, { type: 'buyCorner', rivalId: id, managerId: m.id }).ok;
+      rt.bump(); return ok;
+    },
+    /** Jump the goal ladder to a goal (screenshots of the chip and the ladder). */
+    goalAt: (id: string) => { const s = rt.state; if (!s) return; const i = GOALS.findIndex((g) => g.id === id); for (const g of GOALS.slice(0, i)) if (!s.goals.done.some((d) => d.id === g.id)) { s.goals.done.push({ id: g.id, day: s.day }); if (g.reward.unlock) s.goals.unlocked.push(g.reward.unlock); } s.goals.index = i; rt.bump(); },
     rivalSale: (id: string) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) { r.open = true; r.saleDaysLeft = 2; } rt.bump(); },
     startPlacing: (t: Parameters<GameRuntime['startPlacing']>[0]) => rt.startPlacing(t),
     hover: (x: number, z: number) => rt.hoverWorld(x, z),

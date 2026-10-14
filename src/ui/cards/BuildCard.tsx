@@ -1,8 +1,10 @@
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST } from '@/sim/layout';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS } from '@/sim/layout';
 import type { FixtureType } from '@/sim/types';
 import { money } from '../useRuntime';
 import { StoresSection } from './StoresSection';
+import { forSale, CORNER_PRICE } from '@/sim/rivals';
+import { managerCandidates } from '@/sim/franchise';
 
 const CATALOG: { type: FixtureType; blurb: string }[] = [
   { type: 'register', blurb: 'Where shoppers pay. You need one to open; a second takes a second cashier.' },
@@ -65,8 +67,37 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <div><div className="name">Bigger parking lot</div><div className="sub">{s.shop.lotRows > 1 ? `${s.shop.bays.length} bays already.` : `Doubles the bays for ${money(LOT_EXPANSION_COST)}. Full lots turn drivers away.`}</div></div>
         {s.shop.lotRows === 1 && <button className="btn small" disabled={s.cash < LOT_EXPANSION_COST} onClick={() => runtime.dispatch({ type: 'expandLot' })}>Expand</button>}
       </div>
+      <CornerForSale runtime={runtime} />
+      <h3>Sign letters</h3>
+      <div className="item">
+        <div><div className="name">{s.shop.signStyle === 'lit' ? 'Lit letters' : 'Painted letters'}</div><div className="sub">{s.goals.unlocked.includes('signLit') || s.sandbox ? 'Lit letters glow on the fascia and the pylon after dark.' : 'Lit letters unlock with the Regulars goal.'}</div></div>
+        {(s.goals.unlocked.includes('signLit') || s.sandbox) && <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'signStyle', style: s.shop.signStyle === 'lit' ? 'classic' : 'lit' })}>{s.shop.signStyle === 'lit' ? 'Paint' : 'Light up'}</button>}
+      </div>
       <StoresSection runtime={runtime} snap={snap} />
       <p className="muted">Layout matters: shoppers walk less with short aisles, end caps near the door sell impulse items, and crowded corners cost happiness.</p>
+    </>
+  );
+}
+
+/** A closed rival's corner, for sale as it stands: buy it and it trades as one of your branches. */
+function CornerForSale({ runtime }: { runtime: GameRuntime }) {
+  const s = runtime.state!;
+  const r = forSale(s);
+  const managers = managerCandidates(s);
+  if (!r) return null;
+  const price = CORNER_PRICE[r.kind];
+  const left = 10 - (s.day - (r.closedDay ?? s.day));
+  return (
+    <>
+      <h3>Corner for sale</h3>
+      <div className="item">
+        <div>
+          <div className="name">The old {r.name} · {money(price)}</div>
+          <div className="sub">The building as it stands, on the {CORNERS[r.corner].name}. It trades as your branch, run by a manager by your rules. {left > 0 ? `A challenger moves in within ${left} day${left === 1 ? '' : 's'} if nobody buys it.` : 'A challenger is about to move in.'}</div>
+          {!managers.length && <div className="sub">No manager in today's pool: check the Staff card tomorrow.</div>}
+        </div>
+        <button className="btn small" disabled={!managers.length || s.cash < price} onClick={() => runtime.dispatch({ type: 'buyCorner', rivalId: r.id, managerId: managers[0]!.id })}>Buy</button>
+      </div>
     </>
   );
 }

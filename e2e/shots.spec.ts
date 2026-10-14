@@ -174,6 +174,8 @@ test.describe('screenshots', () => {
     const cheapo = (await st(page)).rivals.find((r) => r.id === 'discount')!;
     await hooks(page, 'setTime', 300); // early afternoon: the street is busy and nobody is closing
     await hooks(page, 'rivalSale', 'discount');
+    // A few of the sale's shoppers on their way, so the shot never waits on luck.
+    await hooks(page, 'rivalShoppers', 'discount', 8);
     await hooks(page, 'advanceScan', 90, 2);
     // Cheapo's frontage: its corner's origin (north corners face south, south ones are turned round), the pavement in front.
     const origin: Record<string, [number, number, number]> = { nw: [-15.5, -1.6, 1], ne: [10.9, -1.6, 1], sw: [-10.9, 6.6, -1], se: [15.5, 6.6, -1] };
@@ -208,6 +210,63 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('19-night-card') });
     const stats = await hooks<{ drawCalls: number }>(page, 'stats');
     expect(stats.drawCalls).toBeLessThan(250);
+  });
+
+  test('goals, a good night and a bad one, a corner for sale and a corner bought', async ({ page }) => {
+    test.setTimeout(240_000);
+    await ready(page);
+    await hooks(page, 'newGame', 11, 'main', 'Corner Fresh', { tutorial: false });
+    await settle(page, 1500);
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setSpeed', 0);
+    await hooks(page, 'openRivals');
+    await hooks(page, 'goalAt', 'cheapo');
+    await hooks(page, 'crowd', 6);
+    await hooks(page, 'advanceScan', 60, 2);
+    // The active goal as a chip under the top bar.
+    await follow(page, 0.5, -1.0, 12, 0, 1200);
+    await expect(page.locator('.goal-chip')).toContainText('Beat the discounter');
+    await page.screenshot({ path: out('25-goal-chip') });
+    // A click on it opens the whole ladder.
+    await page.locator('.goal-chip').click();
+    await expect(page.locator('.goal-ladder li')).toHaveCount(7);
+    await settle(page, 600);
+    await page.screenshot({ path: out('26-goals-ladder') });
+    await page.keyboard.press('Escape');
+
+    // A good day: busy and stocked. The card says why, how the crossroads split, and what tomorrow brings.
+    await hooks(page, 'restock');
+    for (let i = 0; i < 6; i++) { await hooks(page, 'crowd', 5); await hooks(page, 'advanceScan', 60, 1.2); await hooks(page, 'restock'); }
+    await hooks(page, 'advance', 900);
+    await expect(page.locator('.card.night')).toBeVisible({ timeout: 15_000 });
+    await settle(page, 800);
+    await page.screenshot({ path: out('27-night-card-profit') });
+    expect(await page.locator('.card.night').getAttribute('class')).toContain('profit');
+
+    // A bad day: bare shelves, nobody served. The headline goes red.
+    await page.getByRole('button', { name: /open tomorrow/i }).click();
+    await page.evaluate(() => { const s = (window as unknown as { __shelf: { state: () => { shop: { fixtures: { slots: { qty: number }[] }[] } } } }).__shelf.state(); for (const f of s.shop.fixtures) for (const sl of f.slots) sl.qty = 0; });
+    await hooks(page, 'advance', 900);
+    await expect(page.locator('.card.night.loss')).toBeVisible({ timeout: 15_000 });
+    await settle(page, 800);
+    await page.screenshot({ path: out('28-night-card-loss') });
+    await page.getByRole('button', { name: /open tomorrow/i }).click();
+
+    // Cheapo goes under: the sign comes down and a "For sale" board goes up.
+    const cheapo = (await st(page)).rivals.find((r) => r.id === 'discount')!;
+    const origin: Record<string, [number, number, number]> = { nw: [-15.5, -1.6, 1], ne: [10.9, -1.6, 1], sw: [-10.9, 6.6, -1], se: [15.5, 6.6, -1] };
+    const [cx, cz, facing] = origin[cheapo.corner]!;
+    await hooks(page, 'closeRival', 'discount');
+    await hooks(page, 'viewWorld', cx, cz + 0.5 * facing, facing > 0 ? 0.3 : Math.PI + 0.3, 17, 0.8);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('29-corner-for-sale') });
+
+    // Bought: the building in the shop's colours and under its name, its shoppers carrying its bags.
+    expect(await hooks<boolean>(page, 'buyCorner', 'discount')).toBe(true);
+    await hooks(page, 'advanceScan', 120, 2);
+    await hooks(page, 'viewWorld', cx, cz + 0.5 * facing, facing > 0 ? 0.3 : Math.PI + 0.3, 17, 0.8);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('30-corner-bought') });
   });
 
   test('playing on a phone', async ({ browser }) => {

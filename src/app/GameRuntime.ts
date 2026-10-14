@@ -16,6 +16,17 @@ import { defaultBackend, type StorageBackend } from '@/save/storage';
 import { saveGame, loadGame, type Slot } from '@/save/saves';
 import { loadSettings, saveSettings, type Settings } from '@/save/settings';
 import { analytics } from './analytics';
+import { dollars } from '@/sim/money';
+import { activeGoal, goalDef, goalProgress, GOALS } from '@/sim/goals';
+
+/** The active goal for the chip: its title, target, reward and how far along it is. */
+function goalInfo(s: GameState): Snapshot['goal'] {
+  const g = activeGoal(s);
+  if (!g) return null;
+  const p = goalProgress(s, g);
+  return { title: g.title, target: g.target, reward: g.rewardText, frac: Math.round(p.frac * 100) / 100, text: p.text, step: s.goals.index + 1, total: GOALS.length };
+}
+const goalKey = (s: GameState) => { const g = goalInfo(s); return `${s.goals.index}|${g ? `${g.frac}|${g.text}` : ''}|${s.goals.champion}|${s.goals.championSeen}`; };
 
 export type Speed = 0 | 1 | 2 | 4;
 export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | null;
@@ -56,6 +67,12 @@ export interface Snapshot {
   jobs: { id: string; title: string; done: boolean }[] | null;
   /** 0 at opening, 1 at closing: drives the sun on the day dial. */
   dayFrac: number;
+  /** The active goal, for the chip under the top bar (null once the ladder is done). */
+  goal: { title: string; target: string; reward: string; frac: number; text: string; step: number; total: number } | null;
+  /** A goal just reached: confetti and the reward, for a few seconds (play goes on). */
+  celebrate: { key: number; title: string; reward: string; next: string | null } | null;
+  /** Owns the crossroads: the ending card, until it is waved away. */
+  champion: boolean;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
@@ -153,7 +170,29 @@ export class GameRuntime {
       playing: this.inPlay,
       jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
       dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
+      goal: s && s.phase !== 'picking' ? goalInfo(s) : null,
+      celebrate: this.celebration,
+      champion: !!s && s.goals.champion && !s.goals.championSeen,
     };
+  }
+
+  // ---- Goals: a burst of confetti when one is reached (once; never replayed from a save).
+  private celebration: Snapshot['celebrate'] = null;
+  private celebrationUntil = 0;
+  private celebratedTick = -1;
+  private checkCelebration(s: GameState): void {
+    const c = s.goals.celebrate;
+    if (c && c.tick !== this.celebratedTick) {
+      this.celebratedTick = c.tick;
+      const g = goalDef(c.id);
+      if (g && s.tick - c.tick < 200) {
+        const next = activeGoal(s);
+        this.celebration = { key: c.tick, title: g.title, reward: g.rewardText, next: next ? next.title : null };
+        this.celebrationUntil = performance.now() + 4200;
+        this.emit();
+      }
+    }
+    if (this.celebration && performance.now() > this.celebrationUntil) { this.celebration = null; this.emit(); }
   }
 
   private currentTip(s: GameState): TipInfo | null {
@@ -327,14 +366,14 @@ export class GameRuntime {
       } else { this.aimCache = { info: null, run: null }; r.marker.set(null); }
     }
     this.snapTimer += dt;
-    if (this.snapTimer >= 0.1) { this.snapTimer = 0; this.maybeEmit(); if (s) this.updateSideOffset(); }
+    if (this.snapTimer >= 0.1) { this.snapTimer = 0; if (s) this.checkCelebration(s); this.maybeEmit(); if (s) this.updateSideOffset(); }
     if (this.toast && performance.now() > this.toastUntil) { this.toast = null; this.emit(); }
   }
 
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -719,7 +758,7 @@ export class GameRuntime {
       const at = toWorld(s.shop, h.x + 0.5, h.z + 0.5);
       r.marker.set(null);
       return {
-        info: { key: 'Click', text: this.build.valid ? `${this.build.placing ? 'Place' : 'Move'} ${name}${this.build.price ? ` · $${this.build.price}` : ''}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 1.1, z: at.z } },
+        info: { key: 'Click', text: this.build.valid ? `${this.build.placing ? 'Place' : 'Move'} ${name}${this.build.price ? ` · ${dollars(this.build.price)}` : ''}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 1.1, z: at.z } },
         run: this.build.valid ? () => this.clickBuild(null) : null,
       };
     }

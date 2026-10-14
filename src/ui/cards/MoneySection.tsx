@@ -18,7 +18,7 @@ export function MoneySection({ runtime, snap }: { runtime: GameRuntime; snap: Sn
       <div className="stat"><span>Sales so far today</span><b>{money(t.revenue)}</b></div>
       <div className="stat"><span>Tonight: rent, power, wages</span><b>-{money(tonight)}</b></div>
       {due.slice(0, 4).map((d, i) => <div className="stat" key={i}><span>Day {d.day}: {d.name}</span><b>-{money(d.amount)}</b></div>)}
-      {last && <div className="stat"><span>Yesterday's profit</span><b>{last.profit >= 0 ? '+' : ''}{money(last.profit)}</b></div>}
+      {last && <div className="stat"><span>Yesterday's profit</span><b>{money(last.profit, true)}</b></div>}
       {last && (last.theft > 0 || last.loans > 0 || last.bills > 0) && <p className="muted">Yesterday also: {last.theft > 0 ? `${money(last.theft)} shoplifted` : ''}{last.loans > 0 ? ` · ${money(last.loans)} loan instalment` : ''}{last.bills > 0 ? ` · ${money(last.bills)} invoices` : ''}</p>}
       <h3>Loans</h3>
       {s.loans.map((l) => (
