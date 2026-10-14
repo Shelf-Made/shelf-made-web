@@ -336,6 +336,9 @@ function mustYield(state: GameState, car: Car): boolean {
   return false;
 }
 
+/** Seconds a car backing out waits for a clear aisle before it goes anyway; seconds any car waits before squeezing past. */
+const REVERSE_GIVE_UP = 30, JAM_GIVE_UP = 40;
+
 function drive(state: GameState, car: Car, speed: number, turnRate: number): boolean {
   car.yielding = mustYield(state, car);
   const l = light(state, car);
@@ -343,8 +346,8 @@ function drive(state: GameState, car: Car, speed: number, turnRate: number): boo
   if (k <= 0.01) {
     // Waiting in a queue for a red light is normal; only other hold-ups count toward the jam breaker.
     car.waited = l.red ? 0 : (car.waited ?? 0) + TICK;
-    // Backing out never forces its way.
-    if (car.reversing) return false;
+    // Backing out waits its turn, but not for ever: in a busy two-row lot the cars it waits for can be waiting on it.
+    if (car.reversing && (car.waited ?? 0) < REVERSE_GIVE_UP) return false;
     // Never jam for good: after a long wait (not at a red light), inch forward.
     if ((car.waited ?? 0) < 8) return false;
   } else car.waited = 0;
@@ -359,7 +362,8 @@ function drive(state: GameState, car: Car, speed: number, turnRate: number): boo
     car.x += (dx / d) * step; car.z += (dz / d) * step;
     return false;
   }
-  const inch = (car.waited ?? 0) >= 8 && (car.gap ?? Infinity) > 1.4 ? 0.15 : 0;
+  // Held up a while: creep on when there is room. Held up for good (a ring of cars each waiting on the next): squeeze through.
+  const inch = (car.waited ?? 0) >= JAM_GIVE_UP ? 0.3 : (car.waited ?? 0) >= 8 && (car.gap ?? Infinity) > 1.4 ? 0.15 : 0;
   return followPath(car, speed * Math.max(k, inch), TICK, turnRate);
 }
 

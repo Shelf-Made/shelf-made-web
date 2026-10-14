@@ -14,11 +14,12 @@ import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift } from './staff';
 import { canPlace, expandShop, expandLot, moveFixture } from './build';
-import { startFlyers, toggleBillboard, setPromotion, setAd } from './marketing';
+import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
 import { schemeById } from './schemes';
-import { seatRivals } from './rivals';
+import { seatRivals, buyCorner } from './rivals';
 import type { Promotion, AdTemplate } from './types';
+import { dollars } from './money';
 
 export type Command =
   | { type: 'choosePlot'; plotId: string; name: string; scheme?: string }
@@ -50,6 +51,10 @@ export type Command =
   | { type: 'openFranchise'; siteId: string; managerId: number }
   | { type: 'closeFranchise'; franchiseId: number }
   | { type: 'replaceManager'; franchiseId: number; managerId: number }
+  | { type: 'buyCorner'; rivalId: string; managerId: number }
+  | { type: 'openingEvent' }
+  | { type: 'signStyle'; style: 'classic' | 'lit' }
+  | { type: 'ackChampion' }
   | { type: 'takeLoan'; offerId: string }
   | { type: 'repayLoan'; loanId: number; amount: number }
   | { type: 'hire'; candidateId: number }
@@ -66,7 +71,7 @@ export interface CommandResult { ok: boolean; message?: string }
 /** The sound a command makes when it works and has not already made its own. */
 const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
   removeFixture: 'sell', moveFixture: 'place', setPrice: 'tick', flyers: 'paper', billboard: 'build', promotion: 'order', ad: 'order',
-  outsideSign: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
+  outsideSign: 'build', signStyle: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
   setShift: 'tick', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
 };
 
@@ -195,7 +200,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (fx.type === 'register' || fx.type === 'kiosk') { fx.queue = []; fx.serving = null; fx.scanned = 0; fx.staffId = null; }
       state.shop.fixtures.push(fx);
       state.shop.layoutVersion++;
-      popup(state, fixtureCentre(state.shop, fx), `-$${def.price}`, 'bad', 1.2);
+      popup(state, fixtureCentre(state.shop, fx), dollars(-def.price), 'bad', 1.2);
       cue(state, 'place');
       if (fx.type === 'register' || fx.type === 'kiosk') completeTutorial(state, 'counter');
       if (FIXTURES[fx.type].slots > 0) completeTutorial(state, 'shelf');
@@ -223,6 +228,14 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'ad': { const err = setAd(state, cmd.ad); return err ? { ok: false, message: err } : { ok: true }; }
     case 'outsideSign': { if (cmd.on && !state.marketing.outsideSign) { if (state.cash < 150) return { ok: false, message: 'Need $150.' }; state.cash -= 150; } state.marketing.outsideSign = cmd.on; state.shop.layoutVersion++; return { ok: true }; }
     case 'openFranchise': { const err = openFranchise(state, cmd.siteId, cmd.managerId); if (!err) cue(state, 'reward'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'buyCorner': { const err = buyCorner(state, cmd.rivalId, cmd.managerId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'openingEvent': { const err = bookOpeningEvent(state); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'signStyle': {
+      if (cmd.style === 'lit' && !state.goals.unlocked.includes('signLit') && !state.sandbox) return { ok: false, message: 'Reach the Regulars goal to light the sign.' };
+      state.shop.signStyle = cmd.style; state.shop.layoutVersion++;
+      return { ok: true };
+    }
+    case 'ackChampion': { state.goals.championSeen = true; return { ok: true }; }
     case 'closeFranchise': { const err = closeFranchise(state, cmd.franchiseId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'replaceManager': { const err = replaceManager(state, cmd.franchiseId, cmd.managerId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'takeLoan': { const err = takeLoan(state, cmd.offerId); return err ? { ok: false, message: err } : { ok: true }; }

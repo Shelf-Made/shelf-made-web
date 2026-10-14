@@ -8,6 +8,7 @@ import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone, toWo
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside } from './people';
+import { dollars } from './money';
 
 export interface PlaceCheck { ok: boolean; reason: string; price: number }
 
@@ -24,7 +25,7 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && z === f.z0) return { ok: false, reason: 'Keep the back door clear', price };
   const d = shop.delivery;
   if (d && x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
-  if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need $${price}`, price };
+  if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need ${dollars(price)}`, price };
   // Never on top of the manager.
   const owner = state.people.find((p) => p.kind === 'owner');
   if (owner) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > x - 0.3 && lo.x < x + 1.3 && lo.z > z - 0.3 && lo.z < z + 1.3) return { ok: false, reason: 'You are standing there', price }; }
@@ -57,7 +58,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const target = SHOP_SIZES.indexOf(size);
   if (target <= current) return 'The shop is already that big.';
   const cost = size.cost - (SHOP_SIZES[current]?.cost ?? 0);
-  if (state.cash < cost) return `Need $${cost} for the extension.`;
+  if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
   const shop = state.shop;
   state.cash -= cost;
   shop.floor = { ...size.floor }; shop.storeroom = { ...size.storeroom }; shop.sizeId = size.id;
@@ -75,7 +76,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
 export function expandLot(state: GameState): string | null {
   const shop = state.shop;
   if (shop.lotRows >= 2) return 'The lot is as big as the plot allows.';
-  if (state.cash < LOT_EXPANSION_COST) return `Need $${LOT_EXPANSION_COST} for the extra bays.`;
+  if (state.cash < LOT_EXPANSION_COST) return `Need ${dollars(LOT_EXPANSION_COST)} for the extra bays.`;
   state.cash -= LOT_EXPANSION_COST;
   shop.lotRows = 2;
   const L = lotLayout(shop);

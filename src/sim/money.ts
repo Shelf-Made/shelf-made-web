@@ -6,6 +6,23 @@ import type { GameState, Bill, Loan } from './types';
 import { withRng, popup, cue } from './state';
 import { doorOutside } from './people';
 
+/**
+ * Every money string in the game goes through here: the sign before the dollar ("-$140", never
+ * "$-140"), thousands separators, cents unless asked to round. `sign` puts a "+" on gains.
+ */
+export function formatMoney(n: number, opts: { cents?: boolean; sign?: boolean } = {}): string {
+  const cents = opts.cents ?? true;
+  const digits = cents ? Math.abs(n).toFixed(2) : String(Math.round(Math.abs(n)));
+  const zero = Number(digits) === 0;
+  const [whole, frac] = digits.split('.');
+  const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const prefix = n < 0 && !zero ? '-' : opts.sign && !zero ? '+' : '';
+  return `${prefix}$${grouped}${frac ? `.${frac}` : ''}`;
+}
+
+/** Whole dollars, for prices and costs that never carry cents. */
+export const dollars = (n: number, sign = false) => formatMoney(n, { cents: false, sign });
+
 export const PAYROLL_TAX = 0.12;
 export const CARD_FEE = 0.018;
 
@@ -23,7 +40,7 @@ export function takeLoan(state: GameState, offerId: string): string | null {
   const loan: Loan = { id: state.nextId++, offerId: offer.id, name: offer.name, principal: offer.amount, balance: offer.amount, dailyRate: offer.dailyRate, daysLeft: offer.days, takenDay: state.day };
   state.loans.push(loan);
   state.cash += offer.amount;
-  state.notices.push({ day: state.day, text: `${offer.name}: +$${offer.amount}. Repaid over ${offer.days} days at ${(offer.dailyRate * 100).toFixed(1)}% a day.`, kind: 'money' });
+  state.notices.push({ day: state.day, text: `${offer.name}: ${dollars(offer.amount, true)}. Repaid over ${offer.days} days at ${(offer.dailyRate * 100).toFixed(1)}% a day.`, kind: 'money' });
   cue(state, 'cash');
   return null;
 }
@@ -62,7 +79,7 @@ export function closingCharges(state: GameState): { loans: number; bills: number
   const staffOnFloor = state.people.filter((p) => p.kind === 'staff').length;
   const shrink = withRng(state, 'theft', (r) => (r.chance(0.35 - staffOnFloor * 0.08) ? r.range(0.004, 0.012) * Math.max(0, state.today.revenue) : 0));
   const theft = Math.round(shrink * 100) / 100;
-  if (theft > 0) popup(state, doorOutside(state), `-$${theft.toFixed(2)} shoplifted`, 'bad', 1.5);
+  if (theft > 0) popup(state, doorOutside(state), `${formatMoney(-theft)} shoplifted`, 'bad', 1.5);
   state.cash -= loans + bills + theft;
   return { loans: Math.round(loans * 100) / 100, bills: Math.round(bills * 100) / 100, theft };
 }

@@ -4,7 +4,7 @@ import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, 
 import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
-import { withRng, nextId, popup, cue, gridFor, dist, react } from './state';
+import { withRng, nextId, popup, cue, gridFor, dist, react, complain } from './state';
 import { spawnCustomerCar, leaveLot } from './cars';
 import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
 import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
@@ -13,6 +13,7 @@ import { pickType } from './tick';
 import { effectivePrice } from './marketing';
 import { cashierMistake, onShift } from './staff';
 import { CARD_FEE } from './money';
+import { formatMoney, dollars } from './money';
 
 const CUSTOMER_MODELS = 12;
 
@@ -124,6 +125,7 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
     if (!car || onward?.kind === 'rival') {
       // Lot full: the car drives on past, and (when there is one) pulls into a rival's lot instead.
       state.today.turnedAway++;
+      complain(state, 'lotFull');
       { const L = lotLayout(state.shop); popup(state, toWorld(state.shop, L.driveway.x0 + 1, L.driveway.z1), 'Lot full!', 'bad', 0.8); }
       if (car && onward?.kind === 'rival') rivalShopperInCar(state, car, onward.rival.id, look);
       return null;
@@ -299,7 +301,7 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   if (sat > 0.9) react(state, p.id, 'love');
   state.today.satisfaction += sat; state.today.satisfactionN++;
   const c = fixtureCentre(state.shop, reg);
-  popup(state, c, `+$${total.toFixed(2)}${method === 'cash' ? '' : method === 'card' ? ' card' : ' tap'}`, 'money', 1.1);
+  popup(state, c, `${formatMoney(total, { sign: true })}${method === 'cash' ? '' : method === 'card' ? ' card' : ' tap'}`, 'money', 1.1);
   cue(state, 'cash');
   reg.serving = null; reg.scanned = 0;
   if (!state.tutorial.completed.includes('ringUp')) completeTutorial(state, 'ringUp');
@@ -317,7 +319,7 @@ export function completeTutorial(state: GameState, step: string): void {
     const reward = 20;
     state.cash += reward; t.rewardsPaid += reward;
     const d = doorOutside(state);
-    popup(state, { x: d.x, z: d.z - 1 }, `+$${reward} tip bonus`, 'money', 1.6);
+    popup(state, { x: d.x, z: d.z - 1 }, `${dollars(reward, true)} tip bonus`, 'money', 1.6);
     cue(state, 'reward');
     t.step = Math.min(t.step + 1, TUTORIAL_STEPS.length);
     if (TUTORIAL_STEPS.every((id) => t.completed.includes(id))) t.done = true;
@@ -374,6 +376,8 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if (followPath(p, p.speed, dt, 12, 0.22)) {
         if (state.phase !== 'open') { startLeaving(state, p, false); break; }
         p.state = 'shopping';
+        // A messy floor is the first thing they see.
+        if (state.shop.cleanliness < 0.6 || state.shop.litter.length >= 2) complain(state, 'dirty');
         if (p.ctype === 'impulse') {
           const tempt = state.shop.fixtures.filter((f) => (f.type === 'endcap' || f.type === 'rack') && f.slots.some((sl) => sl.productId && sl.qty > 0));
           if (tempt.length && withRng(state, 'customers', (r) => r.chance(0.6))) {
@@ -394,7 +398,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if ((p.listIdx ?? 0) >= list.length) { finishShopping(state, p); break; }
       const item = list[p.listIdx!]!;
       const f = findFixtureWith(state, item.productId);
-      if (!f) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; p.listIdx!++; react(state, p.id, 'outOfStock'); break; }
+      if (!f) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; complain(state, 'outOfStock', item.productId); p.listIdx!++; react(state, p.id, 'outOfStock'); break; }
       p.targetFixture = f.id;
       p.state = 'browsing'; p.anim = 'walk'; p.timer = -1;
       setPath(state, p, fixtureFrontWorld(state.shop, f), dyn);
@@ -419,7 +423,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         const price = effectivePrice(state, item.productId);
         const spent = (p.basket ?? []).reduce((a, b) => a + b.price * b.qty, 0);
         const fair = !slot || willBuy(state, p.ctype ?? 'convenience', item.productId);
-        if (slot && !fair) react(state, p.id, 'pricey');
+        if (slot && !fair) { complain(state, 'pricey', item.productId); react(state, p.id, 'pricey'); }
         if (slot && fair && spent + price <= (p.budget ?? 999)) {
           if (price < productDef(item.productId).basePrice * 0.92) react(state, p.id, 'deal');
           const promo = state.marketing.promotion;
@@ -428,7 +432,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
           slot.qty -= take;
           p.basket!.push({ productId: item.productId, qty: take, price });
           cue(state, 'pick');
-        } else if (!slot) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; react(state, p.id, 'outOfStock'); }
+        } else if (!slot) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; complain(state, 'outOfStock', item.productId); react(state, p.id, 'outOfStock'); }
         p.listIdx = (p.listIdx ?? 0) + 1;
         p.state = 'shopping'; p.anim = p.basket!.length ? 'carry' : 'walk';
       }
@@ -461,7 +465,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if (slot !== p.queueSlot) { p.queueSlot = slot; p.state = 'toQueue'; p.anim = 'walk'; setPath(state, p, queueSlot(state, reg, slot), dyn); break; }
       p.patience = (p.patience ?? 100) - dt;
       if (p.patience <= 0) {
-        state.today.walkedOut++;
+        state.today.walkedOut++; complain(state, 'queue');
         react(state, p.id, 'queue');
         popup(state, { x: p.x, z: p.z }, 'Too slow!', 'bad', 1.1);
         state.today.satisfactionN++;
@@ -496,7 +500,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       } else {
         p.patience = (p.patience ?? 100) - dt;
         if (p.patience <= 0) {
-          state.today.walkedOut++;
+          state.today.walkedOut++; complain(state, 'queue');
           react(state, p.id, 'queue');
           popup(state, { x: p.x, z: p.z }, 'Too slow!', 'bad', 1.1);
           state.today.satisfactionN++;

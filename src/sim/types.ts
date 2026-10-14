@@ -194,6 +194,8 @@ export interface Shop {
   reputation: number;
   awareness: number;
   cleanliness: number;
+  /** Sign lettering: plain, or lit after dark (a goal reward). */
+  signStyle?: 'classic' | 'lit';
   /** Bumped whenever fixtures or walls change, so the pathfinding grid is rebuilt. */
   layoutVersion: number;
   /** Abandoned baskets and mess on the floor. */
@@ -204,6 +206,20 @@ export interface Shop {
   delivery: { x0: number; z0: number; x1: number; z1: number };
   /** The shop's colour scheme (an id from SHOP_SCHEMES). */
   scheme: string;
+}
+
+/** What went wrong for shoppers today, counted as it happens (the night card's "why"). */
+export interface Complaints {
+  /** Wanted it and the shelf was bare (or it is not sold here), by product. */
+  outOfStock: Record<string, number>;
+  /** Put it back: too dear for them, by product. */
+  pricey: Record<string, number>;
+  /** Gave up waiting in line. */
+  queue: number;
+  /** Drove past a full lot. */
+  lotFull: number;
+  /** Walked in to a messy floor. */
+  dirty: number;
 }
 
 export interface DayStats {
@@ -228,6 +244,9 @@ export interface DayStats {
   satisfactionN: number;
   profit: number;
   endCash: number;
+  complaints: Complaints;
+  /** Shoppers at each store on the crossroads today ('player', a rival's id, or 'corner-<id>' for a bought corner), filled at close. */
+  shoppers?: Record<string, number>;
 }
 
 export interface StoreScores { price: number; availability: number; layout: number; wait: number; parking: number; awareness: number }
@@ -248,6 +267,18 @@ export interface RivalState {
   /** Branches off the map (MegaMart grows), shown as road signs. */
   stores: number; cash: number;
   branches: string[];
+  /** Closing nights in a row with cash below zero (five and it shuts). */
+  brokeDays: number;
+  /** The day it closed for good: the corner is for sale until it is bought or a challenger moves in. */
+  closedDay?: number;
+  /** The day the player bought the corner: it trades as one of the player's branches. */
+  boughtDay?: number;
+  /** A challenger that took over an empty corner (its own colours). */
+  challenger?: boolean;
+  /** Yesterday's trade, from the daily P&L. */
+  lastShoppers?: number;
+  lastSales?: number;
+  lastProfit?: number;
 }
 
 export interface Bill { id: number; name: string; amount: number; dueDay: number }
@@ -258,8 +289,10 @@ export interface Promotion { kind: 'lossLeader' | 'buyTwo'; productId: string }
 export interface AdTemplate { kind: 'product' | 'discount' | 'target'; productId?: string; percent?: number; target?: CustomerType }
 
 export interface Franchise {
-  /** siteId: one of OFFMAP_SITES. */
+  /** siteId: one of OFFMAP_SITES, or `corner-<id>` for a rival's corner the player bought. */
   id: number; siteId: string; name: string; manager: Candidate; openedDay: number;
+  /** On the crossroads: the corner it trades from (a bought rival building). */
+  corner?: CornerId;
   stockLevel: number; reputation: number; cashToday: number;
   history: { day: number; customers: number; served: number; revenue: number; profit: number }[];
   alerts: string[];
@@ -270,6 +303,42 @@ export type ReactionKind = 'pricey' | 'outOfStock' | 'queue' | 'deal' | 'love';
 export interface Reaction { id: number; personId: number; kind: ReactionKind; tick: number }
 
 export interface Notice { day: number; text: string; kind: 'rival' | 'event' | 'money' | 'staff' | 'info' }
+
+/** The shop's ladder of goals: one active at a time, checked as things happen and at close. */
+export interface GoalState {
+  /** Index of the active goal in GOALS (GOALS.length once the ladder is done). */
+  index: number;
+  done: { id: string; day: number }[];
+  /** Rewards that unlock something: 'signLit', 'openingEvent', 'franchises'. */
+  unlocked: string[];
+  /** The day the active goal became active. */
+  since: number;
+  /** Closing nights in a row the active goal's daily test has passed (out-selling Cheapo). */
+  run: number;
+  /** The active goal's progress (0..1) when the day opened, for "today's change". */
+  dayStart: number;
+  /** The latest goal reached, for the celebration (the UI shows it once). */
+  celebrate: { id: string; tick: number } | null;
+  /** Owns the crossroads: the ending card has been earned (and shown). */
+  champion: boolean;
+  championSeen: boolean;
+}
+
+/** What tomorrow brings, rolled at close so the night card can say it, and applied when the day opens. */
+export interface DayPlan {
+  day: number;
+  /** Demand multiplier from the weekday, festival, holiday, weather and any event. */
+  eventDemand: number;
+  weather: string | null;
+  festival: string | null;
+  /** A one-off event (road works, a blogger...): a surprise, not shown the night before. */
+  event: { text: string; rep?: number; spoil?: boolean } | null;
+  /** Notices that go up when the day opens (weekday, festival, holiday, weather). */
+  notices: string[];
+  rivals: { id: string; opens?: boolean; sale?: number; nextSaleDay?: number; branch?: boolean }[];
+  /** What the town is saying tonight: "Cheapo is printing flyers...". */
+  rumours: string[];
+}
 
 export interface Popup { id: number; x: number; z: number; y: number; text: string; kind: 'money' | 'info' | 'bad'; tick: number }
 
@@ -341,6 +410,9 @@ export interface GameState {
   gameOver: boolean;
   staffPool: Candidate[];
   rules: ManagerRules;
-  marketing: { campaigns: Campaign[]; billboards: string[]; promotion: Promotion | null; ad: AdTemplate | null; outsideSign: boolean };
+  marketing: { campaigns: Campaign[]; billboards: string[]; promotion: Promotion | null; ad: AdTemplate | null; outsideSign: boolean; openingEventDay?: number };
   franchises: Franchise[];
+  goals: GoalState;
+  /** Tomorrow, rolled at close (null during the day). */
+  tomorrow: DayPlan | null;
 }

@@ -1,17 +1,18 @@
-import type { GameState, Order } from './types';
+import type { GameState, Order, DayPlan } from './types';
 import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME } from './layout';
 import { productDef } from './products';
 import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
 import { spawnDeliveryTruck } from './cars';
 import { doorOutside } from './people';
-import { rivalDay } from './rivals';
+import { rivalDay, rivalsNight, planRivals } from './rivals';
 import { computeScores } from './customers';
 import { marketDay, inShortage } from './market';
-import { closingCharges, checkFailState, addBill, PAYROLL_TAX } from './money';
+import { closingCharges, checkFailState, addBill, PAYROLL_TAX, formatMoney, dollars } from './money';
 import { staffNight, autoOrder, managerPrices, wageFor } from './staff';
 import { applyUnlocks } from './progression';
-import { marketingDay } from './marketing';
+import { marketingDay, planEvents } from './marketing';
+import { trackGoals, checkGoals, goalsMorning } from './goals';
 import { franchiseDay } from './franchise';
 
 export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
@@ -36,9 +37,9 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   if (clean.length === 0) return shortLines.length ? `${productDef(shortLines[0]!.productId).name} is in shortage: no supplier has it this week.` : 'Nothing to order.';
   for (const l of shortLines) state.notices.push({ day: state.day, text: `${productDef(l.productId).name} left off the order: in shortage this week.`, kind: 'event' });
   const total = Math.round(clean.reduce((a, l) => a + l.qty * l.unitCost, 0) * 100) / 100;
-  if (total < sup.minOrder) return `${sup.name} needs a $${sup.minOrder} minimum.`;
+  if (total < sup.minOrder) return `${sup.name} needs a ${dollars(sup.minOrder)} minimum.`;
   const onTerms = sup.terms > 0;
-  if (!onTerms && total > state.cash) return `Not enough cash ($${total.toFixed(2)}).`;
+  if (!onTerms && total > state.cash) return `Not enough cash (${formatMoney(total)}).`;
   const units = clean.reduce((a, l) => a + l.qty, 0);
   const inStorage = state.shop.storage.reduce((a, s) => a + s.qty, 0);
   if (inStorage + units > state.shop.storageCapacity) return `The pallet only has room for ${state.shop.storageCapacity - inStorage} more units.`;
@@ -100,12 +101,31 @@ export function closeDay(state: GameState): void {
   state.scores.last = computeScores(state);
   staffNight(state);
   franchiseDay(state);
+  // The rivals' books, and everyone's shoppers at the crossroads today (the share the night card and goals use).
+  const rivals = rivalsNight(state);
+  const shoppers: Record<string, number> = { player: Math.max(0, t.customers - t.turnedAway) };
+  for (const [id, n] of Object.entries(rivals)) shoppers[id] = Math.round(n);
+  for (const f of state.franchises) if (f.corner) shoppers[`corner-${f.corner}`] = f.history[f.history.length - 1]?.customers ?? 0;
+  t.shoppers = shoppers;
   // The owner tidies up overnight.
   state.shop.litter = [];
   state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.35);
-  state.history.push({ ...t });
+  state.history.push({ ...t, complaints: structuredClone(t.complaints), shoppers: { ...shoppers } });
   state.phase = 'night';
+  trackGoals(state);
+  checkGoals(state, 'night');
+  // Tomorrow is decided tonight, so the night card can say what is coming.
+  state.tomorrow = planDay(state, state.day + 1);
   cue(state, 'night');
+}
+
+/** Roll a day's rival moves and events (applied when it opens). */
+export function planDay(state: GameState, day: number): DayPlan {
+  const rv = planRivals(state, day);
+  const ev = planEvents(state, day);
+  const rumours = [...rv.rumours];
+  if (state.marketing.openingEventDay === day) rumours.push('Your opening-day event is tomorrow: bunting, balloons and a crowd.');
+  return { day, ...ev, rivals: rv.rivals, rumours };
 }
 
 /** Start the next day: spoilage, fresh stats, doors open. */
@@ -119,10 +139,13 @@ export function openTomorrow(state: GameState): void {
   state.scores.waitSum *= 0.4; state.scores.waitSamples = Math.max(1, Math.floor(state.scores.waitSamples * 0.4));
   state.scores.avgWait = state.scores.waitSamples ? state.scores.waitSum / state.scores.waitSamples : 20;
   if (state.notices.length > 40) state.notices.splice(0, state.notices.length - 40);
-  rivalDay(state);
+  // What was decided last night (an old save loaded at night has no plan yet: roll it now).
+  const plan = state.tomorrow && state.tomorrow.day === state.day ? state.tomorrow : planDay(state, state.day);
+  state.tomorrow = null;
+  rivalDay(state, plan);
   marketDay(state);
   applyUnlocks(state);
-  marketingDay(state);
+  marketingDay(state, plan);
   dailyAutomation(state);
   // Spoilage: shelf and storage entries past their life are thrown out.
   let spoiled = 0;
@@ -137,6 +160,7 @@ export function openTomorrow(state: GameState): void {
     return true;
   });
   if (spoiled > 0) popup(state, doorOutside(state), `${spoiled} items spoiled`, 'bad', 1.4);
+  goalsMorning(state);
   if (!state.tutorial.completed.includes('openTomorrow') && state.day === 2) {
     // completed via commands (keeps reward logic in one place)
   }

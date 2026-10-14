@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
 import { tick, applyCommand, TICK } from './index';
-import { bagColour, shoppingBags, schemeById, RIVAL_SCHEMES, SHOP_SCHEMES } from './schemes';
+import { bagColour, shoppingBags, schemeById, RIVAL_SCHEMES, SHOP_SCHEMES, CHALLENGER_SCHEME } from './schemes';
 import type { Person } from './types';
 
 describe('shop colours and shopping bags', () => {
@@ -25,8 +25,9 @@ describe('shop colours and shopping bags', () => {
     for (const p of s.people) if (p.kind === 'customer' && !p.paid) expect(shoppingBags(p)).toBeNull();
   });
 
-  it('no player scheme can be mistaken for a rival at a glance', () => {
-    const rivals = Object.values(RIVAL_SCHEMES).map((r) => r.primary);
+  it('no player scheme can be mistaken for a rival (or a challenger) at a glance', () => {
+    // A challenger that takes over a closed corner counts as a rival too.
+    const rivals = [...Object.values(RIVAL_SCHEMES), CHALLENGER_SCHEME].map((r) => r.primary);
     const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
     for (const sc of SHOP_SCHEMES) for (const r of rivals) {
       const [a, b] = [rgb(sc.primary), rgb(r)];

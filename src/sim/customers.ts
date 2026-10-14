@@ -4,7 +4,7 @@
  */
 import type { GameState, CustomerType, RivalState, StoreScores } from './types';
 import { PRODUCTS, productDef } from './products';
-import { plotDef } from './layout';
+import { plotDef, PLOTS, DIFFICULTY } from './layout';
 
 export const TYPE_WEIGHTS: Record<CustomerType, StoreScores> = {
   bargain: { price: 0.45, availability: 0.15, layout: 0.05, wait: 0.1, parking: 0.05, awareness: 0.2 },
@@ -136,3 +136,31 @@ export function budgetFor(type: CustomerType, rnd: number): number {
 }
 
 export const ALL_PRODUCT_IDS = PRODUCTS.map((p) => p.id);
+
+/** The town grows day by day (the same for every store): 5% a day, up to 2.2x. */
+export function townGrowth(day: number): number { return Math.min(2.2, 1 + (day - 1) * 0.05); }
+
+/**
+ * Arrivals per expected customer: the tick's spawner runs 15% over the expected rate plus a 35% chance
+ * of an extra arrival, over a day curve that averages 0.94. Rivals' shoppers are counted on the same footing.
+ */
+export const ARRIVALS_PER_EXPECTED = 1.46;
+
+/**
+ * How many shoppers each open rival draws today: the town's pool by type, the corner's traffic and mix,
+ * the rival's share on the same softmax as the player's, and its awareness and reputation the same way
+ * the player's own count them. On the same scale as the player's arrivals, so shares compare fairly.
+ */
+export function rivalShoppersToday(state: GameState, scores = computeScores(state)): Record<string, number> {
+  const open = state.rivals.filter((r) => r.open);
+  const shares = rivalShares(state, scores);
+  const pool = state.demandBase * (1 + 0.75 * open.length) * state.eventDemand * townGrowth(state.day) * DIFFICULTY[state.difficulty].demandMul * ARRIVALS_PER_EXPECTED;
+  const out: Record<string, number> = {};
+  for (const r of open) {
+    const plot = PLOTS.find((p) => p.corner === r.corner);
+    let n = 0;
+    for (const t of Object.keys(TYPE_BASE) as CustomerType[]) n += TYPE_BASE[t] * (plot?.mix[t] ?? 1) * (shares[r.id]?.[t] ?? 0);
+    out[r.id] = pool * (plot?.traffic ?? 1) * n * (0.55 + 0.45 * r.awareness) * (0.7 + 0.6 * r.reputation);
+  }
+  return out;
+}

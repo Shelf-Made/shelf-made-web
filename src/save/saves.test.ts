@@ -56,4 +56,27 @@ describe('saves', () => {
     raw.version = 9; raw.state.version = 9; delete raw.state.shop.scheme;
     expect(parse(JSON.stringify(raw)).state.shop.scheme).toBe('green');
   });
+  it('gives older saves the goal ladder, ticking off what their history shows (v10 → v11)', () => {
+    const s = openGame({ seed: 6, plotId: 'main', name: 'Old Hand' });
+    for (let i = 0; i < 400; i++) tick(s);
+    const raw = JSON.parse(serialize(s)) as { version: number; state: Record<string, unknown> & { history: Record<string, unknown>[]; today: Record<string, unknown>; rivals: Record<string, unknown>[]; shop: { reputation: number } } };
+    raw.version = 10; raw.state.version = 10;
+    // What a v10 save looked like: no goals, no plan for tomorrow, no complaints, rivals without books.
+    delete raw.state.goals; delete raw.state.tomorrow; delete raw.state.today.complaints;
+    for (const r of raw.state.rivals) delete r.brokeDays;
+    raw.state.history = [{ ...raw.state.today, day: 1, served: 34 }, { ...raw.state.today, day: 2, served: 20 }];
+    raw.state.shop.reputation = 0.64;
+    const st = parse(JSON.stringify(raw)).state;
+    expect(st.version).toBe(SAVE_VERSION);
+    // Thirty served and 60% reputation are in the history; out-selling Cheapo was never recorded, so that is next.
+    expect(st.goals.done.map((d) => d.id)).toEqual(['doors', 'regulars']);
+    expect(st.goals.unlocked).toContain('signLit');
+    expect(st.goals.index).toBe(2);
+    expect(st.tomorrow).toBeNull();
+    for (const d of [st.today, ...st.history]) expect(d.complaints).toEqual({ outOfStock: {}, pricey: {}, queue: 0, lotFull: 0, dirty: 0 });
+    for (const r of st.rivals) expect(r.brokeDays).toBe(0);
+    // It plays on: the evening rolls tomorrow's plan.
+    for (let i = 0; i < 20000 && st.phase !== 'night'; i++) tick(st);
+    expect(st.tomorrow?.day).toBe(st.day + 1);
+  });
 });

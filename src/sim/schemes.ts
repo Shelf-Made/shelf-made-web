@@ -38,6 +38,15 @@ export const RIVAL_SCHEMES: Record<RivalState['kind'], Scheme> = {
   chain: { id: 'chain', name: 'MegaMart', primary: '#3570BC', dark: '#285795', light: '#DCE7F5', accent: '#FFFFFF', trim: '#FFC044' },
 };
 
+/** A challenger that takes over an empty corner: sky blue, clear of every player scheme and the three rivals. */
+export const CHALLENGER_SCHEME: Scheme = { id: 'challenger', name: 'Challenger', primary: '#29B6D8', dark: '#1E8FAB', light: '#D4F1F8', accent: '#FFFFFF', trim: '#38383D' };
+
+/** A rival's colours: its own, a challenger's, or the player's once the player owns the corner. */
+export function rivalScheme(state: GameState, r: RivalState): Scheme {
+  if (r.boughtDay !== undefined) return shopScheme(state);
+  return r.challenger ? CHALLENGER_SCHEME : RIVAL_SCHEMES[r.kind];
+}
+
 export function schemeById(id: string | undefined): Scheme { return SHOP_SCHEMES.find((s) => s.id === id) ?? SHOP_SCHEMES[0]!; }
 export function shopScheme(state: GameState): Scheme { return schemeById(state.shop.scheme); }
 
@@ -45,7 +54,7 @@ export function shopScheme(state: GameState): Scheme { return schemeById(state.s
 export function storeScheme(state: GameState, store: string): Scheme {
   if (store === 'player') return shopScheme(state);
   const r = state.rivals.find((x) => x.id === store);
-  return r ? RIVAL_SCHEMES[r.kind] : shopScheme(state);
+  return r ? rivalScheme(state, r) : shopScheme(state);
 }
 
 /**
@@ -70,6 +79,6 @@ export function bagColour(state: GameState, p: Person): string | null {
 /** Every colour any scheme uses, for the palette. */
 export function schemeColours(): string[] {
   const out = new Set<string>();
-  for (const s of [...SHOP_SCHEMES, ...Object.values(RIVAL_SCHEMES)]) for (const c of [s.primary, s.dark, s.light, s.accent, s.trim]) out.add(c.toUpperCase());
+  for (const s of [...SHOP_SCHEMES, ...Object.values(RIVAL_SCHEMES), CHALLENGER_SCHEME]) for (const c of [s.primary, s.dark, s.light, s.accent, s.trim]) out.add(c.toUpperCase());
   return [...out];
 }

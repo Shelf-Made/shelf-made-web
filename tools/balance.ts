@@ -4,10 +4,11 @@
  *   npm run balance -- --check exits non-zero when any assertion fails
  *   --progress prints each run's time; --only franchiser:3 runs one strategy (and seed); --trace prints it day by day
  */
-import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, type GameState, type Difficulty } from '../src/sim/index';
+import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, GOALS, playerShareOf, SHOP_SIZES, LOT_EXPANSION_COST, type GameState, type Difficulty, type FixtureType } from '../src/sim/index';
 import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
 import { TYPE_BASE } from '../src/sim/customers';
 import { plotDef } from '../src/sim/layout';
+import { writeFileSync } from 'node:fs';
 
 type Strategy = (s: GameState, day: number) => void;
 
@@ -31,6 +32,27 @@ function orderToFill(s: GameState, supplier: string, mul = 1.5, cap = Infinity):
   if (lines.length) applyCommand(s, { type: 'placeOrder', supplierId: supplier, lines });
 }
 
+/** Fill empty slots with products the shop does not sell yet, best sellers first (what the Stock card's "new lines" does). */
+function orderNew(s: GameState, budget: number): void {
+  const stocked = new Set<string>([...s.shop.storage.map((e) => e.productId), ...s.shop.fixtures.flatMap((f) => f.slots.map((sl) => sl.productId).filter((x): x is string => !!x))]);
+  for (const o of s.orders) if (o.state !== 'delivered') for (const l of o.lines) stocked.add(l.productId);
+  const lines: { productId: string; qty: number }[] = [];
+  let room = s.shop.storageCapacity - storageUnits(s);
+  for (const f of sellers(s)) {
+    const def = FIXTURES[f.type];
+    for (const sl of f.slots) {
+      if (sl.productId) continue;
+      const p = PRODUCTS.filter((x) => !stocked.has(x.id) && (x.chilled ? def.chilled : !def.chilled || f.type === 'fridge') && (!def.accepts || def.accepts.includes(x.category))).sort((a, b) => b.demand - a.demand)[0];
+      if (!p) continue;
+      const qty = Math.min(def.capacity, room);
+      if (qty <= 0 || qty * p.cost > budget) continue;
+      budget -= qty * p.cost; room -= qty; stocked.add(p.id);
+      lines.push({ productId: p.id, qty });
+    }
+  }
+  if (lines.length) applyCommand(s, { type: 'placeOrder', supplierId: 'local', lines });
+}
+
 function carryAll(s: GameState): void {
   for (const f of sellers(s)) applyCommand(s, { type: 'carry', fixtureId: f.id });
 }
@@ -52,8 +74,10 @@ function fitOut(s: GameState): void {
   if (!open.ok) throw new Error(`fit-out open: ${open.message}`);
 }
 
-function freeTile(s: GameState): { x: number; z: number } | null {
+/** Free floor tiles a sensible player would build on: not the door column, not the front row, every other column left for walking. */
+function freeTiles(s: GameState): { x: number; z: number }[] {
   const f = s.shop.floor;
+  const out: { x: number; z: number }[] = [];
   for (let z = f.z0; z < f.z1 - 1; z++) for (let x = f.x0; x < f.x1; x++) {
     if (s.shop.fixtures.some((fx) => fx.x === x && fx.z === z)) continue;
     // Keep the door column and the row in front of the register clear.
@@ -61,9 +85,16 @@ function freeTile(s: GameState): { x: number; z: number } | null {
     if (z === f.z1 - 1) continue;
     // Leave every other column free so people can walk.
     if ((x - f.x0) % 2 === 1) continue;
-    return { x, z };
+    out.push({ x, z });
   }
-  return null;
+  return out;
+}
+const freeTile = (s: GameState) => freeTiles(s)[0] ?? null;
+
+/** Place a fixture on the first free tile where it fits (one that would box the manager in is refused, so try the next). */
+function placeSomewhere(s: GameState, fixtureType: FixtureType): boolean {
+  for (const t of freeTiles(s)) if (applyCommand(s, { type: 'placeFixture', fixtureType, x: t.x, z: t.z, rot: 0 }).ok) return true;
+  return false;
 }
 
 const STRATEGIES: Record<string, Strategy> = {
@@ -92,14 +123,31 @@ const STRATEGIES: Record<string, Strategy> = {
     if (day % 3 === 0 && s.cash > 100) orderToFill(s, 'express', 1, 150);
   },
   guided: (s, day) => {
-    // What the tips teach: scan, carry, keep prices near average, order every day, add a shelf when cash allows.
+    // What the tips and the goal ladder teach: scan, carry, keep prices near average, stock first every morning and
+    // keep a cushion for it; add a shelf (and new lines for it) when cash allows, a cashier when the staff card
+    // opens; from the second week move up to the 7×7 shop (a small loan bridges the gap), double the lot once
+    // drivers are turned away, hand out flyers, and build the market hall when the goal asks for it.
+    const goal = GOALS[s.goals.index]?.id;
+    const has = (role: string) => s.people.some((p) => p.kind === 'staff' && p.role === role);
+    const last = s.history[s.history.length - 1];
+    const reserve = 300;
+    const can = (cost: number) => s.cash - cost >= reserve;
+    // Moving up comes first on the morning it is affordable (with $200 kept back for the day's stock).
+    if (s.shop.sizeId === 'starter' && day >= 6 && s.cash - SHOP_SIZES[1]!.cost >= 200) applyCommand(s, { type: 'expandShop', sizeId: 'medium' });
+    // So does doubling the lot once drivers are being turned away.
+    if (s.shop.sizeId !== 'starter' && s.shop.lotRows < 2 && (last?.turnedAway ?? 0) >= 15 && s.cash - LOT_EXPANSION_COST >= 200) applyCommand(s, { type: 'expandLot' });
     if (s.cash > 120) orderToFill(s, 'local', 2.5, Math.max(220, s.cash * 0.5));
-    if (day >= 2 && s.cash > 320 && sellers(s).length < 5) { const t = freeTile(s); if (t) applyCommand(s, { type: 'placeFixture', fixtureType: day % 2 ? 'shelf' : 'produce', x: t.x, z: t.z, rot: 0 }); }
-    if (day >= 4 && s.cash > 400) { const c = s.staffPool.find((x) => x.role === 'cashier'); if (c && !s.people.some((p) => p.kind === 'staff' && p.role === 'cashier')) applyCommand(s, { type: 'hire', candidateId: c.id }); }
+    if (s.cash > reserve) orderNew(s, (s.cash - reserve) * 0.5);
+    if (goal === 'hall' && s.shop.sizeId === 'medium' && can(SHOP_SIZES[2]!.cost - SHOP_SIZES[1]!.cost)) applyCommand(s, { type: 'expandShop', sizeId: 'large' });
+    const cap = s.shop.sizeId === 'starter' ? 5 : s.shop.sizeId === 'medium' ? 9 : 13;
+    for (let i = 0; i < 2; i++) if (day >= 2 && can(90) && sellers(s).length < cap) placeSomewhere(s, (day + i) % 2 ? 'shelf' : 'produce');
+    if (day >= 4 && can(150) && !has('cashier')) { const c = s.staffPool.find((x) => x.role === 'cashier'); if (c) applyCommand(s, { type: 'hire', candidateId: c.id }); }
+    if (s.shop.sizeId !== 'starter' && s.shop.lotRows > 1 && can(100) && has('cashier') && !has('stocker')) { const c = s.staffPool.find((x) => x.role === 'stocker'); if (c) applyCommand(s, { type: 'hire', candidateId: c.id }); }
+    if (s.unlocks.marketing && s.shop.awareness < 0.8 && can(150) && day % 4 === 1) applyCommand(s, { type: 'flyers', areaId: ['hillside', 'eastend', 'elmheights', 'riverside'][day % 4]! });
   },
 };
 
-interface Run { strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number; rivalTake: number }
+interface Run { bust8: boolean; trace: { day: number; shoppers: Record<string, number>; sale: Record<string, boolean>; open: Record<string, boolean>; revenue: number }[]; strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; cash8: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number; rivalTake: number; goalDays: Record<string, number>; closed: { id: string; day: number }[] }
 
 function runGame(strategy: string, seed: number, days: number, difficulty: Difficulty = 'standard'): Run {
   resetGridCache();
@@ -107,7 +155,9 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
   fitOut(s);
   const fitOutLeft = s.cash;
   const act = STRATEGIES[strategy]!;
-  let minCash = s.cash, profitableBy = 0, totalServed = 0;
+  let minCash = s.cash, profitableBy = 0, totalServed = 0, cash8 = 0, bust8 = false;
+  const closed: { id: string; day: number }[] = [];
+  const dayLog: Run['trace'] = [];
   const history: number[] = [];
   const served: number[] = [];
   let salePull = 0;
@@ -145,6 +195,8 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
       const scanner = !hasCashier();
       if (scanner && waiting() && !busy() && i % (strategy === 'careless' ? 14 : 6) === 0) applyCommand(s, { type: 'scan' });
       if (i % 60 === 0 && (!scanner || !waiting())) carryAll(s);
+      // The guided player reorders when the pallet runs low (the truck is there in a minute and a half).
+      if (strategy === 'guided' && i % 1200 === 600 && s.phase === 'open' && storageUnits(s) < s.shop.storageCapacity * 0.3 && !s.orders.some((o) => o.state !== 'delivered') && s.cash > 250) orderToFill(s, 'local', 2.0, (s.cash - 200) * 0.6);
       if (s.cash < minCash) minCash = s.cash;
     }
     if (trace) { const h = s.history[s.history.length - 1]; console.log(`    day ${day}: ${Date.now() - t0}ms, ${s.people.length} people, ${s.cars.length} cars, $${s.cash.toFixed(0)}, ${s.shop.sizeId}${h ? `, ${h.customers} came, ${h.served} served, ${h.walkedOut} walked out, ${h.turnedAway} turned away, ${h.missedItems} missed, profit ${h.profit.toFixed(0)}` : ''}, staff ${s.people.filter((p) => p.kind === 'staff').map((p) => p.role).join('/') || '-'}, rivals ${s.rivals.filter((r) => r.open).map((r) => r.id).join('/') || '-'}`); }
@@ -162,27 +214,80 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
       takes.push(1 - mine / all);
     }
     if (d.profit > 0 && !profitableBy) profitableBy = day;
+    if (day === 8) { cash8 = s.cash; bust8 = s.gameOver; }
+    dayLog.push({ day, shoppers: { ...(d.shoppers ?? {}) }, sale: Object.fromEntries(s.rivals.map((r) => [r.id, r.saleDaysLeft > 0])), open: Object.fromEntries(s.rivals.map((r) => [r.id, r.open])), revenue: d.revenue });
+    for (const r of s.rivals) if (r.closedDay === s.day && !closed.some((c) => c.id === r.id)) closed.push({ id: r.id, day: s.day });
+    if (trace || process.argv.includes('--goals')) {
+      const share = playerShareOf(d);
+      console.log(`    day ${String(day).padStart(2)} ${s.shop.sizeId.padEnd(7)}${s.shop.lotRows > 1 ? '+lot' : ''} goal ${GOALS[s.goals.index]?.id ?? 'done'} run ${s.goals.run} share ${share === null ? '-' : (share * 100).toFixed(0) + '%'} you ${d.shoppers?.player ?? 0} srv ${d.served} out ${d.walkedOut} lot ${d.turnedAway} miss ${d.missedItems} fx ${sellers(s).length} tills ${s.shop.fixtures.filter((f) => f.type === 'register').length} st ${s.people.filter((p) => p.kind === 'staff').length} sold $${d.revenue.toFixed(0)} net $${d.profit.toFixed(0)} cash $${s.cash.toFixed(0)} rep ${(s.shop.reputation * 100).toFixed(0)}% | ${s.rivals.map((r) => `${r.name} ${r.open ? `${r.lastShoppers ?? 0} $${r.lastSales ?? 0} ${(r.lastProfit ?? 0) >= 0 ? '+' : ''}${r.lastProfit ?? 0} cash ${Math.round(r.cash)}${r.saleDaysLeft ? ' SALE' : ''}` : r.closedDay !== undefined ? `CLOSED d${r.closedDay}` : '-'}`).join(' | ')}`);
+    }
     if (s.gameOver) break;
     applyCommand(s, { type: 'openTomorrow' });
   }
   const rivalTake = takes.length ? takes.reduce((a, b) => a + b, 0) / takes.length : 0;
   if (process.argv.includes('--shares')) console.log(`  ${strategy} seed ${seed} (${s.shop.plotId}): rivals take ${takes.map((t) => (t * 100).toFixed(0) + '%').join(' ')} by day; week one ${(rivalTake * 100).toFixed(0)}%`);
-  return { strategy, seed, days, fitOutLeft, endCash: s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull, rivalTake };
+  const goalDays: Record<string, number> = {};
+  for (const g of s.goals.done) goalDays[g.id] = g.day;
+  return { bust8: bust8 || (s.gameOver && days <= 8), trace: dayLog, strategy, seed, days, fitOutLeft, endCash: s.cash, cash8: cash8 || s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull, rivalTake, goalDays, closed };
 }
 
-function main(): void {
+/** One game in a child process (the parent runs several at once): prints the run as JSON on its last line. */
+function worker(spec: string): void {
+  const [strategy, seed, days] = spec.split(':');
+  const run = runGame(strategy!, Number(seed), Number(days));
+  process.stdout.write(`\n@@RUN ${JSON.stringify(run)}\n`);
+}
+
+/** Run games across the machine's cores (a forty-day game takes a couple of minutes). */
+async function runParallel(jobs: { strategy: string; seed: number; days: number }[], width: number): Promise<Run[]> {
+  const { spawn } = await import('node:child_process');
+  const out: Run[] = new Array(jobs.length);
+  let next = 0;
+  const one = async (): Promise<void> => {
+    while (next < jobs.length) {
+      const i = next++, j = jobs[i]!;
+      const t = Date.now();
+      const text = await new Promise<string>((resolve, reject) => {
+        const child = spawn(process.execPath, [...process.execArgv, process.argv[1]!, '--worker', `${j.strategy}:${j.seed}:${j.days}`], { stdio: ['ignore', 'pipe', 'inherit'] });
+        let buf = '';
+        child.stdout.on('data', (d: Buffer) => { buf += d.toString(); });
+        child.on('exit', (code) => (code === 0 ? resolve(buf) : reject(new Error(`${j.strategy} seed ${j.seed} exited ${code}`))));
+      });
+      const line = text.split('\n').find((l) => l.startsWith('@@RUN '));
+      if (!line) throw new Error(`${j.strategy} seed ${j.seed}: no result`);
+      out[i] = JSON.parse(line.slice(6)) as Run;
+      if (process.argv.includes('--progress')) console.log(`  ${j.strategy} seed ${j.seed}: ${Date.now() - t}ms`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, width) }, one));
+  return out;
+}
+
+async function main(): Promise<void> {
+  if (process.argv.includes('--worker')) { worker(process.argv[process.argv.indexOf('--worker') + 1]!); return; }
   const check = process.argv.includes('--check');
   const seeds = [1, 2, 3, 4, 5, 6];
-  const days = 8;
-  const runs: Run[] = [];
+  // Everyone plays twelve days (no rival may close before day 12); the guided player plays forty, up the goal ladder.
+  const daysFor = (strategy: string) => Number(process.argv[process.argv.indexOf('--days') + 1]) || (strategy === 'guided' ? 40 : 12);
   const t0 = Date.now();
-  // --only franchiser:3 runs one strategy and seed (with --trace, day by day).
-  const only = process.argv[process.argv.indexOf('--only') + 1]?.split(':');
+  // --only guided:3 (one strategy and seed), --only cautious,careless (several strategies). Played in this process, so --trace works.
+  const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1]!.split(',').map((x) => x.split(':')) : null;
+  const jobs: { strategy: string; seed: number; days: number }[] = [];
   for (const strategy of Object.keys(STRATEGIES)) for (const seed of seeds) {
-    if (process.argv.includes('--only') && (only?.[0] !== strategy || (only[1] && Number(only[1]) !== seed))) continue;
-    const t = Date.now(); runs.push(runGame(strategy, seed, days));
-    if (process.argv.includes('--progress')) console.log(`  ${strategy} seed ${seed}: ${Date.now() - t}ms`);
+    if (only && !only.some(([st, sd]) => st === strategy && (!sd || Number(sd) === seed))) continue;
+    jobs.push({ strategy, seed, days: daysFor(strategy) });
   }
+  // The long guided games first, so the short ones fill in around them.
+  jobs.sort((a, b) => b.days - a.days);
+  let runs: Run[];
+  if (only || process.argv.includes('--serial')) {
+    runs = [];
+    for (const j of jobs) { const t = Date.now(); runs.push(runGame(j.strategy, j.seed, j.days)); if (process.argv.includes('--progress')) console.log(`  ${j.strategy} seed ${j.seed}: ${Date.now() - t}ms`); }
+  } else {
+    const { cpus } = await import('node:os');
+    runs = await runParallel(jobs, Number(process.argv[process.argv.indexOf('--jobs') + 1]) || cpus().length);
+  }
+  if (process.argv.includes('--dump')) writeFileSync(process.argv[process.argv.indexOf('--dump') + 1]!, JSON.stringify(runs.map((r) => ({ strategy: r.strategy, seed: r.seed, trace: r.trace }))));
   const failures: string[] = [];
   const by = (name: string) => runs.filter((r) => r.strategy === name);
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
@@ -192,16 +297,17 @@ function main(): void {
     console.log(`${name.padEnd(12)} ${String(rs.length).padStart(5)}  ${String(rs.filter((r) => r.bust).length).padStart(4)}  ${avg(rs.map((r) => r.endCash)).toFixed(0).padStart(6)}  ${Math.min(...rs.map((r) => r.minCash)).toFixed(0).padStart(7)}  ${avg(rs.map((r) => r.profitableBy || 99)).toFixed(1).padStart(8)}  ${avg(rs.map((r) => r.totalServed)).toFixed(0).padStart(6)}  ${rs.reduce((a, r) => a + r.stuck, 0)}`);
   }
   // 1. No sensible strategy goes bust.
-  for (const name of ['cautious', 'aggressive', 'delegator', 'franchiser', 'guided']) for (const r of by(name)) if (r.bust) failures.push(`${name} seed ${r.seed} went bust`);
+  // (within the first eight days for the twelve-day strategies; the guided player over all forty)
+  for (const name of ['cautious', 'aggressive', 'delegator', 'franchiser', 'guided']) for (const r of by(name)) if (name === 'guided' ? r.bust : r.bust8) failures.push(`${name} seed ${r.seed} went bust`);
   // 2. A guided new player is profitable within 5 days.
   for (const r of by('guided')) if (!r.profitableBy || r.profitableBy > 5) failures.push(`guided seed ${r.seed} not profitable by day 5 (${r.profitableBy || 'never'})`);
   // 3. No early upgrade costs more than 5 days of a guided player's income.
   const guidedDaily = avg(by('guided').map((r) => avg(r.history.slice(0, 5).map((p) => Math.max(0, p)))));
   for (const [type, def] of Object.entries(FIXTURES)) if (['shelf', 'fridge', 'register', 'produce', 'endcap'].includes(type) && def.price > guidedDaily * 5) failures.push(`${type} costs $${def.price} > 5 days of income ($${(guidedDaily * 5).toFixed(0)})`);
   // 4. A bad layout is clearly worse than a guided player but not a guaranteed loss.
-  const carelessEnd = avg(by('careless').map((r) => r.endCash)), guidedEnd = avg(by('guided').map((r) => r.endCash));
+  const carelessEnd = avg(by('careless').map((r) => r.cash8)), guidedEnd = avg(by('guided').map((r) => r.cash8));
   if (!(carelessEnd < guidedEnd)) failures.push(`careless (${carelessEnd.toFixed(0)}) should end with less than guided (${guidedEnd.toFixed(0)})`);
-  if (by('careless').every((r) => r.bust)) failures.push('careless always goes bust');
+  if (by('careless').every((r) => r.bust8)) failures.push('careless always goes bust within eight days');
   // 5. Rivals neither crush nor ignore the player: customers keep coming after rivals open (≥ 60% of the first days),
   //    and a rival sale visibly pulls bargain hunters (share drops by at least 3 points).
   for (const r of by('guided')) {
@@ -215,6 +321,14 @@ function main(): void {
     console.log(`rivals' share of trade against a guided player in week one: ${(take * 100).toFixed(0)}%`);
     if (g.length && take > 1 / 3) failures.push(`rivals take ${(take * 100).toFixed(0)}% of trade from a guided player (at most a third)`); }
   for (const r of runs) if (r.stuck > 0) failures.push(`${r.strategy} seed ${r.seed}: ${r.stuck} stuck rescues`);
+  // 8. The goal ladder: a guided player reaches "Busiest corner" (goal 5) by day 25 on every seed.
+  for (const r of by('guided')) { const d = r.goalDays.busiest; if (r.days >= 25 && (!d || d > 25)) failures.push(`guided seed ${r.seed}: Busiest corner ${d ? `only on day ${d}` : 'never reached'} (by day 25)`); }
+  // 9. Rivals close only after a long squeeze: never before day 12, and MegaMart (its branches pay its rent) never in 40 days of guided play.
+  for (const r of runs) for (const c of r.closed) if (c.day < 12) failures.push(`${r.strategy} seed ${r.seed}: ${c.id} closed on day ${c.day} (before day 12)`);
+  for (const r of by('guided')) for (const c of r.closed) if (c.id === 'chain' || c.id === 'MegaMart') failures.push(`guided seed ${r.seed}: MegaMart closed on day ${c.day}`);
+  { const g = by('guided');
+    console.log(`goals reached by the guided player (day per seed): ${GOALS.map((goal) => `${goal.id} ${g.map((r) => r.goalDays[goal.id] ?? '-').join('/')}`).join('; ')}`);
+    console.log(`rivals closed by the guided player: ${g.map((r) => r.closed.length ? r.closed.map((c) => `${c.id} d${c.day}`).join(' ') : 'none').join(' | ')}`); }
   console.log(`guided avg daily profit (first 5 days): $${guidedDaily.toFixed(0)}; cash left after the fit-out: $${avg(runs.map((r) => r.fitOutLeft)).toFixed(0)}; ${runs.length} runs in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   // 7. The fit-out leaves a cushion for the first days' rent.
   for (const r of runs) if (r.fitOutLeft < 60) failures.push(`${r.strategy} seed ${r.seed}: only $${r.fitOutLeft.toFixed(0)} left after the first fit-out`);
@@ -224,4 +338,4 @@ function main(): void {
   if (check && failures.length) process.exit(1);
 }
 
-main();
+void main();

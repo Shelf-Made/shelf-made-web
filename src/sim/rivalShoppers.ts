@@ -21,6 +21,8 @@ const MODELS = 12;
 export function rivalVisitors(state: GameState): Record<string, number> {
   const open = state.rivals.filter((r) => r.open);
   const out: Record<string, number> = {};
+  // A corner the player bought: its branch's trade walks in and out too, carrying the player's bags.
+  for (const r of state.rivals) if (r.boughtDay !== undefined) out[r.id] = (state.franchises.find((f) => f.corner === r.corner)?.history.at(-1)?.customers ?? 40) * RIVAL_VISIBLE;
   if (!open.length) return out;
   const pool = state.demandBase * (1 + 0.75 * open.length) * state.eventDemand;
   const shares = rivalShares(state);

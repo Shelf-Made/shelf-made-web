@@ -8,6 +8,7 @@ import { doorOutside } from './people';
 import { FIXTURES } from './layout';
 import { productDef } from './products';
 import { placeOrder } from './economy';
+import { formatMoney, dollars } from './money';
 
 const FIRST = ['Ada', 'Ben', 'Cleo', 'Dev', 'Ellis', 'Fay', 'Gus', 'Hana', 'Ivo', 'June', 'Kai', 'Lena', 'Milo', 'Nia', 'Oz', 'Pia', 'Quinn', 'Rae', 'Sam', 'Tess', 'Uma', 'Val', 'Wren', 'Yuki', 'Zed'];
 const LAST = ['Park', 'Okafor', 'Silva', 'Novak', 'Reyes', 'Brennan', 'Chen', 'Haddad', 'Kowalski', 'Mensah', 'Dubois', 'Ito', 'Larsen', 'Moreno', 'Singh'];
@@ -63,7 +64,7 @@ export function hire(state: GameState, candidateId: number): string | null {
   if (!c) return 'They already found another job.';
   const staffCount = state.people.filter((p) => p.kind === 'staff').length;
   if (staffCount >= 6) return 'The shop is full of staff already.';
-  if (state.cash < c.wage) return `You need a day's wage ($${c.wage}) in the till to hire.`;
+  if (state.cash < c.wage) return `You need a day's wage (${dollars(c.wage)}) in the till to hire.`;
   if (c.role === 'cashier' && !state.shop.fixtures.some((f) => (f.type === 'register' || f.type === 'kiosk') && !f.staffId)) return 'Every register already has a cashier.';
   state.staffPool = state.staffPool.filter((x) => x.id !== c.id);
   const d = doorOutside(state);
@@ -74,7 +75,7 @@ export function hire(state: GameState, candidateId: number): string | null {
   };
   state.people.push(p);
   if (c.role === 'cashier') { const reg = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && !f.staffId); if (reg) reg.staffId = p.id; }
-  state.notices.push({ day: state.day, text: `${c.name} starts today as your ${ROLE_NAMES[c.role].toLowerCase()} ($${c.wage}/day).`, kind: 'staff' });
+  state.notices.push({ day: state.day, text: `${c.name} starts today as your ${ROLE_NAMES[c.role].toLowerCase()} (${dollars(c.wage)}/day).`, kind: 'staff' });
   cue(state, 'reward');
   return null;
 }
@@ -126,7 +127,7 @@ export function cashierMistake(state: GameState, cashier: Person, total: number)
   const chance = Math.max(0.01, 0.12 - (cashier.skill ?? 0.5) * 0.12) * (1.2 - (cashier.morale ?? 0.8) * 0.4);
   if (!withRng(state, 'staff', (r) => r.chance(chance))) return 0;
   const loss = Math.round(Math.min(total, Math.max(0.5, total * 0.2)) * 100) / 100;
-  popup(state, { x: cashier.x, z: cashier.z }, `Oops, -$${loss.toFixed(2)}`, 'bad', 1.2);
+  popup(state, { x: cashier.x, z: cashier.z }, `Oops, ${formatMoney(-loss)}`, 'bad', 1.2);
   return loss;
 }
 
@@ -153,7 +154,7 @@ export function autoOrder(state: GameState, rules: ManagerRules, spendCap: numbe
   }
   if (lines.length) {
     const res = placeOrder(state, 'local', lines);
-    if (typeof res !== 'string') state.notices.push({ day: state.day, text: `Stock reordered: ${lines.length} product${lines.length > 1 ? 's' : ''} for $${res.total.toFixed(0)}.`, kind: 'staff' });
+    if (typeof res !== 'string') state.notices.push({ day: state.day, text: `Stock reordered: ${lines.length} product${lines.length > 1 ? 's' : ''} for ${dollars(res.total)}.`, kind: 'staff' });
   }
 }
 

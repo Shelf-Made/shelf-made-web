@@ -1,6 +1,6 @@
 /** Helpers over GameState: RNG streams, ids, popups, sound cues, grid cache. */
 import { Rng, hashString } from './rng';
-import type { GameState, Popup, Vec2, ReactionKind } from './types';
+import type { GameState, Popup, Vec2, ReactionKind, Complaints } from './types';
 import { buildGrid, type Grid } from './grid';
 
 export function withRng<T>(state: GameState, stream: string, fn: (r: Rng) => T): T {
@@ -57,3 +57,10 @@ export function clockLabel(time: number): string {
 }
 
 export function dist(a: Vec2, b: Vec2): number { return Math.hypot(a.x - b.x, a.z - b.z); }
+
+/** Count a complaint for the night card's "why": out of stock and too pricey by product, the rest as totals. */
+export function complain(state: GameState, kind: keyof Complaints, productId?: string): void {
+  const c = state.today.complaints;
+  if (kind === 'outOfStock' || kind === 'pricey') { if (productId) c[kind][productId] = (c[kind][productId] ?? 0) + 1; }
+  else c[kind]++;
+}

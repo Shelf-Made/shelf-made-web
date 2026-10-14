@@ -8,10 +8,16 @@ import { makeMarket } from './market';
 import { DEFAULT_RULES, refreshPool } from './staff';
 import { makeMarketing } from './marketing';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 export function emptyDayStats(day: number): DayStats {
-  return { day, revenue: 0, cogs: 0, rent: 0, wages: 0, utilities: 0, other: 0, loans: 0, bills: 0, theft: 0, tax: 0, customers: 0, served: 0, walkedOut: 0, turnedAway: 0, missedItems: 0, itemsSold: 0, satisfaction: 0, satisfactionN: 0, profit: 0, endCash: 0 };
+  return { day, revenue: 0, cogs: 0, rent: 0, wages: 0, utilities: 0, other: 0, loans: 0, bills: 0, theft: 0, tax: 0, customers: 0, served: 0, walkedOut: 0, turnedAway: 0, missedItems: 0, itemsSold: 0, satisfaction: 0, satisfactionN: 0, profit: 0, endCash: 0, complaints: emptyComplaints() };
+}
+
+export function emptyComplaints(): DayStats['complaints'] { return { outOfStock: {}, pricey: {}, queue: 0, lotFull: 0, dirty: 0 }; }
+
+export function makeGoals(): GameState['goals'] {
+  return { index: 0, done: [], unlocked: [], since: 1, run: 0, dayStart: 0, celebrate: null, champion: false, championSeen: false };
 }
 
 export function makeFixture(id: number, type: Fixture['type'], x: number, z: number, rot: Fixture['rot']): Fixture {
@@ -68,7 +74,7 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
     spawn: { customer: 0, traffic: 0, walker: 0 }, townAvgIndex: 1,
     rivals: makeRivals(opts.plotId ?? 'main'), streetBays: STREET_BAYS.map((b) => ({ ...b, carId: null })), rivalSpawn: 0, scores: { avgWait: 20, waitSum: 0, waitSamples: 0, last: null }, notices: [], demandBase: 48, eventDemand: 1,
     market: makeMarket(), bills: [], loans: [], brokeDays: 0, rescueOffered: false, gameOver: false,
-    staffPool: [], rules: { ...DEFAULT_RULES }, marketing: makeMarketing(), franchises: [],
+    staffPool: [], rules: { ...DEFAULT_RULES }, marketing: makeMarketing(), franchises: [], goals: makeGoals(), tomorrow: null,
   };
   state.people.push(makeOwner(state.nextId++, shop, rng));
   refreshPool(state);

@@ -4,15 +4,15 @@ import { tickCars, spawnTraffic } from './cars';
 import { tickPeople, spawnCustomer, spawnWalker, plotOf, pruneTills } from './people';
 import { tickOrders, closeDay, isClosingTime } from './economy';
 import { withRng } from './state';
-import { expectedByType } from './customers';
+import { expectedByType, townGrowth } from './customers';
 import { tickRivalSpawns } from './rivalShoppers';
+import { checkGoals } from './goals';
 import type { CustomerType } from './types';
 
 /** Customers per day the shop can expect, before the time-of-day curve. */
 export function expectedCustomers(state: GameState): number {
   const by = expectedByType(state);
-  const growth = Math.min(2.2, 1 + (state.day - 1) * 0.05);
-  return (by.bargain + by.convenience + by.loyalist + by.impulse) * DIFFICULTY[state.difficulty].demandMul * growth;
+  return (by.bargain + by.convenience + by.loyalist + by.impulse) * DIFFICULTY[state.difficulty].demandMul * townGrowth(state.day);
 }
 
 /** Pick a customer type in proportion to today's expected arrivals. */
@@ -73,6 +73,8 @@ export function tick(state: GameState): void {
       closeDay(state);
     }
   }
+  // Goals that can be met mid-day (thirty served, the market hall, a corner bought), once a second.
+  if (state.tick % 20 === 0) checkGoals(state, 'now');
   trimPopups(state);
 }
 

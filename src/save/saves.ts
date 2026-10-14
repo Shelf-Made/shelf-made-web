@@ -1,7 +1,9 @@
 import type { GameState, Franchise } from '@/sim/types';
 import { storeFrame, lotLayout, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES } from '@/sim/layout';
-import { SAVE_VERSION } from '@/sim/newGame';
-import { makeRivals } from '@/sim/rivals';
+
+import { makeRivals, RIVAL_ECON } from '@/sim/rivals';
+import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
+import { inferGoals } from '@/sim/goals';
 import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES } from '@/sim/staff';
 import { makeMarketing } from '@/sim/marketing';
@@ -38,6 +40,8 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => migrateToCrossroads(raw),
   // v9 → v10: shop colour schemes; every older shop keeps today's green.
   (raw) => { const shop = raw.shop as { scheme?: string }; shop.scheme ??= 'green'; return { reactions: [], ...raw, version: 10 }; },
+  // v10 → v11: the goal ladder (ticked off from history where it can tell), rival books, complaints, tomorrow's plan.
+  (raw) => migrateGoals(raw),
 ];
 
 /** Old plot ids to the corners that replaced them; old franchise plots to off-map sites. */
@@ -75,6 +79,16 @@ function migrateToCrossroads(raw: Record<string, unknown>): Record<string, unkno
   }
   for (const f of shop.fixtures) if (f.queue) { f.queue = []; f.serving = null; f.scanned = 0; }
   return { ...raw, version: 9 };
+}
+
+function migrateGoals(raw: Record<string, unknown>): Record<string, unknown> {
+  const st = raw as unknown as GameState;
+  for (const d of [st.today, ...st.history]) d.complaints ??= emptyComplaints();
+  for (const r of st.rivals) { r.brokeDays ??= 0; r.cash = Math.min(r.cash, RIVAL_ECON[r.kind].cash); }
+  st.tomorrow = null;
+  st.goals = makeGoals();
+  inferGoals(st);
+  return { ...raw, version: 11 };
 }
 
 export function migrate(file: SaveFile): SaveFile {

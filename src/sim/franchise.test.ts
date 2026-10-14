@@ -13,6 +13,7 @@ describe('franchises and checkout', () => {
     s.cash = 6000;
     while (!s.staffPool.some((c) => c.role === 'manager')) { day(s); applyCommand(s, { type: 'openTomorrow' }); }
     const m = s.staffPool.find((c) => c.role === 'manager')!;
+    s.goals.unlocked.push('franchises');
     expect(applyCommand(s, { type: 'openFranchise', siteId: 'hillside', managerId: m.id }).ok).toBe(true);
     expect(s.franchises.length).toBe(1);
     day(s);
