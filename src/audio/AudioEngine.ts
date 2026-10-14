@@ -1,8 +1,13 @@
 /**
  * All audio is synthesised with WebAudio: no recordings, no downloads. Starts after the
- * first user gesture. Music changes with the time of day.
+ * first user gesture. Music changes with the time of day. Instead of a noise bed, the valley
+ * has birdsong by day and crickets at night, each call a few short tones.
  */
-export type Cue = 'beep' | 'cash' | 'chime' | 'click' | 'pick' | 'stock' | 'truck' | 'boxes' | 'reward' | 'night' | 'open' | 'order' | 'build' | 'bad' | 'engine';
+export type Cue = 'beep' | 'cash' | 'chime' | 'click' | 'pick' | 'stock' | 'truck' | 'boxes' | 'reward' | 'night' | 'open' | 'order' | 'build' | 'bad' | 'engine'
+  | 'step' | 'place' | 'sell' | 'tick' | 'hire' | 'thud' | 'paper' | 'coin' | 'hover' | 'tap' | 'cardOpen' | 'cardClose' | 'whoosh' | 'spill' | 'grumble' | 'quack' | 'rotate' | 'speed';
+
+/** Per-play tweaks: loudness 0..1 and stereo position -1..1. */
+export interface CueOpts { gain?: number; pan?: number }
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -16,7 +21,8 @@ export class AudioEngine {
   private mood: 'morning' | 'day' | 'evening' | 'night' = 'morning';
   private volumes = { master: 0.8, music: 0.6, sfx: 0.9 };
   private lastCue = new Map<string, number>();
-  private engineNoise: AudioBufferSourceNode | null = null;
+  private ambienceTimer: number | null = null;
+  private stepN = 0;
 
   get started(): boolean { return this.ctx !== null; }
 
@@ -42,41 +48,60 @@ export class AudioEngine {
     this.master.gain.value = this.volumes.master;
     this.musicGain.gain.value = this.volumes.music * 0.35;
     this.sfxGain.gain.value = this.volumes.sfx;
-    this.ambienceGain.gain.value = this.volumes.sfx * 0.12;
+    this.ambienceGain.gain.value = this.volumes.sfx * 0.7;
   }
 
   setMood(mood: AudioEngine['mood']): void { this.mood = mood; }
 
-  private tone(freq: number, dur: number, type: OscillatorType = 'sine', gain = 0.3, when = 0, dest: GainNode = this.sfxGain, slideTo?: number): void {
+  /** Scales and pans the cue being played (set by play()). */
+  private cueGain = 1;
+  private cuePan = 0;
+
+  private out(dest: GainNode, pan: number): AudioNode {
+    if (!this.ctx || !pan || !this.ctx.createStereoPanner) return dest;
+    const p = this.ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(dest);
+    return p;
+  }
+
+  private tone(freq: number, dur: number, type: OscillatorType = 'sine', gain = 0.3, when = 0, dest: GainNode = this.sfxGain, slideTo?: number, pan?: number): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + when;
     const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
+    const peak = gain * (dest === this.sfxGain ? this.cueGain : 1);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.out(dest, pan ?? (dest === this.sfxGain ? this.cuePan : 0))); o.start(t); o.stop(t + dur + 0.05);
   }
 
-  private noise(dur: number, gain = 0.2, when = 0, filterHz = 2000): void {
+  /** A short filtered burst (a tap, a rustle, a scrape); never a continuous bed. */
+  private noise(dur: number, gain = 0.2, when = 0, filterHz = 2000, type: BiquadFilterType = 'lowpass', sweepTo?: number): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + when;
-    const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+    const buf = this.ctx.createBuffer(1, Math.max(1, Math.floor(this.ctx.sampleRate * dur)), this.ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
     const src = this.ctx.createBufferSource(); src.buffer = buf;
-    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = filterHz;
-    const g = this.ctx.createGain(); g.gain.value = gain;
-    src.connect(f); f.connect(g); g.connect(this.sfxGain); src.start(t);
+    const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(filterHz, t);
+    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t + dur);
+    const g = this.ctx.createGain(); g.gain.value = gain * this.cueGain;
+    src.connect(f); f.connect(g); g.connect(this.out(this.sfxGain, this.cuePan)); src.start(t);
   }
 
-  play(cue: Cue): void {
+  play(cue: Cue, opts: CueOpts = {}): void {
     if (!this.ctx) return;
     // Rate-limit identical cues so a crowd does not become a wall of chimes.
     const now = performance.now();
     const last = this.lastCue.get(cue) ?? 0;
-    const minGap = cue === 'beep' ? 40 : cue === 'chime' ? 350 : 120;
+    const minGap = cue === 'beep' ? 40 : cue === 'chime' ? 350 : cue === 'step' ? 150 : cue === 'hover' ? 60 : cue === 'whoosh' ? 250 : 120;
     if (now - last < minGap) return;
     this.lastCue.set(cue, now);
+    this.cueGain = opts.gain ?? 1; this.cuePan = opts.pan ?? 0;
+    this.cue(cue);
+    this.cueGain = 1; this.cuePan = 0;
+  }
+
+  private cue(cue: Cue): void {
     switch (cue) {
       case 'beep': this.tone(1180, 0.07, 'square', 0.12); break;
       case 'cash': this.tone(1320, 0.09, 'sine', 0.25); this.tone(1760, 0.14, 'sine', 0.25, 0.08); this.tone(2640, 0.2, 'sine', 0.12, 0.16); this.noise(0.05, 0.08, 0, 6000); break;
@@ -93,6 +118,25 @@ export class AudioEngine {
       case 'order': this.tone(880, 0.06, 'square', 0.08); this.tone(1175, 0.12, 'sine', 0.14, 0.07); break;
       case 'build': this.noise(0.08, 0.3, 0, 1200); this.tone(220, 0.08, 'triangle', 0.2, 0, this.sfxGain, 110); break;
       case 'bad': this.tone(330, 0.12, 'square', 0.1); this.tone(262, 0.2, 'square', 0.1, 0.12); break;
+      // Footsteps: a soft heel thud and a scuff, alternating feet.
+      case 'step': { const k = this.stepN++ % 2; this.tone(k ? 92 : 104, 0.06, 'sine', 0.16, 0, this.sfxGain, 60); this.noise(0.045, 0.05, 0.005, 900 + k * 200); break; }
+      case 'place': this.tone(160, 0.14, 'triangle', 0.26, 0, this.sfxGain, 80); this.noise(0.07, 0.14, 0, 1500); this.tone(660, 0.08, 'sine', 0.08, 0.1); break;
+      case 'rotate': this.noise(0.09, 0.1, 0, 600, 'bandpass', 2400); this.tone(520, 0.05, 'triangle', 0.06, 0.06); break;
+      case 'sell': this.noise(0.12, 0.12, 0, 2400, 'bandpass', 500); this.tone(880, 0.08, 'sine', 0.12, 0.1); this.tone(1320, 0.12, 'sine', 0.1, 0.17); break;
+      case 'tick': this.tone(1500, 0.025, 'triangle', 0.08); break;
+      case 'speed': this.tone(700, 0.05, 'triangle', 0.1); this.tone(1050, 0.06, 'triangle', 0.08, 0.05); break;
+      case 'hire': [392, 494, 587, 784].forEach((f, i) => this.tone(f, 0.16, 'triangle', 0.13, i * 0.07)); break;
+      case 'thud': this.tone(120, 0.2, 'sine', 0.24, 0, this.sfxGain, 55); this.noise(0.06, 0.1, 0, 500); break;
+      case 'paper': this.noise(0.18, 0.16, 0, 3500, 'highpass'); this.noise(0.1, 0.1, 0.16, 5000, 'highpass'); break;
+      case 'coin': this.tone(1568, 0.07, 'sine', 0.16); this.tone(2093, 0.16, 'sine', 0.14, 0.06); break;
+      case 'hover': this.tone(1900, 0.018, 'sine', 0.035); break;
+      case 'tap': this.tone(520, 0.06, 'sine', 0.14, 0, this.sfxGain, 900); this.tone(1040, 0.04, 'triangle', 0.05, 0.02); break;
+      case 'cardOpen': this.noise(0.16, 0.09, 0, 500, 'bandpass', 3200); this.tone(660, 0.1, 'sine', 0.08, 0.06, this.sfxGain, 990); break;
+      case 'cardClose': this.noise(0.14, 0.08, 0, 3000, 'bandpass', 450); this.tone(800, 0.08, 'sine', 0.06, 0.02, this.sfxGain, 520); break;
+      case 'whoosh': this.noise(0.9, 0.22, 0, 300, 'bandpass', 1400); this.tone(110, 0.8, 'sawtooth', 0.025, 0, this.sfxGain, 80); break;
+      case 'spill': this.noise(0.25, 0.14, 0, 1800, 'lowpass', 300); this.tone(300, 0.12, 'sine', 0.08, 0.02, this.sfxGain, 150); break;
+      case 'grumble': this.tone(180, 0.16, 'sawtooth', 0.05, 0, this.sfxGain, 140); this.tone(150, 0.22, 'sawtooth', 0.05, 0.15, this.sfxGain, 110); break;
+      case 'quack': for (let i = 0; i < 2; i++) { this.tone(520, 0.11, 'square', 0.03, i * 0.17, this.ambienceGain, 380); this.tone(1040, 0.08, 'sawtooth', 0.012, i * 0.17, this.ambienceGain, 760); } break;
     }
   }
 
@@ -105,22 +149,33 @@ export class AudioEngine {
     o.connect(f); f.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t + dur + 0.1);
   }
 
+  /** Nature: a bird call every few seconds by day, a cricket chorus after dark. */
   private startAmbience(): void {
     if (!this.ctx) return;
-    const ctx = this.ctx;
-    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    let b0 = 0, b1 = 0, b2 = 0;
-    for (let i = 0; i < d.length; i++) {
-      // Pinkish noise.
-      const w = Math.random() * 2 - 1;
-      b0 = 0.99765 * b0 + w * 0.099; b1 = 0.963 * b1 + w * 0.2965; b2 = 0.57 * b2 + w * 1.0526;
-      d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.08;
+    const loop = () => {
+      if (!this.ctx) return;
+      const night = this.mood === 'night';
+      if (night) this.crickets(); else if (Math.random() < 0.85) this.bird(); else this.play('quack', { gain: 0.5, pan: Math.random() * 2 - 1 });
+      this.ambienceTimer = window.setTimeout(loop, (night ? 1400 : 1800) + Math.random() * (night ? 2200 : 4200));
+    };
+    this.ambienceTimer = window.setTimeout(loop, 1500);
+  }
+
+  private bird(): void {
+    if (!this.ctx) return;
+    const pan = Math.random() * 1.6 - 0.8, base = 2400 + Math.random() * 2200;
+    const kind = Math.floor(Math.random() * 3);
+    const notes = kind === 0 ? 2 + Math.floor(Math.random() * 3) : kind === 1 ? 1 : 5;
+    for (let i = 0; i < notes; i++) {
+      const f = kind === 1 ? base * 0.8 : base * (1 + (i % 2) * 0.12);
+      const len = kind === 2 ? 0.035 : 0.08 + Math.random() * 0.05;
+      this.tone(f, len, 'sine', 0.05, i * (kind === 2 ? 0.05 : 0.13), this.ambienceGain, kind === 1 ? f * 1.5 : f * (i % 2 ? 0.82 : 1.18), pan);
     }
-    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
-    src.connect(f); f.connect(this.ambienceGain); src.start();
-    this.engineNoise = src;
+  }
+
+  private crickets(): void {
+    const pan = Math.random() * 1.6 - 0.8;
+    for (let i = 0; i < 6; i++) this.tone(4400 + Math.random() * 120, 0.025, 'sine', 0.022, i * 0.06, this.ambienceGain, undefined, pan);
   }
 
   /** A gentle sequencer: chords on a triangle pad, plucked bass, a sine lead. */
@@ -165,7 +220,7 @@ export class AudioEngine {
 
   dispose(): void {
     if (this.musicTimer) clearTimeout(this.musicTimer);
-    this.engineNoise?.stop();
+    if (this.ambienceTimer) clearTimeout(this.ambienceTimer);
     void this.ctx?.close();
     this.ctx = null;
   }

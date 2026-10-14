@@ -295,6 +295,7 @@ export class GameRuntime {
       }
       r.mode = this.inFirstPerson && !this.cinematic ? 'fp' : 'cinematic';
       r.render(s, this.alpha, dt);
+      if (this.speed > 0) this.worldSounds(s, r.mode === 'fp');
       if (r.mode === 'fp') {
         // The build ghost sits on the tile under the crosshair.
         if (this.build.placing || this.build.selectedId !== null) { const a = r.aim(s); if (a.floor) this.hoverWorld(a.floor.x, a.floor.z); }
@@ -318,11 +319,38 @@ export class GameRuntime {
     s.sounds.length = 0;
   }
 
+  /** Sounds the renderer's world makes on its own: the manager's footsteps, cars going by. */
+  private stepDist = 0;
+  private lastOwner: { x: number; z: number } | null = null;
+  private nearCars = new Set<number>();
+  private worldSounds(s: GameState, fp: boolean): void {
+    const o = s.people.find((p) => p.kind === 'owner');
+    if (!o) return;
+    if (fp && this.lastOwner) {
+      const d = Math.hypot(o.x - this.lastOwner.x, o.z - this.lastOwner.z);
+      if (d < 1) this.stepDist += d;
+      if (this.stepDist > 0.62) { this.stepDist = 0; this.audio.play('step', { gain: 0.8 }); }
+    }
+    this.lastOwner = { x: o.x, z: o.z };
+    // A car passing within a few metres of the listener whooshes by, panned to its side.
+    const lx = fp ? o.x : (this.renderer?.camera.target.x ?? o.x), lz = fp ? o.z : (this.renderer?.camera.target.z ?? o.z);
+    const yaw = fp ? (this.renderer?.fp.yaw ?? 0) : (this.renderer?.camera.yaw ?? 0);
+    for (const c of s.cars) {
+      const dx = c.x - lx, dz = c.z - lz, d = Math.hypot(dx, dz);
+      if (d < 7.5 && c.speed > 1.5 && !this.nearCars.has(c.id)) {
+        this.nearCars.add(c.id);
+        // Right of the view direction (yaw 0 looks along -z) is +x rotated by yaw.
+        const pan = (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(1, d);
+        this.audio.play('whoosh', { gain: Math.max(0.25, 1 - d / 7.5) * (c.orderId !== undefined ? 1.3 : 1), pan });
+      } else if (d > 9 && this.nearCars.has(c.id)) this.nearCars.delete(c.id);
+    }
+  }
+
   // ---- Commands and interaction
   dispatch(cmd: Command): CommandResult {
     if (!this.state) return { ok: false, message: 'No game.' };
     const res = applyCommand(this.state, cmd);
-    if (!res.ok && res.message) this.showToast(res.message);
+    if (!res.ok && res.message) { this.showToast(res.message); this.audio.play('bad'); }
     if (cmd.type === 'placeFixture' || cmd.type === 'removeFixture' || cmd.type === 'choosePlot') { this.stateVersion++; }
     if (cmd.type === 'choosePlot' && res.ok) { this.renderer?.setTown(this.state.seed, this.state.shop.plotId); this.renderer?.setShop(this.state); this.faceShop(); applyCommand(this.state, { type: 'setTimeScale', scale: this.speed || 1 }); }
     if ((cmd.type === 'expandShop' || cmd.type === 'expandLot') && res.ok) this.renderer?.setShop(this.state);
@@ -336,6 +364,7 @@ export class GameRuntime {
   showToast(text: string, ms = 2600): void { this.toast = { id: ++this.toastId, text }; this.toastUntil = performance.now() + ms; this.emit(); }
 
   setSpeed(speed: Speed): void {
+    if (speed !== this.speed) this.audio.play('speed');
     this.speed = speed;
     // The manager walks in real time whatever the clock speed.
     if (this.state && speed > 0) applyCommand(this.state, { type: 'setTimeScale', scale: speed });
@@ -347,11 +376,11 @@ export class GameRuntime {
     if (this.card) { this.releaseLock(); this.move(0, 0); }
     if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); }
     if (card && this.state?.unlocks.newBadges.includes(card)) this.dispatch({ type: 'ackBadge', card });
-    this.audio.play('click');
+    this.audio.play(this.card ? 'cardOpen' : 'cardClose');
     this.updateSideOffset();
     this.emit();
   }
-  closeCard(): void { if (this.build.placing || this.build.selectedId !== null) { this.stopPlacing(); this.emit(); return; } if (this.card) { this.card = null; this.updateSideOffset(); this.emit(); } }
+  closeCard(): void { if (this.build.placing || this.build.selectedId !== null) { this.stopPlacing(); this.emit(); return; } if (this.card) { this.card = null; this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); } }
   /** Docked cards sit on the right third, so the world slides left while one is open. */
   private updateSideOffset(): void {
     const r = this.renderer; if (!r) return;
@@ -365,7 +394,7 @@ export class GameRuntime {
   setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
   startPlacing(type: FixtureType): void { this.build.placing = type; this.build.selectedId = null; this.build.reason = ''; this.emit(); }
   stopPlacing(): void { this.build.placing = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); }
-  rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.emit(); }
+  rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.emit(); }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {

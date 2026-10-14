@@ -208,10 +208,11 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
     // Spills only ever land on open floor inside the shop (never under a fixture or outside).
     const g = gridFor(state);
     const [cx, cz] = cellOf(g, { x: p.x, z: p.z });
-    if (g.inside[cellIndex(g, cx, cz)] && !isBlocked(g, cx, cz) && state.shop.litter.length < 6) state.shop.litter.push({ id: nextId(state), x: p.x, z: p.z });
+    if (g.inside[cellIndex(g, cx, cz)] && !isBlocked(g, cx, cz) && state.shop.litter.length < 6) { state.shop.litter.push({ id: nextId(state), x: p.x, z: p.z }); cue(state, 'spill'); }
     state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.06);
   }
   if (!happy) {
+    cue(state, 'grumble');
     // Put unpaid items back where they came from.
     for (const b of p.basket ?? []) {
       const f = findFixtureWith(state, b.productId) ?? state.shop.fixtures.find((fx) => fx.slots.some((s) => s.productId === b.productId));

@@ -60,7 +60,22 @@ export type Command =
 
 export interface CommandResult { ok: boolean; message?: string }
 
+/** The sound a command makes when it works and has not already made its own. */
+const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
+  removeFixture: 'sell', moveFixture: 'place', setPrice: 'tick', flyers: 'paper', billboard: 'build', promotion: 'order', ad: 'order',
+  outsideSign: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
+  setShift: 'tick', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward',
+};
+
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
+  const before = state.sounds.length;
+  const res = apply(state, cmd);
+  const c = COMMAND_CUES[cmd.type];
+  if (res.ok && c && state.sounds.length === before) cue(state, c);
+  return res;
+}
+
+function apply(state: GameState, cmd: Command): CommandResult {
   switch (cmd.type) {
     case 'choosePlot': {
       if (state.phase !== 'picking') return { ok: false, message: 'Already open.' };
@@ -170,7 +185,7 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
       state.shop.fixtures.push(fx);
       state.shop.layoutVersion++;
       popup(state, fixtureCentre(state.shop, fx), `-$${def.price}`, 'bad', 1.2);
-      cue(state, 'build');
+      cue(state, 'place');
       if (fx.type === 'register' || fx.type === 'kiosk') completeTutorial(state, 'counter');
       if (FIXTURES[fx.type].slots > 0) completeTutorial(state, 'shelf');
       return { ok: true };
