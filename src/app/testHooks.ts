@@ -3,7 +3,8 @@ import { tick, TICK, applyCommand, FIXTURES, quickSetup } from '@/sim/index';
 import { PeopleView } from '@/render/People';
 import { spawnCustomer } from '@/sim/people';
 import { toWorld, toLocal } from '@/sim/layout';
-import { closeRival } from '@/sim/rivals';
+import { closeRival, startRivalMove } from '@/sim/rivals';
+import type { RivalMove } from '@/sim/types';
 import { spawnRivalShopper } from '@/sim/rivalShoppers';
 import { GOALS } from '@/sim/goals';
 
@@ -112,6 +113,8 @@ export function installTestHooks(rt: GameRuntime): void {
     /** Force a rival sale for screenshots. */
     /** Send n shoppers to a rival now (screenshots of its bags on the pavement). */
     rivalShoppers: (id: string, n: number) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) for (let i = 0; i < n; i++) spawnRivalShopper(s, r); rt.bump(); },
+    /** A rival answers the player now: a price match, a renovation, a billboard... (screenshots). */
+    rivalMove: (id: string, move: RivalMove) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) { r.open = true; startRivalMove(s, r, move); } rt.bump(); },
     /** Shut a rival for good (its corner goes up for sale), for screenshots. */
     closeRival: (id: string) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) { r.open = true; closeRival(s, r); } rt.bump(); },
     /** Buy a closed rival's corner with a manager conjured for the purpose (screenshots). */
@@ -149,6 +152,23 @@ export function installTestHooks(rt: GameRuntime): void {
       s.people.push({ id: 90000 + model * 10 + variant, kind: 'walker', look: { model, variant, height: 1 }, x, z, yaw: 0, px: x, pz: z, state: 'idle', anim: 'idle', path: [], pathIdx: 0, speed: 0, timer: 0 });
       return { x, z };
     },
+    /** Where a person stands on the page (the middle of their figure), for clicking on them. */
+    personScreen: (id: number) => {
+      const s = rt.state; const r = rt.renderer; if (!s || !r) return null;
+      const a = r.personAnchor(s, id); if (!a) return null;
+      // As the click will see it, even before the next frame is drawn.
+      r.activeCamera.updateMatrixWorld();
+      const p = { x: 0, y: 0, visible: false };
+      r.project(a.x, a.y * 0.55, a.z, p);
+      const rect = r.canvas.getBoundingClientRect();
+      return { x: rect.left + p.x, y: rect.top + p.y, visible: p.visible };
+    },
+    /** The inspect panel's data, who the camera follows, and where the camera is looking. */
+    inspect: () => rt.getSnapshot().inspect,
+    followId: () => rt.renderer?.followId ?? null,
+    cameraTarget: () => { const r = rt.renderer; return r ? { x: r.follow.target.x, z: r.follow.target.z } : null; },
+    selectPerson: (id: number | null) => rt.selectPerson(id),
+    highlightType: (t: Parameters<GameRuntime['highlightType']>[0]) => rt.highlightType(t),
     ownerPos: () => { const o = rt.state?.people.find((p) => p.kind === 'owner'); return o ? { x: o.x, z: o.z } : null; },
     /** The manager's position, shop-relative, and whether they are on their way somewhere. */
     ownerLocal: () => { const s = rt.state; const o = s?.people.find((p) => p.kind === 'owner'); if (!s || !o) return null; const l = toLocal(s.shop, o.x, o.z); return { x: l.x, z: l.z, walking: o.state === 'walking' }; },

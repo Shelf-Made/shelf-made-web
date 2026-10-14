@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { money } from '../useRuntime';
 import { dailyRent, dailyUtilities } from '@/sim/economy';
@@ -5,6 +6,8 @@ import { computeScores, playerShare, TYPE_NAMES } from '@/sim/customers';
 import type { CustomerType } from '@/sim/types';
 import { MoneySection } from './MoneySection';
 import { GoalsSection } from '../Goals';
+import { TypeIcon } from '../Inspect';
+import { whoShopsWhere } from '@/sim/inspect';
 
 export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
@@ -29,6 +32,7 @@ export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {(() => { const sc = computeScores(s); const rows: [string, number][] = [['Prices', sc.price], ['In stock', sc.availability], ['Clean & laid out', sc.layout], ['Short waits', sc.wait], ['Parking', sc.parking], ['Known in town', sc.awareness]]; return rows.map(([k, v]) => (
         <div className="row" key={k}><span style={{ minWidth: 130 }}>{k}</span><div className="bar" style={{ flex: 1 }}><div style={{ width: `${Math.round(v * 100)}%`, background: v < 0.4 ? 'var(--red)' : v < 0.65 ? 'var(--yellow)' : 'var(--green)' }} /></div></div>
       )); })()}
+      <WhoShopsWhere runtime={runtime} />
       <h3>Who shops here</h3>
       {(() => { const sh = playerShare(s); return (Object.keys(TYPE_NAMES) as CustomerType[]).map((k) => <div className="stat" key={k}><span>{TYPE_NAMES[k]}</span><b>{Math.round(sh[k] * 100)}% of the town's</b></div>); })()}
       {s.rivals.some((r) => r.open) && <h3>Rivals</h3>}
@@ -40,6 +44,35 @@ export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {s.history.slice().reverse().slice(0, 7).map((d) => (
         <div className="stat" key={d.day}><span>Day {d.day} · {d.served}/{d.customers} served</span><b>{money(d.profit, true)}</b></div>
       ))}
+    </>
+  );
+}
+
+/** Today's shoppers by type at each store; a row marks every shopper of that type in the world for ten seconds. */
+function WhoShopsWhere({ runtime }: { runtime: GameRuntime }) {
+  const s = runtime.state!;
+  const [lit, setLit] = useState<CustomerType | null>(null);
+  useEffect(() => { if (!lit) return; const t = setTimeout(() => setLit(null), 10000); return () => clearTimeout(t); }, [lit]);
+  const w = whoShopsWhere(s);
+  if (w.stores.length < 2) return null;
+  return (
+    <>
+      <h3>Who shops where</h3>
+      <table className="who-where" aria-label="Who shops where today">
+        <thead><tr><th scope="col">Today</th>{w.stores.map((st) => <th scope="col" key={st.id} className={st.mine ? 'mine' : ''}>{st.name}</th>)}</tr></thead>
+        <tbody>
+          {w.rows.map((r) => {
+            const top = Math.max(...r.counts);
+            return (
+              <tr key={r.type}>
+                <th scope="row"><button className={lit === r.type ? 'lit' : ''} onClick={() => { setLit(r.type); runtime.highlightType(r.type); }} aria-label={`${r.name}: show them in town`}><TypeIcon type={r.type} />{r.name}</button></th>
+                {r.counts.map((n, i) => <td key={w.stores[i]!.id} className={`${w.stores[i]!.mine ? 'mine' : ''}${n === top && n > 0 ? ' top' : ''}`}>{n}</td>)}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="muted">Tap a row to mark those shoppers in town for 10 seconds.</p>
     </>
   );
 }

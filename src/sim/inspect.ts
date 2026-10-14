@@ -5,7 +5,8 @@
  */
 import type { GameState, Person, CustomerType, StaffRole } from './types';
 import { productDef } from './products';
-import { reasonText, TYPE_NAMES } from './customers';
+import { reasonText, TYPE_NAMES, rivalShoppersByType } from './customers';
+import { DAY_SECONDS } from './layout';
 import { ROLE_NAMES } from './staff';
 
 export type Mood = 'happy' | 'ok' | 'annoyed';
@@ -72,7 +73,7 @@ export function inspectPerson(state: GameState, id: number): InspectInfo | null 
   if (!p || p.kind === 'owner') return null;
   const base = { id: p.id, name: personName(p), mood: moodOf(p), doing: doing(state, p) };
   if (p.kind === 'staff') {
-    return { ...base, kind: 'staff', staff: { role: p.role!, roleName: ROLE_NAMES[p.role!], skill: p.skill ?? 0.5, morale: p.morale ?? 1, wage: p.wage ?? 0 } };
+    return { ...base, kind: 'staff', staff: { role: p.role!, roleName: ROLE_NAMES[p.role!], skill: Math.round((p.skill ?? 0.5) * 100) / 100, morale: Math.round((p.morale ?? 1) * 100) / 100, wage: p.wage ?? 0 } };
   }
   const type = p.ctype;
   const typeName = type ? TYPE_NAMES[type] : undefined;
@@ -87,7 +88,8 @@ export function inspectPerson(state: GameState, id: number): InspectInfo | null 
       list: list.map((it, i) => ({ name: productDef(it.productId).name, state: i >= idx ? 'todo' : got.has(it.productId) ? 'found' : 'missed' })),
       basket: Math.round((p.basket ?? []).reduce((a, b) => a + b.price * b.qty, 0) * 100) / 100,
       budget: Math.round((p.budget ?? 0) * 100) / 100,
-      patience: p.maxPatience && p.patience !== undefined ? Math.max(0, Math.min(1, p.patience / p.maxPatience)) : undefined,
+      // To the percent, so the panel only redraws when the bar would move.
+      patience: p.maxPatience && p.patience !== undefined ? Math.round(Math.max(0, Math.min(1, p.patience / p.maxPatience)) * 100) / 100 : undefined,
       whyLabel: 'Came here because…',
       why: (p.why ?? []).map((k) => reasonText(k, type ?? 'convenience', { item: k === 'price' && item ? productDef(item).name : undefined, drove })),
     };
@@ -102,4 +104,20 @@ export function inspectPerson(state: GameState, id: number): InspectInfo | null 
     };
   }
   return { ...base, kind: 'walker' };
+}
+
+/**
+ * "Who shops where": today's shoppers so far, by type, at your shop and at each open rival. Yours are
+ * counted as they set out; the rivals' are their day's trade scaled by how much of the day has gone.
+ */
+export function whoShopsWhere(state: GameState): { stores: { id: string; name: string; mine: boolean }[]; rows: { type: CustomerType; name: string; counts: number[] }[] } {
+  const by = rivalShoppersByType(state);
+  const open = state.rivals.filter((r) => r.open && by[r.id]);
+  const frac = state.phase === 'night' ? 1 : Math.max(0, Math.min(1, state.time / DAY_SECONDS));
+  const stores = [{ id: 'player', name: 'You', mine: true }, ...open.map((r) => ({ id: r.id, name: r.boughtDay !== undefined ? state.franchises.find((f) => f.corner === r.corner)?.name ?? r.name : r.name, mine: r.boughtDay !== undefined }))];
+  const rows = (Object.keys(TYPE_NAMES) as CustomerType[]).map((t) => ({
+    type: t, name: TYPE_NAMES[t],
+    counts: [state.today.byType?.[t] ?? 0, ...open.map((r) => Math.round(by[r.id]![t] * frac))],
+  }));
+  return { stores, rows };
 }

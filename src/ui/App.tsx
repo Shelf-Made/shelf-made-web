@@ -10,6 +10,7 @@ import { PlotPicker } from './PlotPicker';
 import { Overlay } from './Overlay';
 import { GameOverCard } from './GameOverCard';
 import { Celebration, ChampionCard } from './Goals';
+import { InspectPanel } from './Inspect';
 
 export function App({ runtime }: { runtime: GameRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,6 +48,7 @@ export function App({ runtime }: { runtime: GameRuntime }) {
           {snap.champion && !snap.gameOver && <ChampionCard runtime={runtime} />}
           <Celebration snap={snap} />
           <Overlay runtime={runtime} snap={snap} />
+          {snap.inspect && !snap.night && <InspectPanel runtime={runtime} snap={snap} />}
           {snap.toast && <div className="toast" key={snap.toast.id} role="status">{snap.toast.text}</div>}
         </div>
       )}

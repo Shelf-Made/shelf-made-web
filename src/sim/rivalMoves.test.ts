@@ -5,7 +5,7 @@ import { planRivals, rivalDay, computeMods, MOVE_DAYS, triggeredMoves } from './
 import { explainChoice, rivalScores, computeScores, TYPE_WEIGHTS } from './customers';
 import { spawnCustomer } from './people';
 import { spawnRivalShopper } from './rivalShoppers';
-import { inspectPerson } from './inspect';
+import { inspectPerson, whoShopsWhere } from './inspect';
 import { emptyDayStats } from './newGame';
 import type { CustomerType, DayStats, StoreScores } from './types';
 
@@ -165,5 +165,24 @@ describe('why shoppers chose a store', () => {
     }
     // Staff show their job; you are not inspectable.
     expect(inspectPerson(s, s.people.find((x) => x.kind === 'owner')!.id)).toBeNull();
+  });
+
+  it('who shops where: your shoppers as they set out, the rivals\' day so far, by type', () => {
+    const s = openGame({ seed: 38, plotId: 'main', name: 'Where' });
+    openAll(s);
+    for (let i = 0; i < 6; i++) spawnCustomer(s, true);
+    s.time = 0;
+    const w0 = whoShopsWhere(s);
+    expect(w0.stores.map((x) => x.id)).toEqual(['player', ...s.rivals.map((r) => r.id)]);
+    expect(w0.rows.reduce((a, r) => a + r.counts[0]!, 0)).toBe(6);
+    for (const r of w0.rows) expect(r.counts[0]).toBe(s.today.byType![r.type]);
+    // At opening the rivals have had nobody yet; by mid-afternoon they have had most of a day.
+    expect(w0.rows.every((r) => r.counts.slice(1).every((n) => n === 0))).toBe(true);
+    s.time = 600;
+    const w1 = whoShopsWhere(s);
+    expect(w1.rows.reduce((a, r) => a + r.counts.slice(1).reduce((x, y) => x + y, 0), 0)).toBeGreaterThan(10);
+    // A rival closed for a refit drops out of the table.
+    s.rivals.find((r) => r.id === 'premium')!.open = false;
+    expect(whoShopsWhere(s).stores.some((x) => x.id === 'premium')).toBe(false);
   });
 });

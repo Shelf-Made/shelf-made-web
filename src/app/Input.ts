@@ -73,7 +73,7 @@ export class InputController {
       if (e.code === k.focus) { this.rt.focusCamera(); return; }
       if (e.code === k.zoomIn || e.code === 'NumpadAdd') { this.rt.zoom(1 / 1.3); return; }
       if (e.code === k.zoomOut || e.code === 'NumpadSubtract') { this.rt.zoom(1.3); return; }
-      if (e.code === 'Escape') { this.rt.closeCard(); return; }
+      if (e.code === 'Escape') { this.rt.escape(); return; }
       if (this.rt.card === 'build' || this.rt.build.placing) {
         if (e.code === k.rotate) { e.preventDefault(); this.rt.rotateGhost(); return; }
         if (e.code === 'Delete' || e.code === 'Backspace') { this.rt.sellSelected(); return; }

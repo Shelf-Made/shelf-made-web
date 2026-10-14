@@ -1,5 +1,6 @@
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
-import type { Difficulty, FixtureType, Rot } from '@/sim/types';
+import type { Difficulty, FixtureType, Rot, CustomerType } from '@/sim/types';
+import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace } from '@/sim/build';
 import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame, rectToWorld, type Rect } from '@/sim/layout';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
@@ -73,6 +74,8 @@ export interface Snapshot {
   celebrate: { key: number; title: string; reward: string; next: string | null } | null;
   /** Owns the crossroads: the ending card, until it is waved away. */
   champion: boolean;
+  /** The person clicked on, for the inspect panel (null when nobody is selected), and whether the camera follows them. */
+  inspect: (InspectInfo & { following: boolean }) | null;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
@@ -173,8 +176,59 @@ export class GameRuntime {
       goal: s && s.phase !== 'picking' ? goalInfo(s) : null,
       celebrate: this.celebration,
       champion: !!s && s.goals.champion && !s.goals.championSeen,
+      inspect: this.inspectInfo(),
     };
   }
+
+  // ---- Inspecting people: click someone to see who they are and why they came; Follow keeps the camera on them.
+  /** The person the inspect panel is about. Nothing about selection costs anything while this is null. */
+  selectedPerson: number | null = null;
+  private followingPerson = false;
+  private inspectInfo(): Snapshot['inspect'] {
+    const s = this.state;
+    if (!s || this.selectedPerson === null) return null;
+    const info = inspectPerson(s, this.selectedPerson);
+    return info ? { ...info, following: this.followingPerson } : null;
+  }
+  selectPerson(id: number | null): void {
+    if (id === this.selectedPerson) return;
+    if (this.followingPerson) this.stopFollow();
+    this.selectedPerson = id;
+    this.renderer?.selectPerson(id);
+    if (id !== null) this.audio.play('click');
+    this.emit();
+  }
+  /** The camera tracks the selected person until they leave the world (or Esc, or the focus key). */
+  followSelected(): void {
+    const s = this.state; const r = this.renderer; const id = this.selectedPerson;
+    if (!s || !r || id === null) return;
+    const p = s.people.find((x) => x.id === id); if (!p) return;
+    this.followingPerson = true;
+    r.followId = id;
+    r.follow.focus(p.x, p.z);
+    this.emit();
+  }
+  stopFollow(): void {
+    if (!this.followingPerson) return;
+    this.followingPerson = false;
+    if (this.renderer) this.renderer.followId = null;
+    this.focusCamera();
+    this.emit();
+  }
+  /** Esc: stop placing, then let go of the person you were looking at, then close the open card. */
+  escape(): void {
+    if (this.build.placing || this.build.selectedId !== null) { this.closeCard(); return; }
+    if (this.selectedPerson !== null) { this.selectPerson(null); return; }
+    this.closeCard();
+  }
+  /** Each frame while someone is selected: they may have left (or the day ended). */
+  private checkSelection(s: GameState): void {
+    if (this.selectedPerson === null) return;
+    const p = s.people.find((x) => x.id === this.selectedPerson);
+    if (!p || p.state === 'gone' || s.phase === 'night' || !this.inPlay) this.selectPerson(null);
+  }
+  /** "Who shops where": mark every shopper of a type for ten seconds. */
+  highlightType(type: CustomerType): void { this.renderer?.highlightType(type, 10); this.audio.play('click'); }
 
   // ---- Goals: a burst of confetti when one is reached (once; never replayed from a save).
   private celebration: Snapshot['celebrate'] = null;
@@ -265,6 +319,7 @@ export class GameRuntime {
     if (this.renderer) { this.renderer.camera.lookY = 0; this.renderer.cutaway = true; }
     this.screen = 'game';
     this.speed = 1; this.card = null;
+    this.forgetSelection();
     this.renderer?.setTown(s.seed, s.shop.plotId);
     this.renderer?.setShop(s);
     this.faceShop();
@@ -273,7 +328,12 @@ export class GameRuntime {
     this.emit();
   }
 
-  toLobby(): void { this.screen = 'lobby'; this.state = null; this.card = null; this.lobbyState = null; this.emit(); }
+  toLobby(): void { this.screen = 'lobby'; this.state = null; this.card = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
+  /** A different game: nobody is selected or followed. */
+  private forgetSelection(): void {
+    this.selectedPerson = null; this.followingPerson = false;
+    if (this.renderer) { this.renderer.followId = null; this.renderer.selectPerson(null); }
+  }
 
   /** Build the lobby's demo shop: furnished, stocked and open, late in the afternoon. */
   private ensureLobbyScene(): GameState | null {
@@ -355,6 +415,7 @@ export class GameRuntime {
         if (latest && s.notices.length > this.noticesSeen) this.showToast(latest.text, 5200);
         this.noticesSeen = s.notices.length;
       }
+      this.checkSelection(s);
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
@@ -373,7 +434,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -575,6 +636,7 @@ export class GameRuntime {
   /** Back to the manager (the focus key). */
   focusCamera(): void {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
+    if (this.followingPerson) { this.followingPerson = false; r.followId = null; this.emit(); }
     const o = s.people.find((p) => p.kind === 'owner');
     if (o) r.follow.focus(o.x, o.z);
   }
@@ -613,6 +675,11 @@ export class GameRuntime {
       if (hit?.kind === 'fixture') { this.clickBuild(hit); return; }
       return;
     }
+    // People first: a click on someone opens their panel (and walks nobody anywhere).
+    const who = r.personAt(px, py, s);
+    if (who !== null) { this.selectPerson(who); return; }
+    // Anywhere else lets go of them, unless the camera is following them.
+    if (this.selectedPerson !== null && !this.followingPerson) this.selectPerson(null);
     const t = this.thingAt(px, py);
     if (t) { this.walkAndUse(t); return; }
     const g = r.groundAt(px, py);
