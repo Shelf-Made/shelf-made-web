@@ -1,12 +1,13 @@
+import { openGame } from '@/sim/testUtil';
 import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
-import { newGame, tick, SAVE_VERSION } from '@/sim/index';
+import { tick, SAVE_VERSION } from '@/sim/index';
 
 describe('saves', () => {
   it('round-trips a game through the backend and keeps determinism', async () => {
     const b = new MemoryBackend();
-    const s = newGame({ seed: 42, plotId: 'main', name: 'Round Trip' });
+    const s = openGame({ seed: 42, plotId: 'main', name: 'Round Trip' });
     for (let i = 0; i < 500; i++) tick(s);
     await saveGame(b, 'slot1', s);
     const loaded = (await loadGame(b, 'slot1'))!;
@@ -18,7 +19,7 @@ describe('saves', () => {
   });
   it('rejects foreign files and migrates old versions', () => {
     expect(() => parse('{"hello":1}')).toThrow();
-    const s = newGame({ seed: 1, plotId: 'hill', name: 'Old' });
+    const s = openGame({ seed: 1, plotId: 'hill', name: 'Old' });
     const text = serialize(s).replace(`"version":${SAVE_VERSION}`, '"version":0');
     const f = parse(text);
     expect(f.state.version).toBe(SAVE_VERSION);

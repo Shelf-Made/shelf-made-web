@@ -43,7 +43,8 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
     <div className="topbar" role="toolbar" aria-label="Shop controls">
       <div className="logo"><span className="mark" aria-hidden="true" /><span>Shelf Made</span></div>
       <div className="money" aria-live="polite" aria-label="Cash">{money(shown)}</div>
-      <div className="clock">Day {snap.day} · {snap.clock}</div>
+      <div className="clock">Day {snap.day} · {snap.phase === 'setup' ? 'Setting up' : snap.clock}</div>
+      {snap.phase === 'setup' && <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>Open shop</button>}
       <div className="spacer" />
       {ORDER.map((c) => (
         <button key={c} className={`iconbtn${snap.card === c ? ' active' : ''}${unlocked(c) ? '' : ' locked'}`} onClick={() => unlocked(c) ? runtime.openCard(c) : runtime.showToast(`${LABELS[c]} opens in a few days.`)} aria-pressed={snap.card === c} data-card={c} title={unlocked(c) ? LABELS[c] : `${LABELS[c]} (locked)`}>

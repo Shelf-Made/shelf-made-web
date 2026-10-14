@@ -29,7 +29,7 @@ export class Lighting {
     this.ambient = new AmbientLight(0xffffff, 0.45);
     scene.add(this.sun, this.sun.target, this.hemi, this.ambient);
     scene.background = this.sky;
-    scene.fog = new Fog(this.sky, 70, 160);
+    scene.fog = new Fog(this.sky, 55, 210);
   }
 
   /** t = 0 at 08:00, 1 at 20:00. night = true after closing. */

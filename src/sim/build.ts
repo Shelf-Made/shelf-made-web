@@ -4,8 +4,8 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout } from './layout';
-import { buildGrid, fixtureFrontWorld } from './grid';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone } from './layout';
+import { buildGrid, fixtureFrontWorld, fixtureBackWorld } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside } from './people';
 
@@ -18,9 +18,17 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const f = shop.floor;
   const price = def.price;
   if (x < f.x0 || x + 1 > f.x1 || z < f.z0 || z + 1 > f.z1) return { ok: false, reason: 'Only inside the shop floor', price };
+  if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a floor tile', price };
   if (shop.fixtures.some((fx) => fx.id !== ignoreId && fx.x === x && fx.z === z)) return { ok: false, reason: 'Something is already there', price };
-  if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z === f.z1 - 1) return { ok: false, reason: 'That is the doorway', price };
+  if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z === f.z1 - 1) return { ok: false, reason: 'Keep the front door clear', price };
+  if (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && z === f.z0) return { ok: false, reason: 'Keep the back door clear', price };
+  const d = shop.delivery;
+  if (d && x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
   if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need $${price}`, price };
+  if (type === 'register') {
+    const bx = x - [0, 1, 0, -1][rot]!, bz = z - [1, 0, -1, 0][rot]!;
+    if (bx < f.x0 || bx + 1 > f.x1 || bz < f.z0 || bz + 1 > f.z1) return { ok: false, reason: 'Leave room behind the counter to stand', price };
+  }
   // Trial layout: every front and both doors must stay reachable.
   const trial: Fixture = { id: -1, type, x, z, rot, slots: [] };
   const fixtures = shop.fixtures.filter((fx) => fx.id !== ignoreId).concat([trial]);
@@ -32,6 +40,7 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   for (const fx of fixtures) {
     if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
     if (!findPath(grid, from, fixtureFrontWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'Nobody could reach its front' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
+    if (fx.type === 'register' && !findPath(grid, from, fixtureBackWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'You could not get behind it' : 'Would block the way behind the counter', price };
   }
   return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : def.name, price };
 }
@@ -47,9 +56,12 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const shop = state.shop;
   state.cash -= cost;
   shop.floor = { ...size.floor }; shop.storeroom = { ...size.storeroom }; shop.sizeId = size.id;
+  shop.delivery = deliveryZone(size.floor);
+  shop.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
+  // Fixtures keep their tiles (the shop grows back and sideways; the front wall does not move).
   const L = lotLayout(shop);
   shop.bays = L.bays.map((b, i) => ({ x: shop.originX + b.x, z: shop.originZ + b.z, yaw: b.yaw, carId: shop.bays[i]?.carId ?? null }));
-  shop.storageCapacity = 200 + target * 120;
+  shop.storageCapacity = 120 + target * 100;
   shop.layoutVersion++;
   state.notices.push({ day: state.day, text: `Extension built: the shop is now a ${size.name.toLowerCase()}.`, kind: 'info' });
   return null;

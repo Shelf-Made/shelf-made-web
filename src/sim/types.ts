@@ -93,6 +93,8 @@ export interface Person {
   stuckTicks?: number;
   hiredDay?: number;
   shift?: 'full' | 'morning' | 'evening';
+  /** Owner only: the direction the player is steering (world space), or null. */
+  moveDir?: { x: number; z: number } | null;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -118,6 +120,14 @@ export interface Car {
   timer: number;
   /** Delivery trucks: the order they carry. */
   orderId?: number;
+  /** Backing out of a bay: the car moves along its path facing the other way. */
+  reversing?: boolean;
+  /** The path to follow once the car has backed out. */
+  next?: Vec2[];
+  /** Seconds spent held up behind another car (breaks rare deadlocks). */
+  waited?: number;
+  /** Waiting at a junction for a gap in the traffic. */
+  yielding?: boolean;
 }
 
 export interface ParkingBay { x: number; z: number; yaw: number; carId: number | null }
@@ -171,6 +181,8 @@ export interface Shop {
   litter: Litter[];
   sizeId: string;
   lotRows: number;
+  /** Store-relative tiles where delivered boxes are stacked. */
+  delivery: { x0: number; z0: number; x1: number; z1: number };
 }
 
 export interface DayStats {
@@ -249,7 +261,10 @@ export interface GameState {
   day: number;
   /** Game seconds since 08:00. The store opens at 0 and closes at CLOSE_TIME. */
   time: number;
-  phase: 'picking' | 'open' | 'closing' | 'night';
+  /** Sim speed the player chose (1, 2, 4). The manager walks in real time whatever it is. */
+  timeScale: number;
+  /** setup: the shop is being fitted out; the clock is stopped and nobody shops until Open shop. */
+  phase: 'picking' | 'setup' | 'open' | 'closing' | 'night';
   cash: number;
   shop: Shop;
   prices: Record<string, number>;

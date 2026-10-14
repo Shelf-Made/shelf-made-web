@@ -50,6 +50,7 @@ export const PACKS: PackSpec[] = [
       ...Object.fromEntries('abcdefghijklmnopqrstu'.split('').map((l) => [`house-${l}`, `building-type-${l}`])),
       'tree-large': 'tree-large', 'tree-small': 'tree-small', 'fence': 'fence', 'fence-low': 'fence-low', 'fence-1x2': 'fence-1x2', 'fence-1x3': 'fence-1x3', 'fence-1x4': 'fence-1x4',
       'planter': 'planter', 'path-long': 'path-long', 'path-short': 'path-short', 'driveway-long': 'driveway-long', 'driveway-short': 'driveway-short',
+      'fence-2x2': 'fence-2x2', 'fence-2x3': 'fence-2x3', 'fence-3x2': 'fence-3x2', 'fence-3x3': 'fence-3x3', 'path-stones-long': 'path-stones-long', 'path-stones-short': 'path-stones-short',
     },
   },
   {
@@ -72,6 +73,8 @@ export const PACKS: PackSpec[] = [
       'lamp': 'light-curved', 'lamp-double': 'light-curved-double', 'lamp-square': 'light-square', 'sign-street': 'road-sign-street', 'sign-stop': 'road-sign-stop', 'sign-empty': 'road-sign-empty',
       'traffic-light': 'traffic-light', 'dumpster': 'dumpster', 'cone': 'construction-cone', 'barrier': 'construction-barrier',
       'electricity-pole': 'electricity-pole', 'sign-highway': 'sign-highway',
+      'road-bridge': 'road-bridge', 'bridge-pillar': 'bridge-pillar', 'bridge-pillar-wide': 'bridge-pillar-wide', 'road-straight-barrier': 'road-straight-barrier', 'road-side-entry': 'road-side-entry',
+      'road-bend-sidewalk': 'road-bend-sidewalk', 'road-crossroad-path': 'road-crossroad-path', 'road-intersection-path': 'road-intersection-path', 'sign-warning': 'road-sign-warning',
     },
   },
   {
@@ -87,7 +90,7 @@ export const PACKS: PackSpec[] = [
     colormap: 'Models/GLB format/Textures/colormap.png',
     models: Object.fromEntries([
       'apple', 'banana', 'orange', 'pear', 'lemon', 'watermelon', 'pumpkin', 'carrot', 'broccoli', 'cabbage', 'tomato', 'avocado', 'pineapple', 'strawberry', 'grapes', 'corn', 'onion', 'paprika', 'eggplant', 'mushroom', 'leek', 'cauliflower', 'coconut', 'cherries',
-      'soda-can', 'soda-bottle', 'carton', 'carton-small', 'can', 'can-small', 'bottle-ketchup', 'bottle-oil', 'bottle-musterd', 'bag', 'bag-flat', 'bread', 'loaf', 'loaf-baguette', 'loaf-round', 'cheese', 'egg', 'pizza-box', 'chocolate', 'candy-bar', 'cookie', 'honey', 'peanut-butter', 'cupcake', 'donut', 'croissant', 'muffin', 'fish', 'meat-raw', 'bacon', 'whole-ham', 'sausage', 'meat-sausage', 'cake', 'pie', 'waffle', 'wine-red', 'wine-white', 'cup-coffee', 'mug', 'barrel', 'bowl-cereal', 'styrofoam',
+      'soda-can', 'soda-bottle', 'carton', 'carton-small', 'can', 'can-small', 'bottle-ketchup', 'bottle-oil', 'bottle-musterd', 'bag', 'bag-flat', 'bread', 'loaf', 'loaf-baguette', 'loaf-round', 'cheese', 'egg', 'pizza-box', 'chocolate', 'candy-bar', 'cookie', 'honey', 'peanut-butter', 'cupcake', 'donut', 'croissant', 'muffin', 'fish', 'meat-raw', 'bacon', 'whole-ham', 'sausage', 'meat-sausage', 'cake', 'pie', 'waffle', 'wine-red', 'wine-white', 'cup-coffee', 'mug', 'barrel', 'bowl-cereal', 'styrofoam', 'turkey', 'meat-ribs', 'ice-cream-cup', 'soda', 'cheese-cut',
     ].map((n) => [n, n])),
   },
   {
@@ -97,6 +100,14 @@ export const PACKS: PackSpec[] = [
       'tree_default_fall', 'tree_oak_fall', 'tree_small_fall',
       'plant_bush', 'plant_bushSmall', 'plant_bushLarge', 'plant_bushDetailed', 'flower_redA', 'flower_yellowA', 'flower_purpleA', 'flower_redB', 'flower_yellowB', 'grass', 'grass_large', 'grass_leafs',
       'rock_smallA', 'rock_smallB', 'rock_largeA', 'stone_smallA', 'fence_simple', 'fence_planks', 'fence_gate', 'log', 'stump_round', 'pot_small', 'pot_large', 'sign', 'bed', 'crop_pumpkin', 'crop_carrot',
+      // The valley: pine forest, cliffs and rocks for the mountains, the river and its banks, farmland.
+      'tree_pineDefaultA', 'tree_pineDefaultB', 'tree_pineTallA', 'tree_pineTallB', 'tree_pineTallC', 'tree_pineTallD', 'tree_pineRoundC', 'tree_pineRoundD', 'tree_pineRoundE', 'tree_pineRoundF',
+      'tree_pineSmallA', 'tree_pineSmallB', 'tree_pineSmallC', 'tree_pineGroundA', 'tree_default_dark', 'tree_oak_dark', 'tree_cone_dark', 'tree_tall_dark', 'tree_detailed_dark',
+      'cliff_block_rock', 'cliff_large_rock', 'cliff_top_rock', 'cliff_corner_rock', 'cliff_cornerLarge_rock', 'cliff_half_rock', 'cliff_blockHalf_rock', 'cliff_blockSlope_rock', 'cliff_waterfall_rock', 'cliff_rock', 'cliff_block_stone', 'cliff_large_stone',
+      'rock_largeB', 'rock_largeC', 'rock_largeD', 'rock_largeE', 'rock_largeF', 'rock_tallA', 'rock_tallB', 'rock_tallC', 'rock_tallD', 'rock_smallC', 'rock_smallFlatA',
+      'bridge_stone', 'bridge_wood', 'bridge_stoneRound', 'bridge_woodRound', 'lily_large', 'lily_small', 'log_large', 'log_stack', 'mushroom_red', 'mushroom_tanGroup',
+      'crops_cornStageD', 'crops_wheatStageB', 'crops_leafsStageB', 'crops_dirtDoubleRow', 'tent_detailedOpen', 'campfire_stones', 'canoe', 'fence_simpleHigh', 'fence_corner',
+      'plant_bushLargeTriangle', 'plant_flatTall', 'grass_leafsLarge', 'stump_old', 'ground_riverStraight', 'platform_beach',
     ].map((n) => [n.replace(/_/g, '-').toLowerCase(), n])),
   },
   {

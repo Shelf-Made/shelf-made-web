@@ -1,21 +1,25 @@
 import { useEffect, useRef } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { doorOutside } from '@/sim/people';
+import { keyLabel } from '@/save/settings';
 
 /**
- * World-anchored UI: floating "+$" popups and the guided tip bubble. Positions are updated
- * every frame straight on the DOM so nothing re-renders at 60 fps.
+ * Screen-space UI over the first-person view: floating "+$" popups, the crosshair with what
+ * pressing E would do, the current tip, and a marker over the thing the tip is about.
+ * Positions are written straight to the DOM every frame so nothing re-renders at 60 fps.
  */
 export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
-  // Popups are plain DOM nodes in their own container, so React never reorders them (which would restart the tip's animation).
+  // Popups are plain DOM nodes in their own container, so React never reorders them.
   const root = useRef<HTMLDivElement>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<HTMLDivElement>(null);
+  const promptRef = useRef<HTMLDivElement>(null);
+  const crossRef = useRef<HTMLDivElement>(null);
   const tip = snap.tip;
 
   useEffect(() => {
     let raf = 0;
     const nodes = new Map<number, HTMLDivElement>();
     const proj = { x: 0, y: 0, visible: false };
+    let lastPrompt = '';
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const s = runtime.state; const r = runtime.renderer; const host = root.current;
@@ -35,53 +39,74 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
         el.style.left = `${proj.x}px`; el.style.top = `${proj.y}px`;
       }
       for (const [id, el] of nodes) if (!seen.has(id)) { el.remove(); nodes.delete(id); }
-      // Tip anchor.
-      const t = runtime.getSnapshot().tip;
-      const tipEl = tipRef.current;
-      if (t && tipEl) {
-        let anchor: { x: number; y: number; z: number } | null = null;
-        if (t.fixtureId !== undefined) anchor = runtime.fixtureAnchor(t.fixtureId);
-        else if (t.anchor === 'door') { const d = doorOutside(s); anchor = { x: d.x, y: 1.2, z: d.z }; }
-        if (anchor) {
-          r.project(anchor.x, anchor.y, anchor.z, proj);
-          // Sit beside the thing to click, on the side away from the shop, so the bubble never covers the floor.
-          const right = anchor.x >= s.shop.originX;
-          tipEl.classList.remove('docked');
-          tipEl.classList.toggle('side-right', right);
-          tipEl.classList.toggle('side-left', !right);
-          const w = tipEl.offsetWidth || 280;
-          const x = right ? proj.x + 46 : proj.x - 60 - w;
-          tipEl.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, x))}px`;
-          tipEl.style.top = `${Math.max(70, proj.y - 70)}px`;
-          tipEl.style.right = '';
-        } else {
-          // Docked beside a top-bar button.
-          const btn = t.anchor.startsWith('button:') ? document.querySelector<HTMLElement>(`[data-card="${t.anchor.slice(7)}"]`) : null;
-          tipEl.classList.add('docked');
-          if (btn) { const b = btn.getBoundingClientRect(); tipEl.style.left = `${Math.min(window.innerWidth - 320, Math.max(8, b.left + b.width / 2 - 150))}px`; tipEl.style.top = `${b.bottom + 40}px`; }
-          else { tipEl.style.left = '50%'; tipEl.style.top = '70%'; }
+
+      // Crosshair prompt.
+      const a = runtime.aimInfo();
+      const pr = promptRef.current, cross = crossRef.current;
+      if (pr && cross) {
+        const key = a ? `${a.key}|${a.text}|${a.ok}` : '';
+        if (key !== lastPrompt) {
+          lastPrompt = key;
+          pr.replaceChildren();
+          if (a && a.text) {
+            if (a.key) { const k = document.createElement('kbd'); k.textContent = a.key; pr.appendChild(k); }
+            pr.appendChild(document.createTextNode(a.text));
+          }
+          pr.className = `aim-prompt${a?.ok ? ' ok' : ''}${a && a.text ? ' show' : ''}`;
+          cross.classList.toggle('active', !!a?.ok);
         }
       }
+
+      // Marker over the tip's target, pinned to the screen edge when it is off to the side.
+      const t = runtime.getSnapshot().tip;
+      const m = markerRef.current;
+      if (!m) return;
+      let anchor: { x: number; y: number; z: number } | null = null;
+      if (t?.fixtureId !== undefined) anchor = runtime.fixtureAnchor(t.fixtureId);
+      else if (t?.anchor === 'delivery') { const d = s.shop.delivery; anchor = { x: s.shop.originX + (d.x0 + d.x1) / 2, y: 0.9, z: s.shop.originZ + (d.z0 + d.z1) / 2 }; }
+      if (!anchor) { m.style.display = 'none'; return; }
+      r.project(anchor.x, anchor.y, anchor.z, proj);
+      const w = window.innerWidth, h = window.innerHeight;
+      let x = proj.x, y = proj.y;
+      const behind = !proj.visible;
+      if (behind) { x = w - x; y = h * 0.5; }
+      const pad = 40;
+      const off = behind || x < pad || x > w - pad || y < 80 || y > h - pad;
+      x = Math.max(pad, Math.min(w - pad, x)); y = Math.max(90, Math.min(h - pad, y));
+      m.style.display = '';
+      m.style.left = `${x}px`; m.style.top = `${y}px`;
+      m.classList.toggle('edge', off);
+      m.classList.toggle('left', off && x <= pad + 1);
+      m.classList.toggle('right', off && x >= w - pad - 1);
     };
     raf = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(raf); for (const el of nodes.values()) el.remove(); };
   }, [runtime]);
 
+  const fp = snap.firstPerson && !snap.night && !snap.gameOver;
+  const keys = snap.settings.keys;
+  const showLookHint = fp && !snap.locked && !snap.card && !(typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
   return (
     <>
       <div ref={root} className="overlay popups" aria-hidden="true" />
-      {tip && (
-        <div ref={tipRef} className={`tip${tip.anchor.startsWith('button:') || tip.anchor === 'night' ? ' docked' : ''}`} key={tip.id} role="note" style={tip.anchor === 'night' ? { left: '50%', top: '38%', transform: 'translateX(-50%)' } : undefined}>
-          {tip.text}
-          <div className="skip"><button onClick={() => runtime.dispatch({ type: 'skipTutorial' })}>Skip tips</button></div>
-          {(tip.anchor.startsWith('button:')) ? (
-            <div className="arrow" style={{ bottom: 'auto', top: -34, transform: 'rotate(180deg)' }}><svg viewBox="0 0 24 24"><path d="M12 20l-8-9h5V3h6v8h5z" /></svg></div>
-          ) : tip.anchor !== 'night' ? (
-            <div className="arrow side"><svg viewBox="0 0 24 24"><path d="M12 20l-8-9h5V3h6v8h5z" /></svg></div>
-          ) : null}
+      {fp && (
+        <div className="crosshair-wrap" aria-hidden="true">
+          <div ref={crossRef} className="crosshair" />
+          <div ref={promptRef} className="aim-prompt" />
         </div>
       )}
-      {snap.phase === 'open' && snap.day === 1 && !tip && !snap.toast && <div className="hint">Drag to pan · wheel to zoom · right-drag to rotate · F focuses the shop · Space scans</div>}
+      {fp && <div ref={markerRef} className="marker" aria-hidden="true" style={{ display: 'none' }}><span /></div>}
+      {tip && tip.anchor !== 'night' && (
+        <div className="tip docked objective" key={tip.id} role="note">
+          <div className="label">Next up</div>
+          {tip.text}
+          <div className="skip"><button onClick={() => runtime.dispatch({ type: 'skipTutorial' })}>Skip tips</button></div>
+        </div>
+      )}
+      {tip && tip.anchor === 'night' && (
+        <div className="tip docked" key={tip.id} role="note" style={{ left: '50%', top: '30%', transform: 'translateX(-50%)' }}>{tip.text}</div>
+      )}
+      {showLookHint && <div className="look-hint">Click to look around · {keyLabel(keys.forward)}{keyLabel(keys.left)}{keyLabel(keys.back)}{keyLabel(keys.right)} to walk · {keyLabel(keys.interact)} to use · Esc frees the mouse</div>}
     </>
   );
 }

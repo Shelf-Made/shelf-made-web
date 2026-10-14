@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-14T12:38:08.565Z",
+ "generatedAt": "2026-10-14T14:59:50.794Z",
  "models": [
   {
    "pack": "cars",
@@ -1137,6 +1137,24 @@
   },
   {
    "pack": "food",
+   "name": "cheese-cut",
+   "file": "models/food/cheese-cut.glb",
+   "size": [
+    0.192,
+    0.0102,
+    0.132
+   ],
+   "min": [
+    -0.096,
+    0,
+    -0.066
+   ],
+   "tris": 160,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
    "name": "cherries",
    "file": "models/food/cherries.glb",
    "size": [
@@ -1389,6 +1407,24 @@
   },
   {
    "pack": "food",
+   "name": "ice-cream-cup",
+   "file": "models/food/ice-cream-cup.glb",
+   "size": [
+    0.1005,
+    0.0902,
+    0.1161
+   ],
+   "min": [
+    -0.0503,
+    0,
+    -0.058
+   ],
+   "tris": 68,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
    "name": "leek",
    "file": "models/food/leek.glb",
    "size": [
@@ -1492,6 +1528,24 @@
     -0.1438
    ],
    "tris": 110,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "meat-ribs",
+   "file": "models/food/meat-ribs.glb",
+   "size": [
+    0.2677,
+    0.03,
+    0.1917
+   ],
+   "min": [
+    -0.1338,
+    0,
+    -0.0958
+   ],
+   "tris": 164,
    "skinned": false,
    "clips": []
   },
@@ -1749,6 +1803,24 @@
   },
   {
    "pack": "food",
+   "name": "soda",
+   "file": "models/food/soda.glb",
+   "size": [
+    0.127,
+    0.2162,
+    0.127
+   ],
+   "min": [
+    -0.0635,
+    0,
+    -0.0635
+   ],
+   "tris": 188,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
    "name": "soda-bottle",
    "file": "models/food/soda-bottle.glb",
    "size": [
@@ -1834,6 +1906,24 @@
     -0.0424
    ],
    "tris": 132,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "food",
+   "name": "turkey",
+   "file": "models/food/turkey.glb",
+   "size": [
+    0.4674,
+    0.1884,
+    0.3395
+   ],
+   "min": [
+    -0.2372,
+    0,
+    -0.1698
+   ],
+   "tris": 368,
    "skinned": false,
    "clips": []
   },
@@ -3960,6 +4050,330 @@
   },
   {
    "pack": "nature",
+   "name": "bridge-stone",
+   "file": "models/nature/bridge-stone.glb",
+   "size": [
+    1.456,
+    0.5599,
+    1.456
+   ],
+   "min": [
+    -0.728,
+    0,
+    -0.728
+   ],
+   "tris": 252,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "bridge-stoneround",
+   "file": "models/nature/bridge-stoneround.glb",
+   "size": [
+    1.456,
+    0.63,
+    1.456
+   ],
+   "min": [
+    -0.728,
+    0,
+    -0.728
+   ],
+   "tris": 360,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "bridge-wood",
+   "file": "models/nature/bridge-wood.glb",
+   "size": [
+    1.456,
+    0.5599,
+    1.456
+   ],
+   "min": [
+    -0.728,
+    0,
+    -0.728
+   ],
+   "tris": 220,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "bridge-woodround",
+   "file": "models/nature/bridge-woodround.glb",
+   "size": [
+    1.456,
+    0.63,
+    1.456
+   ],
+   "min": [
+    -0.728,
+    0,
+    -0.728
+   ],
+   "tris": 336,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "campfire-stones",
+   "file": "models/nature/campfire-stones.glb",
+   "size": [
+    0.7572,
+    0.1089,
+    0.7217
+   ],
+   "min": [
+    -0.3786,
+    0,
+    -0.3608
+   ],
+   "tris": 264,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "canoe",
+   "file": "models/nature/canoe.glb",
+   "size": [
+    0.4201,
+    0.2555,
+    1.61
+   ],
+   "min": [
+    -0.21,
+    0,
+    -0.805
+   ],
+   "tris": 200,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-block-rock",
+   "file": "models/nature/cliff-block-rock.glb",
+   "size": [
+    1.4,
+    1.4,
+    1.4
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.7
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-block-stone",
+   "file": "models/nature/cliff-block-stone.glb",
+   "size": [
+    1.4,
+    1.4,
+    1.4
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.7
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-blockhalf-rock",
+   "file": "models/nature/cliff-blockhalf-rock.glb",
+   "size": [
+    1.4,
+    0.7001,
+    1.4
+   ],
+   "min": [
+    -0.7,
+    -0.0001,
+    -0.7
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-blockslope-rock",
+   "file": "models/nature/cliff-blockslope-rock.glb",
+   "size": [
+    1.68,
+    1.4001,
+    1.4001
+   ],
+   "min": [
+    -0.84,
+    0,
+    -0.7
+   ],
+   "tris": 70,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-corner-rock",
+   "file": "models/nature/cliff-corner-rock.glb",
+   "size": [
+    0.2358,
+    1.4,
+    0.2358
+   ],
+   "min": [
+    -0.1179,
+    0,
+    -0.1179
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-cornerlarge-rock",
+   "file": "models/nature/cliff-cornerlarge-rock.glb",
+   "size": [
+    0.5859,
+    1.4,
+    0.5859
+   ],
+   "min": [
+    -0.293,
+    0,
+    -0.293
+   ],
+   "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-half-rock",
+   "file": "models/nature/cliff-half-rock.glb",
+   "size": [
+    1.4,
+    0.7001,
+    0.5859
+   ],
+   "min": [
+    -0.7,
+    -0.0001,
+    -0.293
+   ],
+   "tris": 53,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-large-rock",
+   "file": "models/nature/cliff-large-rock.glb",
+   "size": [
+    1.4,
+    1.4,
+    0.5859
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.293
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-large-stone",
+   "file": "models/nature/cliff-large-stone.glb",
+   "size": [
+    1.4,
+    1.4,
+    0.5859
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.293
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-rock",
+   "file": "models/nature/cliff-rock.glb",
+   "size": [
+    1.4,
+    1.4,
+    0.2358
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.1179
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-top-rock",
+   "file": "models/nature/cliff-top-rock.glb",
+   "size": [
+    1.4,
+    1.4,
+    0.3759
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.1879
+   ],
+   "tris": 53,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "cliff-waterfall-rock",
+   "file": "models/nature/cliff-waterfall-rock.glb",
+   "size": [
+    1.4,
+    1.4,
+    0.2358
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.1179
+   ],
+   "tris": 34,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "crop-carrot",
    "file": "models/nature/crop-carrot.glb",
    "size": [
@@ -3991,6 +4405,96 @@
     -0.3164
    ],
    "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "crops-cornstaged",
+   "file": "models/nature/crops-cornstaged.glb",
+   "size": [
+    0.5977,
+    3.5048,
+    0.8309
+   ],
+   "min": [
+    -0.2988,
+    0,
+    -0.4154
+   ],
+   "tris": 300,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "crops-dirtdoublerow",
+   "file": "models/nature/crops-dirtdoublerow.glb",
+   "size": [
+    1.4,
+    0.0701,
+    1.3132
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.6566
+   ],
+   "tris": 88,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "crops-leafsstageb",
+   "file": "models/nature/crops-leafsstageb.glb",
+   "size": [
+    0.5452,
+    0.9479,
+    0.5452
+   ],
+   "min": [
+    -0.2726,
+    0,
+    -0.2726
+   ],
+   "tris": 84,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "crops-wheatstageb",
+   "file": "models/nature/crops-wheatstageb.glb",
+   "size": [
+    0.7555,
+    0.7489,
+    0.6254
+   ],
+   "min": [
+    -0.3777,
+    0,
+    -0.3127
+   ],
+   "tris": 360,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "fence-corner",
+   "file": "models/nature/fence-corner.glb",
+   "size": [
+    1.4,
+    0.483,
+    1.4
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.7
+   ],
+   "tris": 116,
    "skinned": false,
    "clips": []
   },
@@ -4045,6 +4549,24 @@
     -0.049
    ],
    "tris": 64,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "fence-simplehigh",
+   "file": "models/nature/fence-simplehigh.glb",
+   "size": [
+    1.4577,
+    0.483,
+    0.1557
+   ],
+   "min": [
+    -0.7288,
+    0,
+    -0.0779
+   ],
+   "tris": 44,
    "skinned": false,
    "clips": []
   },
@@ -4194,6 +4716,78 @@
   },
   {
    "pack": "nature",
+   "name": "grass-leafslarge",
+   "file": "models/nature/grass-leafslarge.glb",
+   "size": [
+    0.6662,
+    0.1995,
+    0.6822
+   ],
+   "min": [
+    -0.3331,
+    0,
+    -0.3411
+   ],
+   "tris": 144,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "ground-riverstraight",
+   "file": "models/nature/ground-riverstraight.glb",
+   "size": [
+    1.4,
+    0.0701,
+    1.4
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.7
+   ],
+   "tris": 62,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "lily-large",
+   "file": "models/nature/lily-large.glb",
+   "size": [
+    0.3806,
+    0.1372,
+    0.4395
+   ],
+   "min": [
+    -0.1903,
+    0,
+    -0.2197
+   ],
+   "tris": 86,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "lily-small",
+   "file": "models/nature/lily-small.glb",
+   "size": [
+    0.2643,
+    0.056,
+    0.3052
+   ],
+   "min": [
+    -0.1322,
+    0,
+    -0.1526
+   ],
+   "tris": 52,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "log",
    "file": "models/nature/log.glb",
    "size": [
@@ -4207,6 +4801,78 @@
     -0.497
    ],
    "tris": 200,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "log-large",
+   "file": "models/nature/log-large.glb",
+   "size": [
+    1.4,
+    0.5833,
+    0.769
+   ],
+   "min": [
+    -0.7,
+    0,
+    -0.3845
+   ],
+   "tris": 96,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "log-stack",
+   "file": "models/nature/log-stack.glb",
+   "size": [
+    0.5946,
+    0.4849,
+    0.994
+   ],
+   "min": [
+    -0.2973,
+    0,
+    -0.497
+   ],
+   "tris": 184,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "mushroom-red",
+   "file": "models/nature/mushroom-red.glb",
+   "size": [
+    0.2435,
+    0.2839,
+    0.2812
+   ],
+   "min": [
+    -0.1218,
+    0,
+    -0.1406
+   ],
+   "tris": 48,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "mushroom-tangroup",
+   "file": "models/nature/mushroom-tangroup.glb",
+   "size": [
+    0.3775,
+    0.3507,
+    0.3559
+   ],
+   "min": [
+    -0.1887,
+    0,
+    -0.1779
+   ],
+   "tris": 144,
    "skinned": false,
    "clips": []
   },
@@ -4266,6 +4932,24 @@
   },
   {
    "pack": "nature",
+   "name": "plant-bushlargetriangle",
+   "file": "models/nature/plant-bushlargetriangle.glb",
+   "size": [
+    0.5708,
+    0.237,
+    0.6591
+   ],
+   "min": [
+    -0.2854,
+    0,
+    -0.3295
+   ],
+   "tris": 39,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "plant-bushsmall",
    "file": "models/nature/plant-bushsmall.glb",
    "size": [
@@ -4279,6 +4963,42 @@
     -0.2355
    ],
    "tris": 16,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "plant-flattall",
+   "file": "models/nature/plant-flattall.glb",
+   "size": [
+    0.3803,
+    0.398,
+    0.3803
+   ],
+   "min": [
+    -0.1901,
+    0,
+    -0.1901
+   ],
+   "tris": 32,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "platform-beach",
+   "file": "models/nature/platform-beach.glb",
+   "size": [
+    1.2505,
+    0.1156,
+    1.0136
+   ],
+   "min": [
+    -0.6252,
+    0,
+    -0.5068
+   ],
+   "tris": 192,
    "skinned": false,
    "clips": []
   },
@@ -4338,6 +5058,96 @@
   },
   {
    "pack": "nature",
+   "name": "rock-largeb",
+   "file": "models/nature/rock-largeb.glb",
+   "size": [
+    1.0735,
+    0.6024,
+    1.4216
+   ],
+   "min": [
+    -0.5368,
+    0,
+    -0.7108
+   ],
+   "tris": 85,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-largec",
+   "file": "models/nature/rock-largec.glb",
+   "size": [
+    1.4902,
+    0.4495,
+    1.422
+   ],
+   "min": [
+    -0.7451,
+    0,
+    -0.711
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-larged",
+   "file": "models/nature/rock-larged.glb",
+   "size": [
+    1.4963,
+    0.7956,
+    1.4424
+   ],
+   "min": [
+    -0.7481,
+    0,
+    -0.7212
+   ],
+   "tris": 80,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-largee",
+   "file": "models/nature/rock-largee.glb",
+   "size": [
+    1.5336,
+    0.4091,
+    1.2878
+   ],
+   "min": [
+    -0.7668,
+    0,
+    -0.6439
+   ],
+   "tris": 64,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-largef",
+   "file": "models/nature/rock-largef.glb",
+   "size": [
+    1.5336,
+    0.6705,
+    1.2586
+   ],
+   "min": [
+    -0.7668,
+    0,
+    -0.6293
+   ],
+   "tris": 73,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "rock-smalla",
    "file": "models/nature/rock-smalla.glb",
    "size": [
@@ -4369,6 +5179,114 @@
     -0.2526
    ],
    "tris": 24,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-smallc",
+   "file": "models/nature/rock-smallc.glb",
+   "size": [
+    0.5051,
+    0.1717,
+    0.5051
+   ],
+   "min": [
+    -0.2526,
+    0,
+    -0.2526
+   ],
+   "tris": 16,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-smallflata",
+   "file": "models/nature/rock-smallflata.glb",
+   "size": [
+    0.6941,
+    0.0909,
+    0.6014
+   ],
+   "min": [
+    -0.3471,
+    0,
+    -0.3007
+   ],
+   "tris": 20,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-talla",
+   "file": "models/nature/rock-talla.glb",
+   "size": [
+    1.3763,
+    1.3943,
+    0.9565
+   ],
+   "min": [
+    -0.6881,
+    0,
+    -0.4782
+   ],
+   "tris": 136,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-tallb",
+   "file": "models/nature/rock-tallb.glb",
+   "size": [
+    1.0707,
+    1.2373,
+    1.0781
+   ],
+   "min": [
+    -0.5353,
+    0,
+    -0.539
+   ],
+   "tris": 172,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-tallc",
+   "file": "models/nature/rock-tallc.glb",
+   "size": [
+    0.6387,
+    1.0961,
+    0.6112
+   ],
+   "min": [
+    -0.3194,
+    0,
+    -0.3056
+   ],
+   "tris": 37,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "rock-talld",
+   "file": "models/nature/rock-talld.glb",
+   "size": [
+    0.62,
+    1.081,
+    0.6461
+   ],
+   "min": [
+    -0.31,
+    0,
+    -0.3231
+   ],
+   "tris": 38,
    "skinned": false,
    "clips": []
   },
@@ -4410,6 +5328,24 @@
   },
   {
    "pack": "nature",
+   "name": "stump-old",
+   "file": "models/nature/stump-old.glb",
+   "size": [
+    0.4991,
+    0.3731,
+    0.5194
+   ],
+   "min": [
+    -0.2496,
+    0,
+    -0.2597
+   ],
+   "tris": 120,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "stump-round",
    "file": "models/nature/stump-round.glb",
    "size": [
@@ -4423,6 +5359,24 @@
     -0.2597
    ],
    "tris": 56,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tent-detailedopen",
+   "file": "models/nature/tent-detailedopen.glb",
+   "size": [
+    1.2249,
+    0.7855,
+    0.933
+   ],
+   "min": [
+    -0.6124,
+    0,
+    -0.4665
+   ],
+   "tris": 232,
    "skinned": false,
    "clips": []
   },
@@ -4464,8 +5418,44 @@
   },
   {
    "pack": "nature",
+   "name": "tree-cone-dark",
+   "file": "models/nature/tree-cone-dark.glb",
+   "size": [
+    0.7415,
+    2.0025,
+    0.7415
+   ],
+   "min": [
+    -0.3707,
+    0,
+    -0.3707
+   ],
+   "tris": 264,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "tree-default",
    "file": "models/nature/tree-default.glb",
+   "size": [
+    1.057,
+    2.391,
+    0.9154
+   ],
+   "min": [
+    -0.5285,
+    0,
+    -0.4577
+   ],
+   "tris": 114,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-default-dark",
+   "file": "models/nature/tree-default-dark.glb",
    "size": [
     1.057,
     2.391,
@@ -4518,6 +5508,24 @@
   },
   {
    "pack": "nature",
+   "name": "tree-detailed-dark",
+   "file": "models/nature/tree-detailed-dark.glb",
+   "size": [
+    1.1861,
+    1.8654,
+    1.0663
+   ],
+   "min": [
+    -0.593,
+    0,
+    -0.5331
+   ],
+   "tris": 402,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "tree-fat",
    "file": "models/nature/tree-fat.glb",
    "size": [
@@ -4554,6 +5562,24 @@
   },
   {
    "pack": "nature",
+   "name": "tree-oak-dark",
+   "file": "models/nature/tree-oak-dark.glb",
+   "size": [
+    0.8969,
+    1.7167,
+    1.0356
+   ],
+   "min": [
+    -0.4484,
+    0,
+    -0.5178
+   ],
+   "tris": 196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
    "name": "tree-oak-fall",
    "file": "models/nature/tree-oak-fall.glb",
    "size": [
@@ -4567,6 +5593,60 @@
     -0.5178
    ],
    "tris": 196,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinedefaulta",
+   "file": "models/nature/tree-pinedefaulta.glb",
+   "size": [
+    0.7448,
+    2.1642,
+    0.7448
+   ],
+   "min": [
+    -0.3724,
+    0,
+    -0.3724
+   ],
+   "tris": 230,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinedefaultb",
+   "file": "models/nature/tree-pinedefaultb.glb",
+   "size": [
+    0.7448,
+    2.164,
+    0.7448
+   ],
+   "min": [
+    -0.3724,
+    0,
+    -0.3724
+   ],
+   "tris": 246,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinegrounda",
+   "file": "models/nature/tree-pinegrounda.glb",
+   "size": [
+    0.6726,
+    1.2803,
+    0.7767
+   ],
+   "min": [
+    -0.3363,
+    0,
+    -0.3883
+   ],
+   "tris": 82,
    "skinned": false,
    "clips": []
   },
@@ -4603,6 +5683,204 @@
     -0.4293
    ],
    "tris": 262,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pineroundc",
+   "file": "models/nature/tree-pineroundc.glb",
+   "size": [
+    0.6726,
+    1.754,
+    0.7767
+   ],
+   "min": [
+    -0.3363,
+    0,
+    -0.3883
+   ],
+   "tris": 206,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pineroundd",
+   "file": "models/nature/tree-pineroundd.glb",
+   "size": [
+    0.6726,
+    1.5144,
+    0.7765
+   ],
+   "min": [
+    -0.3363,
+    0,
+    -0.3883
+   ],
+   "tris": 170,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinerounde",
+   "file": "models/nature/tree-pinerounde.glb",
+   "size": [
+    0.7447,
+    1.7565,
+    0.7447
+   ],
+   "min": [
+    -0.3724,
+    0,
+    -0.3724
+   ],
+   "tris": 198,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pineroundf",
+   "file": "models/nature/tree-pineroundf.glb",
+   "size": [
+    0.7447,
+    1.7564,
+    0.7447
+   ],
+   "min": [
+    -0.3723,
+    0,
+    -0.3723
+   ],
+   "tris": 214,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinesmalla",
+   "file": "models/nature/tree-pinesmalla.glb",
+   "size": [
+    0.7,
+    1.3541,
+    0.7
+   ],
+   "min": [
+    -0.35,
+    0,
+    -0.35
+   ],
+   "tris": 164,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinesmallb",
+   "file": "models/nature/tree-pinesmallb.glb",
+   "size": [
+    0.5408,
+    1.4121,
+    0.5487
+   ],
+   "min": [
+    -0.2704,
+    0,
+    -0.2744
+   ],
+   "tris": 86,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinesmallc",
+   "file": "models/nature/tree-pinesmallc.glb",
+   "size": [
+    0.5407,
+    1.5723,
+    0.5488
+   ],
+   "min": [
+    -0.2704,
+    0,
+    -0.2744
+   ],
+   "tris": 54,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinetalla",
+   "file": "models/nature/tree-pinetalla.glb",
+   "size": [
+    0.5407,
+    2.1414,
+    0.5488
+   ],
+   "min": [
+    -0.2703,
+    0,
+    -0.2744
+   ],
+   "tris": 78,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinetallb",
+   "file": "models/nature/tree-pinetallb.glb",
+   "size": [
+    0.5406,
+    2.7084,
+    0.5485
+   ],
+   "min": [
+    -0.2703,
+    0,
+    -0.2743
+   ],
+   "tris": 78,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinetallc",
+   "file": "models/nature/tree-pinetallc.glb",
+   "size": [
+    0.6724,
+    2.3387,
+    0.7766
+   ],
+   "min": [
+    -0.3362,
+    0,
+    -0.3883
+   ],
+   "tris": 98,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-pinetalld",
+   "file": "models/nature/tree-pinetalld.glb",
+   "size": [
+    0.6725,
+    2.9057,
+    0.7765
+   ],
+   "min": [
+    -0.3363,
+    0,
+    -0.3883
+   ],
+   "tris": 98,
    "skinned": false,
    "clips": []
   },
@@ -4682,6 +5960,24 @@
    "pack": "nature",
    "name": "tree-tall",
    "file": "models/nature/tree-tall.glb",
+   "size": [
+    0.5593,
+    2.3628,
+    0.6459
+   ],
+   "min": [
+    -0.2796,
+    0,
+    -0.3229
+   ],
+   "tris": 72,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "nature",
+   "name": "tree-tall-dark",
+   "file": "models/nature/tree-tall-dark.glb",
    "size": [
     0.5593,
     2.3628,
@@ -5130,6 +6426,42 @@
   },
   {
    "pack": "roads",
+   "name": "bridge-pillar",
+   "file": "models/roads/bridge-pillar.glb",
+   "size": [
+    0.2,
+    1,
+    0.2
+   ],
+   "min": [
+    -0.1,
+    0,
+    -0.1
+   ],
+   "tris": 38,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "bridge-pillar-wide",
+   "file": "models/roads/bridge-pillar-wide.glb",
+   "size": [
+    0.2799,
+    1,
+    0.2799
+   ],
+   "min": [
+    -0.14,
+    0,
+    -0.14
+   ],
+   "tris": 38,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
    "name": "cone",
    "file": "models/roads/cone.glb",
    "size": [
@@ -5256,6 +6588,42 @@
   },
   {
    "pack": "roads",
+   "name": "road-bend-sidewalk",
+   "file": "models/roads/road-bend-sidewalk.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 220,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-bridge",
+   "file": "models/roads/road-bridge.glb",
+   "size": [
+    2,
+    1.0399,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 240,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
    "name": "road-crossing",
    "file": "models/roads/road-crossing.glb",
    "size": [
@@ -5287,6 +6655,24 @@
     -1
    ],
    "tris": 116,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-crossroad-path",
+   "file": "models/roads/road-crossroad-path.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 276,
    "skinned": false,
    "clips": []
   },
@@ -5400,6 +6786,24 @@
   },
   {
    "pack": "roads",
+   "name": "road-intersection-path",
+   "file": "models/roads/road-intersection-path.glb",
+   "size": [
+    2,
+    0.04,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 204,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
    "name": "road-side",
    "file": "models/roads/road-side.glb",
    "size": [
@@ -5413,6 +6817,24 @@
     -1.62
    ],
    "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-side-entry",
+   "file": "models/roads/road-side-entry.glb",
+   "size": [
+    2.0002,
+    0.04,
+    2.62
+   ],
+   "min": [
+    -1.0001,
+    0,
+    -1.62
+   ],
+   "tris": 306,
    "skinned": false,
    "clips": []
   },
@@ -5449,6 +6871,24 @@
     -1
    ],
    "tris": 44,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "road-straight-barrier",
+   "file": "models/roads/road-straight-barrier.glb",
+   "size": [
+    2,
+    0.1599,
+    2
+   ],
+   "min": [
+    -1,
+    0,
+    -1
+   ],
+   "tris": 24,
    "skinned": false,
    "clips": []
   },
@@ -5539,6 +6979,24 @@
     -0.05
    ],
    "tris": 154,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "roads",
+   "name": "sign-warning",
+   "file": "models/roads/sign-warning.glb",
+   "size": [
+    0.1547,
+    0.9971,
+    0.2944
+   ],
+   "min": [
+    -0.1025,
+    0,
+    -0.1472
+   ],
+   "tris": 104,
    "skinned": false,
    "clips": []
   },
@@ -5683,6 +7141,78 @@
     -0.5999
    ],
    "tris": 252,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-2x2",
+   "file": "models/suburban/fence-2x2.glb",
+   "size": [
+    2.625,
+    0.8102,
+    2.5125
+   ],
+   "min": [
+    -1.3125,
+    -0.0001,
+    -1.2
+   ],
+   "tris": 236,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-2x3",
+   "file": "models/suburban/fence-2x3.glb",
+   "size": [
+    3.825,
+    0.8101,
+    2.5123
+   ],
+   "min": [
+    -1.9125,
+    -0.0001,
+    -1.1999
+   ],
+   "tris": 284,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-3x2",
+   "file": "models/suburban/fence-3x2.glb",
+   "size": [
+    2.6252,
+    0.8099,
+    3.7125
+   ],
+   "min": [
+    -1.3126,
+    0.0001,
+    -1.8
+   ],
+   "tris": 316,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "fence-3x3",
+   "file": "models/suburban/fence-3x3.glb",
+   "size": [
+    3.825,
+    0.8101,
+    3.7125
+   ],
+   "min": [
+    -1.9125,
+    -0.0001,
+    -1.8
+   ],
+   "tris": 364,
    "skinned": false,
    "clips": []
   },
@@ -6115,6 +7645,42 @@
     -0.3
    ],
    "tris": 12,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "path-stones-long",
+   "file": "models/suburban/path-stones-long.glb",
+   "size": [
+    0.42,
+    0.03,
+    1.2
+   ],
+   "min": [
+    -0.21,
+    0,
+    -0.6
+   ],
+   "tris": 48,
+   "skinned": false,
+   "clips": []
+  },
+  {
+   "pack": "suburban",
+   "name": "path-stones-short",
+   "file": "models/suburban/path-stones-short.glb",
+   "size": [
+    0.42,
+    0.03,
+    0.6
+   ],
+   "min": [
+    -0.21,
+    0,
+    -0.3
+   ],
+   "tris": 24,
    "skinned": false,
    "clips": []
   },

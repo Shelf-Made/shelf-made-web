@@ -1,9 +1,9 @@
 import type { GameState, Person, Fixture, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, MAP_X, SIDEWALK_N_Z, lotLayout } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacing, fixtureCentre, cellOf, isBlocked, nearestWalkable, cellIndex } from './grid';
+import { fixtureFrontWorld, fixtureBackWorld, fixtureFacing, fixtureCentre, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
 import { findPath } from './pathfinding';
-import { followPath } from './movement';
+import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, dist } from './state';
 import { spawnCustomerCar, leaveLot } from './cars';
 import { listWeight, budgetFor } from './customers';
@@ -17,9 +17,11 @@ const CUSTOMER_MODELS = 12;
 export function plotOf(state: GameState) { return PLOTS.find((p) => p.id === state.shop.plotId) ?? PLOTS[0]!; }
 
 /** World-space points just outside and just inside the front door. */
-export function doorOutside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.22, z: s.originZ + s.door.z + 0.7 + (id % 2) * 0.3 }; }
-export function doorInside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.2, z: s.originZ + s.door.z - 0.8 - (id % 2) * 0.3 }; }
-export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; return { x: s.originX + (s.storeroom.x0 + s.storeroom.x1) / 2 - 1, z: s.originZ + (s.storeroom.z0 + s.storeroom.z1) / 2 }; }
+// Walls are WALL_T thick outside the floor edge, so the threshold runs from z = 0 to z = 0.5.
+export function doorOutside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.22, z: s.originZ + s.door.z + 0.95 + (id % 2) * 0.3 }; }
+export function doorInside(state: GameState, id = 0): Vec2 { const s = state.shop; return { x: s.originX + s.door.x + ((id % 3) - 1) * 0.2, z: s.originZ + s.door.z - 0.7 - (id % 2) * 0.3 }; }
+/** Where workers pick up boxes: just in front of the delivery zone. */
+export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; const d = s.delivery; return { x: s.originX + (d.x0 + d.x1) / 2, z: s.originZ + d.z1 + 0.35 }; }
 
 /** Cells occupied by parked cars, so people walk around them. */
 export function dynamicBlockers(state: GameState): Set<number> {
@@ -125,7 +127,8 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
     }
     p.carId = car.id; p.state = 'driving'; p.anim = 'sit'; p.x = car.x; p.z = car.z;
   } else {
-    const sx = state.shop.originX + (fromWest ? -14 : 14);
+    // Far enough along the sidewalk that nobody pops into view near the shop.
+    const sx = state.shop.originX + (fromWest ? -26 : 26);
     p.x = sx; p.z = SIDEWALK_N_Z + withRng(state, 'customers', (r) => r.range(-0.12, 0.12));
     p.path = [{ x: state.shop.originX + (fromWest ? -7.2 : 7.2), z: p.z }]; p.pathIdx = 0;
     p.yaw = fromWest ? Math.PI / 2 : -Math.PI / 2;
@@ -135,6 +138,9 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
   return p;
 }
 
+/** Walkers stroll the whole of Main Street, from fog to fog. */
+const WALKER_FAR = MAP_X + 26;
+
 export function spawnWalker(state: GameState): void {
   withRng(state, 'walkers', (r) => {
     const fromWest = r.chance(0.5);
@@ -142,8 +148,8 @@ export function spawnWalker(state: GameState): void {
     const z = (south ? 3.75 : SIDEWALK_N_Z) + r.range(-0.1, 0.1);
     const p: Person = {
       id: nextId(state), kind: 'walker', look: { model: r.int(0, CUSTOMER_MODELS - 1), variant: r.int(0, 3), height: r.range(0.9, 1.1), dog: r.chance(0.3) },
-      x: fromWest ? -MAP_X - 2 : MAP_X + 2, z, yaw: fromWest ? Math.PI / 2 : -Math.PI / 2, px: 0, pz: 0, state: 'walking', anim: 'walk',
-      path: [{ x: fromWest ? MAP_X + 2 : -MAP_X - 2, z }], pathIdx: 0, speed: WALK_SPEED * r.range(0.7, 0.95), timer: 0,
+      x: fromWest ? -WALKER_FAR : WALKER_FAR, z, yaw: fromWest ? Math.PI / 2 : -Math.PI / 2, px: 0, pz: 0, state: 'walking', anim: 'walk',
+      path: [{ x: fromWest ? WALKER_FAR : -WALKER_FAR, z }], pathIdx: 0, speed: WALK_SPEED * r.range(0.7, 0.95), timer: 0,
     };
     p.px = p.x; p.pz = p.z;
     state.people.push(p);
@@ -198,8 +204,11 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
   if (reg && reg.serving === p.id) { reg.serving = null; reg.scanned = 0; }
   p.registerId = null;
   if (!happy && (p.basket?.length ?? 0) > 0) {
-    // The basket is dumped where they stood: visible mess until someone picks it up.
-    state.shop.litter.push({ id: nextId(state), x: p.x, z: p.z });
+    // An angry walkout knocks something over: a small spill on the floor until someone mops it.
+    // Spills only ever land on open floor inside the shop (never under a fixture or outside).
+    const g = gridFor(state);
+    const [cx, cz] = cellOf(g, { x: p.x, z: p.z });
+    if (g.inside[cellIndex(g, cx, cz)] && !isBlocked(g, cx, cz) && state.shop.litter.length < 6) state.shop.litter.push({ id: nextId(state), x: p.x, z: p.z });
     state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.06);
   }
   if (!happy) {
@@ -244,18 +253,21 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   startLeaving(state, p, true);
 }
 
+/** The guided first day, in order. Each step pays a small reward the first time. */
+export const TUTORIAL_STEPS = ['counter', 'shelf', 'order', 'stock', 'open', 'ringUp', 'price', 'openTomorrow'] as const;
+
 export function completeTutorial(state: GameState, step: string): void {
   const t = state.tutorial;
   if (t.completed.includes(step)) return;
   t.completed.push(step);
   if (t.enabled && !t.done) {
-    const reward = 25;
+    const reward = 20;
     state.cash += reward; t.rewardsPaid += reward;
     const d = doorOutside(state);
     popup(state, { x: d.x, z: d.z - 1 }, `+$${reward} tip bonus`, 'money', 1.6);
     cue(state, 'reward');
-    t.step = Math.min(t.step + 1, 5);
-    if (t.completed.length >= 5) t.done = true;
+    t.step = Math.min(t.step + 1, TUTORIAL_STEPS.length);
+    if (TUTORIAL_STEPS.every((id) => t.completed.includes(id))) t.done = true;
   }
 }
 
@@ -460,14 +472,130 @@ function tickWalker(state: GameState, p: Person): void {
   if (followPath(p, p.speed, TICK)) p.state = 'gone';
 }
 
+/** Direct steering (WASD): slide along walls and fixtures instead of stopping dead. */
+function steer(state: GameState, p: Person, dyn: Set<number>): void {
+  const g = gridFor(state);
+  const d = p.moveDir!;
+  const len = Math.hypot(d.x, d.z) || 1;
+  const step = (p.speed * TICK) / Math.max(1, state.timeScale || 1);
+  const dx = (d.x / len) * step, dz = (d.z / len) * step;
+  const others = state.people.filter((o) => o !== p && o.kind !== 'walker' && o.state !== 'driving' && o.state !== 'gone' && Math.abs(o.x - p.x) < 1 && Math.abs(o.z - p.z) < 1);
+  const free = (x: number, z: number) => {
+    // People are solid: you can step away from someone you touch, never into them.
+    for (const o of others) { const dn = Math.hypot(o.x - x, o.z - z); if (dn < 0.38 && dn < Math.hypot(o.x - p.x, o.z - p.z)) return false; }
+    const r = 0.18; // body radius: keep the whole body out of walls and fixtures
+    const [cx0, cz0] = cellOf(g, { x: p.x, z: p.z });
+    for (const [ox, oz] of [[r, 0], [-r, 0], [0, r], [0, -r], [0, 0]] as const) {
+      const [cx, cz] = cellOf(g, { x: x + ox, z: z + oz });
+      if (isBlocked(g, cx, cz, dyn)) return false;
+      if ((cx !== cx0 || cz !== cz0) && !canStep(g, cx0, cz0, cx, cz, dyn) && Math.abs(cx - cx0) + Math.abs(cz - cz0) === 1) return false;
+    }
+    return true;
+  };
+  if (free(p.x + dx, p.z + dz)) { p.x += dx; p.z += dz; }
+  else if (free(p.x + dx, p.z)) p.x += dx;
+  else if (free(p.x, p.z + dz)) p.z += dz;
+  p.yaw = turnToward(p.yaw, Math.atan2(d.x, d.z), 14 * TICK);
+  p.path = []; p.pathIdx = 0;
+  if (p.state !== 'carrying') p.state = 'idle';
+  p.anim = p.carrying ? 'carry' : 'walk';
+  // A pending carry trip is cancelled by taking the controls; what you hold stays in your hands.
+  if (p.task && !p.carrying) p.task = null;
+}
+
+/** How far the owner is from a world point. */
+export function ownerDist(state: GameState, to: Vec2): number {
+  const o = state.people.find((x) => x.kind === 'owner');
+  return o ? Math.hypot(o.x - to.x, o.z - to.z) : Infinity;
+}
+
+/** The product the shelves most need, of those waiting in the delivery zone. */
+export function neediestInStorage(state: GameState): string | null {
+  const have = new Map<string, number>();
+  for (const e of state.shop.storage) if (e.qty > 0) have.set(e.productId, (have.get(e.productId) ?? 0) + e.qty);
+  if (!have.size) return null;
+  let best: string | null = null, bestGap = -1;
+  for (const f of state.shop.fixtures) for (const sl of f.slots) {
+    if (!sl.productId || !have.has(sl.productId)) continue;
+    const gap = FIXTURES[f.type].capacity - sl.qty;
+    if (gap > bestGap) { bestGap = gap; best = sl.productId; }
+  }
+  return best ?? [...have.keys()][0]!;
+}
+
+/** Pick up a box from the delivery zone (in person: you must be standing next to it). */
+export function ownerPickUp(state: GameState, productId?: string): string | null {
+  const o = state.people.find((x) => x.kind === 'owner');
+  if (!o) return 'Nobody to carry.';
+  const d = state.shop.delivery;
+  const zone = { x: state.shop.originX + Math.max(d.x0, Math.min(d.x1, o.x - state.shop.originX)), z: state.shop.originZ + Math.max(d.z0, Math.min(d.z1, o.z - state.shop.originZ)) };
+  if (Math.hypot(o.x - zone.x, o.z - zone.z) > 1.4) return 'Walk over to the boxes first.';
+  if (o.carrying) {
+    // Put back what you hold first, then take the new box.
+    state.shop.storage.push({ productId: o.carrying.productId, qty: o.carrying.qty, day: state.day });
+    o.carrying = null;
+  }
+  const pid = productId ?? neediestInStorage(state);
+  if (!pid) return 'No boxes waiting. Order stock first.';
+  const entry = state.shop.storage.find((e) => e.productId === pid && e.qty > 0);
+  if (!entry) return 'None of that left.';
+  const qty = Math.min(8, entry.qty);
+  entry.qty -= qty;
+  state.shop.storage = state.shop.storage.filter((e) => e.qty > 0);
+  o.carrying = { productId: pid, qty };
+  o.anim = 'carry';
+  cue(state, 'pick');
+  return null;
+}
+
+/** Put what you carry onto the fixture you are standing at. */
+export function ownerStock(state: GameState, fixtureId: number): string | null {
+  const o = state.people.find((x) => x.kind === 'owner');
+  const f = state.shop.fixtures.find((x) => x.id === fixtureId);
+  if (!o || !f) return 'Nothing there.';
+  if (!o.carrying) return 'Pick up a box from the delivery area first.';
+  const c = fixtureCentre(state.shop, f);
+  if (Math.hypot(o.x - c.x, o.z - c.z) > 1.5) return 'Step closer to the shelf.';
+  const def = productDef(o.carrying.productId);
+  const fdef = FIXTURES[f.type];
+  if (!fdef.slots) return 'That does not hold stock.';
+  if (def.chilled && !fdef.chilled) return `${def.name} needs a chiller.`;
+  if (!def.chilled && fdef.chilled) return `${def.name} does not go in the chiller.`;
+  if (fdef.accepts && !fdef.accepts.includes(def.category)) return `${def.name} does not fit there.`;
+  const left = placeOnFixture(state, f, o.carrying.productId, o.carrying.qty);
+  if (left === o.carrying.qty) return 'That one is full.';
+  o.carrying = left > 0 ? { productId: o.carrying.productId, qty: left } : null;
+  o.anim = o.carrying ? 'carry' : 'idle';
+  cue(state, 'stock');
+  completeTutorial(state, 'stock');
+  return null;
+}
+
+/** Owner standing at a till? */
+export function ownerAt(state: GameState, reg: Fixture): boolean {
+  const o = state.people.find((x) => x.kind === 'owner');
+  if (!o) return false;
+  const back = fixtureBackWorld(state.shop, reg);
+  return Math.hypot(o.x - back.x, o.z - back.z) < 0.75;
+}
+
+/** Walk the owner to a point (click-to-move or "go to the till"). */
+export function ownerWalkTo(state: GameState, to: Vec2): boolean {
+  const o = state.people.find((x) => x.kind === 'owner');
+  if (!o) return false;
+  if (o.state === 'pickBox' || o.state === 'stocking') return false;
+  const ok = setPath(state, o, to, dynamicBlockers(state));
+  if (!ok) return false;
+  o.moveDir = null;
+  if (!o.carrying) o.task = null;
+  o.state = o.carrying && o.task ? 'carrying' : 'walking';
+  return true;
+}
+
 /** Where a worker stands when idle. */
 function homeOf(state: GameState, p: Person): Vec2 {
   const reg = state.shop.fixtures.find((f) => f.type === 'register');
-  if (p.kind === 'owner') {
-    const cashier = reg && reg.staffId !== null && reg.staffId !== undefined && state.people.some((x) => x.id === reg.staffId && x.kind === 'staff' && onShift(x, state.time));
-    if (reg && !cashier) return fixtureBackWorld(state.shop, reg);
-    const sp = storeroomPoint(state); return { x: sp.x + 1.5, z: sp.z };
-  }
+  if (p.kind === 'owner') return { x: p.x, z: p.z }; // the manager stays where the player leaves them
   switch (p.role) {
     case 'cashier': { const mine = state.shop.fixtures.find((f) => f.staffId === p.id); return mine ? fixtureBackWorld(state.shop, mine) : (reg ? fixtureBackWorld(state.shop, reg) : storeroomPoint(state)); }
     case 'stocker': { const sp = storeroomPoint(state); return { x: sp.x + 0.8, z: sp.z + 0.4 }; }
@@ -479,6 +607,13 @@ function homeOf(state: GameState, p: Person): Vec2 {
 /** Workers (the owner and staff): stand at their post, carry stock, clean up. */
 function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   const dt = TICK;
+  if (p.kind === 'owner' && p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0)) { steer(state, p, dyn); return; }
+  if (p.kind === 'owner' && p.state === 'walking') {
+    // Click-to-move.
+    if (followPath(p, p.speed / Math.max(1, state.timeScale || 1), dt, 12, 0.15)) { p.state = 'idle'; p.anim = p.carrying ? 'carry' : 'idle'; }
+    else p.anim = p.carrying ? 'carry' : 'walk';
+    return;
+  }
   // Off shift: stand out by the back door (or walk there), do nothing else.
   if (p.kind === 'staff' && !onShift(p, state.time)) {
     const s = state.shop; const off = { x: s.originX + s.backDoor.x + 1.6, z: s.originZ + s.backDoor.z - 1.0 };
@@ -511,12 +646,17 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   }
   switch (p.state) {
     case 'idle': {
-      if (p.task) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
+      if (p.task && p.carrying) {
+        // Already holding stock: take it straight to the shelf.
+        const f = state.shop.fixtures.find((x) => x.id === p.task!.fixtureId);
+        if (f) { p.state = 'carrying'; p.anim = 'carry'; setPath(state, p, fixtureFrontWorld(state.shop, f), dyn); }
+        else p.task = null;
+      } else if (p.task) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
       else if (dist(p, home) > 0.35) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }
       else {
-        p.anim = 'idle';
-        const reg = state.shop.fixtures.find((f) => f.staffId === p.id) ?? (p.kind === 'owner' ? state.shop.fixtures.find((f) => f.type === 'register') : undefined);
-        if (reg) { const fc = fixtureCentre(state.shop, reg); p.yaw = Math.atan2(fc.x - p.x, fc.z - p.z); }
+        p.anim = p.carrying ? 'carry' : 'idle';
+        const reg = state.shop.fixtures.find((f) => f.staffId === p.id) ?? (p.kind === 'owner' ? state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && ownerAt(state, f)) : undefined);
+        if (reg && p.state === 'idle' && (p.kind !== 'owner' || !p.moveDir)) { const fc = fixtureCentre(state.shop, reg); p.yaw = turnToward(p.yaw, Math.atan2(fc.x - p.x, fc.z - p.z), 8 * dt); }
       }
       break;
     }
@@ -633,13 +773,16 @@ function separate(state: GameState, dyn: Set<number>): void {
   const movers = state.people.filter((p) => p.kind !== 'walker' && p.state !== 'driving' && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'gone');
   for (let i = 0; i < movers.length; i++) {
     const a = movers[i]!;
+    // The player is never shoved; everyone else steps round them.
+    if (a.kind === 'owner') continue;
     let fx = 0, fz = 0;
     for (let j = 0; j < movers.length; j++) {
       if (i === j) continue;
       const b = movers[j]!;
       const dx = a.x - b.x, dz = a.z - b.z;
       const d = Math.hypot(dx, dz);
-      if (d < 0.42 && d > 1e-4) { const push = (0.42 - d) * 0.5; fx += (dx / d) * push; fz += (dz / d) * push; }
+      const reach = b.kind === 'owner' ? 0.48 : 0.42;
+      if (d < reach && d > 1e-4) { const push = (reach - d) * (b.kind === 'owner' ? 1 : 0.5); fx += (dx / d) * push; fz += (dz / d) * push; }
       else if (d <= 1e-4) { fx += (i < j ? 0.02 : -0.02); }
     }
     if (fx === 0 && fz === 0) continue;

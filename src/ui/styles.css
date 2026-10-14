@@ -78,21 +78,29 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 .key { font-weight: 700; background: #eef1f4; padding: 2px 10px; border-radius: 7px; min-width: 44px; text-align: center; }
 
 /* Tips, popups, toast */
-.tip { position: absolute; transform: translate(-50%, -100%); max-width: 300px; background: var(--white); color: var(--slate); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); font-weight: 500; line-height: 1.35; z-index: 3; animation: pop 0.25s ease; }
-.tip::after { content: ''; position: absolute; left: 50%; bottom: -10px; margin-left: -10px; border: 10px solid transparent; border-top-color: var(--white); border-bottom: 0; }
-.tip .arrow { position: absolute; left: 50%; bottom: -44px; margin-left: -12px; width: 24px; height: 24px; animation: bounce 0.7s ease-in-out infinite; }
-.tip .arrow svg { width: 24px; height: 24px; fill: var(--yellow); stroke: var(--slate); stroke-width: 1.5; }
+.tip { position: absolute; max-width: 320px; background: var(--white); color: var(--slate); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); font-weight: 500; line-height: 1.35; z-index: 3; animation: pop 0.25s ease; }
 .tip .skip { margin-top: 6px; display: flex; justify-content: flex-end; }
 .tip .skip button { background: none; color: var(--green-dark); font-weight: 700; padding: 2px 4px; }
-.tip.docked { transform: none; }
-.tip.side-right, .tip.side-left { transform: none; }
-.tip.side-right::after, .tip.side-left::after { display: none; }
-.tip .arrow.side { bottom: auto; top: 50%; margin-top: -12px; animation: nudge 0.7s ease-in-out infinite; }
-.tip.side-right .arrow.side { left: -34px; margin-left: 0; transform: rotate(90deg); }
-.tip.side-left .arrow.side { left: auto; right: -34px; margin-left: 0; transform: rotate(-90deg); }
-@keyframes nudge { 0%, 100% { margin-top: -12px; } 50% { margin-top: -12px; transform: translateX(-6px) rotate(90deg); } }
-.tip.side-left .arrow.side { animation: nudgeL 0.7s ease-in-out infinite; }
-@keyframes nudgeL { 0%, 100% { transform: rotate(-90deg); } 50% { transform: translateX(6px) rotate(-90deg); } }
+.tip.objective { left: 16px; top: calc(56px * var(--ui) + 22px); border-left: 6px solid var(--yellow); }
+.tip.objective .label { font-size: 0.72em; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--green-dark); margin-bottom: 2px; }
+
+/* First person: crosshair, what E does, tip marker */
+.crosshair-wrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 2; display: flex; flex-direction: column; align-items: center; }
+.crosshair { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.9); box-shadow: 0 0 0 2px rgba(56,56,61,0.55); transition: transform 0.1s, background 0.1s; }
+.crosshair.active { transform: scale(1.5); background: var(--yellow); }
+.aim-prompt { position: absolute; top: 22px; white-space: nowrap; background: rgba(56,56,61,0.82); color: var(--white); padding: 5px 11px; border-radius: 10px; font-weight: 600; font-size: 0.9em; opacity: 0; transition: opacity 0.12s; display: flex; align-items: center; gap: 7px; }
+.aim-prompt.show { opacity: 1; }
+.aim-prompt.ok { background: rgba(46,133,96,0.92); }
+.aim-prompt kbd { font-family: inherit; background: var(--yellow); color: var(--slate); border-radius: 6px; padding: 1px 7px; font-weight: 700; box-shadow: 0 2px 0 #d9a033; }
+.marker { position: absolute; transform: translate(-50%, -100%); pointer-events: none; z-index: 2; }
+.marker span { display: block; width: 22px; height: 22px; background: var(--yellow); border: 3px solid var(--slate); border-radius: 4px 50% 50% 50%; transform: rotate(45deg); animation: bob 0.9s ease-in-out infinite; }
+.marker.edge span { border-radius: 50%; }
+.marker.left span { border-radius: 50% 50% 50% 4px; }
+.marker.right span { border-radius: 50% 4px 50% 50%; }
+@keyframes bob { 0%, 100% { margin-top: 0; } 50% { margin-top: -8px; } }
+.look-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); background: rgba(56,56,61,0.78); color: var(--white); padding: 7px 14px; border-radius: 10px; font-size: 0.88em; pointer-events: none; white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+.btn.open-shop { background: var(--yellow); color: var(--slate); box-shadow: 0 3px 0 #d9a033; padding: 8px 14px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 .popup { position: absolute; transform: translate(-50%, -100%); font-weight: 700; font-size: 1.1em; color: var(--yellow); text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 0 6px rgba(0,0,0,0.25); white-space: nowrap; pointer-events: none; animation: rise 2.2s ease-out forwards; }
 .popup.info { color: var(--white); font-size: 1em; }
 .popup.bad { color: #FF8C6B; }

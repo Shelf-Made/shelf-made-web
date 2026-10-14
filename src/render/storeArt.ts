@@ -1,0 +1,82 @@
+/**
+ * What every fixture and product looks like: which Kenney model, where its stock sits (measured
+ * from Kenney's own shelves, see docs/STYLE_GUIDE.md), and the product meshes.
+ */
+import type { BufferGeometry } from 'three';
+import type { FixtureType } from '@/sim/types';
+import { productDef } from '@/sim/products';
+import type { AssetLibrary } from './assets';
+import { recolor, nearestStrip, stripCounts } from './recolor';
+
+export const FIXTURE_MODEL: Record<FixtureType, string> = {
+  register: 'market/cash-register', shelf: 'market/shelf-boxes', fridge: 'market/freezer', freezer: 'market/freezers-standing', produce: 'market/display-bread',
+  endcap: 'market/shelf-end', kiosk: 'market/bottle-return', rack: 'market/shelf-bags', sign: 'market/column', plant: 'furniture/potted-plant', bench: 'furniture/bench', basketStack: 'market/shopping-basket',
+};
+
+/** Local z offset so models whose pivot sits on their front or back face are centred in the tile. */
+export const MODEL_OFFSET: Partial<Record<FixtureType, number>> = { freezer: 0.25, endcap: 0.2 };
+
+/** A box on a fixture, in fixture-local space (fixture faces +z), where one slot's stock stands. */
+export interface SlotBox { x0: number; x1: number; z0: number; z1: number; y: number; h: number; /** stock faces −z (back of a double-sided shelf) */ back?: boolean }
+
+const half = (y: number, h: number, back = false): SlotBox[] => [{ x0: -0.29, x1: 0.29, z0: back ? -0.31 : 0.04, z1: back ? -0.04 : 0.31, y, h, back }];
+
+/** Measured from shelf-boxes: tiers at y 0.175 and 0.55, double-sided at z ±0.15. */
+export const SLOT_BOXES: Partial<Record<FixtureType, SlotBox[]>> = {
+  shelf: [...half(0.18, 0.33), ...half(0.555, 0.3), ...half(0.18, 0.33, true), ...half(0.555, 0.3, true)],
+  rack: [...half(0.3, 0.3), ...half(0.675, 0.25)],
+  endcap: [{ x0: -0.29, x1: 0.29, z0: -0.09, z1: 0.1, y: 0.18, h: 0.32 }, { x0: -0.29, x1: 0.29, z0: -0.09, z1: 0.1, y: 0.555, h: 0.28 }],
+  produce: [{ x0: -0.3, x1: -0.02, z0: -0.2, z1: 0.22, y: 0.235, h: 0.24 }, { x0: 0.02, x1: 0.3, z0: -0.2, z1: 0.22, y: 0.235, h: 0.24 }],
+  // The chiller is Kenney's chest freezer with its painted lid removed; stock stands in the lit well.
+  fridge: [
+    { x0: -0.29, x1: -0.01, z0: 0.0, z1: 0.19, y: 0.13, h: 0.17 }, { x0: 0.01, x1: 0.29, z0: 0.0, z1: 0.19, y: 0.13, h: 0.17 },
+    { x0: -0.29, x1: -0.01, z0: -0.19, z1: 0.0, y: 0.13, h: 0.17 }, { x0: 0.01, x1: 0.29, z0: -0.19, z1: 0.0, y: 0.13, h: 0.17 },
+  ],
+};
+
+/** Food Kit models for products that have a natural match; everything else is a recoloured Mini Market product. */
+const FOOD: Record<string, string> = {
+  apples: 'apple', bananas: 'banana', oranges: 'orange', tomatoes: 'tomato', lettuce: 'cabbage', carrots: 'carrot', strawberries: 'strawberry',
+  milk: 'carton', cheese: 'cheese-cut', eggs: 'egg', icecream: 'ice-cream-cup', chicken: 'turkey', beef: 'meat-ribs', sausages: 'sausage', bacon: 'bacon', fish: 'fish',
+  bread: 'loaf', beans: 'can', soup: 'can-small', chocolate: 'chocolate', cookies: 'cookie', jam: 'honey', ketchup: 'bottle-ketchup', oil: 'bottle-oil',
+  water: 'soda-bottle', cola: 'soda-can', juice: 'carton-small', wine: 'wine-red', rice: 'bag', flour: 'bag-flat', lemonade: 'soda', coffee: 'cup-coffee',
+};
+const MM_SHAPE: Record<string, string> = { box: 'product-box', carton: 'product-carton', bag: 'product-bag', bottle: 'product-bottle', bread: 'product-bread', can: 'product-carton', jar: 'product-bottle', jug: 'product-carton', tray: 'product-box', fruit: 'product-bag' };
+
+export function productModelIds(): string[] {
+  return [...new Set([...Object.values(FOOD).map((n) => `food/${n}`), ...Object.values(MM_SHAPE).map((n) => `market/${n}`)])];
+}
+
+/** Product geometry, recoloured to the product's colours when it is a generic Mini Market shape. */
+export function productGeometry(assets: AssetLibrary, productId: string): BufferGeometry {
+  const def = productDef(productId);
+  const food = FOOD[productId];
+  if (food && assets.has(`food/${food}`)) return assets.geometry(`food/${food}`);
+  const base = assets.geometry(`market/${MM_SHAPE[def.shape] ?? 'product-box'}`);
+  // The two most-used colour strips become the product's body and accent colours.
+  const counts = [...stripCounts(base).entries()].filter(([k]) => !k.startsWith('3:4')).sort((a, b) => b[1] - a[1]);
+  const main = counts[0]?.[0], second = counts[1]?.[0];
+  const body = nearestStrip(def.color), accent = nearestStrip(def.accent);
+  return recolor(base, (from) => {
+    const k = `${from.row}:${from.strip}`;
+    if (k === main) return body;
+    if (k === second) return accent;
+    return null;
+  });
+}
+
+/** Wall recolour: Kenney's slate walls become white with the brand-green stripe, charcoal trim kept. */
+export const WALL_COLOURS = (from: { row: number; strip: number }) => {
+  if (from.row !== 3) return null;
+  if (from.strip === 1 || from.strip === 3) return { row: 3, strip: 4 };
+  if (from.strip === 2) return { row: 3, strip: 3 };
+  return null;
+};
+
+/** Concrete: Kenney's white/lavender floor tile in two cool greys. */
+export const CONCRETE = (from: { row: number; strip: number }) => {
+  if (from.row !== 3) return null;
+  if (from.strip === 4) return { row: 3, strip: 3 };
+  if (from.strip === 3) return { row: 3, strip: 1 };
+  return null;
+};

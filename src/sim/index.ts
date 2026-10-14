@@ -21,3 +21,5 @@ export { canPlace } from './build';
 export { lotLayout, SHOP_SIZES, LOT_EXPANSION_COST } from './layout';
 export { FLYER_AREAS, BILLBOARD_SITES, AD_COST, adHeadline, effectivePrice } from './marketing';
 export { FRANCHISE_COST, managerCandidates } from './franchise';
+export { quickSetup } from './setup';
+export { TUTORIAL_STEPS } from './people';

@@ -37,9 +37,10 @@ export function dayCurve(time: number): number {
 /** Advance the simulation by one fixed step. */
 export function tick(state: GameState): void {
   state.tick++;
-  if (state.phase === 'picking' || state.phase === 'night') {
-    // The world keeps breathing: traffic and walkers only.
+  if (state.phase === 'picking' || state.phase === 'night' || state.phase === 'setup') {
+    // The world keeps breathing: traffic and walkers; during setup deliveries still arrive and you can work.
     ambient(state, state.phase === 'night' ? 0.4 : 1);
+    if (state.phase === 'setup') tickOrders(state, TICK);
     tickCars(state);
     tickPeople(state);
     trimPopups(state);
@@ -76,7 +77,7 @@ function ambient(state: GameState, scale: number): void {
   const plot = plotOf(state);
   state.spawn.traffic += TICK * 0.09 * plot.traffic * scale;
   if (state.spawn.traffic >= 1) { state.spawn.traffic -= 1; spawnTraffic(state); }
-  state.spawn.walker += TICK * 0.05 * scale;
+  state.spawn.walker += TICK * 0.07 * scale;
   if (state.spawn.walker >= 1) { state.spawn.walker -= 1; spawnWalker(state); }
 }
 

@@ -1,5 +1,5 @@
 import type { GameRuntime } from './GameRuntime';
-import { tick, TICK, applyCommand, FIXTURES } from '@/sim/index';
+import { tick, TICK, applyCommand, FIXTURES, quickSetup } from '@/sim/index';
 import { PeopleView } from '@/render/People';
 import { spawnCustomer } from '@/sim/people';
 
@@ -20,7 +20,25 @@ export function installTestHooks(rt: GameRuntime): void {
     dispatch: (cmd: Parameters<GameRuntime['dispatch']>[0]) => rt.dispatch(cmd),
     setSpeed: (s: 0 | 1 | 2 | 4) => rt.setSpeed(s),
     openCard: (c: Parameters<GameRuntime['openCard']>[0]) => rt.openCard(c),
-    camera: (x: number, z: number, dist: number, yaw = 0, pitch = 0.95) => { rt.renderer?.camera.focus(x, z, dist, yaw, pitch); rt.renderer?.camera.snap(); },
+    camera: (x: number, z: number, dist: number, yaw = 0, pitch = 0.95) => { rt.cinematic = true; rt.renderer?.camera.focus(x, z, dist, yaw, pitch); rt.renderer?.camera.snap(); },
+    /** Back to the manager's eyes, optionally standing at (x, z) shop-relative and looking along yaw/pitch. */
+    fp: (x?: number, z?: number, yaw?: number, pitch?: number) => {
+      rt.cinematic = false;
+      const s = rt.state; const r = rt.renderer; if (!s || !r) return;
+      const o = s.people.find((p) => p.kind === 'owner');
+      if (o && x !== undefined && z !== undefined) { o.x = o.px = s.shop.originX + x; o.z = o.pz = s.shop.originZ + z; o.path = []; o.state = 'idle'; o.moveDir = null; }
+      if (yaw !== undefined) r.fp.yaw = yaw;
+      if (pitch !== undefined) r.fp.pitch = pitch;
+      rt.bump();
+    },
+    /** Furnish, stock and (optionally) open the shop the quick way, through commands. */
+    quickSetup: (open = true) => { const s = rt.state; if (!s) return; quickSetup(s, open); rt.renderer?.setShop(s); rt.bump(); },
+    aim: () => rt.aimInfo(),
+    /** Model bounding boxes as the renderer sees them (art measurements). */
+    bounds: async (ids: string[]) => { await rt.renderer?.assets.loadModels(ids.filter((id) => rt.renderer!.assets.has(id)), () => {}); return Object.fromEntries(ids.map((id) => { const r = rt.renderer; if (!r || !r.assets.has(id)) return [id, null]; const g = r.assets.geometry(id); g.computeBoundingBox(); const b = g.boundingBox!; return [id, [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map((v) => Math.round(v * 100) / 100)]; })); },
+    interact: () => rt.interact(),
+    look: (dx: number, dy: number) => rt.look(dx, dy),
+    move: (x: number, z: number) => rt.move(x, z),
     focusStore: () => rt.focusStore(true),
     stats: () => rt.renderer?.stats(),
     state: () => rt.state,

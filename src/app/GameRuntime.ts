@@ -1,10 +1,14 @@
-import { type GameState, type Command, type CommandResult, type Fixture, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS } from '@/sim/index';
+import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS } from '@/sim/index';
 import type { Difficulty, FixtureType, Rot } from '@/sim/types';
 import { canPlace } from '@/sim/build';
-import { PLOTS } from '@/sim/layout';
+import { PLOTS, FIXTURES } from '@/sim/layout';
 import { fixtureCentre } from '@/sim/grid';
 import { hint } from '@/sim/progression';
+import { productDef } from '@/sim/products';
+import { ownerAt, neediestInStorage } from '@/sim/people';
 import { WorldRenderer } from '@/render/WorldRenderer';
+import type { StoreHit } from '@/render/StoreView';
+import { keyLabel } from '@/save/settings';
 import { AudioEngine, type Cue } from '@/audio/AudioEngine';
 import { defaultBackend, type StorageBackend } from '@/save/storage';
 import { saveGame, loadGame, type Slot } from '@/save/saves';
@@ -14,7 +18,13 @@ import { analytics } from './analytics';
 export type Speed = 0 | 1 | 2 | 4;
 export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | null;
 
-export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'button:prices' | 'button:stock' | 'night' | 'door'; fixtureId?: number }
+export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'delivery' | 'button:prices' | 'button:stock' | 'button:build' | 'button:open' | 'night'; fixtureId?: number }
+
+/** What the crosshair would do: the key to press and a short label. */
+export interface AimInfo { key: string | null; text: string; ok: boolean }
+
+/** How far the manager can reach from their eyes. */
+const REACH = 2.4;
 
 /** What React sees. Replaced only when something changed. */
 export interface Snapshot {
@@ -33,15 +43,22 @@ export interface Snapshot {
   saving: boolean;
   gameOver: boolean;
   build: BuildUI;
+  /** First person has the mouse (pointer lock). */
+  locked: boolean;
+  firstPerson: boolean;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
 
+/** One tip per tutorial step, in order (the sim's TUTORIAL_STEPS). {B} style tokens become key labels. */
 const TIPS: TipInfo[] = [
-  { id: 'ringUp', text: 'Your first customer is here! Click the register (or press Space) to scan each item.', anchor: 'register' },
-  { id: 'stock', text: 'Shelves sell out. Click the shelf to carry stock from the storeroom.', anchor: 'shelf' },
-  { id: 'price', text: 'Set a price. A little above the town average still sells; too high and bargain hunters walk.', anchor: 'button:prices' },
-  { id: 'order', text: 'Order stock. A truck brings it to the back door in about an hour.', anchor: 'button:stock' },
+  { id: 'counter', text: 'Your shop is an empty shell. Press B for Build and place a checkout counter: shoppers pay there.', anchor: 'button:build' },
+  { id: 'shelf', text: 'Now a shelf. Look at a floor tile, R turns it, click to place. Chillers hold the cold things.', anchor: 'button:build' },
+  { id: 'order', text: 'Order stock on the Stock card (Tab). A truck leaves the boxes on the pallet by the back door.', anchor: 'button:stock' },
+  { id: 'stock', text: 'Walk to the pallet and press {interact} to pick up a box. Look at a shelf and press {interact} to stock it.', anchor: 'delivery' },
+  { id: 'open', text: 'Ready? Press Open shop to let the town in.', anchor: 'button:open' },
+  { id: 'ringUp', text: 'A customer is waiting! Stand behind the counter and press {scan} to scan each item.', anchor: 'register' },
+  { id: 'price', text: 'Set your prices. A little above the town average still sells; too high and bargain hunters walk.', anchor: 'button:prices' },
   { id: 'openTomorrow', text: 'That is a day! Rent comes out tonight. Open tomorrow to keep going.', anchor: 'night' },
 ];
 
@@ -77,6 +94,10 @@ export class GameRuntime {
   private raf = 0;
   private lastTime = 0;
   private visibleCanvas: HTMLCanvasElement | null = null;
+  private locked = false;
+  /** Screenshots and the debug views can borrow the orbit camera mid-game. */
+  cinematic = false;
+  private aimCache: { info: AimInfo | null; run: (() => void) | null } = { info: null, run: null };
   readonly version = __APP_VERSION__;
 
   constructor() { this.snap = this.buildSnapshot(); analytics.enabled = this.settings.analyticsOptIn; }
@@ -103,6 +124,8 @@ export class GameRuntime {
       saving: this.saving,
       gameOver: s ? s.gameOver : false,
       build: { active: this.card === 'build', placing: this.build.placing, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay },
+      locked: this.locked,
+      firstPerson: this.inFirstPerson,
     };
   }
 
@@ -111,22 +134,32 @@ export class GameRuntime {
     if (!t.enabled || t.done || s.phase === 'picking') return null;
     const next = TIPS.find((tip) => !t.completed.includes(tip.id));
     if (!next) return null;
+    const keys = this.settings.keys;
+    const tip = { ...next, text: next.text.replace('{interact}', keyLabel(keys.interact)).replace('{scan}', keyLabel(keys.scan)) };
     // Preconditions: each tip waits until it can be acted on.
-    if (next.id === 'ringUp') {
-      const reg = s.shop.fixtures.find((f) => f.type === 'register');
-      const waiting = reg && (reg.serving || (reg.queue?.length ?? 0) > 0);
-      if (!waiting) return null;
-      return { ...next, fixtureId: reg!.id };
-    }
-    if (next.id === 'stock') {
-      const shelf = s.shop.fixtures.find((f) => f.type === 'shelf');
-      if (!shelf || s.shop.storage.length === 0) return null;
-      return { ...next, fixtureId: shelf.id };
-    }
-    if (next.id === 'openTomorrow') return s.phase === 'night' ? next : null;
+    if (tip.id === 'openTomorrow') return s.phase === 'night' ? tip : null;
     if (s.phase === 'night') return null;
-    return next;
+    if (tip.id === 'stock') {
+      const owner = s.people.find((p) => p.kind === 'owner');
+      if (owner?.carrying) {
+        const def = productDef(owner.carrying.productId);
+        const shelf = s.shop.fixtures.find((f) => FIXTURES[f.type].slots > 0 && FIXTURES[f.type].chilled === def.chilled && (!FIXTURES[f.type].accepts || FIXTURES[f.type].accepts!.includes(def.category)));
+        return { ...tip, text: `You are carrying ${def.name}. Look at a ${def.chilled ? 'chiller' : 'shelf'} and press ${keyLabel(keys.interact)} to stock it.${shelf ? '' : ' Build one first!'}`, anchor: 'shelf', fixtureId: shelf?.id };
+      }
+      if (s.shop.storage.length === 0) return { ...tip, text: 'The truck is on its way with your boxes. Arrange the floor while you wait.' };
+      return tip;
+    }
+    if (tip.id === 'open') return s.phase === 'setup' ? tip : null;
+    if (tip.id === 'ringUp') {
+      const reg = s.shop.fixtures.find((f) => f.type === 'register' && (f.serving || (f.queue?.length ?? 0) > 0));
+      return reg ? { ...tip, fixtureId: reg.id } : null;
+    }
+    if (tip.id === 'price') return s.phase === 'open' ? tip : null;
+    return tip;
   }
+
+  /** The game proper is played through the manager's eyes; only the lobby and plot picker use the orbit camera. */
+  get inFirstPerson(): boolean { return this.screen === 'game' && !!this.state && this.state.phase !== 'picking'; }
 
   // ---- Lifecycle
   async attach(canvas: HTMLCanvasElement): Promise<void> {
@@ -166,13 +199,13 @@ export class GameRuntime {
     this.speed = 1; this.card = null;
     this.renderer?.setTown(s.seed, s.shop.plotId);
     this.renderer?.setShop(s);
-    this.focusStore(true);
+    this.faceShop();
     if (s.phase === 'picking') this.previewPlot(PLOTS[0]!.id, true);
     this.stateVersion++;
     this.emit();
   }
 
-  toLobby(): void { this.screen = 'lobby'; this.state = null; this.card = null; this.emit(); }
+  toLobby(): void { this.releaseLock(); this.screen = 'lobby'; this.state = null; this.card = null; this.emit(); }
 
   async save(slot: Slot = 'auto'): Promise<void> {
     if (!this.state) return;
@@ -200,7 +233,7 @@ export class GameRuntime {
       this.alpha = Math.min(1, this.acc / TICK);
       this.drainSounds(s);
       if (s.phase !== this.lastPhase) {
-        if (s.phase === 'night') { void this.save('auto'); this.speed = 1; analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
+        if (s.phase === 'night') { void this.save('auto'); this.speed = 1; this.releaseLock(); analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
         this.lastPhase = s.phase;
         this.updateSideOffset();
       }
@@ -210,7 +243,13 @@ export class GameRuntime {
         if (latest && s.notices.length > this.noticesSeen) this.showToast(latest.text, 5200);
         this.noticesSeen = s.notices.length;
       }
+      r.mode = this.inFirstPerson && !this.cinematic ? 'fp' : 'cinematic';
       r.render(s, this.alpha, dt);
+      if (r.mode === 'fp') {
+        // The build ghost sits on the tile under the crosshair.
+        if (this.build.placing || this.build.selectedId !== null) { const a = r.aim(s); if (a.floor) this.hoverWorld(a.floor.x, a.floor.z); }
+        this.aimCache = this.resolveAim();
+      } else this.aimCache = { info: null, run: null };
     }
     this.snapTimer += dt;
     if (this.snapTimer >= 0.1) { this.snapTimer = 0; this.maybeEmit(); }
@@ -220,7 +259,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${this.locked}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -235,7 +274,8 @@ export class GameRuntime {
     const res = applyCommand(this.state, cmd);
     if (!res.ok && res.message) this.showToast(res.message);
     if (cmd.type === 'placeFixture' || cmd.type === 'removeFixture' || cmd.type === 'choosePlot') { this.stateVersion++; }
-    if (cmd.type === 'choosePlot' && res.ok) { this.renderer?.setTown(this.state.seed, this.state.shop.plotId); this.renderer?.setShop(this.state); this.focusStore(true); }
+    if (cmd.type === 'choosePlot' && res.ok) { this.renderer?.setTown(this.state.seed, this.state.shop.plotId); this.renderer?.setShop(this.state); this.faceShop(); applyCommand(this.state, { type: 'setTimeScale', scale: this.speed || 1 }); }
+    if ((cmd.type === 'expandShop' || cmd.type === 'expandLot') && res.ok) this.renderer?.setShop(this.state);
     this.stateVersion++;
     this.maybeEmit();
     return res;
@@ -245,10 +285,16 @@ export class GameRuntime {
 
   showToast(text: string, ms = 2600): void { this.toast = { id: ++this.toastId, text }; this.toastUntil = performance.now() + ms; this.emit(); }
 
-  setSpeed(speed: Speed): void { this.speed = speed; this.emit(); }
+  setSpeed(speed: Speed): void {
+    this.speed = speed;
+    // The manager walks in real time whatever the clock speed.
+    if (this.state && speed > 0) applyCommand(this.state, { type: 'setTimeScale', scale: speed });
+    this.emit();
+  }
   togglePause(): void { if (this.speed === 0) this.setSpeed(this.prevSpeed || 1); else { this.prevSpeed = this.speed; this.setSpeed(0); } }
   openCard(card: CardId): void {
     this.card = this.card === card ? null : card;
+    if (this.card) { this.releaseLock(); this.move(0, 0); }
     if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); }
     if (card && this.state?.unlocks.newBadges.includes(card)) this.dispatch({ type: 'ackBadge', card });
     this.audio.play('click');
@@ -269,7 +315,7 @@ export class GameRuntime {
   setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
   startPlacing(type: FixtureType): void { this.build.placing = type; this.build.selectedId = null; this.build.reason = ''; this.emit(); }
   stopPlacing(): void { this.build.placing = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); }
-  rotateGhost(): void { this.build.rot = ((this.build.rot + 1) % 4) as Rot; this.refreshGhost(); this.emit(); }
+  rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.emit(); }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {
@@ -290,7 +336,7 @@ export class GameRuntime {
     this.maybeEmit();
   }
   /** Click in build mode: place, move, or pick a fixture. */
-  clickBuild(hit: { kind: 'fixture'; id: number } | { kind: 'floor'; x: number; z: number } | null): void {
+  clickBuild(hit: StoreHit | null): void {
     const s = this.state; if (!s || !this.build.hover) return;
     const { x, z } = this.build.hover;
     if (this.build.placing) {
@@ -333,15 +379,128 @@ export class GameRuntime {
     this.emit();
   }
 
-  /** Click on a world object. */
-  clickFixture(f: Fixture): void {
-    this.audio.start();
-    if (f.type === 'register' || f.type === 'kiosk') { this.dispatch({ type: 'scan', registerId: f.id }); return; }
-    if (['shelf', 'fridge', 'freezer', 'produce', 'endcap', 'rack'].includes(f.type)) { this.dispatch({ type: 'carry', fixtureId: f.id }); return; }
+  // ---- First person
+  /** Mouse or touch look. */
+  look(dx: number, dy: number): void {
+    const r = this.renderer; if (!r || !this.inFirstPerson) return;
+    r.fp.look(dx, this.settings.invertY ? -dy : dy, this.settings.lookSpeed);
   }
 
-  scan(): void { this.dispatch({ type: 'scan' }); }
+  /** Walk direction on the ground (unit vector, or zero to stop). Sent straight to the sim. */
+  move(x: number, z: number): void {
+    const s = this.state; if (!s || !this.inFirstPerson) return;
+    applyCommand(s, { type: 'moveDir', x, z });
+  }
 
+  setLocked(b: boolean): void { if (this.locked === b) return; this.locked = b; this.emit(); }
+
+  /** Take the mouse for looking. Must run inside a click. Returns false when the browser has no pointer lock. */
+  requestLock(): boolean {
+    const c = this.visibleCanvas;
+    if (!c || typeof c.requestPointerLock !== 'function') return false;
+    // A plain card (not Build) gets out of the way when you go back to the world.
+    if (this.card && this.card !== 'build') { this.card = null; this.emit(); }
+    try { const p = c.requestPointerLock() as unknown as Promise<void> | undefined; p?.catch?.(() => { /* refused: drag to look still works */ }); } catch { return false; }
+    return true;
+  }
+
+  releaseLock(): void { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock(); }
+
+  /** What the crosshair points at and what pressing E (or clicking) would do. Refreshed every frame. */
+  aimInfo(): AimInfo | null { return this.aimCache.info; }
+
+  /** Use whatever the crosshair points at. */
+  interact(): void {
+    this.audio.start();
+    if (!this.inFirstPerson) return;
+    const a = this.resolveAim();
+    if (a.run) a.run();
+    else if (a.info && !a.info.ok && a.info.text) this.showToast(a.info.text, 1800);
+  }
+
+  /** Right click: cancel placing or moving. */
+  secondary(): void { if (this.build.placing || this.build.selectedId !== null) { this.stopPlacing(); this.emit(); } }
+
+  /** Space: scan the next item if you stand behind a till. */
+  scanHere(repeat = false): void {
+    const s = this.state; if (!s) return;
+    this.audio.start();
+    const reg = s.shop.fixtures.find((f) => f.type === 'register' && ownerAt(s, f));
+    if (!reg) { if (!repeat) this.showToast('Stand behind a checkout counter to scan.', 1800); return; }
+    const res = applyCommand(s, { type: 'scanHere', registerId: reg.id });
+    if (!res.ok && !repeat && res.message) this.showToast(res.message, 1400);
+    this.maybeEmit();
+  }
+
+  private resolveAim(): { info: AimInfo | null; run: (() => void) | null } {
+    const s = this.state; const r = this.renderer;
+    const none = { info: null, run: null };
+    if (!s || !r || !this.inFirstPerson || s.phase === 'night') return none;
+    const keys = this.settings.keys;
+    const E = keyLabel(keys.interact);
+    const { hit } = r.aim(s);
+    if (this.build.placing || this.build.selectedId !== null) {
+      const type = this.build.placing ?? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type;
+      const name = type ? FIXTURES[type].name : '';
+      if (!this.build.hover) return { info: { key: null, text: 'Look at the floor', ok: false }, run: null };
+      return {
+        info: { key: 'Click', text: this.build.valid ? `${this.build.placing ? 'Place' : 'Move'} ${name}${this.build.price ? ` · $${this.build.price}` : ''}` : this.build.reason, ok: this.build.valid },
+        run: this.build.valid ? () => this.clickBuild(hit) : null,
+      };
+    }
+    if (!hit) return none;
+    const owner = s.people.find((p) => p.kind === 'owner');
+    if (!owner) return none;
+    const far = hit.dist > REACH;
+    if (hit.kind === 'fixture') {
+      const f = s.shop.fixtures.find((x) => x.id === hit.id); if (!f) return none;
+      const def = FIXTURES[f.type];
+      if (this.card === 'build') return { info: { key: E, text: `Move ${def.name}`, ok: true }, run: () => this.clickBuild(hit) };
+      if (far) return { info: { key: null, text: def.name, ok: false }, run: null };
+      if (f.type === 'register') {
+        if (!ownerAt(s, f)) return { info: { key: null, text: 'Walk round behind the counter to scan', ok: false }, run: null };
+        const waiting = !!f.serving;
+        return { info: { key: keyLabel(keys.scan), text: waiting ? 'Scan item' : 'Nobody waiting yet', ok: waiting }, run: waiting ? () => this.scanHere() : null };
+      }
+      if (def.slots > 0) {
+        const stocked = f.slots.filter((sl) => sl.productId && sl.qty > 0);
+        const summary = stocked.length ? stocked.map((sl) => `${productDef(sl.productId!).name} ${sl.qty}`).join(' · ') : 'empty';
+        if (owner.carrying) {
+          const name = productDef(owner.carrying.productId).name;
+          return { info: { key: E, text: `Stock ${name} ×${owner.carrying.qty}`, ok: true }, run: () => { this.dispatch({ type: 'stockFixture', fixtureId: f.id }); } };
+        }
+        return { info: { key: null, text: `${def.name}: ${summary}`, ok: false }, run: null };
+      }
+      return { info: { key: null, text: def.name, ok: false }, run: null };
+    }
+    if (hit.kind === 'delivery') {
+      if (far) return { info: { key: null, text: 'Delivery pallet', ok: false }, run: null };
+      const pid = neediestInStorage(s);
+      if (!pid) return { info: { key: null, text: 'No boxes yet', ok: false }, run: null };
+      const qty = Math.min(8, s.shop.storage.filter((e) => e.productId === pid).reduce((a, e) => a + e.qty, 0));
+      const verb = owner.carrying ? 'Swap for' : 'Pick up';
+      return { info: { key: E, text: `${verb} ${productDef(pid).name} ×${qty}`, ok: true }, run: () => { this.dispatch({ type: 'pickUp', productId: pid }); } };
+    }
+    // Floor: mop a spill, or put a box back on the pallet.
+    if (far) return none;
+    const spill = s.shop.litter.find((l) => Math.hypot(l.x - hit.x, l.z - hit.z) < 0.4);
+    if (spill) return { info: { key: E, text: 'Mop up the spill', ok: true }, run: () => { this.dispatch({ type: 'clean', litterId: spill.id }); } };
+    const d = s.shop.delivery, lx = hit.x - s.shop.originX, lz = hit.z - s.shop.originZ;
+    if (owner.carrying && lx >= d.x0 && lx <= d.x1 && lz >= d.z0 && lz <= d.z1) {
+      return { info: { key: E, text: 'Put the box back', ok: true }, run: () => { this.dispatch({ type: 'pickUp', productId: undefined }); } };
+    }
+    return none;
+  }
+
+  /** Point the manager into the shop (new game, load, after picking a plot). */
+  faceShop(): void {
+    const s = this.state; const r = this.renderer; if (!s || !r) return;
+    const o = s.people.find((p) => p.kind === 'owner');
+    if (o) r.fp.faceTowards(o.x, o.z, s.shop.originX, s.shop.originZ - 3);
+    r.fp.pitch = -0.12;
+  }
+
+  /** Cinematic framing of the shop (screenshots and the picker). */
   focusStore(snap = false): void {
     const s = this.state; const r = this.renderer;
     if (!s || !r) return;

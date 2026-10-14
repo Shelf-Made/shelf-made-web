@@ -31,6 +31,8 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => ({ marketing: makeMarketing(), ...raw, version: 6 }),
   // v6 → v7: franchises.
   (raw) => ({ franchises: [], ...raw, version: 7 }),
+  // v7 → v8: one-room shops with a delivery zone; old shops keep their storeroom strip.
+  (raw) => { const shop = raw.shop as { floor: { x0: number; z0: number }; storeroom: { z0: number }; delivery?: unknown }; shop.delivery ??= { x0: shop.floor.x0, z0: shop.storeroom.z0, x1: shop.floor.x0 + 2, z1: shop.storeroom.z0 + 1 }; return { timeScale: 1, ...raw, version: 8 }; },
 ];
 
 export function migrate(file: SaveFile): SaveFile {

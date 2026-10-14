@@ -4,7 +4,8 @@
  */
 import type { GameState, Rot, FixtureType } from './types';
 import { placeOrder, openTomorrow } from './economy';
-import { scanItem, pickCarryTask, completeTutorial } from './people';
+import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerStock } from './people';
+import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
 import { PLOTS, FIXTURES } from './layout';
 import { productDef } from './products';
@@ -20,6 +21,14 @@ import type { Promotion, AdTemplate } from './types';
 export type Command =
   | { type: 'choosePlot'; plotId: string; name: string }
   | { type: 'scan'; registerId?: number }
+  | { type: 'moveDir'; x: number; z: number }
+  | { type: 'walkTo'; x: number; z: number }
+  | { type: 'openShop' }
+  | { type: 'pickUp'; productId?: string }
+  | { type: 'stockFixture'; fixtureId: number }
+  | { type: 'setTimeScale'; scale: number }
+  /** In person: scan only if you are already at the till (no walking for you). */
+  | { type: 'scanHere'; registerId: number }
   | { type: 'carry'; fixtureId: number }
   | { type: 'setPrice'; productId: string; price: number }
   | { type: 'placeOrder'; supplierId: string; lines: { productId: string; qty: number }[] }
@@ -61,29 +70,70 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
       state.shop = makeShop(plot.id, name);
       state.people = state.people.filter((p) => p.kind !== 'owner');
       state.people.push(withRng(state, 'looks', (r) => makeOwner(state.nextId++, state.shop, r)));
+      state.phase = 'setup';
+      state.time = 0;
+      return { ok: true };
+    }
+    case 'openShop': {
+      if (state.phase !== 'setup') return { ok: false, message: 'Already open.' };
+      if (!state.shop.fixtures.some((f) => f.type === 'register' || f.type === 'kiosk')) return { ok: false, message: 'Place a checkout counter first: shoppers need somewhere to pay.' };
+      if (!state.shop.fixtures.some((f) => f.slots.some((sl) => sl.productId && sl.qty > 0))) return { ok: false, message: 'Stock a shelf first: there is nothing to buy yet.' };
       state.phase = 'open';
       state.time = 0;
       cue(state, 'open');
+      completeTutorial(state, 'open');
       return { ok: true };
     }
+    case 'pickUp': { const err = ownerPickUp(state, cmd.productId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'stockFixture': { const err = ownerStock(state, cmd.fixtureId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'setTimeScale': { state.timeScale = [1, 2, 4].includes(cmd.scale) ? cmd.scale : 1; return { ok: true }; }
+    case 'scanHere': {
+      const reg = state.shop.fixtures.find((f) => f.id === cmd.registerId && f.type === 'register');
+      if (!reg) return { ok: false };
+      if (!ownerAt(state, reg)) return { ok: false, message: 'Step behind the counter to scan.' };
+      return scanItem(state, reg) ? { ok: true } : { ok: false, message: 'Nobody waiting to pay.' };
+    }
+    case 'moveDir': {
+      const o = state.people.find((p) => p.kind === 'owner');
+      if (!o) return { ok: false };
+      const l = Math.hypot(cmd.x, cmd.z);
+      o.moveDir = l > 0.01 ? { x: cmd.x / l, z: cmd.z / l } : null;
+      if (!o.moveDir && o.state !== 'carrying' && o.state !== 'pickBox' && o.state !== 'stocking' && o.state !== 'toStock') { o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle'; }
+      return { ok: true };
+    }
+    case 'walkTo': {
+      return ownerWalkTo(state, { x: cmd.x, z: cmd.z }) ? { ok: true } : { ok: false, message: "You can't get there." };
+    }
     case 'scan': {
-      const reg = cmd.registerId !== undefined ? state.shop.fixtures.find((f) => f.id === cmd.registerId) : state.shop.fixtures.find((f) => f.type === 'register' && f.serving);
-      if (!reg) return { ok: false, message: 'Nobody at the register.' };
-      return scanItem(state, reg) ? { ok: true } : { ok: false, message: 'Nobody at the register.' };
+      const tills = state.shop.fixtures.filter((f) => f.type === 'register');
+      const reg = cmd.registerId !== undefined ? tills.find((f) => f.id === cmd.registerId) : (tills.find((f) => f.serving && ownerAt(state, f)) ?? tills.find((f) => f.serving) ?? tills[0]);
+      if (!reg) return { ok: false, message: 'Build a checkout counter first.' };
+      // You scan in person: walk round behind the counter first.
+      if (!ownerAt(state, reg)) {
+        ownerWalkTo(state, fixtureBackWorld(state.shop, reg));
+        return { ok: false, message: 'Walking to the counter.' };
+      }
+      return scanItem(state, reg) ? { ok: true } : { ok: false, message: 'Nobody waiting to pay.' };
     }
     case 'carry': {
       const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId);
       if (!f) return { ok: false, message: 'No such fixture.' };
       const owner = state.people.find((p) => p.kind === 'owner');
       if (!owner) return { ok: false, message: 'Nobody to carry.' };
-      if (owner.task) return { ok: false, message: 'Already carrying something.' };
+      if (owner.task && owner.state !== 'idle' && owner.state !== 'walking') return { ok: false, message: 'Already carrying something.' };
+      if (owner.carrying) {
+        owner.task = { type: 'carry', fixtureId: f.id, productId: owner.carrying.productId, qty: owner.carrying.qty };
+        owner.moveDir = null; owner.state = 'idle';
+        return { ok: true };
+      }
       const task = pickCarryTask(state, f);
       if (!task) {
         const full = f.slots.every((s) => s.productId && s.qty >= FIXTURES[f.type].capacity);
         return { ok: false, message: full ? 'That one is full.' : 'Nothing in the storeroom for it. Order stock first.' };
       }
       owner.task = { type: 'carry', fixtureId: f.id, productId: task.productId, qty: task.qty };
-      if (owner.state === 'idle' || owner.state === 'toRegister') owner.state = 'idle';
+      owner.moveDir = null;
+      if (owner.state === 'idle' || owner.state === 'toRegister' || owner.state === 'walking') owner.state = 'idle';
       cue(state, 'click');
       return { ok: true };
     }
@@ -121,6 +171,8 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
       state.shop.layoutVersion++;
       popup(state, fixtureCentre(state.shop, fx), `-$${def.price}`, 'bad', 1.2);
       cue(state, 'build');
+      if (fx.type === 'register' || fx.type === 'kiosk') completeTutorial(state, 'counter');
+      if (FIXTURES[fx.type].slots > 0) completeTutorial(state, 'shelf');
       return { ok: true };
     }
     case 'removeFixture': {

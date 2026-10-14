@@ -1,5 +1,7 @@
+import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
-import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, type GameState } from './index';
+import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
+import { cellOf, isBlocked } from './grid';
 
 function runDay(state: GameState, autoScan = true): void {
   const ticks = Math.ceil((DAY_SECONDS + 130) / TICK);
@@ -12,8 +14,8 @@ function runDay(state: GameState, autoScan = true): void {
 
 describe('simulation', () => {
   it('is deterministic for the same seed and commands', () => {
-    const a = newGame({ seed: 7, plotId: 'main', name: 'A' });
-    const b = newGame({ seed: 7, plotId: 'main', name: 'A' });
+    const a = openGame({ seed: 7, plotId: 'main', name: 'A' });
+    const b = openGame({ seed: 7, plotId: 'main', name: 'A' });
     resetGridCache();
     for (let i = 0; i < 4000; i++) { tick(a); if (i % 6 === 0) applyCommand(a, { type: 'scan' }); }
     resetGridCache();
@@ -22,7 +24,7 @@ describe('simulation', () => {
   });
 
   it('runs a full day with customers served and nobody stuck', () => {
-    const s = newGame({ seed: 3, plotId: 'main', name: 'Test' });
+    const s = openGame({ seed: 3, plotId: 'main', name: 'Test' });
     resetGridCache();
     runDay(s);
     expect(s.phase).toBe('night');
@@ -34,7 +36,7 @@ describe('simulation', () => {
   });
 
   it('serves nobody and loses customers when nobody scans', () => {
-    const s = newGame({ seed: 3, plotId: 'main', name: 'Test' });
+    const s = openGame({ seed: 3, plotId: 'main', name: 'Test' });
     resetGridCache();
     runDay(s, false);
     expect(s.today.served).toBe(0);
@@ -42,7 +44,7 @@ describe('simulation', () => {
   });
 
   it('delivers an order to the storeroom', () => {
-    const s = newGame({ seed: 11, plotId: 'hill', name: 'Test' });
+    const s = openGame({ seed: 11, plotId: 'hill', name: 'Test' });
     resetGridCache();
     const before = s.shop.storage.reduce((a, e) => a + e.qty, 0);
     const res = applyCommand(s, { type: 'placeOrder', supplierId: 'express', lines: [{ productId: 'milk', qty: 10 }, { productId: 'rice', qty: 5 }] });
@@ -54,7 +56,7 @@ describe('simulation', () => {
   });
 
   it('finds paths around fixtures and through the door', () => {
-    const s = newGame({ seed: 1, plotId: 'main', name: 'T' });
+    const s = openGame({ seed: 1, plotId: 'main', name: 'T' });
     const g = buildGrid(s.shop, 1);
     const o = { x: s.shop.originX, z: s.shop.originZ };
     const outside = { x: o.x, z: o.z + 1 };
@@ -77,11 +79,64 @@ describe('simulation', () => {
     }
   });
 
+  it('starts as a bare shell and only opens once there is a counter and stock', () => {
+    const s = newGame({ seed: 8, plotId: 'main', name: 'Bare' });
+    expect(s.shop.fixtures.length).toBe(0);
+    expect(s.phase).toBe('setup');
+    expect(applyCommand(s, { type: 'openShop' }).ok).toBe(false);
+    for (let i = 0; i < 2000; i++) tick(s);
+    expect(s.people.filter((p) => p.kind === 'customer').length).toBe(0);
+    expect(s.time).toBe(0);
+    s.cash = 2000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'register', x: 1.5, z: -3, rot: 2 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: 0.3, z: -3, rot: 0 }).ok).toBe(false); // off the tile grid
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: -6, rot: 0 }).ok).toBe(false); // delivery zone
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: -3, rot: 1 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'placeOrder', supplierId: 'local', lines: [{ productId: 'bread', qty: 10 }] }).ok).toBe(true);
+    for (let i = 0; i < 70 / TICK; i++) tick(s);
+    expect(s.shop.storage.reduce((a, e) => a + e.qty, 0)).toBe(10);
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    expect(applyCommand(s, { type: 'carry', fixtureId: shelf.id }).ok).toBe(true);
+    for (let i = 0; i < 40 / TICK; i++) tick(s);
+    expect(shelf.slots.some((sl) => sl.productId === 'bread' && sl.qty > 0)).toBe(true);
+    expect(applyCommand(s, { type: 'openShop' }).ok).toBe(true);
+    expect(s.phase).toBe('open');
+  });
+
+  it('you scan in person: far from the till, Space walks you there first', () => {
+    const s = openGame({ seed: 12, plotId: 'main', name: 'T' });
+    const owner = s.people.find((p) => p.kind === 'owner')!;
+    owner.x = owner.px = s.shop.originX - 2; owner.z = owner.pz = s.shop.originZ - 1;
+    for (let i = 0; i < 3000 && !s.shop.fixtures.find((f) => f.type === 'register')!.serving; i++) tick(s);
+    const res = applyCommand(s, { type: 'scan' });
+    expect(res.ok).toBe(false);
+    expect(owner.state).toBe('walking');
+    for (let i = 0; i < 200; i++) tick(s);
+    expect(applyCommand(s, { type: 'scan' }).ok).toBe(true);
+  });
+
+  it('WASD steering never walks through walls or fixtures', () => {
+    const s = openGame({ seed: 13, plotId: 'main', name: 'T' });
+    const owner = s.people.find((p) => p.kind === 'owner')!;
+    const g = gridFor(s);
+    const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const;
+    for (let k = 0; k < 40; k++) {
+      const [x, z] = dirs[(k * 5) % dirs.length]!;
+      applyCommand(s, { type: 'moveDir', x, z });
+      for (let i = 0; i < 40; i++) {
+        tick(s);
+        const [cx, cz] = cellOf(g, owner);
+        expect(isBlocked(g, cx, cz)).toBe(false);
+      }
+    }
+    applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
+  });
+
   it('plot picking sets up the shop and the sign name', () => {
     const s = newGame({ seed: 5 });
     expect(s.phase).toBe('picking');
     applyCommand(s, { type: 'choosePlot', plotId: 'east', name: 'Corner Fresh' });
-    expect(s.phase).toBe('open');
+    expect(s.phase).toBe('setup');
     expect(s.shop.name).toBe('Corner Fresh');
     expect(s.shop.originX).toBe(22);
   });

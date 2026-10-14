@@ -132,20 +132,21 @@ export class PeopleView {
     inst.current = anim;
   }
 
-  update(state: GameState, alpha: number, dt: number, focus: Vector3): void {
+  /** nearHide: in first person, anyone closer than this to the focus (the eye) is not drawn, so no head ever fills the lens. */
+  update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0): void {
     this.frame++;
     for (const p of state.people) {
       let inst = this.live.get(p.id);
       if (!inst) { inst = this.spawn(p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
       const x = p.px + (p.x - p.px) * alpha, z = p.pz + (p.z - p.pz) * alpha;
-      const hidden = p.state === 'driving';
+      const hidden = p.state === 'driving' || p.id === hideId;
       inst.root.visible = !hidden;
       if (hidden) continue;
       inst.root.position.set(x, 0, z);
       inst.root.rotation.y = p.yaw;
       const d = Math.hypot(x - focus.x, z - focus.z);
-      if (d > 48) { inst.root.visible = false; continue; }
+      if (d > 48 || d < nearHide) { inst.root.visible = false; continue; }
       const moving = Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
       const anim: Anim = moving ? (p.anim === 'carry' ? 'carry' : 'walk') : p.anim === 'walk' ? 'idle' : p.anim;
       this.play(inst, anim, Math.max(0.6, p.speed / 1.6));

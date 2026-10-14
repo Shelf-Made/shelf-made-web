@@ -5,13 +5,13 @@ import { money } from '../useRuntime';
 import { StoresSection } from './StoresSection';
 
 const CATALOG: { type: FixtureType; blurb: string }[] = [
-  { type: 'shelf', blurb: '6 slots of dry goods and drinks.' },
-  { type: 'fridge', blurb: '4 chilled slots; glows at night; costs power.' },
-  { type: 'freezer', blurb: 'Ice cream and meat, 2 big slots.' },
-  { type: 'produce', blurb: 'Fruit and veg crate, looks fresh by the door.' },
+  { type: 'register', blurb: 'Where shoppers pay. You need one to open; a second takes a second cashier.' },
+  { type: 'shelf', blurb: '4 slots of dry goods and drinks, both sides.' },
+  { type: 'fridge', blurb: '4 chilled slots for milk, cheese and cold drinks; costs power.' },
+  { type: 'freezer', blurb: 'Tall glass fridge: 2 big slots of dairy and meat.' },
+  { type: 'produce', blurb: 'Fruit and veg crates; looks fresh by the door.' },
   { type: 'endcap', blurb: 'Aisle end: impulse buys sell here.' },
   { type: 'rack', blurb: 'Checkout rack for snacks and sweets.' },
-  { type: 'register', blurb: 'A second till for a second cashier.' },
   { type: 'kiosk', blurb: 'Self-checkout: no cashier, slower shoppers.' },
   { type: 'sign', blurb: 'Aisle sign: shoppers find things faster.' },
   { type: 'plant', blurb: 'A plant. Shoppers like plants.' },
@@ -30,7 +30,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
             <div className="name">{b.placing ? `Placing ${FIXTURES[b.placing].name}` : `Moving ${FIXTURES[selected!.type].name}`}</div>
-            <div className="sub">{b.reason || 'Point at a tile in the shop'}{b.price ? ` · ${money(b.price)}` : ''} · R rotates · Esc cancels</div>
+            <div className="sub">{b.reason || 'Look at a floor tile'}{b.price ? ` · ${money(b.price)}` : ''} · R or the wheel turns it · right-click cancels</div>
           </div>
           <div className="row">
             <button className="btn small ghost" onClick={() => runtime.rotateGhost()}>Rotate</button>
@@ -39,7 +39,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <button className="btn small ghost" onClick={() => { runtime.stopPlacing(); runtime.closeCard(); }}>Done</button>
           </div>
         </div>
-      ) : <p className="muted">Pick something below, then click a tile. Click a fixture on the floor to move, copy or sell it.</p>}
+      ) : <p className="muted">Pick something below, then look at a floor tile and click to place it. With this card open, look at a fixture and press E to move, copy or sell it.</p>}
       <div className="row between">
         <span className="muted">Undo and redo: Ctrl+Z / Ctrl+Y</span>
         <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()}>Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()}>Redo</button></span>
@@ -50,7 +50,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         {CATALOG.map(({ type, blurb }) => (
           <div className="item" key={type}>
             <div><div className="name">{FIXTURES[type].name} <span className="tag">{money(FIXTURES[type].price)}</span>{FIXTURES[type].upkeep ? <span className="tag cold">{money(FIXTURES[type].upkeep)}/day power</span> : null}</div><div className="sub">{blurb}</div></div>
-            <button className={`btn small${b.placing === type ? '' : ' ghost'}`} disabled={s.cash < FIXTURES[type].price} onClick={() => runtime.startPlacing(type)}>Place</button>
+            <button className={`btn small${b.placing === type ? '' : ' ghost'}`} disabled={s.cash < FIXTURES[type].price} onClick={() => { runtime.startPlacing(type); runtime.requestLock(); }}>Place</button>
           </div>
         ))}
       </div>

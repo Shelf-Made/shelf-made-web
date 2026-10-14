@@ -45,7 +45,9 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold
-  const order: Order = { id: state.nextId++, supplierId: sup.id, lines: clean, total, placedDay: state.day, placedTime: state.time, eta: sup.etaSeconds, state: 'pending' };
+  // While the shop is still being fitted out the truck is quick, so the first five minutes keep moving.
+  const eta = state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds;
+  const order: Order = { id: state.nextId++, supplierId: sup.id, lines: clean, total, placedDay: state.day, placedTime: state.time, eta, state: 'pending' };
   state.orders.push(order);
   cue(state, 'order');
   if (!state.tutorial.completed.includes('order')) {

@@ -1,13 +1,14 @@
+import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
-import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache } from './index';
+import { tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, type GameState } from './index';
 
-function day(s: ReturnType<typeof newGame>): void {
+function day(s: GameState): void {
   for (let i = 0; i < (DAY_SECONDS + 130) / TICK && s.phase !== 'night'; i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
 }
 
 describe('franchises and checkout', () => {
   it('a branch reports every night and pays or costs money', () => {
-    const s = newGame({ seed: 31, plotId: 'main', name: 'Corner', tutorial: false });
+    const s = openGame({ seed: 31, plotId: 'main', name: 'Corner', tutorial: false });
     resetGridCache();
     s.cash = 6000;
     while (!s.staffPool.some((c) => c.role === 'manager')) { day(s); applyCommand(s, { type: 'openTomorrow' }); }
@@ -19,7 +20,7 @@ describe('franchises and checkout', () => {
     expect(s.notices.some((n) => n.text.includes('Corner Hillside'))).toBe(true);
   });
   it('card fees land in other costs and kiosks serve without a cashier', () => {
-    const s = newGame({ seed: 32, plotId: 'east', name: 'T', tutorial: false });
+    const s = openGame({ seed: 32, plotId: 'east', name: 'T', tutorial: false });
     resetGridCache();
     s.cash = 3000;
     const reg = s.shop.fixtures.find((f) => f.type === 'register')!;

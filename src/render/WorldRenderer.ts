@@ -1,4 +1,5 @@
-import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFSoftShadowMap, NoToneMapping } from 'three';
+import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFSoftShadowMap, NoToneMapping, type PerspectiveCamera, type Fog } from 'three';
+import { FirstPersonView } from './FirstPerson';
 import { AssetLibrary } from './assets';
 import { CameraRig } from './CameraRig';
 import { StaticWorld } from './StaticWorld';
@@ -21,7 +22,11 @@ export interface RenderStats { fps: number; drawCalls: number; triangles: number
 export class WorldRenderer {
   readonly scene = new Scene();
   readonly renderer: WebGLRenderer;
+  /** Cinematic camera: lobby orbit, plot picker, screenshot views. */
   readonly camera: CameraRig;
+  /** The manager's eyes: the game camera. */
+  readonly fp: FirstPersonView;
+  mode: 'fp' | 'cinematic' = 'cinematic';
   readonly assets = new AssetLibrary();
   readonly lighting: Lighting;
   private statics: StaticWorld;
@@ -36,6 +41,7 @@ export class WorldRenderer {
   private readonly ndc = new Vector2();
   private fpsAcc = 0; private fpsN = 0; private fps = 60;
   private night = false;
+  private readonly tmpFocus = new Vector3();
   quality: 'high' | 'medium' | 'low' = 'high';
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -46,6 +52,7 @@ export class WorldRenderer {
     this.renderer.shadowMap.type = PCFSoftShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.camera = new CameraRig(canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    this.fp = new FirstPersonView(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     this.lighting = new Lighting(this.scene);
     this.statics = new StaticWorld(this.assets);
     this.store = new StoreView(this.assets);
@@ -60,15 +67,12 @@ export class WorldRenderer {
     onProgress(0.02, 'Loading palette');
     await this.assets.loadCore();
     const plan = buildTown(1, 'main');
-    const ids = [...new Set([...StaticWorld.modelsNeeded(plan), ...STORE_MODELS, ...PEOPLE_MODELS])];
-    // Every town uses the same model set, so load once.
-    const allHouses = 'abcdefghijklmnopqrstu'.split('').map((l) => `suburban/house-${l}`);
-    const allShops = 'abcdefghikl'.split('').map((l) => `commercial/shop-${l}`);
-    const trees = ['nature/tree-default', 'nature/tree-oak', 'nature/tree-fat', 'nature/tree-small', 'nature/tree-tall', 'nature/tree-detailed', 'nature/tree-simple', 'suburban/tree-large', 'suburban/tree-small', 'nature/plant-bush', 'nature/plant-bushsmall', 'nature/plant-bushlarge', 'nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb'];
-    const all = [...new Set([...ids, ...allHouses, ...allShops, ...trees])].filter((id) => this.assets.has(id));
+    // Every town uses the same model set (the plan lists every model any seed can place), so load once.
+    const all = [...new Set([...StaticWorld.modelsNeeded(plan), ...STORE_MODELS, ...PEOPLE_MODELS])].filter((id) => this.assets.has(id));
     await this.assets.loadModels(all, (done, total) => onProgress(0.05 + 0.85 * (done / total), `Loading models (${done}/${total})`));
-    this.store.init();
+    await this.store.init();
     this.cars.init();
+    this.fp.attach(this.scene, this.assets);
     onProgress(1, 'Ready');
   }
 
@@ -87,21 +91,36 @@ export class WorldRenderer {
   setShop(state: GameState): void { this.store.buildShell(state.shop); this.store.setNight(this.night); }
 
   /** Render one frame. alpha interpolates between the previous and current sim tick. */
+  get activeCamera(): PerspectiveCamera { return this.mode === 'fp' ? this.fp.camera : this.camera.camera; }
+
   render(state: GameState, alpha: number, dt: number): void {
-    this.camera.update(dt);
-    const focus = this.camera.target;
+    const owner = state.people.find((p) => p.kind === 'owner');
+    const fp = this.mode === 'fp' && !!owner;
+    let focus: Vector3;
+    if (fp) {
+      const x = owner.px + (owner.x - owner.px) * alpha, z = owner.pz + (owner.z - owner.pz) * alpha;
+      this.fp.update(x, z, owner.look.height, dt, !!owner.carrying);
+      focus = this.tmpFocus.set(x, 0, z);
+    } else {
+      this.camera.update(dt);
+      focus = this.camera.target;
+    }
     const night = state.phase === 'night';
     if (night !== this.night) { this.night = night; this.statics.setNight(night); this.store.setNight(night); }
-    this.lighting.setTime(state.time / DAY_SECONDS, night, focus, this.camera.viewRadius());
+    this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? 16 : this.camera.viewRadius());
+    // Haze: close in first person, pushed back for the high cinematic views.
+    const fog = this.scene.fog as Fog | null;
+    if (fog) { const d = fp ? 0 : this.camera.goalDistance; fog.near = 55 + d * 0.9; fog.far = 210 + d * 1.2; }
     // Branches change the town: rebuild when the set changes (cheap, a few times per game).
     this.setTown(state.seed, state.shop.plotId, state.franchises.map((f) => ({ plotId: f.plotId, name: f.name })));
-    this.store.update(state, this.camera.yaw);
-    this.people.update(state, alpha, dt, focus);
+    // In first person every wall stands full height; the cinematic camera still cuts the near ones down.
+    this.store.update(state, fp ? null : this.camera.yaw);
+    this.people.update(state, alpha, dt, focus, fp ? owner.id : -1, fp ? 0.3 : 0);
     this.cars.update(state, alpha);
     this.rivals.update(state);
     this.overlays.sample(state);
     this.overlays.update(state);
-    this.renderer.render(this.scene, this.camera.camera);
+    this.renderer.render(this.scene, this.activeCamera);
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
   }
@@ -110,15 +129,28 @@ export class WorldRenderer {
   pick(px: number, py: number, state: GameState): StoreHit | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
-    this.ray.setFromCamera(this.ndc, this.camera.camera);
+    this.ray.setFromCamera(this.ndc, this.activeCamera);
     return this.store.pick(this.ray, state.shop);
+  }
+
+  /** What the crosshair points at: a fixture, the delivery boxes, or the floor, with the distance. */
+  aim(state: GameState): { hit: StoreHit | null; dist: number; floor: Vector3 | null } {
+    this.ndc.set(0, 0);
+    this.ray.setFromCamera(this.ndc, this.activeCamera);
+    const hit = this.store.pick(this.ray, state.shop);
+    const t = -this.ray.ray.origin.y / this.ray.ray.direction.y;
+    const floor = t > 0 ? new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t) : null;
+    let dist = Infinity;
+    if (hit) dist = hit.dist;
+    else if (floor) dist = floor.distanceTo(this.ray.ray.origin);
+    return { hit, dist, floor };
   }
 
   /** Ground point under a canvas pixel. */
   groundAt(px: number, py: number): Vector3 | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
-    this.ray.setFromCamera(this.ndc, this.camera.camera);
+    this.ray.setFromCamera(this.ndc, this.activeCamera);
     const t = -this.ray.ray.origin.y / this.ray.ray.direction.y;
     if (t <= 0) return null;
     return new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);
@@ -126,7 +158,7 @@ export class WorldRenderer {
 
   /** World → canvas pixel. */
   project(x: number, y: number, z: number, out: { x: number; y: number; visible: boolean }): void {
-    const v = new Vector3(x, y, z).project(this.camera.camera);
+    const v = new Vector3(x, y, z).project(this.activeCamera);
     out.visible = v.z < 1 && v.z > -1;
     out.x = (v.x + 1) / 2 * this.canvas.clientWidth;
     out.y = (1 - v.y) / 2 * this.canvas.clientHeight;
@@ -157,6 +189,7 @@ export class WorldRenderer {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.resize(w / Math.max(1, h));
+    this.fp.resize(w / Math.max(1, h));
   }
 
   dispose(): void { this.renderer.dispose(); }

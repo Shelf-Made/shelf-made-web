@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout } from './layout';
+import { lotLayout, WALL_T } from './layout';
 
 export const CELL = 0.5;
 
@@ -35,27 +35,6 @@ function fillRect(g: Grid, x0: number, z0: number, x1: number, z1: number, cost:
   for (let z = cz0; z < cz1; z++) for (let x = cx0; x < cx1; x++) {
     g.cost[cellIndex(g, x, z)] = cost;
     if (inside) g.inside[cellIndex(g, x, z)] = 1;
-  }
-}
-
-/** Block the edge along a wall segment. Horizontal wall at z = zw from xa to xb, or vertical at x = xw from za to zb. */
-function blockWall(g: Grid, a: Vec2, b: Vec2, gaps: { at: number; width: number }[] = []): void {
-  if (a.z === b.z) {
-    const zc = Math.round((a.z - g.z0) / CELL);
-    const xa = Math.round((Math.min(a.x, b.x) - g.x0) / CELL), xb = Math.round((Math.max(a.x, b.x) - g.x0) / CELL);
-    for (let x = xa; x < xb; x++) {
-      const wx = g.x0 + (x + 0.5) * CELL;
-      if (gaps.some((gp) => Math.abs(wx - gp.at) < gp.width / 2)) continue;
-      if (zc - 1 >= 0 && zc < g.h && x < g.w) g.edges.add(edgeKey(cellIndex(g, x, zc - 1), cellIndex(g, x, zc)));
-    }
-  } else {
-    const xc = Math.round((a.x - g.x0) / CELL);
-    const za = Math.round((Math.min(a.z, b.z) - g.z0) / CELL), zb = Math.round((Math.max(a.z, b.z) - g.z0) / CELL);
-    for (let z = za; z < zb; z++) {
-      const wz = g.z0 + (z + 0.5) * CELL;
-      if (gaps.some((gp) => Math.abs(wz - gp.at) < gp.width / 2)) continue;
-      if (xc - 1 >= 0 && xc < g.w && z < g.h) g.edges.add(edgeKey(cellIndex(g, xc - 1, z), cellIndex(g, xc, z)));
-    }
   }
 }
 
@@ -97,17 +76,28 @@ export function buildGrid(shop: Shop, version: number): Grid {
   fillRect(g, x0, oz + 2.6, x1, oz + 3.5, 1);
   // Parking bays are walkable when empty (cars block them later).
   for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
-  // Shop floors.
+  // Shop floor (one room; `storeroom` only exists in old saves).
   const f = shop.floor, s = shop.storeroom;
-  R(f, 1, true); R(s, 1, true);
-  // Walls: outer ring plus the partition, with door gaps.
-  const W = (a: Vec2, b: Vec2, gaps: { at: number; width: number }[] = []) =>
-    blockWall(g, { x: ox + a.x, z: oz + a.z }, { x: ox + b.x, z: oz + b.z }, gaps.map((gp) => ({ at: (a.z === b.z ? ox : oz) + gp.at, width: gp.width })));
-  W({ x: f.x0, z: f.z1 }, { x: f.x1, z: f.z1 }, [{ at: shop.door.x, width: 1 }]);          // front
-  W({ x: f.x0, z: s.z0 }, { x: f.x1, z: s.z0 }, [{ at: shop.backDoor.x, width: 1 }]);      // back
-  W({ x: f.x0, z: s.z0 }, { x: f.x0, z: f.z1 });                                            // west
-  W({ x: f.x1, z: s.z0 }, { x: f.x1, z: f.z1 });                                            // east
-  W({ x: f.x0, z: f.z0 }, { x: f.x1, z: f.z0 }, [{ at: f.x1 - 1, width: 1 }]);             // partition, door at the east end
+  R(f, 1, true);
+  if (s.z1 > s.z0) R(s, 1, true);
+  const backZ = Math.min(f.z0, s.z0);
+  // Walls: a ring of blocked cells WALL_T thick just outside the floor, with door gaps.
+  const T = WALL_T;
+  const gap = (cx: number) => ({ x0: cx - 0.5, x1: cx + 0.5 });
+  const wallRow = (z0: number, z1: number, doorX: number) => {
+    const d = gap(doorX);
+    R({ x0: f.x0 - T, z0, x1: d.x0, z1 }, 0);
+    R({ x0: d.x1, z0, x1: f.x1 + T, z1 }, 0);
+  };
+  wallRow(f.z1, f.z1 + T, shop.door.x);
+  wallRow(backZ - T, backZ, shop.backDoor.x);
+  R({ x0: f.x0 - T, z0: backZ - T, x1: f.x0, z1: f.z1 + T }, 0);
+  R({ x0: f.x1, z0: backZ - T, x1: f.x1 + T, z1: f.z1 + T }, 0);
+  // The door openings are paved and walkable.
+  R({ x0: shop.door.x - 0.5, z0: f.z1, x1: shop.door.x + 0.5, z1: f.z1 + T }, 1);
+  R({ x0: shop.backDoor.x - 0.5, z0: backZ - T, x1: shop.backDoor.x + 0.5, z1: backZ }, 1.1);
+  // Delivered boxes stand here.
+  if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.
   for (const fx of shop.fixtures) {
     const fp = fixtureFootprint(fx);

@@ -8,7 +8,7 @@ export function SettingsBody({ runtime, snap, inLobby }: { runtime: GameRuntime;
   const slider = (label: string, key: 'master' | 'music' | 'sfx') => (
     <label className="row between" key={key}><span style={{ minWidth: 70 }}>{label}</span><input type="range" min={0} max={1} step={0.05} value={st[key]} onChange={(e) => runtime.updateSettings({ [key]: Number(e.target.value) })} aria-label={`${label} volume`} /></label>
   );
-  const keys: [keyof KeyBindings, string][] = [['panUp', 'Pan up'], ['panDown', 'Pan down'], ['panLeft', 'Pan left'], ['panRight', 'Pan right'], ['rotateLeft', 'Rotate left'], ['rotateRight', 'Rotate right'], ['focus', 'Focus shop'], ['scan', 'Scan item'], ['pause', 'Pause'], ['speed1', '1x'], ['speed2', '2x'], ['speed4', '4x']];
+  const keys: [keyof KeyBindings, string][] = [['forward', 'Walk forward'], ['back', 'Walk back'], ['left', 'Step left'], ['right', 'Step right'], ['interact', 'Use / pick up / stock'], ['scan', 'Scan item'], ['rotate', 'Turn fixture'], ['pause', 'Pause'], ['speed1', '1x'], ['speed2', '2x'], ['speed4', '4x']];
   return (
     <>
       <h3>Sound</h3>
@@ -19,7 +19,9 @@ export function SettingsBody({ runtime, snap, inLobby }: { runtime: GameRuntime;
       </label>
       <label className="toggle"><span>Larger UI</span><input type="checkbox" checked={st.largeUI} onChange={(e) => runtime.updateSettings({ largeUI: e.target.checked })} /></label>
       <label className="toggle"><span>Colour-blind markers</span><input type="checkbox" checked={st.colorBlind} onChange={(e) => runtime.updateSettings({ colorBlind: e.target.checked })} /></label>
-      <label className="toggle"><span>Pan at screen edges</span><input type="checkbox" checked={st.edgePan} onChange={(e) => runtime.updateSettings({ edgePan: e.target.checked })} /></label>
+      <h3>Looking around</h3>
+      <label className="row between"><span style={{ minWidth: 70 }}>Mouse speed</span><input type="range" min={0.3} max={2.5} step={0.05} value={st.lookSpeed} onChange={(e) => runtime.updateSettings({ lookSpeed: Number(e.target.value) })} aria-label="Mouse look speed" /></label>
+      <label className="toggle"><span>Invert mouse up and down</span><input type="checkbox" checked={st.invertY} onChange={(e) => runtime.updateSettings({ invertY: e.target.checked })} /></label>
       <h3>Keys</h3>
       {keys.map(([k, label]) => (
         <div className="keyrow" key={k}><span>{label}</span>

@@ -86,7 +86,7 @@ export const PRODUCT_BY_ID: ReadonlyMap<string, ProductDef> = new Map(PRODUCTS.m
 export const CATEGORY_NAMES: Record<Category, string> = { produce: 'Produce', dairy: 'Dairy', meat: 'Meat & fish', dry: 'Dry goods', drinks: 'Drinks', household: 'Household' };
 
 /** Products the starter shop opens with (must fit one shelf + one fridge). */
-export const STARTER_SHELF: string[] = ['bread', 'pasta', 'beans', 'chips', 'cereal', 'water'];
+export const STARTER_SHELF: string[] = ['bread', 'pasta', 'beans', 'chips', 'cereal', 'water', 'cookies', 'soup'];
 export const STARTER_FRIDGE: string[] = ['milk', 'cola', 'juice', 'cheese'];
 
 export function productDef(id: string): ProductDef {

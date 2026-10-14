@@ -15,7 +15,7 @@ export class CameraRig {
   limits = { minDist: 6, maxDist: 46, minPitch: MathUtils.degToRad(28), maxPitch: MathUtils.degToRad(80) };
 
   constructor(aspect: number) {
-    this.camera = new PerspectiveCamera(36, aspect, 0.5, 220);
+    this.camera = new PerspectiveCamera(36, aspect, 0.5, 320);
     this.snap();
   }
 

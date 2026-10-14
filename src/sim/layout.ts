@@ -19,6 +19,23 @@ export const SIDEWALK_S_Z = 3.75;
 export const MAP_X = 44;
 export const MAP_Z = 18;
 
+/**
+ * The valley. Main Street runs east–west through the middle; two cross streets meet it, the north
+ * ends of both join Back Lane behind the shops, the south ends cross the river on bridges. Every road
+ * runs on past the town edge into the fog, so traffic appears and leaves out of sight.
+ */
+export const CROSS_XS = [-35, 39] as const;
+export const BACK_Z = -21.5;
+export const BACK_LANE_WEST_Z = BACK_Z - 0.5;
+export const BACK_LANE_EAST_Z = BACK_Z + 0.5;
+/** Where traffic spawns and despawns along each road (hidden by distance fog). */
+export const ROAD_FAR = 92;
+/** The river: its centre line wanders a little around z = 24. Half width of the water. */
+export const RIVER_HALF_W = 2.3;
+export function riverZ(x: number): number { return 24 + 2.4 * Math.sin(x / 17) + 1.1 * Math.sin(x / 7.3 + 1.3); }
+/** Every shop plot owns this rectangle (plot-relative), big enough for the largest shop with the doubled lot. */
+export const PLOT_RECT = { x0: -8, z0: -11.6, x1: 12.6, z1: 2.55 };
+
 export const WALK_SPEED = 1.6;
 export const CAR_ROAD_SPEED = 6;
 export const CAR_LOT_SPEED = 2.2;
@@ -29,12 +46,20 @@ export const PLOTS: Plot[] = [
   { id: 'east', name: 'East End', blurb: 'By the school and the park. Snacks and drinks fly off the shelf after three.', x: 22, rent: 35, traffic: 1.0, mix: { bargain: 0.9, convenience: 1.0, loyalist: 0.8, impulse: 1.5 } },
 ];
 
-/** Store-relative layout of the starter shop. (0,0) is the front door tile centre; the shop extends north (negative z). */
+/**
+ * Store-relative layout of the starter shop. (0,0) is the front door tile centre; the shop extends
+ * north (negative z). One bare room: concrete floor and four walls. Walls are 0.5 thick and stand
+ * OUTSIDE the floor rectangle, so nothing placed on the floor can clip into them. `storeroom` is a
+ * zero-height strip along the back wall (kept so depth maths stays in one place).
+ */
+export const WALL_T = 0.5;
 export const STARTER = {
-  floor: { x0: -2.5, z0: -4, x1: 2.5, z1: 0 },        // 5 x 4 tiles, front wall at z = 0
-  storeroom: { x0: -2.5, z0: -6, x1: 2.5, z1: -4 },   // 5 x 2 tiles behind
+  floor: { x0: -2.5, z0: -6, x1: 2.5, z1: 0 },        // 5 x 6 tiles, front wall outside z = 0
+  storeroom: { x0: -2.5, z0: -6, x1: 2.5, z1: -6 },   // no separate room
   door: { x: 0, z: 0 },
   backDoor: { x: 0, z: -6 },
+  /** Where trucks drop boxes: two tiles inside, beside the back door. Never buildable, never walkable. */
+  delivery: { x0: -2.5, z0: -6, x1: -0.5, z1: -5 },
   /** Front apron (paving) in front of the shop. */
   apron: { x0: -3.5, z0: 0, x1: 7, z1: 1.2 },
   /** Walkway from the door to the sidewalk. */
@@ -50,11 +75,10 @@ export const STARTER = {
   driveway: { x0: 5.0, z0: -0.5, x1: 6.9, z1: 1.5 },
   /** Service lane down the west side to the back door. */
   serviceLane: { x0: -5.4, z0: -8.2, x1: -3.6, z1: 1.5 },
-  backYard: { x0: -3.6, z0: -8.2, x1: 7.0, z1: -6 },
-  truckStop: { x: -1.2, z: -7.2, yaw: Math.PI / 2 },
-  /** The whole plot, for pathfinding bounds and land ownership. */
-  plot: { x0: -8, z0: -9, x1: 8, z1: 1.5 },
 };
+
+/** The delivery zone for any floor: two tiles in the back-left corner beside the back door. */
+export function deliveryZone(floor: Rect): Rect { return { x0: floor.x0, z0: floor.z0, x1: floor.x0 + 2, z1: floor.z0 + 1 }; }
 
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
 export interface LotLayout {
@@ -74,23 +98,23 @@ export function lotLayout(shop: { floor: Rect; storeroom: Rect; lotRows?: number
   const eastEdge = rows > 1 ? halfW + 7.2 : halfW + 4.5;
   return {
     halfW, depth,
-    apron: { x0: -halfW - 1, z0: 0, x1: eastEdge, z1: 1.2 },
+    apron: { x0: -halfW - 1, z0: WALL_T, x1: eastEdge, z1: 1.2 },
     walkwayX: 0,
     bays,
     aisle: { x0: halfW + 2.45, z0: -(depth - 0.4), x1: halfW + 4.45, z1: -0.5 },
     driveway: { x0: halfW + 2.5, z0: -0.5, x1: halfW + 4.4, z1: 1.5 },
-    serviceLane: { x0: -halfW - 2.9, z0: -(depth + 2.2), x1: -halfW - 1.1, z1: 1.5 },
-    backYard: { x0: -halfW - 1.1, z0: -(depth + 2.2), x1: eastEdge, z1: -depth },
-    truckStop: { x: -halfW + 1.3, z: -(depth + 1.2), yaw: Math.PI / 2 },
+    serviceLane: { x0: -halfW - 2.9, z0: -(depth + 2.4), x1: -halfW - 1.1, z1: 1.5 },
+    backYard: { x0: -halfW - 1.1, z0: -(depth + 2.4), x1: eastEdge, z1: -depth - WALL_T },
+    truckStop: { x: -halfW + 1.3, z: -(depth + 1.4), yaw: Math.PI / 2 },
     plot: { x0: -8, z0: -(depth + 3), x1: Math.max(8, eastEdge + 0.8), z1: 1.5 },
   };
 }
 
 /** Shop sizes you can grow into. Costs include the land. */
 export const SHOP_SIZES: { id: string; name: string; floor: Rect; storeroom: Rect; cost: number }[] = [
-  { id: 'starter', name: 'Corner shop (5×4)', floor: { x0: -2.5, z0: -4, x1: 2.5, z1: 0 }, storeroom: { x0: -2.5, z0: -6, x1: 2.5, z1: -4 }, cost: 0 },
-  { id: 'medium', name: 'Neighbourhood grocer (7×5)', floor: { x0: -3.5, z0: -5, x1: 3.5, z1: 0 }, storeroom: { x0: -3.5, z0: -7, x1: 3.5, z1: -5 }, cost: 900 },
-  { id: 'large', name: 'Market hall (9×6)', floor: { x0: -4.5, z0: -6, x1: 4.5, z1: 0 }, storeroom: { x0: -4.5, z0: -9, x1: 4.5, z1: -6 }, cost: 2400 },
+  { id: 'starter', name: 'Corner shop (5×6)', floor: { x0: -2.5, z0: -6, x1: 2.5, z1: 0 }, storeroom: { x0: -2.5, z0: -6, x1: 2.5, z1: -6 }, cost: 0 },
+  { id: 'medium', name: 'Neighbourhood grocer (7×7)', floor: { x0: -3.5, z0: -7, x1: 3.5, z1: 0 }, storeroom: { x0: -3.5, z0: -7, x1: 3.5, z1: -7 }, cost: 900 },
+  { id: 'large', name: 'Market hall (9×8)', floor: { x0: -4.5, z0: -8, x1: 4.5, z1: 0 }, storeroom: { x0: -4.5, z0: -8, x1: 4.5, z1: -8 }, cost: 2400 },
 ];
 export const LOT_EXPANSION_COST = 500;
 
@@ -100,12 +124,12 @@ export function storeOrigin(plotX: number): Vec2 {
 }
 
 export const FIXTURES: Record<FixtureType, FixtureDef> = {
-  register: { type: 'register', name: 'Register', price: 280, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
-  shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 6, capacity: 10, chilled: false, upkeep: 0 },
-  fridge: { type: 'fridge', name: 'Fridge', price: 220, w: 1, d: 1, slots: 4, capacity: 8, chilled: true, upkeep: 6 },
-  freezer: { type: 'freezer', name: 'Freezer', price: 300, w: 1, d: 1, slots: 2, capacity: 10, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'] },
-  produce: { type: 'produce', name: 'Produce crate', price: 60, w: 1, d: 1, slots: 2, capacity: 12, chilled: false, upkeep: 0, accepts: ['produce'] },
-  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 3, capacity: 8, chilled: false, upkeep: 0 },
+  register: { type: 'register', name: 'Checkout counter', price: 180, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
+  shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 4, capacity: 8, chilled: false, upkeep: 0 },
+  fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, slots: 4, capacity: 6, chilled: true, upkeep: 6 },
+  freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'] },
+  produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'] },
+  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0 },
   kiosk: { type: 'kiosk', name: 'Self-checkout', price: 650, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3 },
   rack: { type: 'rack', name: 'Checkout rack', price: 45, w: 1, d: 1, slots: 2, capacity: 8, chilled: false, upkeep: 0 },
   sign: { type: 'sign', name: 'Aisle sign', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
@@ -115,7 +139,7 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
 };
 
 export const DIFFICULTY = {
-  relaxed: { cash: 900, rentMul: 0.8, demandMul: 1.2, patienceMul: 1.3 },
-  standard: { cash: 500, rentMul: 1.0, demandMul: 1.0, patienceMul: 1.0 },
-  hard: { cash: 300, rentMul: 1.2, demandMul: 0.85, patienceMul: 0.85 },
+  relaxed: { cash: 1200, rentMul: 0.8, demandMul: 1.2, patienceMul: 1.3 },
+  standard: { cash: 800, rentMul: 1.0, demandMul: 1.0, patienceMul: 1.0 },
+  hard: { cash: 600, rentMul: 1.2, demandMul: 0.85, patienceMul: 0.85 },
 } as const;
