@@ -22,11 +22,14 @@ npm run balance -- --check   # scripted strategies over many seeds
 - `CREDITS.md`, `ASSET_LICENSES.md` every source (CC0 / OFL only)
 - `desktop/` Electron wrapper (file saves, optional Steam layer)
 
-You play the manager in first person. Click the world to look around with the mouse (Esc frees
-it), WASD to walk, E or left click to use what the crosshair points at (pick up a box, stock a
-shelf, place a fixture), Space to scan behind the counter, B opens Build, Tab opens Stock, R or the
-wheel turns a fixture, right click cancels, 1/2/3 set speed, P pauses. On a phone: drag the left
-half to walk, the right half to look, tap to use.
+You play the manager, seen from a camera that follows you from above. WASD walks (relative to
+the camera); click the floor to walk there, or click a shelf, the delivery pallet or a spill to walk
+over and use it. F uses whatever is outlined in front of you (pick up a box, stock a shelf), Space
+scans behind the counter. The wheel (or + and −) zooms from the shelves out to the whole crossroads;
+zoomed right out, WASD pans and C brings the camera back to you. Q and E turn the camera, a
+right-drag turns and tilts it. B opens Build (the ghost follows the mouse; click to place, R turns
+it, right click cancels), Tab opens Stock, 1/2/3 set speed, P pauses. On a phone: tap to walk or
+use, drag to turn the camera, pinch to zoom.
 
 ```
 npm run gen:logo    # draw the shop-front logo (SVG + PNGs) into public/brand/

@@ -50,21 +50,31 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 ### 2.2 Render
 
 - Plain three.js (`WebGLRenderer`, sRGB output, PCF shadow map 2048 from one sun, distance fog).
-- **First person.** The game is played through the manager's eyes (`FirstPersonView`: FOV 72,
-  eye height 0.62, head bob, the box you carry held in front). Pointer lock and mouse look,
-  drag to look when the lock is refused, WASD to walk (a `moveDir` command; the manager walks
-  in real time at any clock speed), E or left click uses what the centre ray hits, Space scans
-  behind a counter. Touch: left half walks, right half looks, tap uses. An orbit camera remains
-  for the lobby, the plot picker and screenshots only.
-- The valley: one flat-shaded heightfield (level where the town stands, foothills and a snow
-  range to the north, hills elsewhere) with six rows pinned to the river so its channel is cut
-  cleanly; a water ribbon; stone bridges where the cross streets cross. The town is merged in
-  44-unit chunks (shadow casters apart from flat ground pieces) so the camera and the sun's
-  shadow pass skip what they cannot see; forest trees are instanced per model and map quarter,
-  without shadows. Characters are skinned meshes with Kenney's own clips.
-- The shop: a concrete slab, Kenney walls standing outside the floor rectangle, a flat roof with
-  an unlit pale ceiling and light panels, the name in Fredoka letters on a fascia and a pylon.
-  The cinematic camera cuts the near walls down and hides the roof; first person never does.
+- **Follow camera.** A narrow lens (FOV 30) looking down at the manager from behind and above
+  (`FollowCamera`: pitch 52° by default, 35–70° by right-drag; 12 units back by default, 7 to 68 on
+  the wheel, + / −, or a pinch). It glides after the manager; past 30 units it lets go and pans
+  freely (WASD, optional screen-edge pan, a one-finger drag), drifting toward the middle of the
+  crossroads as you pull out, and C brings it back. Q / E turn it in 45° steps. A docked card or
+  the jobs list pushes the manager to the middle of the world you can still see, and opening Build
+  pulls back until the whole floor fits beside the card. No pointer lock.
+- **Moving and using.** WASD walks the manager relative to the camera (a `moveDir` command; the
+  manager walks in real time at any clock speed). A click or tap on the floor walks there; on a
+  fixture, the pallet or a spill it walks over and uses it (a shelf is reached from whichever free
+  side is nearest). F uses the nearest usable thing within 1.2 in front of the manager, Space scans
+  behind a counter. What F or a click would do is outlined on the floor in yellow, with the key and
+  the action in a label over it. In Build the ghost sits on the tile under the mouse or the tap.
+- **The crossroads.** One intersection on an empty, level plain: Main Road east–west and Elm Street
+  north–south, a shop on each corner, zebras on all four arms, a timed light. There is nothing
+  beyond the corners: both roads run on into the haze, so the traffic drives in out of nowhere and
+  away into nothing. The ground is one flat mesh, mottled lawn over the town fading to even green;
+  grass and flowers on the verges are merged into one swaying mesh. Characters are skinned meshes
+  with Kenney's own clips, head and body merged into one draw; nobody casts a shadow-map shadow
+  (a soft instanced blob under every person and car instead), and from far off people become
+  instanced stand-ins.
+- The shop: a concrete slab, Kenney walls standing outside the floor rectangle, the name in
+  Fredoka letters on a fascia and a pylon. With the manager inside, the roof comes off and the walls
+  between the camera and the manager drop to stubs; from outside and zoomed out the shop wears its
+  roof. A rival's building that hides the manager drops to stubs the same way.
 - Stock is Kenney Food Kit and Mini Market models, scaled uniformly to fit each slot box measured
   from the fixture, front rows first, so nothing clips into shelves or neighbours.
 
@@ -74,9 +84,9 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   Marketing / Stats / Settings with labels, speed buttons. Locked systems show "New!" when
   they unlock. Everything else is a card that closes with Esc and never covers the store
   (cards dock to the right third of the screen).
-- First-person HUD: a crosshair with a prompt (`[E] Stock Bread ×8`), a "Next up" panel for the
-  current tip with a marker over its target (pinned to the screen edge when off to the side),
-  "Click to look around" when the mouse is free. Skip always.
+- Play HUD: the yellow outline and key label on whatever F or a click would act on (no crosshair),
+  a small controls card bottom left, a Use button bottom right that mirrors the label, and the
+  first day's jobs as a checklist. Skip always.
 - Lobby: a shop front (striped awning, the manager's head as the logo, the name with the shelf
   bracket, a price-tag beta badge, menu items as shelf-edge labels under a swinging OPEN sign, an
   LED ticker) over a live demo shop at golden hour.
@@ -108,8 +118,8 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Day-1 fit-out | counter $180, two shelves (4 slots × 8), a chiller $200 (4 × 6), first order ≈ $120 | balance harness pays for it |
 | Fixture prices | shelf $85, produce stand $60, end cap $70, chiller $200, tall fridge $300, counter $180, kiosk $650 | each ≤ 5 days of a guided player's income |
 | Shop sizes | 5×6 (start), 7×7 for $900, 9×8 for $2 400; lot doubles for $500 | |
-| Town | Main Street on z = 2.5, cross streets at x = −35 and 39, Back Lane at z = −21.5, river at z ≈ 24; every building on its own lot | tests assert no overlaps |
-| Traffic | spawns and leaves at ±92 in the fog; keeps a 2-unit gap, yields at junctions, backs out of bays | |
+| Town | one crossroads: Main Road on z = 2.5, Elm Street on x = 0, a 20.6 × 14.15 lot on each corner (fits the largest shop with the doubled lot), south corners turned half round; nothing beyond the corners | tests assert lots never overlap or touch a road, and only roads run on past the town |
+| Traffic | spawns and leaves at ±90 down both roads, in the haze; a 36 s light with an all-walk phase; keeps a 2-unit gap, backs out of lot bays, pulls in and out of three Elm Street bays 3.4 apart; a parked car whose driver has gone drives off | tests: no overlaps at rush hour, nobody runs a red, turned-away cars never stuck |
 | Staff | cashier ≈ $48/day, stocker $42, cleaner $36, orderer $52, manager $90, +12% payroll tax | |
 | Loans | $600 at 1.2%/day over 10 days, $1 800 at 1.0% over 15, $5 000 at 0.9% over 20 | one rescue offered when broke |
 | Rivals | Cheapo opens day 3 (prices −14%), Fresh & Fine day 6 (+22%), MegaMart day 10 (expands) | sales every 4–8 days |
@@ -150,5 +160,8 @@ each type is a softmax (k = 4) over weighted scores against open rivals, who cou
 ## 5. Performance
 
 Budgets: 60 fps starter shop, ≥45 fps busy store at 4x and zoomed-out neighbourhood;
-< 250 draw calls; < 15 MB compressed; interactive within 3 s. Means: merged statics,
-instancing, one shadow caster set, LOD on characters (static pose when far), no post FX.
+< 250 draw calls and < 900k triangles; < 15 MB compressed; interactive within 3 s. Means: merged
+statics, instancing, shadow-map shadows only for buildings and fixtures (blob shadows for people and
+cars), one draw per character, instanced stand-ins for far people, people out of view skipped, no
+post FX. Measured (`npm run perf`): 79–107 draw calls and 126k–157k triangles from the shelves out
+to mid zoom, 130 and 233k at the full overview (the valley map before it: 131–217 and 494k–790k).

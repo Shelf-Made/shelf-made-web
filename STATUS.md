@@ -3,7 +3,68 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Rework after the first play (latest)
+## Follow camera and the crossroads (latest)
+
+- [x] **Follow camera.** A narrow lens looks down at the manager from behind and above, 12 units
+  back by default: the manager, the shelves, the queue and the door in view. The wheel, + and −,
+  or a pinch zoom from the shelves (7) out to the whole crossroads (68); one scroll out shows the
+  lot and the road. Past 30 the camera pans freely (WASD, optional edge pan) and drifts to the
+  middle of the crossroads; C brings it back. Q / E turn it in 45° steps, a right-drag turns and
+  tilts it (35–70°). Docked cards and the jobs list push the manager to the middle of what you can
+  still see; Build pulls back so the whole floor fits beside the card.
+- [x] **Walk, click, tap.** WASD walks relative to the camera; a click or tap on the floor walks
+  there; on a shelf, the pallet or a spill it walks over and uses it. F uses whatever is outlined
+  in front of you (yellow outline and a key label over it; the crosshair is gone), Space scans.
+  The Build ghost follows the mouse or tap; a click places it, a plain right click cancels.
+  Building never traps the manager. Use moved from E to F (old key settings migrate).
+- [x] **The manager stands out.** A name badge and a clipboard; boxes carried in both arms.
+- [x] **The crossroads.** One intersection: the player on the corner they picked, Cheapo, Fresh &
+  Fine and MegaMart on the other three with real storefronts, lots and pylons (fenced and "coming
+  soon", then scaffolding, before they open). Zebras on all four arms and a timed light that cars
+  and walkers obey; three shared bays on Elm Street; a bus stop with rush-hour bursts; rival
+  shoppers you can see walking in and driving in, more of them during a sale; a full lot sends
+  the next car on to a rival or the street bays. Franchises and MegaMart's branches open in
+  off-map neighbourhoods named on the road signs; flyers go to the same places; three physical
+  billboards. Save version 9 with a migration from the valley.
+- [x] **Nothing beyond the crossroads.** On your note, the backdrop ring (house backs, blocks,
+  forest, hills) is gone: the corners sit on an empty level plain and both roads run off into the
+  haze, where the traffic appears and vanishes.
+- [x] **Lighter.** 79–130 draw calls and 126k–233k triangles from the shelves out to the full
+  overview (the valley: 131–217 and 494k–790k). People and cars sit on blob shadows, each
+  character is one draw, far-off people are instanced stand-ins.
+- [x] **Fixes found on the way.** A car pulling into a street bay could wedge itself beside the
+  parked car behind it; parked cars whose drivers went home at closing stayed for ever (one run
+  piled up 518 cars); a customer removed at closing stayed at the head of the till's line so nobody
+  was served the next day.
+
+Checks on the latest run:
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 52 passed, including the crossroads plan (corner lots never overlap or touch a road, fit the largest shop with the doubled lot, the player's corner holds only their shop, level ground, only roads run on past the town), traffic (no overlaps at rush hour, nobody runs a red, turned-away cars never stuck, a car pulls into a street bay past a parked neighbour, a driverless car drives off), rival shoppers, building never traps the manager, a shelf against a wall is reached from the room, and a till line never waits on someone who has gone |
+| `npm run e2e` | 8 passed: the first day with the follow camera (place a counter and a shelf with the mouse, right click to stop placing, order, click the floor to walk to the pallet, F to pick up, click the shelf to stock it, open, click the counter to walk behind it, Space to scan, close up, save and quit); zoom, turn and come back with C; tap to walk and tap a shelf on a phone viewport; the lobby; 21 screenshots; perf |
+| `npm run audit:art` | 418 models, passed |
+| `npm run balance -- --check` | passed: nobody sensible goes bust, nobody stuck, the fit-out leaves $136; guided ≈ $61/day in week one; rivals take 24% of a guided player's trade over week one (40–50% on days 6–7 once Fresh & Fine opens) |
+| Perf (`npm run perf`) | default zoom 79 draw calls / 126k triangles; busy at 4x 104 / 153k; mid zoom 107 / 157k; full overview 130 / 233k (budget 250 / 900k) |
+
+Screenshots in `docs/screens/`: `01-lobby`, `02-plot-picker`, `03-bare-shell`, `04-build-ghost`,
+`05-carrying-a-box`, `06-close-shop` (default zoom), `07-mid-zoom` (one scroll out: queue, door,
+lot, road), `08-overview` (the full zoom), `09-crossroads-above`, `10-rival-corners`, `11-delivery`,
+`12-finance-card`, `13-rival-sale-zebra`, `14-staff-on-floor`, `15-market-hall`,
+`16-market-hall-lot`, `17-full-lot-to-rival`, `18-franchise-sign`, `19-night-card`,
+`20-phone-play`, `21-lobby-phone`.
+
+Still open from this round:
+- **Week-one income is ≈ $61/day, under the ≈ $75 the brief asks for** (the valley build measured
+  $57). The guided player is held back by its own capacity (a full lot turns 12–70 drivers away a
+  day, and it runs out of stock), not by traffic, so more traffic would not close the gap. The fix is
+  a balance number (cheaper extra bays, or a bigger starter lot); see Decisions needing you.
+- The camera was driven by tests and screenshots in headless Chromium; zoom speed, follow
+  smoothing and the turn steps want a human pass with a real mouse and a phone.
+- The rival buildings are plain boxes with window panes; the toy-town art pass is next.
+
+## Rework after the first play
 
 What changed after feedback that the art did not fit Kenney, meshes clipped, the map was open
 land and the camera felt wrong:
@@ -119,6 +180,9 @@ Visual checklist, as of the last run: store ≈ 45% of the screen at default zoo
 - No localisation; English only.
 
 ## Decisions needing you
+0. **Week-one income.** Guided play makes ≈ $61/day against a ≈ $75 target. Cheaper extra parking
+   ($500 now) or a starter lot with more bays would close most of it; say which and the harness will
+   hold the line.
 1. **Vercel permission.** Project creation is refused (403) for the Startups team; create the project from the repo in the Vercel dashboard or grant the permission.
 2. **Prices and pace.** A guided player nets about $75/day in week one and buys a shelf every day or two; say if you want it tighter or looser, and the harness will hold the line.
 3. **Fonts and brand.** The wordmark underline is CSS in the lobby and a green bar on the pylon sign; if you have a real logo file it drops into `TopBar.tsx` and `StoreView.ts`.
