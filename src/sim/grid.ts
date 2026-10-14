@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { STARTER } from './layout';
+import { lotLayout } from './layout';
 
 export const CELL = 0.5;
 
@@ -81,7 +81,7 @@ export function fixtureFacing(rot: number): Vec2 {
 
 /** Grid in world coordinates: store-relative rects are offset by the shop origin. */
 export function buildGrid(shop: Shop, version: number): Grid {
-  const L = STARTER;
+  const L = lotLayout(shop);
   const ox = shop.originX, oz = shop.originZ;
   const x0 = ox + L.plot.x0, z0 = oz + L.plot.z0, x1 = ox + L.plot.x1, z1 = oz + 3.5;
   const w = Math.round((x1 - x0) / CELL), h = Math.round((z1 - z0) / CELL);
@@ -91,7 +91,7 @@ export function buildGrid(shop: Shop, version: number): Grid {
   fillRect(g, x0, z0, x1, z1, 2.5);
   // Paving.
   R(L.apron, 1);
-  R({ x0: L.walkway.x - 0.5, z0: L.apron.z1, x1: L.walkway.x + 0.5, z1: 3.5 }, 1);
+  R({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.5 }, 1);
   R(L.aisle, 1.2); R(L.driveway, 1.2); R(L.serviceLane, 1.2); R(L.backYard, 1.2);
   // Sidewalk strip along the whole plot.
   fillRect(g, x0, oz + 2.6, x1, oz + 3.5, 1);

@@ -1,5 +1,5 @@
 import type { GameState, Car, Vec2, Order } from './types';
-import { LANE_EAST_Z, LANE_WEST_Z, MAP_X, MAP_Z, STARTER, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK } from './layout';
+import { LANE_EAST_Z, LANE_WEST_Z, MAP_X, MAP_Z, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK, lotLayout } from './layout';
 import { followPath, roundPath } from './movement';
 import { withRng, nextId, popup, cue } from './state';
 
@@ -7,8 +7,8 @@ export const CAR_MODELS = 12; // index into the renderer's car list; 6 and 7 are
 export const TRUCK_MODEL = 6;
 const CUSTOMER_CAR_MODELS = [0, 1, 2, 3, 4, 5, 10];
 
-export function drivewayX(state: GameState): number { return state.shop.originX + (STARTER.driveway.x0 + STARTER.driveway.x1) / 2; }
-export function serviceX(state: GameState): number { return state.shop.originX + (STARTER.serviceLane.x0 + STARTER.serviceLane.x1) / 2; }
+export function drivewayX(state: GameState): number { const L = lotLayout(state.shop); return state.shop.originX + (L.driveway.x0 + L.driveway.x1) / 2; }
+export function serviceX(state: GameState): number { const L = lotLayout(state.shop); return state.shop.originX + (L.serviceLane.x0 + L.serviceLane.x1) / 2; }
 
 function makeCar(state: GameState, model: number, path: Vec2[], carState: Car['state'], speed: number): Car {
   const p0 = path[0]!, p1 = path[1] ?? p0;
@@ -39,10 +39,12 @@ export function spawnCustomerCar(state: GameState, ownerId: number, fromWest: bo
   const bay = state.shop.bays[bayIdx]!;
   bay.carId = -1; // reserved
   const oz = state.shop.originZ;
+  const L = lotLayout(state.shop);
   const pts: Vec2[] = fromWest
-    ? [{ x: -MAP_X - 4, z: LANE_EAST_Z }, { x: dx, z: LANE_EAST_Z }, { x: dx, z: oz + STARTER.driveway.z0 }]
-    : [{ x: MAP_X + 4, z: LANE_WEST_Z }, { x: dx, z: LANE_WEST_Z }, { x: dx, z: oz + STARTER.driveway.z0 }];
-  pts.push({ x: dx, z: bay.z }, { x: bay.x, z: bay.z });
+    ? [{ x: -MAP_X - 4, z: LANE_EAST_Z }, { x: dx, z: LANE_EAST_Z }, { x: dx, z: oz + L.driveway.z0 }]
+    : [{ x: MAP_X + 4, z: LANE_WEST_Z }, { x: dx, z: LANE_WEST_Z }, { x: dx, z: oz + L.driveway.z0 }];
+  const aisleX = bay.x < state.shop.originX + L.aisle.x0 ? dx : dx; // both rows are entered from the aisle
+  pts.push({ x: aisleX, z: bay.z }, { x: bay.x, z: bay.z });
   const car = makeCar(state, model, roundPath(pts, 1.0), 'arriving', CAR_ROAD_SPEED);
   car.bay = bayIdx; car.ownerId = ownerId; bay.carId = car.id;
   return car;
@@ -52,7 +54,8 @@ export function leaveLot(state: GameState, car: Car): void {
   const dx = drivewayX(state);
   const oz = state.shop.originZ;
   const east = withRng(state, 'traffic', (r) => r.chance(0.5));
-  const pts: Vec2[] = [{ x: car.x, z: car.z }, { x: dx, z: car.z }, { x: dx, z: oz + STARTER.driveway.z1 - 0.3 }];
+  const L = lotLayout(state.shop);
+  const pts: Vec2[] = [{ x: car.x, z: car.z }, { x: dx, z: car.z }, { x: dx, z: oz + L.driveway.z1 - 0.3 }];
   if (east) pts.push({ x: dx + 1.5, z: LANE_EAST_Z }, { x: MAP_X + 4, z: LANE_EAST_Z });
   else pts.push({ x: dx - 1.5, z: LANE_WEST_Z }, { x: -MAP_X - 4, z: LANE_WEST_Z });
   car.path = roundPath(pts, 1.0); car.pathIdx = 1; car.state = 'leaving'; car.speed = CAR_LOT_SPEED;
@@ -79,9 +82,10 @@ export function spawnTraffic(state: GameState): void {
 export function spawnDeliveryTruck(state: GameState, order: Order): void {
   const sx = serviceX(state);
   const o = state.shop;
-  const stop = { x: o.originX + STARTER.truckStop.x, z: o.originZ + STARTER.truckStop.z };
+  const L = lotLayout(o);
+  const stop = { x: o.originX + L.truckStop.x, z: o.originZ + L.truckStop.z };
   const pts: Vec2[] = [
-    { x: -MAP_X - 4, z: LANE_EAST_Z }, { x: sx, z: LANE_EAST_Z }, { x: sx, z: o.originZ + STARTER.serviceLane.z1 - 0.3 },
+    { x: -MAP_X - 4, z: LANE_EAST_Z }, { x: sx, z: LANE_EAST_Z }, { x: sx, z: o.originZ + L.serviceLane.z1 - 0.3 },
     { x: sx, z: stop.z }, { x: stop.x, z: stop.z },
   ];
   const truck = makeCar(state, TRUCK_MODEL, roundPath(pts, 1.2), 'delivering', CAR_ROAD_SPEED * 0.8);
@@ -91,7 +95,8 @@ export function spawnDeliveryTruck(state: GameState, order: Order): void {
 function truckLeave(state: GameState, car: Car): void {
   const o = state.shop;
   const dx = drivewayX(state);
-  const pts: Vec2[] = [{ x: car.x, z: car.z }, { x: dx, z: car.z }, { x: dx, z: o.originZ + STARTER.driveway.z1 - 0.3 }, { x: dx + 1.5, z: LANE_EAST_Z }, { x: MAP_X + 4, z: LANE_EAST_Z }];
+  const L = lotLayout(o);
+  const pts: Vec2[] = [{ x: car.x, z: car.z }, { x: dx, z: car.z }, { x: dx, z: o.originZ + L.driveway.z1 - 0.3 }, { x: dx + 1.5, z: LANE_EAST_Z }, { x: MAP_X + 4, z: LANE_EAST_Z }];
   car.path = roundPath(pts, 1.2); car.pathIdx = 1; car.state = 'leaving'; car.speed = CAR_LOT_SPEED;
 }
 
@@ -109,7 +114,7 @@ export function tickCars(state: GameState): void {
       }
       case 'arriving': {
         const oz = state.shop.originZ;
-        if (car.z < oz + STARTER.driveway.z1 + 0.5) car.speed = CAR_LOT_SPEED;
+        if (car.z < oz + 2.0) car.speed = CAR_LOT_SPEED;
         if (followPath(car, car.speed, dt, 5)) {
           car.state = 'parked';
           if (car.bay !== null) { const b = state.shop.bays[car.bay]!; car.yaw = b.yaw; car.x = b.x; car.z = b.z; }
@@ -119,7 +124,7 @@ export function tickCars(state: GameState): void {
       case 'parked': break;
       case 'delivering': {
         const oz = state.shop.originZ;
-        if (car.z < oz + STARTER.serviceLane.z1 + 0.5) car.speed = CAR_LOT_SPEED;
+        if (car.z < oz + 2.0) car.speed = CAR_LOT_SPEED;
         if (followPath(car, car.speed, dt, 5)) { car.state = 'unloading'; car.timer = 6; cue(state, 'truck'); }
         break;
       }

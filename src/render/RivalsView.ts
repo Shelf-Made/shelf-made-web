@@ -9,11 +9,18 @@ import { textGeometry } from './letters';
 export class RivalsView {
   readonly group = new Group();
   private boards = new Map<string, { closed: Mesh; sale: Mesh; name: Mesh }>();
+  private branchSigns: Mesh[] = [];
   constructor(private readonly assets: AssetLibrary) {}
 
-  build(plan: TownPlan): void {
-    this.group.clear(); this.boards.clear();
+  build(plan: TownPlan, branchNames: Record<string, string> = {}): void {
+    this.group.clear(); this.boards.clear(); this.branchSigns = [];
     const pal = this.assets.palette;
+    for (const b of plan.branches) {
+      const name = (branchNames[b.plotId] ?? 'BRANCH').toUpperCase();
+      const h = Math.min(0.3, (2.4 * 7) / (6 * Math.max(1, name.length)));
+      const g = merge([box(pal, '#38383D', 0.1, 1.2, 0.1, b.x - 1.3, 0, b.z), box(pal, '#38383D', 0.1, 1.2, 0.1, b.x + 1.3, 0, b.z), box(pal, '#38383D', 2.8, 0.55, 0.12, b.x, 1.0, b.z), box(pal, '#3FA87A', 2.86, 0.05, 0.16, b.x, 1.55, b.z), place(textGeometry(pal, name, h, 0.05, '#FFF3DC', '#FFC044'), b.x, 1.27 - h / 2, b.z + 0.08, 0)]);
+      const m = new Mesh(g, this.assets.material); m.castShadow = true; this.group.add(m); this.branchSigns.push(m);
+    }
     for (const r of plan.rivals) {
       const x = r.x, z = r.z - 2.6;
       const post = merge([box(pal, '#38383D', 0.1, 1.2, 0.1, x - 1.1, 0, z), box(pal, '#38383D', 0.1, 1.2, 0.1, x + 1.1, 0, z)]);

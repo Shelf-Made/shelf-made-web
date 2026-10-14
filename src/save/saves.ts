@@ -2,6 +2,8 @@ import type { GameState } from '@/sim/types';
 import { SAVE_VERSION } from '@/sim/newGame';
 import { makeRivals } from '@/sim/rivals';
 import { makeMarket } from '@/sim/market';
+import { DEFAULT_RULES } from '@/sim/staff';
+import { makeMarketing } from '@/sim/marketing';
 import type { StorageBackend } from './storage';
 
 export interface SaveFile { format: 'shelf-made-save'; version: number; savedAt: string; name: string; day: number; cash: number; state: GameState }
@@ -16,11 +18,19 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => ({ ...raw, version: 1 }),
   // v1 → v2: rivals, store scores, notices, demand.
   (raw) => ({
-    rivals: makeRivals(), scores: { avgWait: 20, waitSum: 0, waitSamples: 0, last: null }, notices: [], demandBase: 24, eventDemand: 1,
+    rivals: makeRivals(), scores: { avgWait: 20, waitSum: 0, waitSamples: 0, last: null }, notices: [], demandBase: 48, eventDemand: 1,
     ...raw, version: 2,
   }),
   // v2 → v3: market, bills, loans, fail state.
   (raw) => ({ market: makeMarket(), bills: [], loans: [], brokeDays: 0, rescueOffered: false, gameOver: false, ...raw, version: 3 }),
+  // v3 → v4: staff pool, manager rules, litter.
+  (raw) => { const shop = raw.shop as { litter?: unknown[] }; shop.litter ??= []; return { staffPool: [], rules: { ...DEFAULT_RULES }, ...raw, version: 4 }; },
+  // v4 → v5: shop size and lot rows.
+  (raw) => { const shop = raw.shop as { sizeId?: string; lotRows?: number }; shop.sizeId ??= 'starter'; shop.lotRows ??= 1; return { ...raw, version: 5 }; },
+  // v5 → v6: marketing.
+  (raw) => ({ marketing: makeMarketing(), ...raw, version: 6 }),
+  // v6 → v7: franchises.
+  (raw) => ({ franchises: [], ...raw, version: 7 }),
 ];
 
 export function migrate(file: SaveFile): SaveFile {

@@ -7,6 +7,7 @@ import { PeopleView, PEOPLE_MODELS } from './People';
 import { CarsView } from './Cars';
 import { Lighting } from './Lighting';
 import { RivalsView } from './RivalsView';
+import { Overlays, type OverlayKind } from './Overlays';
 import { buildTown, type TownPlan } from './town';
 import type { GameState } from '@/sim/types';
 import { DAY_SECONDS } from '@/sim/layout';
@@ -28,6 +29,7 @@ export class WorldRenderer {
   private people: PeopleView;
   private cars: CarsView;
   private rivals: RivalsView;
+  readonly overlays = new Overlays();
   private plan: TownPlan | null = null;
   private townKey = '';
   private readonly ray = new Raycaster();
@@ -50,7 +52,7 @@ export class WorldRenderer {
     this.people = new PeopleView(this.assets);
     this.cars = new CarsView(this.assets);
     this.rivals = new RivalsView(this.assets);
-    this.scene.add(this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group);
+    this.scene.add(this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.overlays.group);
     this.resize();
   }
 
@@ -71,13 +73,13 @@ export class WorldRenderer {
   }
 
   /** Build or rebuild the neighbourhood for a seed and plot. */
-  setTown(seed: number, plotId: string): void {
-    const key = `${seed}:${plotId}`;
+  setTown(seed: number, plotId: string, branches: { plotId: string; name: string }[] = []): void {
+    const key = `${seed}:${plotId}:${branches.map((b) => b.plotId + '=' + b.name).join(',')}`;
     if (key === this.townKey) return;
     this.townKey = key;
-    this.plan = buildTown(seed, plotId);
+    this.plan = buildTown(seed, plotId, branches.map((b) => b.plotId));
     this.statics.build(this.plan);
-    this.rivals.build(this.plan);
+    this.rivals.build(this.plan, Object.fromEntries(branches.map((b) => [b.plotId, b.name])));
   }
 
   get town(): TownPlan | null { return this.plan; }
@@ -91,10 +93,14 @@ export class WorldRenderer {
     const night = state.phase === 'night';
     if (night !== this.night) { this.night = night; this.statics.setNight(night); this.store.setNight(night); }
     this.lighting.setTime(state.time / DAY_SECONDS, night, focus, this.camera.viewRadius());
+    // Branches change the town: rebuild when the set changes (cheap, a few times per game).
+    this.setTown(state.seed, state.shop.plotId, state.franchises.map((f) => ({ plotId: f.plotId, name: f.name })));
     this.store.update(state, this.camera.yaw);
     this.people.update(state, alpha, dt, focus);
     this.cars.update(state, alpha);
     this.rivals.update(state);
+    this.overlays.sample(state);
+    this.overlays.update(state);
     this.renderer.render(this.scene, this.camera.camera);
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
@@ -125,6 +131,10 @@ export class WorldRenderer {
     out.x = (v.x + 1) / 2 * this.canvas.clientWidth;
     out.y = (1 - v.y) / 2 * this.canvas.clientHeight;
   }
+
+  setOverlay(kind: OverlayKind): void { this.overlays.kind = kind; }
+
+  setGhost(type: Parameters<StoreView['setGhost']>[0], state: GameState, x: number, z: number, rot: Parameters<StoreView['setGhost']>[4], valid: boolean): void { this.store.setGhost(type, state.shop, x, z, rot, valid); }
 
   debugPeople(): unknown { return this.people.debugInfo(); }
   debugFixtures(): unknown { return this.store.debugFixtures(); }

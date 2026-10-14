@@ -15,3 +15,9 @@ export { computeScores, playerShare, expectedByType, TYPE_NAMES, TYPE_WEIGHTS } 
 export { rivalOnSale, makeRivals } from './rivals';
 export { LOAN_OFFERS, upcoming } from './money';
 export { CATEGORIES, inShortage } from './market';
+export { ROLE_NAMES, ROLE_BLURB, DEFAULT_RULES, refreshPool } from './staff';
+export { hint, UNLOCK_DAY } from './progression';
+export { canPlace } from './build';
+export { lotLayout, SHOP_SIZES, LOT_EXPANSION_COST } from './layout';
+export { FLYER_AREAS, BILLBOARD_SITES, AD_COST, adHeadline, effectivePrice } from './marketing';
+export { FRANCHISE_COST, managerCandidates } from './franchise';

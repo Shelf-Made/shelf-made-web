@@ -52,6 +52,21 @@ test.describe('screenshots', () => {
     await settle(page, 900);
     await page.screenshot({ path: out('07-delivery') });
 
+    // Build mode: placing a shelf with the ghost.
+    await hooks(page, 'dispatch', { type: 'cheat', cash: 2000 });
+    await hooks(page, 'openCard', 'build');
+    await hooks(page, 'startPlacing', 'shelf');
+    await hooks(page, 'hover', 0.5, -2.1 - 1.6);
+    await settle(page, 700);
+    await page.screenshot({ path: out('11-build-mode') });
+    await hooks(page, 'openCard', 'build');
+
+    // Finance in the Stats card.
+    await hooks(page, 'openCard', 'stats');
+    await settle(page, 500);
+    await page.screenshot({ path: out('12-finance-card') });
+    await hooks(page, 'openCard', 'stats');
+
     // Night card.
     await hooks(page, 'advance', 800);
     await settle(page, 500);

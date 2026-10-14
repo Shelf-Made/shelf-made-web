@@ -80,6 +80,8 @@ export interface Person {
   mood?: number;
   arrivedTick?: number;
   queuedTick?: number;
+  walked?: number;
+  crowded?: number;
   // staff / owner
   role?: StaffRole;
   task?: { type: 'carry'; fixtureId: number; productId: string; qty: number } | null;
@@ -89,9 +91,15 @@ export interface Person {
   morale?: number;
   name?: string;
   stuckTicks?: number;
+  hiredDay?: number;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
+export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | null;
+
+export interface Candidate { id: number; name: string; role: StaffRole; skill: number; speed: number; wage: number; look: { model: number; variant: number; height: number } }
+export interface ManagerRules { reorderPoint: number; spendCap: number; priceMin: number; priceMax: number; wageCap: number; adBudget: number }
+export interface Litter { id: number; x: number; z: number }
 
 export type CarState = 'arriving' | 'parking' | 'parked' | 'leaving' | 'passing' | 'delivering' | 'unloading' | 'gone' | 'turnedAway';
 
@@ -158,6 +166,10 @@ export interface Shop {
   cleanliness: number;
   /** Bumped whenever fixtures or walls change, so the pathfinding grid is rebuilt. */
   layoutVersion: number;
+  /** Abandoned baskets and mess on the floor. */
+  litter: Litter[];
+  sizeId: string;
+  lotRows: number;
 }
 
 export interface DayStats {
@@ -199,6 +211,17 @@ export interface RivalState {
 
 export interface Bill { id: number; name: string; amount: number; dueDay: number }
 export interface Loan { id: number; offerId: string; name: string; principal: number; balance: number; dailyRate: number; daysLeft: number; takenDay: number }
+
+export interface Campaign { id: number; kind: 'flyers'; areaId: string; startDay: number; strength: number }
+export interface Promotion { kind: 'lossLeader' | 'buyTwo'; productId: string }
+export interface AdTemplate { kind: 'product' | 'discount' | 'target'; productId?: string; percent?: number; target?: CustomerType }
+
+export interface Franchise {
+  id: number; plotId: string; name: string; manager: Candidate; openedDay: number;
+  stockLevel: number; reputation: number; cashToday: number;
+  history: { day: number; customers: number; served: number; revenue: number; profit: number }[];
+  alerts: string[];
+}
 
 export interface Notice { day: number; text: string; kind: 'rival' | 'event' | 'money' | 'staff' | 'info' }
 
@@ -261,4 +284,8 @@ export interface GameState {
   brokeDays: number;
   rescueOffered: boolean;
   gameOver: boolean;
+  staffPool: Candidate[];
+  rules: ManagerRules;
+  marketing: { campaigns: Campaign[]; billboards: string[]; promotion: Promotion | null; ad: AdTemplate | null; outsideSign: boolean };
+  franchises: Franchise[];
 }

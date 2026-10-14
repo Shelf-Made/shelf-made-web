@@ -14,6 +14,7 @@ export interface TownPlan {
   /** Flat painted areas: colour + rect + height. */
   slabs: { color: string; rect: Rect; y: number; h: number }[];
   rivals: RivalSite[];
+  branches: { plotId: string; x: number; z: number }[];
   /** Lamp positions for night lights. */
   lamps: { x: number; z: number }[];
   /** Parked cars in driveways. */
@@ -33,9 +34,9 @@ export const RIVAL_DEFS: Omit<RivalSite, 'x' | 'z'>[] = [
   { id: 'chain', name: 'MegaMart', kind: 'chain' },
 ];
 
-export function buildTown(seed: number, plotId: string): TownPlan {
+export function buildTown(seed: number, plotId: string, branchPlots: string[] = []): TownPlan {
   const rng = new Rng(seed ^ 0x7a77);
-  const plan: TownPlan = { placements: [], slabs: [], rivals: [], lamps: [], parked: [] };
+  const plan: TownPlan = { placements: [], slabs: [], rivals: [], lamps: [], parked: [], branches: [] };
   const P = plan.placements;
   const chosen = PLOTS.find((p) => p.id === plotId) ?? PLOTS[0]!;
   const houseIdx = () => rng.int(0, HOUSES.length - 1);
@@ -88,6 +89,15 @@ export function buildTown(seed: number, plotId: string): TownPlan {
   const northZ = -4.2;
   for (const plot of PLOTS) {
     if (plot.id === chosen.id) continue;
+    if (branchPlots.includes(plot.id)) {
+      // A branch: a shop front with a forecourt and two bays.
+      P.push({ model: 'commercial/shop-c', x: plot.x - 1.35, z: -3.6, yaw: 0 });
+      P.push({ model: 'commercial/shop-d', x: plot.x + 1.35, z: -3.6, yaw: 0 });
+      plan.slabs.push({ color: '#A9ACB5', rect: { x0: plot.x - 4.2, z0: -1.6, x1: plot.x + 4.2, z1: ROAD_Z - 1.55 }, y: 0, h: 0.04 });
+      plan.parked.push({ model: rng.int(0, 5), x: plot.x - 3.0, z: -0.3, yaw: Math.PI });
+      plan.branches.push({ plotId: plot.id, x: plot.x, z: -1.0 });
+      continue;
+    }
     house(plot.x - 4, northZ, true, 8);
     house(plot.x + 4, northZ, true, 8);
   }

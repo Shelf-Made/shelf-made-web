@@ -1,9 +1,9 @@
 import type { BufferGeometry, Raycaster} from 'three';
-import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, PlaneGeometry, MeshBasicMaterial, DoubleSide, Vector3 } from 'three';
+import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, PlaneGeometry, MeshBasicMaterial, MeshStandardMaterial, DoubleSide, Vector3 } from 'three';
 import type { AssetLibrary } from './assets';
-import type { GameState, Shop, Fixture, FixtureType } from '@/sim/types';
+import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { productDef, type Shape } from '@/sim/products';
-import { FIXTURES, STARTER } from '@/sim/layout';
+import { FIXTURES, lotLayout } from '@/sim/layout';
 import { box, merge, paint, place } from './geometry';
 import { textGeometry, textWidth } from './letters';
 import { buildShapes, type ShapeGeo } from './products';
@@ -40,18 +40,22 @@ export class StoreView {
   private shapes!: Record<Shape, ShapeGeo>;
   private productMeshes = new Map<Shape, { body: InstancedMesh; accent: InstancedMesh }>();
   private boxes!: InstancedMesh;
+  private litter!: InstancedMesh;
   private screens!: InstancedMesh;
   private glowPanels!: InstancedMesh;
   private glowFloor!: InstancedMesh;
   private layoutVersion = -1;
   private stockKey = '';
   private shopName = '';
+  private shellKey = '';
   private origin = { x: 0, z: 0 };
   private readonly dummy = new Object3D();
   private signMesh: Mesh | null = null;
   private glowMat: MeshBasicMaterial;
   private glowFloorMat: MeshBasicMaterial;
   private nightGlow: Mesh | null = null;
+  private ghost: Mesh | null = null;
+  private ghostMat: MeshStandardMaterial;
   private nightMat: MeshBasicMaterial;
 
   constructor(private readonly assets: AssetLibrary) {
@@ -59,6 +63,20 @@ export class StoreView {
     this.glowMat = new MeshBasicMaterial({ color: new Color('#D6F5FF') });
     this.glowFloorMat = new MeshBasicMaterial({ color: new Color('#BFEFFF'), transparent: true, opacity: 0.35, depthWrite: false });
     this.nightMat = new MeshBasicMaterial({ color: new Color('#FFD28A'), transparent: true, opacity: 0.42, depthWrite: false });
+    this.ghostMat = new MeshStandardMaterial({ color: new Color('#3FA87A'), transparent: true, opacity: 0.55, depthWrite: false, roughness: 1 });
+  }
+
+  /** Build-mode ghost: a translucent fixture, green when it can go there and red when it cannot. */
+  setGhost(type: FixtureType | null, shop: Shop, x: number, z: number, rot: Rot, valid: boolean): void {
+    if (!type) { if (this.ghost) this.ghost.visible = false; return; }
+    const geo = this.assets.geometry(FIXTURE_MODEL[type]);
+    if (!this.ghost) { this.ghost = new Mesh(geo, this.ghostMat); this.group.add(this.ghost); }
+    this.ghost.geometry = geo;
+    this.ghost.visible = true;
+    this.ghostMat.color.set(valid ? '#3FA87A' : '#E8573F');
+    const yaw = rot * Math.PI / 2; const dz = MODEL_OFFSET[type] ?? 0;
+    this.ghost.position.set(shop.originX + x + 0.5 + Math.sin(yaw) * dz, 0.02, shop.originZ + z + 0.5 + Math.cos(yaw) * dz);
+    this.ghost.rotation.set(0, yaw, 0);
   }
 
   setNight(on: boolean): void { if (this.nightGlow) this.nightGlow.visible = on; }
@@ -76,7 +94,9 @@ export class StoreView {
     }
     this.boxes = new InstancedMesh(this.assets.geometry('furniture/cardboard-box-closed'), this.assets.material, 64);
     this.boxes.castShadow = true; this.boxes.count = 0; this.boxes.frustumCulled = false;
-    this.group.add(this.boxes);
+    this.litter = new InstancedMesh(this.assets.geometry('market/shopping-basket'), this.assets.material, 32);
+    this.litter.count = 0; this.litter.frustumCulled = false; this.litter.castShadow = true;
+    this.group.add(this.litter);
     const screenGeo = paint(new PlaneGeometry(0.14, 0.1), pal, '#9BE3FF');
     this.screens = new InstancedMesh(screenGeo, this.glowMat, 16); this.screens.count = 0; this.screens.frustumCulled = false;
     const panelGeo = paint(new PlaneGeometry(0.86, 0.72), pal, '#D6F5FF');
@@ -112,24 +132,25 @@ export class StoreView {
     floorParts.push(box(pal, GREEN_DARK, 0.9, 0.03, 0.5, ox + shop.door.x, 0.0, oz + shop.door.z + 0.35));
     floorParts.push(box(pal, CREAM, 0.6, 0.032, 0.3, ox + shop.door.x, 0.0, oz + shop.door.z + 0.35));
     // Lot paving: apron, walkway, parking aisle and bays, driveway, service lane, back yard.
-    const L = STARTER;
+    const L = lotLayout(shop);
     const slab = (r: { x0: number; z0: number; x1: number; z1: number }, hex: string, h = 0.03, y = -0.012) =>
       floorParts.push(box(pal, hex, r.x1 - r.x0, h, r.z1 - r.z0, ox + (r.x0 + r.x1) / 2, y, oz + (r.z0 + r.z1) / 2));
     slab(L.apron, '#CFCBC2', 0.04);
-    slab({ x0: L.walkway.x - 0.5, z0: L.apron.z1, x1: L.walkway.x + 0.5, z1: 3.3 }, '#CFCBC2', 0.04);
+    slab({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.3 }, '#CFCBC2', 0.04);
     slab(L.aisle, '#6E717C'); slab(L.driveway, '#6E717C'); slab(L.serviceLane, '#6E717C'); slab(L.backYard, '#6E717C');
     for (const b of L.bays) {
       slab({ x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 }, '#6E717C');
       // White bay lines on both sides and a stop line at the head.
       floorParts.push(box(pal, '#F2F2F2', 1.6, 0.004, 0.05, ox + b.x, 0.02, oz + b.z - 0.55));
       floorParts.push(box(pal, '#F2F2F2', 1.6, 0.004, 0.05, ox + b.x, 0.02, oz + b.z + 0.55));
-      floorParts.push(box(pal, '#F2F2F2', 0.05, 0.004, 1.15, ox + b.x - 0.85, 0.02, oz + b.z));
+      floorParts.push(box(pal, '#F2F2F2', 0.05, 0.004, 1.15, ox + b.x + (b.yaw > 0 ? -0.85 : 0.85), 0.02, oz + b.z));
     }
     // Kerbs around the parking lot and a "P" sign post by the driveway.
     floorParts.push(box(pal, '#B9BCC4', 0.12, 0.08, L.aisle.z1 - L.aisle.z0, ox + L.aisle.x1 + 0.06, 0, oz + (L.aisle.z0 + L.aisle.z1) / 2));
     floorParts.push(box(pal, '#B9BCC4', L.aisle.x1 - L.bays[0]!.x + 1.0, 0.08, 0.12, ox + (L.aisle.x1 + L.bays[0]!.x - 0.9) / 2, 0, oz + L.aisle.z0 - 0.06));
     // A small flower bed on the west lawn (flowers and bushes are placed by the town plan).
     floorParts.push(box(pal, '#B58A5C', 1.4, 0.05, 2.2, ox + L.plot.x0 + 1.5, 0, oz - 2.6));
+    this.shellKey = `${shop.sizeId}|${shop.lotRows}`;
     // Plinth under the whole building so walls never float.
     floorParts.push(box(pal, SLATE, f.x1 - f.x0 + 0.3, 0.04, f.z1 - s.z0 + 0.3, ox + (f.x0 + f.x1) / 2, -0.03, oz + (s.z0 + f.z1) / 2));
     const floorMesh = new Mesh(merge(floorParts), this.assets.material);
@@ -274,7 +295,7 @@ export class StoreView {
   /** Per-frame: ledge toggling, fixtures, products, boxes. */
   update(state: GameState, cameraYaw: number): void {
     const shop = state.shop;
-    if (shop.name !== this.shopName || shop.originX !== this.origin.x) this.buildShell(shop);
+    if (shop.name !== this.shopName || shop.originX !== this.origin.x || this.shellKey !== `${shop.sizeId}|${shop.lotRows}`) this.buildShell(shop);
     const sx = Math.sin(cameraYaw), cz = Math.cos(cameraYaw);
     for (const s of this.sides) {
       const facing = s.nx * sx + s.nz * cz > 0.25;
@@ -284,6 +305,10 @@ export class StoreView {
     if (shop.layoutVersion !== this.layoutVersion) { this.rebuildFixtures(shop); this.layoutVersion = shop.layoutVersion; this.stockKey = ''; }
     const key = stockKey(shop);
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }
+    const n = Math.min(32, shop.litter.length);
+    for (let i = 0; i < n; i++) { const l = shop.litter[i]!; this.dummy.position.set(l.x, 0, l.z); this.dummy.rotation.set(0.35, (l.id * 1.7) % 6.28, 0.2); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix(); this.litter.setMatrixAt(i, this.dummy.matrix); }
+    if (this.litter.count !== n) { this.litter.count = n; }
+    this.litter.instanceMatrix.needsUpdate = true;
   }
 
   private fixtureMatrix(shop: Shop, f: Fixture, out: Matrix4, yOffset = 0, modelOffset = false): Matrix4 {

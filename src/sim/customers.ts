@@ -84,10 +84,10 @@ export function playerShare(state: GameState, scores = computeScores(state)): Re
   const open = state.rivals.filter((r) => r.open);
   const out = {} as Record<CustomerType, number>;
   for (const type of Object.keys(TYPE_BASE) as CustomerType[]) {
-    const k = 5.5;
+    const k = 4.0;
     const mine = Math.exp(k * weighted(scores, type) * (1 + state.shop.reputation * 0.3));
     let total = mine;
-    for (const r of open) total += Math.exp(k * weighted(rivalScores(r), type) * (1 + r.reputation * 0.3)) * 0.85;
+    for (const r of open) total += Math.exp(k * weighted(rivalScores(r), type) * (1 + r.reputation * 0.3)) * 0.5;
     out[type] = mine / total;
   }
   return out;
@@ -98,7 +98,7 @@ export function expectedByType(state: GameState): Record<CustomerType, number> {
   const plot = PLOTS.find((p) => p.id === state.shop.plotId) ?? PLOTS[0]!;
   const base = state.demandBase;
   const openRivals = state.rivals.filter((r) => r.open).length;
-  const pool = base * plot.traffic * (1 + 0.55 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand;
+  const pool = base * plot.traffic * (1 + 0.75 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand;
   const share = playerShare(state);
   const out = {} as Record<CustomerType, number>;
   for (const type of Object.keys(TYPE_BASE) as CustomerType[]) out[type] = pool * TYPE_BASE[type] * plot.mix[type] * share[type];
@@ -108,7 +108,7 @@ export function expectedByType(state: GameState): Record<CustomerType, number> {
 /** Products a type is drawn to when building a shopping list. */
 export function listWeight(type: CustomerType, productId: string, stocked: boolean): number {
   const p = productDef(productId);
-  let w = p.demand * (stocked ? 4 : 1);
+  let w = p.demand * (stocked ? 4 : 0.25);
   if (type === 'loyalist' && p.brand) w *= 2.8;
   if (type === 'impulse' && p.impulse) w *= 2.2;
   if (type === 'bargain' && p.basePrice < 1.5) w *= 1.4;
@@ -116,7 +116,7 @@ export function listWeight(type: CustomerType, productId: string, stocked: boole
 }
 
 export function budgetFor(type: CustomerType, rnd: number): number {
-  const base = type === 'bargain' ? 9 : type === 'convenience' ? 12 : type === 'loyalist' ? 18 : 14;
+  const base = type === 'bargain' ? 15 : type === 'convenience' ? 19 : type === 'loyalist' ? 28 : 22;
   return base * (0.7 + rnd * 0.8);
 }
 

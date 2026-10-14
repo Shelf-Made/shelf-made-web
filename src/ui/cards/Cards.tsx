@@ -3,7 +3,9 @@ import { StockCard } from './StockCard';
 import { PricesCard } from './PricesCard';
 import { StatsCard } from './StatsCard';
 import { SettingsCard } from './SettingsCard';
-import { LockedCard } from './LockedCard';
+import { StaffCard } from './StaffCard';
+import { BuildCard } from './BuildCard';
+import { MarketingCard } from './MarketingCard';
 
 export function Card({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -21,9 +23,9 @@ export function Cards({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
     case 'prices': return <Card title="Prices" onClose={close}><PricesCard runtime={runtime} snap={snap} /></Card>;
     case 'stats': return <Card title="Stats" onClose={close}><StatsCard runtime={runtime} snap={snap} /></Card>;
     case 'settings': return <Card title="Settings" onClose={close}><SettingsCard runtime={runtime} snap={snap} /></Card>;
-    case 'build': return <Card title="Build" onClose={close}><LockedCard what="Build mode" blurb="Shelves, fridges, registers and more land. Opens on day 3." /></Card>;
-    case 'staff': return <Card title="Staff" onClose={close}><LockedCard what="Staff" blurb="Hire a cashier and let them ring people up. Opens on day 4." /></Card>;
-    case 'marketing': return <Card title="Marketing" onClose={close}><LockedCard what="Marketing" blurb="Flyers, billboards and deals. Opens on day 6." /></Card>;
+    case 'build': return <Card title="Build" onClose={close}><BuildCard runtime={runtime} snap={snap} /></Card>;
+    case 'staff': return <Card title="Staff" onClose={close}><StaffCard runtime={runtime} snap={snap} /></Card>;
+    case 'marketing': return <Card title="Marketing" onClose={close}><MarketingCard runtime={runtime} snap={snap} /></Card>;
     default: return null;
   }
 }

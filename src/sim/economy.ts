@@ -9,6 +9,10 @@ import { rivalDay } from './rivals';
 import { computeScores } from './customers';
 import { marketDay, inShortage } from './market';
 import { closingCharges, checkFailState, addBill, PAYROLL_TAX } from './money';
+import { staffNight, autoOrder, managerPrices } from './staff';
+import { applyUnlocks } from './progression';
+import { marketingDay } from './marketing';
+import { franchiseDay } from './franchise';
 
 export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
 export const SUPPLIERS: Supplier[] = [
@@ -27,10 +31,10 @@ export function unitCost(productId: string, supplierId: string, state?: GameStat
 
 export function placeOrder(state: GameState, supplierId: string, lines: { productId: string; qty: number }[]): Order | string {
   const sup = supplier(supplierId);
-  const clean = lines.filter((l) => l.qty > 0).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: unitCost(l.productId, sup.id, state) }));
-  if (clean.length === 0) return 'Nothing to order.';
-  const short = clean.find((l) => inShortage(state, l.productId));
-  if (short) return `${productDef(short.productId).name} is in shortage: no supplier has it this week.`;
+  const shortLines = lines.filter((l) => l.qty > 0 && inShortage(state, l.productId));
+  const clean = lines.filter((l) => l.qty > 0 && !inShortage(state, l.productId)).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: unitCost(l.productId, sup.id, state) }));
+  if (clean.length === 0) return shortLines.length ? `${productDef(shortLines[0]!.productId).name} is in shortage: no supplier has it this week.` : 'Nothing to order.';
+  for (const l of shortLines) state.notices.push({ day: state.day, text: `${productDef(l.productId).name} left off the order: in shortage this week.`, kind: 'event' });
   const total = Math.round(clean.reduce((a, l) => a + l.qty * l.unitCost, 0) * 100) / 100;
   if (total < sup.minOrder) return `${sup.name} needs a $${sup.minOrder} minimum.`;
   const onTerms = sup.terms > 0;
@@ -92,6 +96,11 @@ export function closeDay(state: GameState): void {
   shop.reputation += Math.max(-0.03, Math.min(0.03, (t.satisfaction - shop.reputation) * 0.3));
   shop.awareness = Math.min(1, shop.awareness + 0.02 + t.served * 0.002);
   state.scores.last = computeScores(state);
+  staffNight(state);
+  franchiseDay(state);
+  // The owner tidies up overnight.
+  state.shop.litter = [];
+  state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.35);
   state.history.push({ ...t });
   state.phase = 'night';
   cue(state, 'night');
@@ -110,6 +119,9 @@ export function openTomorrow(state: GameState): void {
   if (state.notices.length > 40) state.notices.splice(0, state.notices.length - 40);
   rivalDay(state);
   marketDay(state);
+  applyUnlocks(state);
+  marketingDay(state);
+  dailyAutomation(state);
   // Spoilage: shelf and storage entries past their life are thrown out.
   let spoiled = 0;
   for (const f of state.shop.fixtures) for (const s of f.slots) {
@@ -130,3 +142,12 @@ export function openTomorrow(state: GameState): void {
 }
 
 export function isClosingTime(state: GameState): boolean { return state.time >= CLOSE_TIME; }
+
+/** Orderers and managers act at opening time. */
+export function dailyAutomation(state: GameState): void {
+  const staff = state.people.filter((p) => p.kind === 'staff');
+  const manager = staff.find((p) => p.role === 'manager');
+  const orderer = staff.find((p) => p.role === 'orderer');
+  if (manager) { autoOrder(state, state.rules, state.rules.spendCap); managerPrices(state, state.rules); }
+  else if (orderer) autoOrder(state, { ...state.rules, reorderPoint: 0.8 }, Math.min(state.rules.spendCap, state.cash * 0.5));
+}

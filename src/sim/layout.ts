@@ -56,20 +56,58 @@ export const STARTER = {
   plot: { x0: -8, z0: -9, x1: 8, z1: 1.5 },
 };
 
+export interface Rect { x0: number; z0: number; x1: number; z1: number }
+export interface LotLayout {
+  apron: Rect; walkwayX: number; bays: { x: number; z: number; yaw: number }[]; aisle: Rect; driveway: Rect; serviceLane: Rect; backYard: Rect;
+  truckStop: { x: number; z: number; yaw: number }; plot: Rect; halfW: number; depth: number;
+}
+
+/** The lot around a shop of any size: parking along the east wall, service lane down the west, yard behind. */
+export function lotLayout(shop: { floor: Rect; storeroom: Rect; lotRows?: number }): LotLayout {
+  const halfW = (shop.floor.x1 - shop.floor.x0) / 2;
+  const depth = shop.floor.z1 - shop.storeroom.z0;
+  const rows = shop.lotRows ?? 1;
+  const bays: { x: number; z: number; yaw: number }[] = [];
+  const n = Math.min(8, Math.floor((depth - 1.2) / 1.1));
+  for (let k = 0; k < n; k++) bays.push({ x: halfW + 1.6, z: -(depth - 1.1) + k * 1.1, yaw: Math.PI / 2 });
+  if (rows > 1) for (let k = 0; k < n; k++) bays.push({ x: halfW + 6.0, z: -(depth - 1.1) + k * 1.1, yaw: -Math.PI / 2 });
+  const eastEdge = rows > 1 ? halfW + 7.2 : halfW + 4.5;
+  return {
+    halfW, depth,
+    apron: { x0: -halfW - 1, z0: 0, x1: eastEdge, z1: 1.2 },
+    walkwayX: 0,
+    bays,
+    aisle: { x0: halfW + 2.45, z0: -(depth - 0.4), x1: halfW + 4.45, z1: -0.5 },
+    driveway: { x0: halfW + 2.5, z0: -0.5, x1: halfW + 4.4, z1: 1.5 },
+    serviceLane: { x0: -halfW - 2.9, z0: -(depth + 2.2), x1: -halfW - 1.1, z1: 1.5 },
+    backYard: { x0: -halfW - 1.1, z0: -(depth + 2.2), x1: eastEdge, z1: -depth },
+    truckStop: { x: -halfW + 1.3, z: -(depth + 1.2), yaw: Math.PI / 2 },
+    plot: { x0: -8, z0: -(depth + 3), x1: Math.max(8, eastEdge + 0.8), z1: 1.5 },
+  };
+}
+
+/** Shop sizes you can grow into. Costs include the land. */
+export const SHOP_SIZES: { id: string; name: string; floor: Rect; storeroom: Rect; cost: number }[] = [
+  { id: 'starter', name: 'Corner shop (5×4)', floor: { x0: -2.5, z0: -4, x1: 2.5, z1: 0 }, storeroom: { x0: -2.5, z0: -6, x1: 2.5, z1: -4 }, cost: 0 },
+  { id: 'medium', name: 'Neighbourhood grocer (7×5)', floor: { x0: -3.5, z0: -5, x1: 3.5, z1: 0 }, storeroom: { x0: -3.5, z0: -7, x1: 3.5, z1: -5 }, cost: 900 },
+  { id: 'large', name: 'Market hall (9×6)', floor: { x0: -4.5, z0: -6, x1: 4.5, z1: 0 }, storeroom: { x0: -4.5, z0: -9, x1: 4.5, z1: -6 }, cost: 2400 },
+];
+export const LOT_EXPANSION_COST = 500;
+
 /** Where the store's origin sits in world space for a plot: the front door tile centre, just north of the apron. */
 export function storeOrigin(plotX: number): Vec2 {
   return { x: plotX, z: -1.6 };
 }
 
 export const FIXTURES: Record<FixtureType, FixtureDef> = {
-  register: { type: 'register', name: 'Register', price: 400, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
-  shelf: { type: 'shelf', name: 'Shelf', price: 120, w: 1, d: 1, slots: 6, capacity: 8, chilled: false, upkeep: 0 },
-  fridge: { type: 'fridge', name: 'Fridge', price: 350, w: 1, d: 1, slots: 4, capacity: 6, chilled: true, upkeep: 6 },
-  freezer: { type: 'freezer', name: 'Freezer', price: 450, w: 1, d: 1, slots: 2, capacity: 8, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'] },
-  produce: { type: 'produce', name: 'Produce crate', price: 90, w: 1, d: 1, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'] },
-  endcap: { type: 'endcap', name: 'End cap', price: 100, w: 1, d: 1, slots: 3, capacity: 6, chilled: false, upkeep: 0 },
-  kiosk: { type: 'kiosk', name: 'Self-checkout', price: 900, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3 },
-  rack: { type: 'rack', name: 'Checkout rack', price: 60, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0 },
+  register: { type: 'register', name: 'Register', price: 280, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
+  shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 6, capacity: 10, chilled: false, upkeep: 0 },
+  fridge: { type: 'fridge', name: 'Fridge', price: 220, w: 1, d: 1, slots: 4, capacity: 8, chilled: true, upkeep: 6 },
+  freezer: { type: 'freezer', name: 'Freezer', price: 300, w: 1, d: 1, slots: 2, capacity: 10, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'] },
+  produce: { type: 'produce', name: 'Produce crate', price: 60, w: 1, d: 1, slots: 2, capacity: 12, chilled: false, upkeep: 0, accepts: ['produce'] },
+  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 3, capacity: 8, chilled: false, upkeep: 0 },
+  kiosk: { type: 'kiosk', name: 'Self-checkout', price: 650, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3 },
+  rack: { type: 'rack', name: 'Checkout rack', price: 45, w: 1, d: 1, slots: 2, capacity: 8, chilled: false, upkeep: 0 },
   sign: { type: 'sign', name: 'Aisle sign', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
   plant: { type: 'plant', name: 'Plant', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
   bench: { type: 'bench', name: 'Bench', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },

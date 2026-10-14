@@ -51,6 +51,9 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
           {snap.unlocks.newBadges.includes(c) && <span className="new">New!</span>}
         </button>
       ))}
+      <button className="iconbtn" onClick={() => runtime.showHint()} title="What should I do next?" data-card="hint">
+        <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0012 3z" /></svg><span>Hint</span>
+      </button>
       <div className="speeds" role="group" aria-label="Game speed">
         {speeds.map((s) => (
           <button key={s} className={snap.speed === s ? 'active' : ''} onClick={() => runtime.setSpeed(s)} aria-pressed={snap.speed === s} aria-label={s === 0 ? 'Pause' : `${s}x speed`}>{s === 0 ? '❚❚' : `${s}x`}</button>

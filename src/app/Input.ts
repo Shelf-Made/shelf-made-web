@@ -26,6 +26,7 @@ export class InputController {
     });
     on(c, 'pointermove', (e: PointerEvent) => {
       this.pointerX = e.clientX; this.pointerY = e.clientY;
+      if (this.rt.card === 'build' && this.dragging === 'none') { const g = this.rt.renderer?.groundAt(e.clientX, e.clientY); if (g) this.rt.hoverWorld(g.x, g.z); }
       if (this.dragging === 'none') return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
       this.lastX = e.clientX; this.lastY = e.clientY;
@@ -53,6 +54,13 @@ export class InputController {
       this.keys.add(e.code);
       if (e.code === k.scan) { e.preventDefault(); if (!this.scanHeld) { this.scanHeld = true; this.scanTimer = 0; this.rt.scan(); } }
       if (e.code === 'Escape') this.rt.closeCard();
+      if (this.rt.card === 'build') {
+        if (e.code === 'KeyR') { e.preventDefault(); this.rt.rotateGhost(); return; }
+        if (e.code === 'Delete' || e.code === 'Backspace') { this.rt.sellSelected(); return; }
+        if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) this.rt.redo(); else this.rt.undo(); return; }
+        if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); this.rt.redo(); return; }
+        if (e.code === 'KeyC' && this.rt.build.selectedId !== null) { this.rt.copySelected(); return; }
+      }
       if (e.code === k.focus) this.rt.focusStore();
       if (e.code === k.pause) this.rt.togglePause();
       if (e.code === k.speed1) this.rt.setSpeed(1);
@@ -73,7 +81,7 @@ export class InputController {
     if (this.keys.has(k.panDown) || this.keys.has('ArrowDown')) dz += 1;
     if (this.keys.has(k.panLeft) || this.keys.has('ArrowLeft')) dx -= 1;
     if (this.keys.has(k.panRight) || this.keys.has('ArrowRight')) dx += 1;
-    if (this.keys.has(k.rotateLeft)) cam.rotate(1.6 * dt, 0);
+    if (this.keys.has(k.rotateLeft) && this.rt.card !== 'build') cam.rotate(1.6 * dt, 0);
     if (this.keys.has(k.rotateRight)) cam.rotate(-1.6 * dt, 0);
     if (this.keys.has('KeyR')) cam.rotate(0, 0.8 * dt);
     if (this.keys.has('KeyT')) cam.rotate(0, -0.8 * dt);
@@ -90,6 +98,7 @@ export class InputController {
     const s = this.rt.state; const r = this.rt.renderer;
     if (!s || !r) return;
     const hit = r.pick(x, y, s);
+    if (this.rt.card === 'build') { const g = r.groundAt(x, y); if (g) this.rt.hoverWorld(g.x, g.z); this.rt.clickBuild(hit); return; }
     if (hit && hit.kind === 'fixture') {
       const f = s.shop.fixtures.find((fx) => fx.id === hit.id);
       if (f) this.rt.clickFixture(f);
