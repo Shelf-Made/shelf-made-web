@@ -19,7 +19,7 @@ canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display:
 /* Top bar */
 .topbar { position: absolute; top: 0; left: 0; right: 0; height: calc(56px * var(--ui)); display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--slate); color: var(--white); box-shadow: 0 3px 0 var(--green), 0 6px 0 var(--white), 0 9px 0 var(--green); z-index: 5; }
 .topbar .logo { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 1.15em; letter-spacing: 0.3px; padding-right: 8px; white-space: nowrap; }
-.topbar .logo .mark { width: 34px; height: 34px; margin-top: -2px; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.35)); }
+.topbar .logo .mark { width: 36px; height: 36px; margin-top: -2px; }
 .topbar .clock, .btn.open-shop { white-space: nowrap; }
 .money { font-weight: 700; font-size: 1.45em; color: var(--yellow); min-width: 128px; font-variant-numeric: tabular-nums; }
 .clock { font-weight: 500; opacity: 0.95; min-width: 150px; font-variant-numeric: tabular-nums; }
@@ -122,16 +122,9 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 .lobby .awning::after { content: ''; position: absolute; left: 0; right: 0; bottom: -22px; height: 22px; background: radial-gradient(circle at 28px 0, var(--green) 27px, transparent 28px) 0 0 / 112px 22px repeat-x, radial-gradient(circle at 84px 0, var(--white) 27px, transparent 28px) 0 0 / 112px 22px repeat-x; filter: drop-shadow(0 3px 2px rgba(0,0,0,0.15)); }
 .lobby .brand { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; color: var(--white); position: relative; }
 .lobby:not(.live) .brand { color: var(--slate); }
-.lobby .hero { position: relative; width: clamp(150px, 20vw, 230px); height: clamp(150px, 20vw, 230px); margin-bottom: -18px; }
-.lobby .head { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 14px rgba(0,0,0,0.3)); animation: headbob 3.2s ease-in-out infinite; transform-origin: 50% 90%; }
-@keyframes headbob { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-6px) rotate(1.5deg); } }
-.lobby .bubble { position: absolute; left: 88%; top: 14%; background: var(--white); color: var(--slate); font-weight: 700; padding: 8px 14px; border-radius: 16px; white-space: nowrap; box-shadow: var(--shadow); animation: pop 0.4s 0.6s ease both; }
-.lobby .bubble::before { content: ''; position: absolute; left: -9px; top: 50%; margin-top: -8px; border: 8px solid transparent; border-right: 10px solid var(--white); border-left: 0; }
-.lobby .wordmark { margin: 0; font-size: clamp(3em, 7vw, 5.2em); font-weight: 700; line-height: 0.95; letter-spacing: 0.5px; text-shadow: 0 4px 0 rgba(0,0,0,0.18); }
-.lobby:not(.live) .wordmark { text-shadow: none; }
-.shelf-bracket { position: relative; width: min(360px, 70%); height: 9px; border-radius: 5px; background: var(--green); box-shadow: 0 3px 0 var(--green-dark); }
-.shelf-bracket i { position: absolute; top: 9px; width: 9px; height: 16px; background: var(--green-dark); border-radius: 0 0 5px 5px; }
-.shelf-bracket i:first-child { left: 14%; } .shelf-bracket i:last-child { right: 14%; }
+.lobby .logo-hero { margin: 0 0 -6px -10px; width: clamp(200px, 25vw, 300px); line-height: 0; }
+.lobby .logo-hero img { width: 100%; height: auto; filter: drop-shadow(0 12px 16px rgba(0,0,0,0.28)); animation: logofloat 3.6s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes logofloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .lobby .tagline { margin: 14px 0 4px; font-size: 1.2em; max-width: 30em; line-height: 1.35; text-shadow: 0 2px 6px rgba(0,0,0,0.3); }
 .lobby:not(.live) .tagline { text-shadow: none; opacity: 0.85; }
 .pricetag { position: relative; display: inline-flex; flex-direction: column; background: var(--yellow); color: var(--slate); padding: 8px 18px 8px 34px; border-radius: 6px 14px 14px 6px; transform: rotate(-3deg); box-shadow: 0 4px 0 #d9a033, var(--shadow); line-height: 1.15; }
@@ -174,7 +167,7 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 @media (max-width: 760px) {
   .lobby { grid-template-columns: 1fr; align-content: start; gap: 18px; padding: 84px 16px 56px; overflow-y: auto; }
   .lobby.live { background: linear-gradient(180deg, rgba(24, 44, 34, 0.55) 0%, rgba(24, 44, 34, 0.2) 50%, rgba(24, 44, 34, 0.5) 100%); }
-  .lobby .hero { width: 120px; height: 120px; }
+  .lobby .logo-hero { width: 150px; margin-left: -6px; }
   .lobby .tagline { font-size: 1em; }
   .lobby .menu { max-height: none; margin-top: 30px; }
   .plots { grid-template-columns: 1fr; } .clock { display: none; } .iconbtn { min-width: 52px; }

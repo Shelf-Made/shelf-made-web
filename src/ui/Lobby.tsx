@@ -37,12 +37,8 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
     <div className={`lobby${snap.loaded ? ' live' : ''}`}>
       <div className="awning" aria-hidden="true" />
       <div className="brand">
-        <div className="hero">
-          <img className="head" src="/brand/manager-head-512.png" alt="" width={256} height={256} />
-          <div className="bubble" aria-hidden="true">Welcome in!</div>
-        </div>
-        <h1 className="wordmark">Shelf Made</h1>
-        <div className="shelf-bracket" aria-hidden="true"><i /><i /></div>
+        {/* The logo is the shop front with the name on its fascia, so it is the title. */}
+        <h1 className="logo-hero"><img src="/brand/logo.svg" alt="Shelf Made" width={512} height={512} /></h1>
         <p className="tagline">Four bare walls and a concrete floor. Build it into the valley&apos;s favourite grocer, one shelf at a time.</p>
         <div className="pricetag"><span>Free beta</span><b>until Dec 10, 2026</b></div>
         {!snap.loaded && (

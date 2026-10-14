@@ -101,12 +101,14 @@ test('the first day in person: build, stock, open, scan, close up', async ({ pag
   await expect(page.getByRole('button', { name: /continue/i })).toContainText(/E2E Mart/);
 });
 
-test('lobby: the manager logo, a live shop behind the menu, and a new game reaches the plot picker', async ({ page }) => {
+test('lobby: the shop-front logo, a live shop behind the menu, and a new game reaches the plot picker', async ({ page }) => {
   await ready(page);
-  await expect(page.locator('.lobby .head')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Shelf Made' })).toBeVisible();
   await expect(page.locator('.lobby.live')).toBeVisible();
-  const logo = await page.locator('.lobby .head').evaluate((img: HTMLImageElement) => img.naturalWidth);
+  const logo = await page.locator('.lobby .logo-hero img').evaluate((img: HTMLImageElement) => img.naturalWidth);
   expect(logo).toBeGreaterThan(100);
+  // The favicon and the top-bar mark are the same shop front.
+  expect(await page.locator('link[rel="icon"]').first().getAttribute('href')).toBe('/brand/logo-small.svg');
   await page.getByRole('button', { name: /new shop/i }).click();
   await page.getByRole('button', { name: /pick a plot/i }).click();
   await expect(page.getByRole('dialog', { name: /pick a plot/i })).toBeVisible();

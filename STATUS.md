@@ -26,9 +26,10 @@ land and the camera felt wrong:
   with a dropped kerb and a zebra.
 - [x] **Traffic manners.** Cars keep their distance, wait for gaps at junctions, use in and out
   lanes, park nose first and back out; no more pop-in at the town edge.
-- [x] **Brand.** The logo is the manager's head (transparent PNG, also the favicon and top-bar
-  mark). The lobby is a shop front over a live demo shop: awning, the manager saying "Welcome in!",
-  the name with the shelf bracket, a price-tag beta badge, shelf-label menu, OPEN sign, LED ticker.
+- [x] **Brand.** The logo is a shop front: the name on the fascia over the shelf bracket, a
+  striped awning, a stocked window and a door with an OPEN sign (vector, transparent; a simpler
+  version for the favicon and top bar). The lobby shows it as the title over a live demo shop, with
+  the awning, a price-tag beta badge, the shelf-label menu, an OPEN sign and an LED ticker.
 - [x] **Sweep.** Baskets no longer litter the floor (spills instead); the sign merge bug that hid
   the shop name; stale "click the shelf / storeroom / pan" wording; the chiller's hidden well;
   tips that skipped a key name; cars spinning in their bays; walkers and cars appearing in view.

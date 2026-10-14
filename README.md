@@ -29,6 +29,6 @@ wheel turns a fixture, right click cancels, 1/2/3 set speed, P pauses. On a phon
 half to walk, the right half to look, tap to use.
 
 ```
-npm run gen:logo    # re-render the manager-head logo into public/brand/
+npm run gen:logo    # draw the shop-front logo (SVG + PNGs) into public/brand/
 npm run gen:font    # Fredoka Bold to three.js glyphs for the 3D signs
 ```

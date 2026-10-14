@@ -19,7 +19,7 @@
     "balance": "tsx tools/balance.ts",
     "gen:models": "tsx tools/gen-models.ts",
     "gen:font": "tsx tools/gen-font.ts",
-    "gen:logo": "tsx tools/render-logo.ts"
+    "gen:logo": "tsx tools/gen-logo.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
