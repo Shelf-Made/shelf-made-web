@@ -10,6 +10,8 @@ export class CameraRig {
   private goal = { x: 0, z: -3, yaw: 0, pitch: MathUtils.degToRad(52), distance: 17 };
   /** Screen-space offset of the target, as a fraction of the view (positive = world shifts left, for docked cards). */
   sideOffset = 0;
+  /** Height of the look-at point (the lobby looks over the shop toward the mountains). */
+  lookY = 0;
   private side = 0;
   bounds = { minX: -40, maxX: 40, minZ: -16, maxZ: 14 };
   limits = { minDist: 6, maxDist: 46, minPitch: MathUtils.degToRad(28), maxPitch: MathUtils.degToRad(80) };
@@ -75,7 +77,7 @@ export class CameraRig {
     const off = this.side * this.distance * 0.42;
     const tx = this.target.x + rx * off, tz = this.target.z + rz * off;
     c.position.set(tx + Math.sin(this.yaw) * r, h, tz + Math.cos(this.yaw) * r);
-    c.lookAt(tx, 0, tz);
+    c.lookAt(tx, this.lookY, tz);
   }
 
   /** Ground-plane size visible at the target, for shadow frustum fitting. */

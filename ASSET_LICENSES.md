@@ -20,5 +20,7 @@ here.
 | `public/assets/textures/palette.json` | generated | CC0 1.0 | |
 | `public/assets/audio/*.ogg` | `tools/gen-audio.ts` (this repository) | CC0 1.0 | synthesised, listed below as they are added |
 | `public/fonts/Fredoka-latin.woff2` | Google Fonts, Fredoka (variable, latin subset); full TTF and OFL in `third_party/fredoka/` | SIL OFL 1.1 | |
+| `public/fonts/fredoka-bold.typeface.json` | Fredoka Bold (`third_party/fredoka/Fredoka-Bold.ttf`) converted by `tools/gen-font.ts` to three.js typeface glyphs for the 3D shop signs | SIL OFL 1.1 | 71 glyphs; the font is unchanged, only re-encoded |
+| `public/brand/manager-head-*.png` | Rendered by `tools/render-logo.ts` from the Kenney Mini Market employee (CC0) | CC0 1.0 | the logo: the manager's head, transparent background |
 
 The untouched source zips and their `License.txt` files live in `third_party/kenney/`.

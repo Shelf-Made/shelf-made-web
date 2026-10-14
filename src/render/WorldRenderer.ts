@@ -1,4 +1,4 @@
-import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFSoftShadowMap, NoToneMapping, type PerspectiveCamera, type Fog } from 'three';
+import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NoToneMapping, type PerspectiveCamera, type Fog } from 'three';
 import { FirstPersonView } from './FirstPerson';
 import { AssetLibrary } from './assets';
 import { CameraRig } from './CameraRig';
@@ -27,6 +27,8 @@ export class WorldRenderer {
   /** The manager's eyes: the game camera. */
   readonly fp: FirstPersonView;
   mode: 'fp' | 'cinematic' = 'cinematic';
+  /** Cinematic views cut the near walls down to show the floor; the lobby keeps the building whole. */
+  cutaway = true;
   readonly assets = new AssetLibrary();
   readonly lighting: Lighting;
   private statics: StaticWorld;
@@ -49,7 +51,7 @@ export class WorldRenderer {
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = NoToneMapping;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    this.renderer.shadowMap.type = PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.camera = new CameraRig(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     this.fp = new FirstPersonView(canvas.clientWidth / Math.max(1, canvas.clientHeight));
@@ -114,7 +116,7 @@ export class WorldRenderer {
     // Branches change the town: rebuild when the set changes (cheap, a few times per game).
     this.setTown(state.seed, state.shop.plotId, state.franchises.map((f) => ({ plotId: f.plotId, name: f.name })));
     // In first person every wall stands full height; the cinematic camera still cuts the near ones down.
-    this.store.update(state, fp ? null : this.camera.yaw);
+    this.store.update(state, fp || !this.cutaway ? null : this.camera.yaw);
     this.people.update(state, alpha, dt, focus, fp ? owner.id : -1, fp ? 0.3 : 0);
     this.cars.update(state, alpha);
     this.rivals.update(state);

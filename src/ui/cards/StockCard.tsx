@@ -26,8 +26,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
 
   return (
     <>
-      <div className="row between"><h3>Storeroom</h3><span className="tag">{storageUnits} / {s.shop.storageCapacity} units</span></div>
-      <p className="muted">Click a shelf or fridge in the shop to carry stock to it.</p>
+      <div className="row between"><h3>On the delivery pallet</h3><span className="tag">{storageUnits} / {s.shop.storageCapacity} units</span></div>
+      <p className="muted">Boxes wait on the pallet by the back door. Walk over, press E to pick one up, then look at a shelf and press E to stock it.</p>
       {pending.length > 0 && (
         <div className="list">
           {pending.map((o) => <div className="item" key={o.id}><div><div className="name">Truck from {SUPPLIERS.find((x) => x.id === o.supplierId)?.name}</div><div className="sub">{o.lines.reduce((a, l) => a + l.qty, 0)} units · {money(o.total)}</div></div><span className="tag good">{o.state === 'arriving' ? 'At the back door' : `${Math.ceil(o.eta / 60)} h`}</span></div>)}

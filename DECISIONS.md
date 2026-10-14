@@ -24,3 +24,20 @@ One line each, newest at the bottom.
 - Guided-player income of about $75/day in week one is the balance anchor: fixtures cost at most five days of that, the shop needs restocking daily, and rivals cost a third of trade at most.
 - Shortages drop a line from an order instead of rejecting the order; the first version rejected whole orders and starved the shop.
 - `cheat` commands only work in sandbox or under a test harness (`navigator.webdriver`), never in normal play.
+- (Rework) The game is played in first person as the manager; the orbit camera survives only for the lobby, the plot picker and screenshots. Pointer lock with a drag-to-look fallback and touch sticks.
+- The manager walks in real time whatever the clock speed (the step is divided by the time scale), so 4x speeds the day without making you sprint.
+- New shops are a bare concrete room. A setup phase holds the clock until Open shop; deliveries still arrive while you set up (within 20 seconds), and Open shop needs a counter and some stock.
+- The storeroom became a delivery pallet inside the back door: you carry every box by hand (E to pick up, E at a shelf to stock). Stockers still carry for you once hired.
+- Walls stand outside the floor rectangle (Kenney walls are half a tile thick) and the grid blocks that ring, so fixtures can never clip into a wall.
+- The shop got a flat roof and an unlit pale ceiling with light panels; the roof casts no shadow so the sun stands in for the shop lights on the floor. The cinematic camera hides it.
+- The floor is one poured slab with saw-cut joints in new neutral greys added to the palette; the Kenney floor tiles read as blue checker.
+- The town is built on property lots. Tests assert lots never overlap, every building fits its lot, nothing lands on the shop's plot, and fences stand on lot lines (Kenney fence panels run along x at yaw 0; the old ones were turned 90°).
+- Cross streets moved to x = −35 and 39 so all three plots, at their largest lot, fit between them; traffic now uses the same constants (it used to drive down x = 30.5 through gardens).
+- The valley is seed-independent (the same mountains, river and fields every game); houses and gardens still vary by seed.
+- Traffic appears and leaves at ±92 in the fog. Cars keep a two-unit gap, wait for a gap at junctions, use separate in and out lanes in the driveway, pull into bays nose first and back out. A test drives rush-hour traffic and checks no two cars ever overlap.
+- The town is merged in 44-unit chunks with shadow casters apart from flat ground pieces, and the woods are instanced per model and map quarter without shadows: about 200 draw calls and 725k triangles in the widest view.
+- The logo is the in-game manager's head, rendered from the Kenney employee model by `tools/render-logo.ts` with a transparent background and the shoulders fading out.
+- The lobby runs a live demo shop at golden hour behind the menu with the camera drifting over Main Street; the menu is styled as shelf-edge labels under a swinging OPEN sign.
+- Litter is spills on the floor; dropped baskets lying around read as a bug.
+- The balance harness now pays for the fit-out (counter, two shelves, chiller, a first order) and works in person: it scans when someone waits and restocks otherwise, and the delegator hires one person at a time. Starting cash stayed at $800; about $136 is left after the fit-out and a guided player makes about $57 a day in week one.
+- People are solid around the player (you bump into shoppers, they step aside) and anyone within 0.3 of the lens is not drawn, so no head ever fills the screen.

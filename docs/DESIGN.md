@@ -49,14 +49,24 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 
 ### 2.2 Render
 
-- Plain three.js (`WebGLRenderer`, sRGB output, soft shadow map 2048 from one sun).
-- One angled camera (yaw/pitch/zoom) with smooth limits; "focus store" key `F`.
-- Static neighbourhood merged by material (one draw per source pack). Fixtures, products,
-  trees, cars, lamps are `InstancedMesh`. Characters are skinned meshes with Kenney's own
-  clips (`walk`, `idle`, `pick-up`, `holding-both`, `interact-right`).
-- Walls facing the camera are swapped to a 0.28-unit ledge each frame (never see-through).
-- Product blocks on shelves are instanced per product shape; stock level drives how many
-  instances are visible, so full / half / empty shelves read from across the lot.
+- Plain three.js (`WebGLRenderer`, sRGB output, PCF shadow map 2048 from one sun, distance fog).
+- **First person.** The game is played through the manager's eyes (`FirstPersonView`: FOV 72,
+  eye height 0.62, head bob, the box you carry held in front). Pointer lock and mouse look,
+  drag to look when the lock is refused, WASD to walk (a `moveDir` command; the manager walks
+  in real time at any clock speed), E or left click uses what the centre ray hits, Space scans
+  behind a counter. Touch: left half walks, right half looks, tap uses. An orbit camera remains
+  for the lobby, the plot picker and screenshots only.
+- The valley: one flat-shaded heightfield (level where the town stands, foothills and a snow
+  range to the north, hills elsewhere) with six rows pinned to the river so its channel is cut
+  cleanly; a water ribbon; stone bridges where the cross streets cross. The town is merged in
+  44-unit chunks (shadow casters apart from flat ground pieces) so the camera and the sun's
+  shadow pass skip what they cannot see; forest trees are instanced per model and map quarter,
+  without shadows. Characters are skinned meshes with Kenney's own clips.
+- The shop: a concrete slab, Kenney walls standing outside the floor rectangle, a flat roof with
+  an unlit pale ceiling and light panels, the name in Fredoka letters on a fascia and a pylon.
+  The cinematic camera cuts the near walls down and hides the roof; first person never does.
+- Stock is Kenney Food Kit and Mini Market models, scaled uniformly to fit each slot box measured
+  from the fixture, front rows first, so nothing clips into shelves or neighbours.
 
 ### 2.3 UI
 
@@ -64,7 +74,12 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   Marketing / Stats / Settings with labels, speed buttons. Locked systems show "New!" when
   they unlock. Everything else is a card that closes with Esc and never covers the store
   (cards dock to the right third of the screen).
-- Tips are speech bubbles anchored to a world object with a bouncing arrow; Skip always.
+- First-person HUD: a crosshair with a prompt (`[E] Stock Bread ×8`), a "Next up" panel for the
+  current tip with a marker over its target (pinned to the screen edge when off to the side),
+  "Click to look around" when the mouse is free. Skip always.
+- Lobby: a shop front (striped awning, the manager's head as the logo, the name with the shelf
+  bracket, a price-tag beta badge, menu items as shelf-edge labels under a swinging OPEN sign, an
+  LED ticker) over a live demo shop at golden hour.
 - Font: Fredoka (OFL), bundled.
 
 ### 2.4 Save
@@ -80,8 +95,8 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | World unit | 1 store tile = 1 Mini Market floor tile | Kenney pack native scale |
 | Day | 12 game hours = 12 real minutes at 1x (1 h = 60 s) | brief |
 | Sim tick | 50 ms game time | smooth at 4x, cheap |
-| Starter shop | 5 × 4 shop + 5 × 2 storeroom, door front-centre, back door rear | tiny, no empty floor |
-| Starting cash | $500 (Standard), $900 (Relaxed), $300 (Hard) | first order + a day of rent |
+| Starter shop | a bare 5 × 6 room, door front-centre, back door rear, a 2 × 1 delivery pallet inside it | the player furnishes it |
+| Starting cash | $800 (Standard), $1 200 (Relaxed), $600 (Hard) | a counter, two shelves, a chiller and a first order, with ≈ $136 left |
 | Town demand | 48 shoppers/day base × plot traffic × awareness × reputation × events; +75% pool per open rival | balance harness: guided player nets ≈ $75/day in week one |
 | Rent | $40 / day, charged at close | ~20% of day-1 revenue |
 | Utilities | $6 / day per fridge, $2 per freezer extra | visible cost of chilled goods |
@@ -90,9 +105,11 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Walking speed | 1.6 units/s | reads natural in the mini scale |
 | Car speed | 6 units/s on the road, 2.5 in the lot | |
 | Patience | 90–180 s per customer, type-dependent | lines visibly back up |
-| Day-1 shelf | 1 shelf (6 facings × 10 units), 1 fridge (4 × 8), 42 units in the storeroom | |
-| Fixture prices | shelf $85, produce crate $60, end cap $70, fridge $220, freezer $300, register $280, kiosk $650 | each ≤ 5 days of a guided player's income |
-| Shop sizes | 5×4 (start), 7×5 for $900, 9×6 for $2 400; lot doubles for $500 | |
+| Day-1 fit-out | counter $180, two shelves (4 slots × 8), a chiller $200 (4 × 6), first order ≈ $120 | balance harness pays for it |
+| Fixture prices | shelf $85, produce stand $60, end cap $70, chiller $200, tall fridge $300, counter $180, kiosk $650 | each ≤ 5 days of a guided player's income |
+| Shop sizes | 5×6 (start), 7×7 for $900, 9×8 for $2 400; lot doubles for $500 | |
+| Town | Main Street on z = 2.5, cross streets at x = −35 and 39, Back Lane at z = −21.5, river at z ≈ 24; every building on its own lot | tests assert no overlaps |
+| Traffic | spawns and leaves at ±92 in the fog; keeps a 2-unit gap, yields at junctions, backs out of bays | |
 | Staff | cashier ≈ $48/day, stocker $42, cleaner $36, orderer $52, manager $90, +12% payroll tax | |
 | Loans | $600 at 1.2%/day over 10 days, $1 800 at 1.0% over 15, $5 000 at 0.9% over 20 | one rescue offered when broke |
 | Rivals | Cheapo opens day 3 (prices −14%), Fresh & Fine day 6 (+22%), MegaMart day 10 (expands) | sales every 4–8 days |

@@ -36,7 +36,7 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const from = doorInside(state);
   if (!findPath(grid, doorOutside(state), from)) return { ok: false, reason: 'Would block the door', price };
   const back = { x: shop.originX + shop.backDoor.x, z: shop.originZ + shop.backDoor.z - 0.6 };
-  if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the way to the storeroom', price };
+  if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
   for (const fx of fixtures) {
     if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
     if (!findPath(grid, from, fixtureFrontWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'Nobody could reach its front' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };

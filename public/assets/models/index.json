@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-14T14:59:50.794Z",
+ "generatedAt": "2026-10-14T16:08:22.655Z",
  "models": [
   {
    "pack": "cars",
@@ -4405,24 +4405,6 @@
     -0.3164
    ],
    "tris": 120,
-   "skinned": false,
-   "clips": []
-  },
-  {
-   "pack": "nature",
-   "name": "crops-cornstaged",
-   "file": "models/nature/crops-cornstaged.glb",
-   "size": [
-    0.5977,
-    3.5048,
-    0.8309
-   ],
-   "min": [
-    -0.2988,
-    0,
-    -0.4154
-   ],
-   "tris": 300,
    "skinned": false,
    "clips": []
   },

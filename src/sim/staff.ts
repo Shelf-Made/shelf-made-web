@@ -15,7 +15,7 @@ const LAST = ['Park', 'Okafor', 'Silva', 'Novak', 'Reyes', 'Brennan', 'Chen', 'H
 export const ROLE_NAMES: Record<StaffRole, string> = { cashier: 'Cashier', stocker: 'Stocker', cleaner: 'Cleaner', orderer: 'Orderer', manager: 'Manager' };
 export const ROLE_BLURB: Record<StaffRole, string> = {
   cashier: 'Rings people up so you never have to scan again.',
-  stocker: 'Carries stock from the storeroom whenever a shelf runs low.',
+  stocker: 'Carries boxes from the pallet to the shelves whenever one runs low.',
   cleaner: 'Picks up abandoned baskets and keeps the floor spotless.',
   orderer: 'Reorders products when they drop below the reorder point.',
   manager: 'Runs the shop by your rules: reorders, prices, wages and ads.',

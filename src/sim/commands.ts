@@ -129,7 +129,7 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
       const task = pickCarryTask(state, f);
       if (!task) {
         const full = f.slots.every((s) => s.productId && s.qty >= FIXTURES[f.type].capacity);
-        return { ok: false, message: full ? 'That one is full.' : 'Nothing in the storeroom for it. Order stock first.' };
+        return { ok: false, message: full ? 'That one is full.' : 'No boxes for it on the pallet. Order stock first.' };
       }
       owner.task = { type: 'carry', fixtureId: f.id, productId: task.productId, qty: task.qty };
       owner.moveDir = null;

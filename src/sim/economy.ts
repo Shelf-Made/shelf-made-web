@@ -41,7 +41,7 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   if (!onTerms && total > state.cash) return `Not enough cash ($${total.toFixed(2)}).`;
   const units = clean.reduce((a, l) => a + l.qty, 0);
   const inStorage = state.shop.storage.reduce((a, s) => a + s.qty, 0);
-  if (inStorage + units > state.shop.storageCapacity) return `Storeroom only has room for ${state.shop.storageCapacity - inStorage} more units.`;
+  if (inStorage + units > state.shop.storageCapacity) return `The pallet only has room for ${state.shop.storageCapacity - inStorage} more units.`;
   if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold

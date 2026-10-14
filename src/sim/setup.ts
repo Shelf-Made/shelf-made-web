@@ -27,5 +27,7 @@ export function quickSetup(state: GameState, open = true): void {
   const owner = state.people.find((p) => p.kind === 'owner');
   const reg = state.shop.fixtures.find((x) => x.type === 'register');
   if (owner && reg) { const b = fixtureBackWorld(state.shop, reg); owner.x = owner.px = b.x; owner.z = owner.pz = b.z; owner.path = []; owner.state = 'idle'; }
+  // The fit-out stands in for ordering and stocking by hand, so those tips are behind you too.
+  for (const step of ['order', 'stock']) if (!state.tutorial.completed.includes(step)) state.tutorial.completed.push(step);
   if (open && state.phase === 'setup') applyCommand(state, { type: 'openShop' });
 }

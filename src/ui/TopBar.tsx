@@ -41,7 +41,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
   const unlocked = (c: Exclude<CardId, null>) => c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || snap.unlocks[c];
   return (
     <div className="topbar" role="toolbar" aria-label="Shop controls">
-      <div className="logo"><span className="mark" aria-hidden="true" /><span>Shelf Made</span></div>
+      <div className="logo"><img className="mark" src="/brand/manager-head-64.png" alt="" width={34} height={34} /><span>Shelf Made</span></div>
       <div className="money" aria-live="polite" aria-label="Cash">{money(shown)}</div>
       <div className="clock">Day {snap.day} · {snap.phase === 'setup' ? 'Setting up' : snap.clock}</div>
       {snap.phase === 'setup' && <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>Open shop</button>}

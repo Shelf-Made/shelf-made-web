@@ -1,66 +1,113 @@
-import { test, expect } from '@playwright/test';
-import { ready, hooks } from './helpers';
+import { test, expect, type Page } from '@playwright/test';
+import { ready, hooks, settle } from './helpers';
 
-test('new game → scan a customer → night → open tomorrow → autosave shows in lobby', async ({ page }) => {
+type Fx = { id: number; type: string; x: number; z: number; slots: { productId: string | null; qty: number }[]; serving?: number | null; scanned?: number };
+type S = { phase: string; cash: number; shop: { fixtures: Fx[]; storage: { productId: string; qty: number }[] }; orders: { state: string }[]; people: { kind: string; carrying?: { productId: string; qty: number } | null }[]; today: { served: number } };
+
+const state = (page: Page) => hooks<S>(page, 'state');
+const EYE = 0.6 * 1.04;
+
+/** Stand at (x, z) in the shop and look at a point (shop-relative), the way a player turns the mouse. */
+async function lookAt(page: Page, from: [number, number], to: [number, number, number]): Promise<void> {
+  const dx = to[0] - from[0], dz = to[2] - from[1];
+  const yaw = Math.atan2(-dx, -dz);
+  const pitch = Math.atan2(to[1] - EYE, Math.hypot(dx, dz));
+  await hooks(page, 'fp', from[0], from[1], yaw, pitch);
+  // A couple of frames so the crosshair (and the build ghost) catch up.
+  await page.waitForFunction(() => (window as unknown as { __shelf: { aim: () => unknown } }).__shelf.aim() !== null, null, { timeout: 15_000 }).catch(() => {});
+  await settle(page, 350);
+}
+
+test('the first day in person: build, stock, open, scan, close up', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 5, 'main', 'E2E Mart', { tutorial: true });
-  await expect(page.locator('.money')).toContainText('$');
-  // A real click on the register scans one item for the customer being served.
   await hooks(page, 'setSpeed', 0);
-  await hooks(page, 'advanceNoScan', 90);
-  const regPt = await page.evaluate(() => {
-    const h = (window as unknown as { __shelf: { runtime: { renderer: { project: (x: number, y: number, z: number, out: { x: number; y: number; visible: boolean }) => void } | null }; state: () => { shop: { originX: number; originZ: number; fixtures: { type: string; x: number; z: number; serving: number | null; scanned: number }[] } } } }).__shelf;
-    const s = h.state().shop; const reg = s.fixtures.find((f) => f.type === 'register')!; const out = { x: 0, y: 0, visible: false };
-    h.runtime.renderer!.project(s.originX + reg.x + 0.5, 0.5, s.originZ + reg.z + 0.5, out); return { ...out, serving: reg.serving, scanned: reg.scanned };
-  });
-  expect(regPt.serving).not.toBeNull();
-  await page.mouse.click(regPt.x, regPt.y);
-  await page.waitForTimeout(200);
-  const scanned = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { shop: { fixtures: { type: string; scanned: number }[] } } } }).__shelf.state().shop.fixtures.find((f) => f.type === 'register')!.scanned);
-  expect(scanned).toBe(regPt.scanned + 1);
-  // Ordering through the Stock card.
-  await page.getByRole('button', { name: /^stock/i }).first().click();
-  await page.getByRole('button', { name: /more apples/i }).click();
-  await page.getByRole('button', { name: /place order/i }).click();
-  const orders = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { orders: unknown[] } } }).__shelf.state().orders.length);
-  expect(orders).toBe(1);
-  await page.keyboard.press('Escape');
-  await hooks(page, 'setSpeed', 1);
-  await hooks(page, 'advance', 400);
-  const served = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { today: { served: number } } } }).__shelf.state().today.served);
-  expect(served).toBeGreaterThan(0);
-  await hooks(page, 'advance', 500);
-  await expect(page.getByText(/day 1 done/i)).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: /open tomorrow/i }).click();
-  await expect(page.locator('.clock')).toContainText('Day 2');
-  // Esc closes cards; Space scans without error.
-  await page.getByRole('button', { name: /prices/i }).click();
+  await expect(page.locator('.tip')).toContainText(/empty shell/i);
+  await expect(page.getByRole('button', { name: /open shop/i })).toBeVisible();
+  // Opening with nothing inside is refused.
+  await page.getByRole('button', { name: /open shop/i }).click();
+  await expect(page.locator('.toast')).toContainText(/checkout counter/i);
+
+  // B opens Build; place a counter by the door with E, turned to face into the shop (two R presses).
+  await page.keyboard.press('KeyB');
   await expect(page.locator('.card')).toBeVisible();
+  // (The card scrolls; a dispatched click is what a tap on the button does.)
+  await page.locator('.card .item', { hasText: 'Checkout counter' }).getByRole('button', { name: 'Place' }).dispatchEvent('click');
+  await page.keyboard.press('KeyR'); await page.keyboard.press('KeyR');
+  await lookAt(page, [0.6, -1.0], [2.0, 0, -2.5]);
+  await expect.poll(async () => (await hooks<{ text: string } | null>(page, 'aim'))?.text ?? '').toMatch(/place checkout counter/i);
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'register').length).toBe(1);
+  // A shelf against the west wall, facing east.
+  await page.locator('.card .item', { hasText: /^Shelf/ }).getByRole('button', { name: 'Place' }).dispatchEvent('click');
+  await page.keyboard.press('KeyR');
+  await lookAt(page, [-0.6, -2.4], [-2.0, 0, -3.5]);
+  await expect.poll(async () => (await hooks<{ text: string } | null>(page, 'aim'))?.text ?? '').toMatch(/place shelf/i);
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'shelf').length).toBe(1);
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect(page.locator('.card')).toHaveCount(0);
-  // Build mode through real pointer events: pick a shelf, click a free floor tile, the fixture count grows.
-  await hooks(page, 'dispatch', { type: 'cheat', cash: 1000 });
-  await hooks(page, 'setSpeed', 0);
-  await hooks(page, 'focusStore');
-  await page.getByRole('button', { name: /build/i }).first().click();
-  await page.getByRole('button', { name: /place/i }).first().click();
-  const before = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { shop: { fixtures: unknown[] } } } }).__shelf.state().shop.fixtures.length);
-  // Project a free tile (store-relative 0.5, -3 → world (1, -2.5 + origin)) to the screen and click it.
-  const pt = await page.evaluate(() => {
-    const h = (window as unknown as { __shelf: { runtime: { renderer: { project: (x: number, y: number, z: number, out: { x: number; y: number; visible: boolean }) => void } | null }; state: () => { shop: { originX: number; originZ: number } } } }).__shelf;
-    const s = h.state().shop; const out = { x: 0, y: 0, visible: false };
-    h.runtime.renderer!.project(s.originX + 1.0, 0, s.originZ - 2.5, out); return out;
-  });
-  await page.mouse.move(pt.x, pt.y);
-  await page.waitForTimeout(300);
-  await page.mouse.click(pt.x, pt.y);
-  await page.waitForTimeout(300);
-  const after = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { shop: { fixtures: unknown[] } } } }).__shelf.state().shop.fixtures.length);
-  expect(after).toBe(before + 1);
+
+  // Tab opens Stock: order bread and wait for the truck (the clock stands still while you set up).
+  await page.keyboard.press('Tab');
+  await page.getByRole('button', { name: /more bread/i }).click();
+  await page.getByRole('button', { name: /place order/i }).click();
+  expect((await state(page)).orders.length).toBe(1);
   await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  // Back to the lobby: the autosave is listed.
+  await hooks(page, 'advanceNoScan', 70);
+  await expect.poll(async () => (await state(page)).shop.storage.reduce((a, e) => a + e.qty, 0)).toBeGreaterThan(0);
+
+  // Pick up a box at the pallet, carry it to the shelf, stock it.
+  await lookAt(page, [-1.5, -4.2], [-1.5, 0.3, -5.5]);
+  await expect.poll(async () => (await hooks<{ text: string } | null>(page, 'aim'))?.text ?? '').toMatch(/pick up bread/i);
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await state(page)).people.find((p) => p.kind === 'owner')?.carrying?.productId ?? null).toBe('bread');
+  await lookAt(page, [-1.0, -3.5], [-2.0, 0.4, -3.5]);
+  await expect.poll(async () => (await hooks<{ text: string } | null>(page, 'aim'))?.text ?? '').toMatch(/stock bread/i);
+  await page.keyboard.press('KeyE');
+  await expect.poll(async () => (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!.slots.some((s) => s.productId === 'bread' && s.qty > 0)).toBe(true);
+
+  // Open the doors.
+  await page.getByRole('button', { name: /open shop/i }).click();
+  await expect.poll(async () => (await state(page)).phase).toBe('open');
+
+  // Step behind the counter and scan with Space when somebody is waiting.
+  await lookAt(page, [2.0, -1.5], [2.0, 0.2, -2.5]);
+  await expect.poll(async () => (await hooks<{ text: string } | null>(page, 'aim'))?.text ?? '').toMatch(/scan item|nobody waiting/i);
+  let waiting = false;
+  for (let i = 0; i < 30 && !waiting; i++) {
+    await hooks(page, 'advanceNoScan', 6);
+    await hooks(page, 'fp', 2.0, -1.5);
+    waiting = (await state(page)).shop.fixtures.some((f) => f.type === 'register' && f.serving !== null && f.serving !== undefined);
+  }
+  expect(waiting).toBe(true);
+  // One scan rings up an item; a one-item basket is paid for straight away.
+  const progress = async () => { const st = await state(page); return st.today.served * 100 + (st.shop.fixtures.find((f) => f.type === 'register')!.scanned ?? 0); };
+  const before = await progress();
+  await page.keyboard.press('Space');
+  await expect.poll(progress).toBeGreaterThan(before);
+
+  // Run the rest of the day and close up.
+  await hooks(page, 'advance', 900);
+  await expect(page.getByText(/day 1 done/i)).toBeVisible({ timeout: 15_000 });
+  expect((await state(page)).today.served).toBeGreaterThan(0);
+  await page.getByRole('button', { name: /open tomorrow/i }).click();
+  await expect(page.locator('.clock')).toContainText('Day 2');
+
+  // Back to the lobby: the autosave is the Continue button.
   await page.getByRole('button', { name: /settings/i }).click();
   await page.getByRole('button', { name: /save & quit/i }).click();
-  await expect(page.getByText(/E2E Mart/).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /continue/i })).toContainText(/E2E Mart/);
+});
+
+test('lobby: the manager logo, a live shop behind the menu, and a new game reaches the plot picker', async ({ page }) => {
+  await ready(page);
+  await expect(page.locator('.lobby .head')).toBeVisible();
+  await expect(page.locator('.lobby.live')).toBeVisible();
+  const logo = await page.locator('.lobby .head').evaluate((img: HTMLImageElement) => img.naturalWidth);
+  expect(logo).toBeGreaterThan(100);
+  await page.getByRole('button', { name: /new shop/i }).click();
+  await page.getByRole('button', { name: /pick a plot/i }).click();
+  await expect(page.getByRole('dialog', { name: /pick a plot/i })).toBeVisible();
 });

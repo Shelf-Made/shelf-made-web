@@ -1,4 +1,4 @@
-import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS } from '@/sim/index';
+import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
 import type { Difficulty, FixtureType, Rot } from '@/sim/types';
 import { canPlace } from '@/sim/build';
 import { PLOTS, FIXTURES } from '@/sim/layout';
@@ -97,6 +97,12 @@ export class GameRuntime {
   private locked = false;
   /** Screenshots and the debug views can borrow the orbit camera mid-game. */
   cinematic = false;
+  /** Behind the lobby: a demo shop trading away at golden hour while the camera drifts round it. */
+  private lobbyState: GameState | null = null;
+  private lobbyAcc = 0;
+  private lobbyYaw = 1.18;
+  private lobbyT = 0;
+  private lobbyTicks = 0;
   private aimCache: { info: AimInfo | null; run: (() => void) | null } = { info: null, run: null };
   readonly version = __APP_VERSION__;
 
@@ -135,7 +141,7 @@ export class GameRuntime {
     const next = TIPS.find((tip) => !t.completed.includes(tip.id));
     if (!next) return null;
     const keys = this.settings.keys;
-    const tip = { ...next, text: next.text.replace('{interact}', keyLabel(keys.interact)).replace('{scan}', keyLabel(keys.scan)) };
+    const tip = { ...next, text: next.text.replaceAll('{interact}', keyLabel(keys.interact)).replaceAll('{scan}', keyLabel(keys.scan)) };
     // Preconditions: each tip waits until it can be acted on.
     if (tip.id === 'openTomorrow') return s.phase === 'night' ? tip : null;
     if (s.phase === 'night') return null;
@@ -195,6 +201,8 @@ export class GameRuntime {
 
   private enterGame(): void {
     const s = this.state!;
+    this.lobbyState = null;
+    if (this.renderer) { this.renderer.camera.lookY = 0; this.renderer.cutaway = true; }
     this.screen = 'game';
     this.speed = 1; this.card = null;
     this.renderer?.setTown(s.seed, s.shop.plotId);
@@ -205,7 +213,27 @@ export class GameRuntime {
     this.emit();
   }
 
-  toLobby(): void { this.releaseLock(); this.screen = 'lobby'; this.state = null; this.card = null; this.emit(); }
+  toLobby(): void { this.releaseLock(); this.screen = 'lobby'; this.state = null; this.card = null; this.lobbyState = null; this.emit(); }
+
+  /** Build the lobby's demo shop: furnished, stocked and open, late in the afternoon. */
+  private ensureLobbyScene(): GameState | null {
+    const r = this.renderer;
+    if (!r) return null;
+    if (!this.lobbyState) {
+      resetGridCache();
+      const s = newGame({ seed: 2026, plotId: 'main', name: 'Shelf Made', tutorial: false, sandbox: true });
+      quickSetup(s, true);
+      s.time = DAY_SECONDS * 0.62;
+      this.lobbyState = s;
+      r.setTown(s.seed, s.shop.plotId);
+      r.setShop(s);
+      r.camera.lookY = 2.2;
+      r.cutaway = false;
+      r.camera.focus(s.shop.originX + 0.5, s.shop.originZ - 2.6, 20, this.lobbyYaw, 0.24);
+      r.camera.snap();
+    }
+    return this.lobbyState;
+  }
 
   async save(slot: Slot = 'auto'): Promise<void> {
     if (!this.state) return;
@@ -224,6 +252,28 @@ export class GameRuntime {
     const s = this.state;
     const r = this.renderer;
     if (!r) return;
+    if (this.screen === 'lobby' && this.loaded) {
+      const L = this.ensureLobbyScene();
+      if (L) {
+        this.lobbyAcc += dt;
+        let n = 0;
+        while (this.lobbyAcc >= TICK && n < 8) {
+          // The clock stays at golden hour; the shop keeps trading.
+          L.time = Math.min(L.time, DAY_SECONDS * 0.66);
+          tick(L);
+          if (++this.lobbyTicks % 8 === 0) applyCommand(L, { type: 'scan' });
+          this.lobbyAcc -= TICK; n++;
+        }
+        if (n >= 8) this.lobbyAcc = 0;
+        L.sounds.length = 0;
+        // Drift back and forth over Main Street, east of the shop, looking up the valley.
+        this.lobbyT += dt;
+        this.lobbyYaw = 1.18 + 0.28 * Math.sin(this.lobbyT * 0.06);
+        r.camera.focus(L.shop.originX + 0.5, L.shop.originZ - 2.6, 20, this.lobbyYaw, 0.24);
+        r.mode = 'cinematic';
+        r.render(L, Math.min(1, this.lobbyAcc / TICK), dt);
+      }
+    }
     if (s) {
       this.acc += dt * (this.screen === 'game' ? this.speed : 0);
       let n = 0;

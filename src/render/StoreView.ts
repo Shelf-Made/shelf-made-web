@@ -28,6 +28,8 @@ export class StoreView {
   readonly group = new Group();
   private shell = new Group();
   private sides: Side[] = [];
+  /** Roof, ceiling and ceiling lights: hidden only when a cinematic camera cuts the walls away. */
+  private roof: Mesh[] = [];
   private fixtureMeshes = new Map<string, { mesh: InstancedMesh; ids: number[] }>();
   private productMeshes = new Map<string, { mesh: InstancedMesh; w: number; h: number; d: number; minY: number }>();
   private boxes!: InstancedMesh;
@@ -75,7 +77,8 @@ export class StoreView {
     const spill = new CircleGeometry(0.22, 12); spill.rotateX(-Math.PI / 2);
     this.spills = new InstancedMesh(spill, this.spillMat, 8); this.spills.count = 0; this.spills.frustumCulled = false;
     // The chiller: Kenney's chest freezer without its painted lid, and a lit well inside.
-    this.chillerGeo = dropTriangles(this.assets.geometry('market/freezer'), (x, y, z) => y > 0.305 && Math.abs(x) < 0.31 && Math.abs(z) < 0.21);
+    // Drops the painted lid and the body's flat top under it (at exactly 0.30), leaving the rim.
+    this.chillerGeo = dropTriangles(this.assets.geometry('market/freezer'), (x, y, z) => y > 0.297 && Math.abs(x) < 0.31 && Math.abs(z) < 0.21);
     const well = merge([box(pal, '#D6F5FF', 0.6, 0.02, 0.4, 0, 0.1, 0), box(pal, '#BFEFFF', 0.6, 0.2, 0.02, 0, 0.11, -0.2), box(pal, '#BFEFFF', 0.6, 0.2, 0.02, 0, 0.11, 0.2), box(pal, '#BFEFFF', 0.02, 0.2, 0.4, -0.3, 0.11, 0), box(pal, '#BFEFFF', 0.02, 0.2, 0.4, 0.3, 0.11, 0)]);
     this.wells = new InstancedMesh(well, this.wellMat, 24); this.wells.count = 0; this.wells.frustumCulled = false;
     const sticker = box(pal, '#FFFFFF', 0.12, 0.12, 0.01, 0, 0, 0);
@@ -122,6 +125,7 @@ export class StoreView {
     const pal = this.assets.palette;
     this.shell.clear();
     this.sides = [];
+    this.roof = [];
     const f = shop.floor;
     const ox = shop.originX, oz = shop.originZ;
     const backZ = Math.min(f.z0, shop.storeroom.z0);
@@ -219,6 +223,27 @@ export class StoreView {
     postMesh.castShadow = true;
     this.shell.add(postMesh);
     if (glassParts.length) { const gm = new Mesh(merge(glassParts), this.assets.glass); this.shell.add(gm); front.extraFull.push(gm); }
+
+    // ---- Roof: a flat slab with a parapet and rooftop units; inside, a pale ceiling with light panels.
+    // It casts no shadow, so the sun still stands in for the shop's lights on the floor.
+    {
+      const rx0 = ox + f.x0 - WALL_T, rx1 = ox + f.x1 + WALL_T, rz0 = oz + backZ - WALL_T, rz1 = oz + f.z1 + WALL_T;
+      const rcx = (rx0 + rx1) / 2, rcz = (rz0 + rz1) / 2, rw = rx1 - rx0, rd = rz1 - rz0;
+      const top: BufferGeometry[] = [box(pal, '#5A5A62', rw, 0.08, rd, rcx, 1.0, rcz)];
+      top.push(box(pal, WHITE, rw, 0.09, 0.07, rcx, 1.06, rz0 + 0.035), box(pal, WHITE, rw, 0.09, 0.07, rcx, 1.06, rz1 - 0.035));
+      top.push(box(pal, WHITE, 0.07, 0.09, rd, rx0 + 0.035, 1.06, rcz), box(pal, WHITE, 0.07, 0.09, rd, rx1 - 0.035, 1.06, rcz));
+      top.push(box(pal, '#B9BCC4', 0.62, 0.26, 0.46, rcx - rw * 0.22, 1.08, rcz - rd * 0.2), box(pal, '#9A9DA6', 0.4, 0.04, 0.3, rcx - rw * 0.22, 1.34, rcz - rd * 0.2));
+      top.push(box(pal, '#B9BCC4', 0.46, 0.2, 0.36, rcx + rw * 0.18, 1.08, rcz - rd * 0.28), box(pal, '#9A9DA6', 0.08, 0.22, 0.08, rcx + rw * 0.3, 1.08, rcz + rd * 0.1));
+      const roofMesh = new Mesh(merge(top), this.assets.material);
+      roofMesh.receiveShadow = true;
+      // The ceiling faces away from the sun, so it is drawn unlit: an evenly lit pale grey.
+      const ceil = new Mesh(box(pal, '#D8D8DC', f.x1 - f.x0, 0.02, f.z1 - backZ, ox + (f.x0 + f.x1) / 2, 0.978, oz + (backZ + f.z1) / 2), this.assets.unlit);
+      const lights: BufferGeometry[] = [];
+      for (let x = f.x0 + 1; x < f.x1 - 0.4; x += 2) for (let z = backZ + 1; z < f.z1 - 0.4; z += 2) lights.push(box(pal, '#FFFFFF', 0.56, 0.012, 0.18, ox + x, 0.965, oz + z), box(pal, '#B9BCC4', 0.62, 0.008, 0.24, ox + x, 0.972, oz + z));
+      const lightMesh = new Mesh(merge(lights), this.assets.unlit);
+      this.shell.add(roofMesh, ceil, lightMesh);
+      this.roof.push(roofMesh, ceil, lightMesh);
+    }
 
     // ---- Front: striped awning over the windows, the name on a fascia, and a pylon by the road.
     const width = f.x1 - f.x0;
@@ -318,6 +343,7 @@ export class StoreView {
   update(state: GameState, cameraYaw: number | null): void {
     const shop = state.shop;
     if (this.shellKey !== `${shop.name}|${shop.originX}|${shop.sizeId}|${shop.lotRows}`) this.buildShell(shop);
+    for (const m of this.roof) m.visible = cameraYaw === null;
     for (const s of this.sides) {
       const facing = cameraYaw !== null && s.nx * Math.sin(cameraYaw) + s.nz * Math.cos(cameraYaw) > 0.25;
       s.full.visible = !facing; s.ledge.visible = facing;

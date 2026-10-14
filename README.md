@@ -22,5 +22,13 @@ npm run balance -- --check   # scripted strategies over many seeds
 - `CREDITS.md`, `ASSET_LICENSES.md` every source (CC0 / OFL only)
 - `desktop/` Electron wrapper (file saves, optional Steam layer)
 
-Controls: drag to pan, wheel to zoom, right-drag to rotate, WASD/QE, F focuses the shop,
-Space scans at the register, Esc closes cards, 1/2/3 set speed, P pauses.
+You play the manager in first person. Click the world to look around with the mouse (Esc frees
+it), WASD to walk, E or left click to use what the crosshair points at (pick up a box, stock a
+shelf, place a fixture), Space to scan behind the counter, B opens Build, Tab opens Stock, R or the
+wheel turns a fixture, right click cancels, 1/2/3 set speed, P pauses. On a phone: drag the left
+half to walk, the right half to look, tap to use.
+
+```
+npm run gen:logo    # re-render the manager-head logo into public/brand/
+npm run gen:font    # Fredoka Bold to three.js glyphs for the 3D signs
+```

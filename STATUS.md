@@ -3,6 +3,63 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
+## Rework after the first play (latest)
+
+What changed after feedback that the art did not fit Kenney, meshes clipped, the map was open
+land and the camera felt wrong:
+
+- [x] **First person.** You are the manager: mouse look (pointer lock, drag fallback), WASD, a
+  crosshair that says what E does, Space to scan behind the counter, B for Build, Tab for Stock,
+  touch sticks on phones. People are solid around you and never fill the lens.
+- [x] **Build it yourself.** A new shop is a bare concrete room with four walls, a roof and a lit
+  ceiling. You place the counter, shelves and chillers (ghost on the tile under the crosshair),
+  order stock, carry each box from the delivery pallet to a shelf, then press Open shop. Eight
+  tips walk through it with a marker over the target.
+- [x] **Kenney art that fits.** Kenney walls (outside the floor so nothing clips), a poured
+  concrete slab, Kenney fixtures with stock fitted to measured slot boxes, the chest freezer as
+  an open lit chiller, Food Kit products, the name in Fredoka letters on a fascia and a pylon.
+- [x] **A cohesive valley.** Snow-capped mountains and wooded foothills to the north, a river
+  with stone bridges, a riverside path, farmland, a park, Back Lane behind the shops, woods on
+  every side; roads run on into the haze.
+- [x] **Property lots.** Every house and shop stands on its own lot; nothing touches the shop
+  plot; fences run along the lot lines; the shop's driveway and walkway meet the road and sidewalk
+  with a dropped kerb and a zebra.
+- [x] **Traffic manners.** Cars keep their distance, wait for gaps at junctions, use in and out
+  lanes, park nose first and back out; no more pop-in at the town edge.
+- [x] **Brand.** The logo is the manager's head (transparent PNG, also the favicon and top-bar
+  mark). The lobby is a shop front over a live demo shop: awning, the manager saying "Welcome in!",
+  the name with the shelf bracket, a price-tag beta badge, shelf-label menu, OPEN sign, LED ticker.
+- [x] **Sweep.** Baskets no longer litter the floor (spills instead); the sign merge bug that hid
+  the shop name; stale "click the shelf / storeroom / pan" wording; the chiller's hidden well;
+  tips that skipped a key name; cars spinning in their bays; walkers and cars appearing in view.
+
+Checks on the latest run:
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 59 passed, including new town tests (lots never overlap, buildings fit their lots, nothing on the shop plot, fences on lot lines, level valley floor, bridges) and traffic tests (no two cars ever overlap at rush hour, parked cars nose-in) |
+| `npm run e2e` | 5 passed: the first day in person with real key presses (B, R, E, Tab, Space), the lobby, 19 screenshots, perf |
+| `npm run audit:art` | 367 models, passed |
+| `npm run balance -- --check` | passed: the fit-out is paid for (≈ $136 left of $800), guided ≈ $57/day in week one, nobody sensible goes bust, nobody stuck |
+| Perf | ≤ 217 draw calls (budget 250), 600k to 790k triangles per frame including shadows (budget 900k) |
+
+Screenshots in `docs/screens/`: `01-lobby`, `02-plot-picker`, `03-bare-shell`, `04-build-ghost`,
+`05-carrying-a-box`, `06-behind-the-counter`, `07-shop-floor`, `08-main-street`, `09-valley`,
+`10-river-bridge`, `11-delivery`, `12-finance-card`, `13-rival-sale`, `14-staff-on-floor`,
+`15-market-hall`, `16-market-hall-lot`, `17-franchise-branch`, `18-night-card`, `19-lobby-phone`.
+
+Still open from this round:
+- **Vercel**: creating the project returns 403 ("You don't have permission to create the project")
+  for the Startups team; a team owner needs to create it or grant the permission. `vercel.json` is ready.
+- First person was tested with headless Chromium and key presses; real mouse feel (sensitivity,
+  head bob) wants a human pass. Settings has a mouse-speed slider and invert-Y.
+- Customers and staff are drawn to the same scale as you: the walls are 1.4 people tall, so the
+  ceiling sits close above your eyes. That is Kenney's proportion.
+
+The sections below are the original build log; the numbers and screenshot names in them are from
+before this rework.
+
 ## Done
 
 ### Part 1: the look and the first five minutes (all slices complete)
@@ -47,7 +104,7 @@ Screenshots in `docs/screens/`: `01-lobby`, `02-plot-picker`, `03-first-tip`, `0
 Visual checklist, as of the last run: store ≈ 45% of the screen at default zoom with every room readable; no see-through walls; shelves show what they hold and empty shelves are bare; the busy shot has eight distinct people in a line; brand colours; only the top bar is always on; text ≥ 14 px; the neighbourhood is lived in. The night card and docked cards slide the world aside so nothing covers the store.
 
 ## Missing or broken
-- **Push to GitHub is blocked** (403: the Claude GitHub App is not installed on `Shelf-Made/shelf-made-web`). Every commit is on the local branch `claude/shelf-made-game-build-1kjvrp`; the container is ephemeral, so this needs fixing first (see "Decisions needing you").
+- (Resolved) Pushing to GitHub works now; the branch is on GitHub.
 - Real-GPU frame rate was never measured; SwiftShader only. The 60 / 45 fps targets are plausible from the draw-call counts but unverified.
 - Rival AI is a small state machine (sales, expansion, drift), not a full copy of the player's command set.
 - Franchise stores are a daily roll, not a second simulated floor; their buildings are stock Kenney shop fronts with a name board.
@@ -61,10 +118,9 @@ Visual checklist, as of the last run: store ≈ 45% of the screen at default zoo
 - No localisation; English only.
 
 ## Decisions needing you
-1. **Repository access.** Install the Claude GitHub App on `Shelf-Made/shelf-made-web` (or reconnect GitHub in claude.ai settings) so the branch can be pushed; nothing here is on GitHub yet.
+1. **Vercel permission.** Project creation is refused (403) for the Startups team; create the project from the repo in the Vercel dashboard or grant the permission.
 2. **Prices and pace.** A guided player nets about $75/day in week one and buys a shelf every day or two; say if you want it tighter or looser, and the harness will hold the line.
 3. **Fonts and brand.** The wordmark underline is CSS in the lobby and a green bar on the pylon sign; if you have a real logo file it drops into `TopBar.tsx` and `StoreView.ts`.
-4. **Vercel.** `vercel.json` is ready; connect the repo to a Vercel project when access is sorted.
 
 ## Next steps
 1. Fix GitHub access, push the branch, watch the CI run (it installs Playwright Chromium and runs everything in this table).

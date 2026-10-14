@@ -72,7 +72,13 @@ map = atlas) and `glass` (transparent, 45% alpha). Anything else fails the audit
 | Tree / plant | ≤ 400 | 32–196 |
 | Generated piece (letters, awnings, product variants) | ≤ 450 | 28–408 (W is the widest letter) |
 
-Whole scene budget: < 250 draw calls, < 600 k triangles on screen zoomed out.
+Whole scene budget: < 250 draw calls and < 900 k triangles rendered per frame (both passes),
+checked by `npm run perf` in first person, on Main Street and from high above the valley.
+Forest trees use the low-poly pine and woodland picks only (54–114 triangles).
+
+Fences: Kenney fence pieces run along x at yaw 0; they stand on property lines (front, back,
+side) and field edges, never across a garden. Every house sits inside its own lot with a 1.7-unit
+front garden; the town tests check this for every plot and several seeds.
 
 ## Proportions for generated models
 

@@ -106,7 +106,7 @@ export const PACKS: PackSpec[] = [
       'cliff_block_rock', 'cliff_large_rock', 'cliff_top_rock', 'cliff_corner_rock', 'cliff_cornerLarge_rock', 'cliff_half_rock', 'cliff_blockHalf_rock', 'cliff_blockSlope_rock', 'cliff_waterfall_rock', 'cliff_rock', 'cliff_block_stone', 'cliff_large_stone',
       'rock_largeB', 'rock_largeC', 'rock_largeD', 'rock_largeE', 'rock_largeF', 'rock_tallA', 'rock_tallB', 'rock_tallC', 'rock_tallD', 'rock_smallC', 'rock_smallFlatA',
       'bridge_stone', 'bridge_wood', 'bridge_stoneRound', 'bridge_woodRound', 'lily_large', 'lily_small', 'log_large', 'log_stack', 'mushroom_red', 'mushroom_tanGroup',
-      'crops_cornStageD', 'crops_wheatStageB', 'crops_leafsStageB', 'crops_dirtDoubleRow', 'tent_detailedOpen', 'campfire_stones', 'canoe', 'fence_simpleHigh', 'fence_corner',
+      'crops_wheatStageB', 'crops_leafsStageB', 'crops_dirtDoubleRow', 'tent_detailedOpen', 'campfire_stones', 'canoe', 'fence_simpleHigh', 'fence_corner',
       'plant_bushLargeTriangle', 'plant_flatTall', 'grass_leafsLarge', 'stump_old', 'ground_riverStraight', 'platform_beach',
     ].map((n) => [n.replace(/_/g, '-').toLowerCase(), n])),
   },

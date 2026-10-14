@@ -46,8 +46,10 @@ export function sphere(pal: PaletteMap, hex: string, r: number, x = 0, y = 0, z 
 }
 
 export function merge(parts: BufferGeometry[]): BufferGeometry {
-  const clean = parts.filter((p) => p.getAttribute('position') && p.getAttribute('position').count > 0);
+  let clean = parts.filter((p) => p.getAttribute('position') && p.getAttribute('position').count > 0);
   if (clean.length === 0) return new BufferGeometry();
+  // Indexed and non-indexed pieces (text, cut-down models) cannot merge together: flatten them all.
+  if (clean.some((g) => g.index) && clean.some((g) => !g.index)) clean = clean.map((g) => { if (!g.index) return g; const flat = g.toNonIndexed(); g.dispose(); return flat; });
   // mergeGeometries needs identical attribute sets; drop extras.
   for (const g of clean) {
     for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);

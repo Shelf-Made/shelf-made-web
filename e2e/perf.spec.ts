@@ -16,21 +16,28 @@ async function measure(page: import('@playwright/test').Page, ms: number): Promi
 test('performance budget', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 11, 'main', 'Perf Mart', { tutorial: false });
-  await hooks(page, 'focusStore');
+  await hooks(page, 'quickSetup', true);
+  // First person from the door, looking down the shop toward the mountains.
+  await hooks(page, 'fp', 0.3, -0.6, 0, -0.05);
   const starter = await measure(page, 2500);
   await hooks(page, 'advanceNoScan', 300);
   await hooks(page, 'setSpeed', 4);
   const busy = await measure(page, 2500);
   await hooks(page, 'setSpeed', 1);
-  await hooks(page, 'camera', 0, -1, 44, 0.35, 0.9);
+  // Out on Main Street looking along the valley: the most scenery in view at once.
+  await hooks(page, 'fp', 0.5, 3.2, -Math.PI / 2, -0.02);
+  const street = await measure(page, 2500);
+  await hooks(page, 'camera', 0, 4, 120, 0.35, 0.82);
   const wide = await measure(page, 2500);
-  const report = { measuredAt: new Date().toISOString(), note: 'Headless SwiftShader (software GL); fps here is far below a real GPU. Draw calls and triangles are the hard budget.', starter, busy, wide };
+  const report = { measuredAt: new Date().toISOString(), note: 'Headless SwiftShader (software GL); fps here is far below a real GPU. Draw calls and triangles are the hard budget.', starter, busy, street, wide };
   mkdirSync('docs/screens', { recursive: true });
   writeFileSync('docs/screens/perf.json', JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
   expect(starter.drawCalls).toBeLessThan(250);
   expect(busy.drawCalls).toBeLessThan(250);
+  expect(street.drawCalls).toBeLessThan(250);
   expect(wide.drawCalls).toBeLessThan(250);
+  expect(street.triangles).toBeLessThan(900_000);
   expect(wide.triangles).toBeLessThan(900_000);
   expect(busy.people).toBeGreaterThan(5);
 });

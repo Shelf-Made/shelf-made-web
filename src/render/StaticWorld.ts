@@ -9,8 +9,9 @@ import { terrainGeometry, waterGeometry, bridgeGeometry } from './terrain';
 const CAR_MODEL_IDS = ['cars/sedan', 'cars/hatchback', 'cars/suv', 'cars/sedan-sports', 'cars/van', 'cars/suv-luxury', 'cars/delivery', 'cars/truck', 'cars/taxi', 'cars/truck-flat', 'cars/delivery-flat', 'cars/garbage-truck'];
 export { CAR_MODEL_IDS };
 
-/** Forest chunks: trees are instanced per model per chunk, so the camera culls whole woods it cannot see. */
-const CHUNK = 48;
+/** Town chunk size for merging, and the models flat enough not to need a shadow. */
+const CHUNK = 44;
+const FLAT = /roads\/road-|flower|grass|lily|crop|path|driveway|campfire/;
 
 /** Everything that never moves: the land, the river, the town (merged), the woods (instanced). */
 export class StaticWorld {
@@ -38,10 +39,18 @@ export class StaticWorld {
     const add = (m: Mesh, cast = true) => { m.castShadow = cast; m.receiveShadow = true; this.group.add(m); this.meshes.push(m); };
     add(new Mesh(bridgeGeometry(pal, plan), this.assets.material));
 
-    const atlasParts: BufferGeometry[] = [];
+    // The town is merged per 44-unit chunk, casters apart from flat ground pieces, so the camera and the
+    // sun's shadow pass skip what they cannot see.
+    const chunks = new Map<string, BufferGeometry[]>();
     const glassParts: BufferGeometry[] = [];
+    const put = (geo: BufferGeometry, x: number, z: number, cast: boolean) => {
+      // Flat pieces only split east and west; casters split into chunks.
+      const k = cast ? `${Math.floor(x / CHUNK)}|${Math.floor(z / CHUNK)}|1` : `${x < 0 ? 'w' : 'e'}|0`;
+      const arr = chunks.get(k) ?? []; arr.push(geo); chunks.set(k, arr);
+    };
     for (const s of plan.slabs) {
-      atlasParts.push(box(pal, s.color, s.rect.x1 - s.rect.x0, s.h, s.rect.z1 - s.rect.z0, (s.rect.x0 + s.rect.x1) / 2, s.y - 0.012, (s.rect.z0 + s.rect.z1) / 2));
+      const cx = (s.rect.x0 + s.rect.x1) / 2, cz = (s.rect.z0 + s.rect.z1) / 2;
+      put(box(pal, s.color, s.rect.x1 - s.rect.x0, s.h, s.rect.z1 - s.rect.z0, cx, s.y - 0.012, cz), cx, cz, false);
     }
     const m = new Matrix4(), q = new Quaternion(), e = new Euler(), v = new Vector3(), sc = new Vector3();
     const transformed = (geo: BufferGeometry, p: Placement): BufferGeometry => {
@@ -54,25 +63,27 @@ export class StaticWorld {
     };
     for (const p of plan.placements) {
       if (!this.assets.has(p.model)) continue;
-      atlasParts.push(transformed(this.assets.geometry(p.model), p));
+      put(transformed(this.assets.geometry(p.model), p), p.x, p.z, !FLAT.test(p.model));
       const glass = this.assets.glassGeometry(p.model);
       if (glass) glassParts.push(transformed(glass, p));
     }
-    const merged = mergeGeometries(atlasParts, false);
-    for (const g of atlasParts) g.dispose();
-    if (merged) add(new Mesh(merged, this.assets.material));
+    for (const [k, parts] of chunks) {
+      const merged = mergeGeometries(parts, false);
+      for (const g of parts) g.dispose();
+      if (merged) { merged.computeBoundingSphere(); add(new Mesh(merged, this.assets.material), k.endsWith('|1')); }
+    }
     if (glassParts.length) {
       const g = mergeGeometries(glassParts, false);
       for (const p of glassParts) p.dispose();
       if (g) { const mesh = new Mesh(g, this.assets.glass); this.group.add(mesh); this.meshes.push(mesh); }
     }
 
-    // Woods: one instanced mesh per (model, chunk).
+    // Woods: one instanced mesh per model and quarter of the map, so the camera can skip the woods behind it.
     const dummy = new Object3D();
     const buckets = new Map<string, Placement[]>();
     for (const t of plan.forest) {
       if (!this.assets.has(t.model)) continue;
-      const k = `${t.model}|${Math.floor(t.x / CHUNK)}|${Math.floor(t.z / CHUNK)}`;
+      const k = `${t.model}|${t.x < 0 ? 'w' : 'e'}${t.z < 6 ? 'n' : 's'}`;
       const arr = buckets.get(k) ?? []; arr.push(t); buckets.set(k, arr);
     }
     for (const [k, trees] of buckets) {
@@ -80,9 +91,8 @@ export class StaticWorld {
       const im = new InstancedMesh(this.assets.geometry(model), this.assets.material, trees.length);
       trees.forEach((t, i) => { dummy.position.set(t.x, t.y ?? 0, t.z); dummy.rotation.set(0, t.yaw, 0); const s = t.scale ?? 1; dummy.scale.set(s, s, s); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); });
       im.computeBoundingSphere();
-      // Only the woods near the valley floor throw shadows the sun camera can see.
-      const near = trees.some((t) => Math.abs(t.x) < 80 && t.z > -45 && t.z < 60);
-      add(im as unknown as Mesh, near);
+      // No forest shadows: the sun's shadow camera only spans the town around the player, where garden trees do cast.
+      add(im as unknown as Mesh, false);
     }
 
     // Parked cars: instanced per model (they share geometry with moving cars).

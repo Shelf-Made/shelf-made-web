@@ -18,7 +18,8 @@
     "assets": "tsx tools/convert-assets.ts && tsx tools/gen-models.ts",
     "balance": "tsx tools/balance.ts",
     "gen:models": "tsx tools/gen-models.ts",
-    "gen:font": "tsx tools/gen-font.ts"
+    "gen:font": "tsx tools/gen-font.ts",
+    "gen:logo": "tsx tools/render-logo.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

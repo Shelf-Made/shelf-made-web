@@ -4,6 +4,7 @@
  *   npm run balance -- --check exits non-zero when any assertion fails
  */
 import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, type GameState, type Difficulty } from '../src/sim/index';
+import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
 
 type Strategy = (s: GameState, day: number) => void;
 
@@ -31,6 +32,23 @@ function carryAll(s: GameState): void {
   for (const f of sellers(s)) applyCommand(s, { type: 'carry', fixtureId: f.id });
 }
 
+/**
+ * The first five minutes, paid for like a player would: a counter, two shelves and a chiller from
+ * the starting cash, a first order, the truck, carrying every box onto the shelves, then Open shop.
+ */
+function fitOut(s: GameState): void {
+  const f = s.shop.floor;
+  for (const [fixtureType, x, z, rot] of [['register', f.x1 - 1, f.z1 - 3, 2], ['shelf', f.x0, f.z0 + 2, 1], ['shelf', f.x0, f.z0 + 3, 1], ['fridge', f.x1 - 1, f.z0, 3]] as const) {
+    const r = applyCommand(s, { type: 'placeFixture', fixtureType, x, z, rot });
+    if (!r.ok) throw new Error(`fit-out: ${r.message}`);
+  }
+  const r = applyCommand(s, { type: 'placeOrder', supplierId: 'local', lines: [...STARTER_SHELF.map((productId) => ({ productId, qty: 10 })), ...STARTER_FRIDGE.map((productId) => ({ productId, qty: 8 }))] });
+  if (!r.ok) throw new Error(`fit-out order: ${r.message}`);
+  for (let i = 0; i < 6000 && (s.orders.some((o) => o.state !== 'delivered') || s.shop.storage.some((e) => e.qty > 0)); i++) { tick(s); if (i % 40 === 0) carryAll(s); }
+  const open = applyCommand(s, { type: 'openShop' });
+  if (!open.ok) throw new Error(`fit-out open: ${open.message}`);
+}
+
 function freeTile(s: GameState): { x: number; z: number } | null {
   const f = s.shop.floor;
   for (let z = f.z0; z < f.z1 - 1; z++) for (let x = f.x0; x < f.x1; x++) {
@@ -54,11 +72,11 @@ const STRATEGIES: Record<string, Strategy> = {
   },
   delegator: (s, day) => {
     if (s.cash > 200) orderToFill(s, 'local', 2.5, 300);
-    if (day >= 3) {
-      for (const role of ['cashier', 'stocker'] as const) {
-        if (!s.people.some((p) => p.kind === 'staff' && p.role === role)) { const c = s.staffPool.find((x) => x.role === role); if (c && s.cash > c.wage * 3) applyCommand(s, { type: 'hire', candidateId: c.id }); }
-      }
-    }
+    // Hands the work over one hire at a time, when the till can carry the wage.
+    const has = (role: string) => s.people.some((p) => p.kind === 'staff' && p.role === role);
+    const hire = (role: 'cashier' | 'stocker', cushion: number) => { const c = s.staffPool.find((x) => x.role === role); if (c && s.cash > c.wage * cushion) applyCommand(s, { type: 'hire', candidateId: c.id }); };
+    if (day >= 3 && !has('cashier')) hire('cashier', 8);
+    else if (day >= 5 && has('cashier') && !has('stocker')) hire('stocker', 14);
   },
   franchiser: (s, day) => {
     if (s.cash > 200) orderToFill(s, 'local', 2.5, 320);
@@ -78,11 +96,13 @@ const STRATEGIES: Record<string, Strategy> = {
   },
 };
 
-interface Run { strategy: string; seed: number; days: number; endCash: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number }
+interface Run { strategy: string; seed: number; days: number; fitOutLeft: number; endCash: number; minCash: number; bust: boolean; profitableBy: number; totalServed: number; stuck: number; history: number[]; served: number[]; salePull: number }
 
 function runGame(strategy: string, seed: number, days: number, difficulty: Difficulty = 'standard'): Run {
-  const s = newGame({ seed, difficulty, plotId: ['main', 'hill', 'east'][seed % 3], name: 'Balance', tutorial: false });
   resetGridCache();
+  const s = newGame({ seed, difficulty, plotId: ['main', 'hill', 'east'][seed % 3], name: 'Balance', tutorial: false });
+  fitOut(s);
+  const fitOutLeft = s.cash;
   const act = STRATEGIES[strategy]!;
   let minCash = s.cash, profitableBy = 0, totalServed = 0;
   const history: number[] = [];
@@ -91,10 +111,15 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
   for (let day = 1; day <= days; day++) {
     act(s, day);
     const hasCashier = () => s.people.some((p) => p.kind === 'staff' && p.role === 'cashier');
+    // In person, like a player: scan when somebody is waiting at the till, otherwise restock.
+    const owner = s.people.find((p) => p.kind === 'owner')!;
+    const waiting = () => s.shop.fixtures.some((f) => f.type === 'register' && (f.serving !== null && f.serving !== undefined || (f.queue?.length ?? 0) > 0));
+    const busy = () => !!owner.task || !!owner.carrying;
     for (let i = 0; i < (DAY_SECONDS + 130) / TICK && s.phase !== 'night'; i++) {
       tick(s);
-      if (!hasCashier() && i % (strategy === 'careless' ? 14 : 6) === 0) applyCommand(s, { type: 'scan' });
-      if (i % 120 === 0) carryAll(s);
+      const scanner = !hasCashier();
+      if (scanner && waiting() && !busy() && i % (strategy === 'careless' ? 14 : 6) === 0) applyCommand(s, { type: 'scan' });
+      if (i % 60 === 0 && (!scanner || !waiting())) carryAll(s);
       if (s.cash < minCash) minCash = s.cash;
     }
     if (s.phase !== 'night') break;
@@ -107,7 +132,7 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
     if (s.gameOver) break;
     applyCommand(s, { type: 'openTomorrow' });
   }
-  return { strategy, seed, days, endCash: s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull };
+  return { strategy, seed, days, fitOutLeft, endCash: s.cash, minCash, bust: s.gameOver, profitableBy, totalServed, stuck: s.stuckRescues, history, served, salePull };
 }
 
 function main(): void {
@@ -145,7 +170,9 @@ function main(): void {
   }
   // 6. Nobody gets stuck.
   for (const r of runs) if (r.stuck > 0) failures.push(`${r.strategy} seed ${r.seed}: ${r.stuck} stuck rescues`);
-  console.log(`guided avg daily profit (first 5 days): $${guidedDaily.toFixed(0)}; ${runs.length} runs in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.log(`guided avg daily profit (first 5 days): $${guidedDaily.toFixed(0)}; cash left after the fit-out: $${avg(runs.map((r) => r.fitOutLeft)).toFixed(0)}; ${runs.length} runs in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  // 7. The fit-out leaves a cushion for the first days' rent.
+  for (const r of runs) if (r.fitOutLeft < 60) failures.push(`${r.strategy} seed ${r.seed}: only $${r.fitOutLeft.toFixed(0)} left after the first fit-out`);
   if (process.argv.includes('--verbose')) for (const r of runs.filter((x) => x.strategy === 'guided' || x.strategy === 'delegator')) console.log(`  ${r.strategy} seed ${r.seed}: ${r.history.map((p) => p.toFixed(0)).join(' ')}`);
   for (const f of failures) console.log('  FAIL ' + f);
   if (failures.length === 0) console.log('balance check passed');
