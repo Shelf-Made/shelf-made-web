@@ -30,11 +30,11 @@ export function hint(state: GameState): string {
     const stocked = shop.fixtures.some((f) => f.slots.some((s) => s.productId && s.qty > 0));
     if (!stocked && storage === 0 && !pending) return 'Order stock on the Stock card (Tab). The truck leaves boxes on the pallet by the back door.';
     if (!stocked && storage === 0) return 'The truck is on its way. Arrange the floor while you wait.';
-    if (!stocked) return 'Walk to the pallet, press E to pick up a box, then look at a shelf and press E to stock it.';
+    if (!stocked) return 'Walk to the pallet, press F to pick up a box, then walk to a shelf and press F to stock it.';
     return 'All set? Press Open shop at the top to let customers in.';
   }
   if (state.cash < 60 && state.loans.length === 0) return 'Cash is tight. A small loan now is cheaper than missing rent.';
-  if (empty > 0 && storage > 0) return 'Some shelves are empty but boxes are waiting on the pallet: carry one over and press E at the shelf' + (state.unlocks.staff && !hasStocker ? ', or hire a stocker.' : '.');
+  if (empty > 0 && storage > 0) return 'Some shelves are empty but boxes are waiting on the pallet: carry one over and click the shelf (or press F beside it)' + (state.unlocks.staff && !hasStocker ? ', or hire a stocker.' : '.');
   if (empty > 0 && !pending) return 'Shelves are selling out and nothing is on order. Order stock before the afternoon rush.';
   if (line >= 3 && !hasCashier) return state.unlocks.staff ? 'A line is forming. Hire a cashier so you can stop scanning.' : 'A line is forming. Keep scanning (Space) and the staff card unlocks on day 3.';
   if (t.turnedAway >= 3) return 'Drivers are leaving because the lot is full. More parking is on the Build card.';

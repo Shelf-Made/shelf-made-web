@@ -4,7 +4,7 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone, toWorld, yawToWorld } from './layout';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside } from './people';
@@ -25,6 +25,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const d = shop.delivery;
   if (d && x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
   if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need $${price}`, price };
+  // Never on top of the manager.
+  const owner = state.people.find((p) => p.kind === 'owner');
+  if (owner) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > x - 0.3 && lo.x < x + 1.3 && lo.z > z - 0.3 && lo.z < z + 1.3) return { ok: false, reason: 'You are standing there', price }; }
   if (type === 'register') {
     const bx = x - [0, 1, 0, -1][rot]!, bz = z - [1, 0, -1, 0][rot]!;
     if (bx < f.x0 || bx + 1 > f.x1 || bz < f.z0 || bz + 1 > f.z1) return { ok: false, reason: 'Leave room behind the counter to stand', price };
@@ -35,6 +38,8 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const grid = buildGrid({ ...shop, fixtures }, -1);
   const from = doorInside(state);
   if (!findPath(grid, doorOutside(state), from)) return { ok: false, reason: 'Would block the door', price };
+  // Nor boxing the manager in.
+  if (owner && !findPath(grid, { x: owner.x, z: owner.z }, doorOutside(state))) return { ok: false, reason: 'Would box you in', price };
   const back = toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6);
   if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
   for (const fx of fixtures) {

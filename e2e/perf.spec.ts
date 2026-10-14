@@ -17,27 +17,26 @@ test('performance budget', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 11, 'main', 'Perf Mart', { tutorial: false });
   await hooks(page, 'quickSetup', true);
-  // First person from the door, looking down the shop toward the mountains.
-  await hooks(page, 'fp', 0.3, -0.6, 0, -0.05);
+  for (const r of ['discount', 'premium', 'chain']) await hooks(page, 'rivalSale', r);
+  // The default follow view: the manager behind the counter, the shelves, the door.
+  await hooks(page, 'fp', 2.0, -1.5, 0, undefined, 12);
   const starter = await measure(page, 2500);
   await hooks(page, 'advanceNoScan', 300);
   await hooks(page, 'setSpeed', 4);
   const busy = await measure(page, 2500);
   await hooks(page, 'setSpeed', 1);
-  // Out on Main Street looking along the valley: the most scenery in view at once.
-  await hooks(page, 'fp', 0.5, 3.2, -Math.PI / 2, -0.02);
-  const street = await measure(page, 2500);
-  await hooks(page, 'camera', 0, 4, 120, 0.35, 0.82);
-  const wide = await measure(page, 2500);
-  const report = { measuredAt: new Date().toISOString(), note: 'Headless SwiftShader (software GL); fps here is far below a real GPU. Draw calls and triangles are the hard budget.', starter, busy, street, wide };
+  // One scroll step out (the lot and the road), then all the way out over the crossroads.
+  await hooks(page, 'fp', 2.0, -1.5, 0, undefined, 20);
+  const mid = await measure(page, 2500);
+  await hooks(page, 'viewWorld', 0, 3, 0.3, 68, 0.9);
+  const overview = await measure(page, 2500);
+  const report = { measuredAt: new Date().toISOString(), note: 'Headless SwiftShader (software GL); fps here is far below a real GPU. Draw calls and triangles are the hard budget.', starter, busy, mid, overview };
   mkdirSync('docs/screens', { recursive: true });
   writeFileSync('docs/screens/perf.json', JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
-  expect(starter.drawCalls).toBeLessThan(250);
-  expect(busy.drawCalls).toBeLessThan(250);
-  expect(street.drawCalls).toBeLessThan(250);
-  expect(wide.drawCalls).toBeLessThan(250);
-  expect(street.triangles).toBeLessThan(900_000);
-  expect(wide.triangles).toBeLessThan(900_000);
+  for (const v of [starter, busy, mid, overview]) {
+    expect(v.drawCalls).toBeLessThan(250);
+    expect(v.triangles).toBeLessThan(900_000);
+  }
   expect(busy.people).toBeGreaterThan(5);
 });

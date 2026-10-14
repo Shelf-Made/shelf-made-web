@@ -18,7 +18,7 @@ function swaying(base: MeshStandardMaterial, amp: number, double = false): MeshS
       #ifdef USE_INSTANCING
         vec4 wp = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
       #else
-        vec4 wp = vec4(0.0);
+        vec4 wp = modelMatrix * vec4(position, 1.0);
       #endif
       float hh = max(position.y, 0.0);
       transformed.x += sin(uWind * 1.7 + wp.x * 0.7 + wp.z * 0.45) * hh * ${amp.toFixed(3)};
@@ -65,20 +65,19 @@ export { CAR_MODEL_IDS };
 const CHUNK = 44;
 const FLAT = /roads\/road-|flower|grass|lily|crop|path|driveway|campfire/;
 
-/** Everything that never moves: the land, the river, the town (merged), the woods (instanced). */
+/** Everything that never moves: the land, the street (merged), the grass and flowers on the verges (instanced). */
 export class StaticWorld {
   readonly group = new Group();
   private readonly meshes: Mesh[] = [];
   private terrain: Mesh | null = null;
   private grassMat: Material | null = null;
-  private leafMat: Material | null = null;
   constructor(private readonly assets: AssetLibrary) {}
 
   /** Advance the wind. */
   update(time: number): void { wind.value = time; }
 
   static modelsNeeded(plan: TownPlan): string[] {
-    return [...new Set(plan.placements.map((p) => p.model).concat(plan.forest.map((p) => p.model), TOWN_MODEL_IDS, CAR_MODEL_IDS))];
+    return [...new Set(plan.placements.map((p) => p.model).concat(TOWN_MODEL_IDS, CAR_MODEL_IDS))];
   }
 
   build(plan: TownPlan): void {
@@ -87,14 +86,13 @@ export class StaticWorld {
     // The land and the river never change between towns: build them once.
     if (!this.terrain) {
       const land = new Mesh(terrainGeometry(), new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true }));
-      land.receiveShadow = true;
+      land.receiveShadow = true; land.name = 'terrain';
       this.terrain = land;
       this.group.add(land);
       const st = structuresGeometry(pal);
-      const lit = new Mesh(st.lit, this.assets.material); lit.castShadow = true; lit.receiveShadow = true;
+      const lit = new Mesh(st.lit, this.assets.material); lit.castShadow = true; lit.receiveShadow = true; lit.name = 'structures';
       this.group.add(lit, new Mesh(st.dark, this.assets.unlit), new Mesh(st.glow, this.assets.unlit));
       this.grassMat = swaying(this.assets.material, 0.22, true);
-      this.leafMat = swaying(this.assets.material, 0.018);
     }
     const add = (m: Mesh, cast = true) => { m.castShadow = cast; m.receiveShadow = true; this.group.add(m); this.meshes.push(m); };
 
@@ -129,7 +127,7 @@ export class StaticWorld {
     for (const [k, parts] of chunks) {
       const merged = mergeGeometries(parts, false);
       for (const g of parts) g.dispose();
-      if (merged) { merged.computeBoundingSphere(); add(new Mesh(merged, this.assets.material), k.endsWith('|1')); }
+      if (merged) { merged.computeBoundingSphere(); const cm = new Mesh(merged, this.assets.material); cm.name = k.endsWith('|1') ? 'town' : 'paving'; add(cm, k.endsWith('|1')); }
     }
     if (glassParts.length) {
       const g = mergeGeometries(glassParts, false);
@@ -137,50 +135,26 @@ export class StaticWorld {
       if (g) { const mesh = new Mesh(g, this.assets.glass); this.group.add(mesh); this.meshes.push(mesh); }
     }
 
-    // Meadows: grass tufts, flowers and pebbles by the thousand, one instanced mesh per kind.
-    {
-      const byKind = new Map<string, typeof plan.scatter>();
-      for (const sc of plan.scatter) { const k = sc.kind; const arr = byKind.get(k) ?? []; arr.push(sc); byKind.set(k, arr); }
+    // The verges: grass tufts, flowers and pebbles by the thousand, merged into one swaying mesh (one draw).
+    if (plan.scatter.length) {
       const geos = new Map<ScatterKind, BufferGeometry>();
       const d = new Object3D();
-      for (const [k, items] of byKind) {
-        const kind = k as ScatterKind;
-        if (!geos.has(kind)) geos.set(kind, scatterGeometry(pal, kind));
-        const im = new InstancedMesh(geos.get(kind)!, kind === 'pebble' ? this.assets.material : this.grassMat!, items.length);
-        items.forEach((it, i) => { d.position.set(it.x, 0, it.z); d.rotation.set(0, it.yaw, 0); d.scale.setScalar(it.scale); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
-        im.computeBoundingSphere();
-        im.receiveShadow = true;
-        this.group.add(im); this.meshes.push(im as unknown as Mesh);
+      const parts: BufferGeometry[] = [];
+      for (const it of plan.scatter) {
+        if (!geos.has(it.kind)) geos.set(it.kind, scatterGeometry(pal, it.kind).toNonIndexed());
+        d.position.set(it.x, 0, it.z); d.rotation.set(0, it.yaw, 0); d.scale.setScalar(it.scale); d.updateMatrix();
+        parts.push(geos.get(it.kind)!.clone().applyMatrix4(d.matrix));
+      }
+      const merged = mergeGeometries(parts, false);
+      for (const g of parts) g.dispose();
+      for (const g of geos.values()) g.dispose();
+      if (merged) {
+        const m = new Mesh(merged, this.grassMat!); m.name = 'verges'; m.receiveShadow = true;
+        this.group.add(m); this.meshes.push(m);
       }
     }
 
-    // Woods: one instanced mesh per model and quarter of the map, so the camera can skip the woods behind it.
     const dummy = new Object3D();
-    const buckets = new Map<string, Placement[]>();
-    for (const t of plan.forest) {
-      if (!this.assets.has(t.model)) continue;
-      const k = `${t.model}|${t.x < 0 ? 'w' : 'e'}${t.z < 2.5 ? 'n' : 's'}`;
-      const arr = buckets.get(k) ?? []; arr.push(t); buckets.set(k, arr);
-    }
-    for (const [k, trees] of buckets) {
-      const model = k.split('|')[0]!;
-      const im = new InstancedMesh(this.assets.geometry(model), this.leafMat ?? this.assets.material, trees.length);
-      trees.forEach((t, i) => { dummy.position.set(t.x, t.y ?? 0, t.z); dummy.rotation.set(0, t.yaw, 0); const s = t.scale ?? 1; dummy.scale.set(s, s, s); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); });
-      im.computeBoundingSphere();
-      // No forest shadows: the sun's shadow camera only spans the town around the player, where garden trees do cast.
-      add(im as unknown as Mesh, false);
-    }
-
-    // Parked cars: instanced per model (they share geometry with moving cars).
-    const byModel = new Map<number, typeof plan.parked>();
-    for (const c of plan.parked) { const arr = byModel.get(c.model) ?? []; arr.push(c); byModel.set(c.model, arr); }
-    for (const [model, cars] of byModel) {
-      const id = CAR_MODEL_IDS[model] ?? CAR_MODEL_IDS[0]!;
-      const im = new InstancedMesh(this.assets.geometry(id), this.assets.material, cars.length);
-      cars.forEach((c, i) => { dummy.position.set(c.x, 0, c.z); dummy.rotation.set(0, c.yaw, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); });
-      im.computeBoundingSphere();
-      add(im as unknown as Mesh);
-    }
     // Night: lamp heads glow. Small unlit quads at each lamp head.
     if (plan.lamps.length) {
       const bulb = new InstancedMesh(paint(new PlaneGeometry(0.22, 0.22), pal, '#FFF3DC'), this.assets.unlit, plan.lamps.length);
@@ -203,3 +177,4 @@ export class StaticWorld {
 }
 
 export const NIGHT_GLOW = new Color('#FFF3DC');
+

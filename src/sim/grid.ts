@@ -53,6 +53,27 @@ export function fixtureFront(f: Fixture): Vec2 {
   }
 }
 
+/**
+ * Where to stand to stock or look at a fixture, coming from `from` (world): the free floor tile beside it
+ * nearest to you, the front first. A shelf against a wall is still reached from the room.
+ */
+export function fixtureAccessWorld(shop: Shop, f: Fixture, from: Vec2): Vec2 {
+  const cx = f.x + 0.5, cz = f.z + 0.5, fl = shop.floor, d = shop.delivery;
+  const front = fixtureFront(f);
+  const tiles = [front, { x: 2 * cx - front.x, z: 2 * cz - front.z }, { x: cx + (front.z - cz), z: cz + (front.x - cx) }, { x: cx - (front.z - cz), z: cz - (front.x - cx) }];
+  const free = (t: Vec2) => t.x > fl.x0 && t.x < fl.x1 && t.z > fl.z0 && t.z < fl.z1
+    && !(d && t.x > d.x0 && t.x < d.x1 && t.z > d.z0 && t.z < d.z1)
+    && !shop.fixtures.some((o) => o.id !== f.id && t.x > o.x && t.x < o.x + 1 && t.z > o.z && t.z < o.z + 1);
+  let best: Vec2 | null = null, bestD = Infinity;
+  tiles.forEach((t, i) => {
+    if (!free(t)) return;
+    const w = toWorld(shop, t.x, t.z);
+    const dd = Math.hypot(w.x - from.x, w.z - from.z) + (i === 0 ? -0.5 : 0);
+    if (dd < bestD) { bestD = dd; best = w; }
+  });
+  return best ?? fixtureFrontWorld(shop, f);
+}
+
 /** Direction the fixture faces, unit vector. */
 export function fixtureFacing(rot: number): Vec2 {
   switch (rot & 3) { case 0: return { x: 0, z: 1 }; case 1: return { x: 1, z: 0 }; case 2: return { x: 0, z: -1 }; default: return { x: -1, z: 0 }; }

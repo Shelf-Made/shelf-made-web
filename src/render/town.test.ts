@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildTown, plotLot, rectsOverlap, groundHeight, onRoad, TOWN, type Rect } from './town';
-import { PLOTS, CORNER_IDS, SHOP_SIZES, lotLayout, rectToWorld, CORNERS, ROAD_Z, PLOT_RECT, cornerOfPlot } from '@/sim/layout';
+import { PLOTS, CORNER_IDS, SHOP_SIZES, lotLayout, rectToWorld, CORNERS, ROAD_Z, ROAD_FAR, PLOT_RECT, cornerOfPlot } from '@/sim/layout';
 
 const inside = (r: Rect, x: number, z: number, m = 0) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m;
 const touchesRoad = (r: Rect) => {
@@ -20,17 +20,9 @@ describe('crossroads plan', () => {
         for (const l of plan.lots) expect(touchesRoad(l), JSON.stringify(l)).toBe(false);
       });
 
-      it(`every building stands inside its own lot (${plot.id}, seed ${seed})`, () => {
-        for (const f of plan.footprints) {
-          const l = plan.lots[f.lot]!;
-          expect(f.x0 >= l.x0 - 1e-6 && f.x1 <= l.x1 + 1e-6 && f.z0 >= l.z0 - 1e-6 && f.z1 <= l.z1 + 1e-6, `${JSON.stringify(f)} in ${JSON.stringify(l)}`).toBe(true);
-        }
-      });
-
       it(`the player's corner holds only the player's shop (${plot.id}, seed ${seed})`, () => {
         const own = plotLot(plot.id);
         for (const p of plan.placements) expect(inside(own, p.x, p.z), `${p.model} at ${p.x},${p.z}`).toBe(false);
-        for (const t of plan.forest) expect(inside(own, t.x, t.z, 0.5)).toBe(false);
         for (const s of plan.slabs) expect(rectsOverlap(s.rect, own), `slab ${s.color} ${JSON.stringify(s.rect)}`).toBe(false);
         for (const g of plan.scatter) expect(inside(own, g.x, g.z), `${g.kind} at ${g.x},${g.z}`).toBe(false);
         expect(plan.lots.filter((l) => l.kind === 'plot').length).toBe(1);
@@ -51,18 +43,21 @@ describe('crossroads plan', () => {
     }
   });
 
-  it('the ground is level across the town, and along both roads out of it; hills rise beyond', () => {
-    for (let x = TOWN.x0; x <= TOWN.x1; x += 2) for (let z = TOWN.z0; z <= TOWN.z1; z += 2) expect(groundHeight(x, z), `${x},${z}`).toBe(0);
-    for (let d = -95; d <= 95; d += 5) { expect(groundHeight(d, ROAD_Z)).toBe(0); expect(groundHeight(0, d)).toBe(0); }
-    expect(groundHeight(70, -60)).toBeGreaterThan(3);
-    expect(groundHeight(-20, -100)).toBeGreaterThan(10);
+  it('the ground is level everywhere, town and plain alike', () => {
+    for (let x = -120; x <= 120; x += 4) for (let z = -110; z <= 110; z += 4) expect(groundHeight(x, z), `${x},${z}`).toBe(0);
   });
 
-  it('a backdrop of houses and blocks, but nothing walkable beyond the corners', () => {
+  it('nothing but the crossroads: the four corners, and the roads running off into empty space', () => {
     const plan = buildTown(3, 'main');
-    expect(plan.lots.filter((l) => l.kind === 'house').length).toBeGreaterThan(20);
-    expect(plan.lots.filter((l) => l.kind === 'apartment').length).toBeGreaterThan(6);
+    expect(plan.lots.map((l) => l.kind).sort()).toEqual(['plot', 'rival', 'rival', 'rival']);
     expect(plan.rivals.length).toBe(3);
-    expect(plan.forest.length).toBeGreaterThan(300);
+    // Out beyond the town only the roads (and their sidewalks and lamps) go on.
+    const roadside = (x: number, z: number) => Math.abs(z - ROAD_Z) < 3.2 || Math.abs(x) < 3.2;
+    for (const p of plan.placements) if (Math.abs(p.x) > TOWN.x1 + 2 || p.z < TOWN.z0 - 2 || p.z > TOWN.z1 + 2) expect(roadside(p.x, p.z), `${p.model} at ${p.x},${p.z}`).toBe(true);
+    for (const g of plan.scatter) expect(Math.abs(g.x) < TOWN.x1 + 6 && g.z > TOWN.z0 - 6 && g.z < TOWN.z1 + 6, `${g.kind} at ${g.x},${g.z}`).toBe(true);
+    // Both roads reach far out, past where the traffic appears.
+    const xs = plan.placements.filter((p) => p.model.startsWith('roads/road-') && Math.abs(p.z - ROAD_Z) < 0.1).map((p) => p.x);
+    expect(Math.max(...xs)).toBeGreaterThan(ROAD_FAR);
+    expect(Math.min(...xs)).toBeLessThan(-ROAD_FAR);
   });
 });

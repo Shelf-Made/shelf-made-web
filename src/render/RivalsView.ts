@@ -5,9 +5,7 @@ import type { TownPlan, RivalSite } from './town';
 import { MAIN_N, PAVEMENT } from './town';
 import { box, merge, place } from './geometry';
 import { textGeometry } from './letters';
-import { recolor, cutDown } from './recolor';
-import { WALL_COLOURS } from './storeArt';
-import { CORNERS, PLOT_RECT, ROAD_Z, WALL_T, lotLayout, type Rect } from '@/sim/layout';
+import { CORNERS, PLOT_RECT, ROAD_Z, WALL_T, lotLayout, rectToWorld, type Rect } from '@/sim/layout';
 import { rivalShape } from '@/sim/rivals';
 
 /** Each rival's fixed colours: primary (awning, fascia), accent (stripes, lot paint), trim and lettering. */
@@ -28,9 +26,24 @@ interface Site {
   id: string; root: Group;
   lot: Group; build: Group; open: Group;
   sale: Mesh; soon: Mesh; windows: Mesh;
+  /** The building at full height and as waist-high stubs (when it would hide the manager), and its footprint. */
+  full: Mesh; stub: Mesh; footprint: Rect;
 }
 
-type Letters = (text: string, size: number, depth: number, face?: string, side?: string) => BufferGeometry;
+type Letters = (text: string, size: number, depth: number, face?: string, side?: string, bevel?: boolean) => BufferGeometry;
+
+/** Four walls as four boxes, WALL_T thick round the floor, to a height; the front has the door gap at x = 0. */
+function shell(pal: Parameters<typeof box>[0], f: Rect, backZ: number, h: number, hex: string): BufferGeometry[] {
+  const T = WALL_T, cz = (f.z1 + backZ) / 2, D = f.z1 - backZ + 2 * T;
+  return [
+    box(pal, hex, -0.5 - (f.x0 - T), h, T, (f.x0 - T - 0.5) / 2, 0, f.z1 + T / 2),
+    box(pal, hex, f.x1 + T - 0.5, h, T, (f.x1 + T + 0.5) / 2, 0, f.z1 + T / 2),
+    box(pal, hex, f.x1 - f.x0 + 2 * T, h, T, (f.x0 + f.x1) / 2, 0, backZ - T / 2),
+    box(pal, hex, T, h, D, f.x0 - T / 2, 0, cz),
+    box(pal, hex, T, h, D, f.x1 + T / 2, 0, cz),
+    ...(h > 0.8 ? [box(pal, hex, 1, h - 0.74, T, 0, 0.74, f.z1 + T / 2)] : []),
+  ];
+}
 
 /**
  * The rivals' corners. Before a rival opens: a fenced lot with a "Coming soon" board, then (the
@@ -52,6 +65,21 @@ export class RivalsView {
 
   setNight(on: boolean): void { this.night = on; }
 
+  /** A rival's building between the camera and the manager drops to stubs, like the player's walls. */
+  occlude(cam: { x: number; y: number; z: number } | null, mx: number, mz: number): void {
+    for (const s of this.sites) {
+      let hit = false;
+      if (cam) {
+        // Sample the sight line from the camera down to the manager's chest; blocked where it passes under the roofline.
+        for (let i = 1; i < 16 && !hit; i++) {
+          const t = i / 16, x = cam.x + (mx - cam.x) * t, z = cam.z + (mz - cam.z) * t, y = cam.y + (0.45 - cam.y) * t;
+          hit = y < 1.2 && x > s.footprint.x0 && x < s.footprint.x1 && z > s.footprint.z0 && z < s.footprint.z1;
+        }
+      }
+      s.full.visible = !hit; s.stub.visible = hit;
+    }
+  }
+
   update(state: GameState): void {
     for (const s of this.sites) {
       const r = state.rivals.find((x) => x.id === s.id); if (!r) continue;
@@ -64,7 +92,7 @@ export class RivalsView {
   }
 
   private text(text: string, size: number, face: string, side: string): BufferGeometry {
-    return this.letters ? this.letters(text, size, 0.05, face, side) : textGeometry(this.assets.palette, text, size, 0.05, face, side);
+    return this.letters ? this.letters(text, size, 0.05, face, side, false) : textGeometry(this.assets.palette, text, size, 0.05, face, side);
   }
 
   private site(r: RivalSite): Site {
@@ -88,7 +116,7 @@ export class RivalsView {
     for (const [c0, c1] of cuts) { if (c0! > sx) slab({ x0: sx, z0: SW_IN, x1: c0!, z1: SW_OUT }, PAVEMENT, 0.06); sx = c1!; }
     slab({ x0: sx, z0: SW_IN, x1: PLOT_RECT.x1, z1: SW_OUT }, PAVEMENT, 0.06);
     for (const [c0, c1] of cuts) slab({ x0: c0!, z0: SW_IN, x1: c1!, z1: SW_OUT }, '#B9BCC4', 0.034, -0.01);
-    root.add(mesh(ground, false));
+    root.add(Object.assign(mesh(ground, false), { name: 'rival-ground' }));
 
     // ---- Stage 1: a fenced, grassy lot with a "Coming soon" board.
     const lot = new Group();
@@ -99,16 +127,13 @@ export class RivalsView {
         for (let x = fx0 + 0.71; x <= fx1 - 0.7; x += 1.42) { g.push(place(fence.clone(), x, 0, fz1)); g.push(place(fence.clone(), x, 0, fz0)); }
         for (let z = fz0 + 0.71; z <= fz1 - 0.7; z += 1.42) { g.push(place(fence.clone(), fx0, 0, z, Math.PI / 2)); g.push(place(fence.clone(), fx1, 0, z, Math.PI / 2)); }
       }
-      lot.add(mesh(g));
+      lot.add(Object.assign(mesh(g), { name: 'rival-lot' }));
       root.add(lot); }
 
     // ---- Stage 2: the shop half built: walls to waist height, scaffolding, cones, a skip.
     const build = new Group();
     { const g: BufferGeometry[] = [];
-      const wall = recolor(this.assets.geometry('market/wall'), WALL_COLOURS);
-      const low = cutDown(wall, 0.45);
-      for (let x = f.x0 + 0.5; x < f.x1; x++) { g.push(place(low.clone(), x, 0, f.z1 + WALL_T / 2)); g.push(place(low.clone(), x, 0, backZ - WALL_T / 2, Math.PI)); }
-      for (let z = backZ + 0.5; z < f.z1; z++) { g.push(place(low.clone(), f.x0 - WALL_T / 2, 0, z, -Math.PI / 2)); g.push(place(low.clone(), f.x1 + WALL_T / 2, 0, z, Math.PI / 2)); }
+      g.push(...shell(pal, f, backZ, 0.45, '#D9D4CB'));
       // Scaffold poles and planks round the front and sides.
       for (let x = f.x0 - 0.6; x <= f.x1 + 0.61; x += 1.0) { g.push(box(pal, '#9AA0A8', 0.05, 1.6, 0.05, x, 0, f.z1 + 1.0)); }
       for (const y of [0.55, 1.1]) g.push(box(pal, '#C8925A', f.x1 - f.x0 + 1.3, 0.05, 0.36, (f.x0 + f.x1) / 2, y, f.z1 + 0.85));
@@ -117,12 +142,13 @@ export class RivalsView {
       if (this.assets.has('roads/dumpster')) g.push(place(this.assets.geometry('roads/dumpster').clone(), L.backYard.x1 - 1, 0, L.backYard.z0 + 0.7, Math.PI / 2));
       // A slab poured for the floor.
       g.push(box(pal, '#C4C0B8', f.x1 - f.x0, 0.05, f.z1 - backZ, (f.x0 + f.x1) / 2, -0.03, (f.z1 + backZ) / 2));
-      build.add(mesh(g));
+      build.add(Object.assign(mesh(g), { name: 'rival-build' }));
       root.add(build); }
 
     // ---- Stage 3: open for business.
     const open = new Group();
     const lit: BufferGeometry[] = [];
+    const wallsFull: BufferGeometry[] = [], wallsStub: BufferGeometry[] = [];
     { const g: BufferGeometry[] = [];
       // Lot: apron, walkway, aisle, driveway, service lane, yard, bays painted in the brand's accent.
       const pave: BufferGeometry[] = [];
@@ -135,25 +161,31 @@ export class RivalsView {
         sl({ x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 }, '#6E717C');
         pave.push(box(pal, paint, 1.6, 0.004, 0.05, b.x, 0.02, b.z - 0.55), box(pal, paint, 1.6, 0.004, 0.05, b.x, 0.02, b.z + 0.55));
       }
-      open.add(mesh(pave, false));
-      // Walls: Kenney pieces, a door and windows on the front.
-      const wallG = recolor(this.assets.geometry('market/wall'), WALL_COLOURS);
-      const windowG = recolor(this.assets.geometry('market/wall-window'), WALL_COLOURS);
-      const doorG = recolor(this.assets.geometry('market/wall-door'), WALL_COLOURS);
+      open.add(Object.assign(mesh(pave, false), { name: 'rival-pave' }));
+      // Walls: plain boxes (the roof hides the rest), a plinth in the brand's colour, windows and a door on the front.
+      wallsFull.push(...shell(pal, f, backZ, 1.0, '#F2EEE6'));
+      wallsStub.push(...shell(pal, f, backZ, 0.3, '#F2EEE6'));
+      const fz0 = f.z1 + WALL_T;
+      wallsFull.push(box(pal, sc.primary, f.x1 - f.x0 + 2 * WALL_T + 0.02, 0.12, 0.04, (f.x0 + f.x1) / 2, 0, fz0 + 0.01));
       for (let x = f.x0 + 0.5; x < f.x1; x++) {
-        const door = Math.abs(x) < 0.01;
-        g.push(place((door ? doorG : windowG).clone(), x, 0, f.z1 + WALL_T / 2));
-        if (!door) lit.push(box(pal, '#FFE6A8', 0.62, 0.42, 0.02, x, 0.36, f.z1 + WALL_T + 0.03));
-        g.push(place(wallG.clone(), x, 0, backZ - WALL_T / 2, Math.PI));
+        if (Math.abs(x) < 0.01) {
+          wallsFull.push(box(pal, '#5B8FB0', 0.7, 0.72, 0.03, x, 0, fz0 + 0.02), box(pal, '#38383D', 0.04, 0.72, 0.05, x, 0, fz0 + 0.03));
+          continue;
+        }
+        wallsFull.push(box(pal, '#7FB2D0', 0.7, 0.42, 0.03, x, 0.24, fz0 + 0.02));
+        lit.push(box(pal, '#FFE6A8', 0.62, 0.42, 0.02, x, 0.24, fz0 + 0.04));
       }
-      for (let z = backZ + 0.5; z < f.z1; z++) { g.push(place(wallG.clone(), f.x0 - WALL_T / 2, 0, z, -Math.PI / 2)); g.push(place(wallG.clone(), f.x1 + WALL_T / 2, 0, z, Math.PI / 2)); }
+      for (let z = backZ + 1; z < f.z1 - 0.5; z += 2) for (const sx of [-1, 1]) {
+        const wx = sx < 0 ? f.x0 - WALL_T : f.x1 + WALL_T;
+        wallsFull.push(box(pal, '#7FB2D0', 0.03, 0.36, 0.6, wx + sx * 0.02, 0.4, z));
+      }
       // Roof: a flat deck with a parapet in the brand's trim.
       const W = f.x1 - f.x0 + 2 * WALL_T, D = f.z1 - backZ + 2 * WALL_T, cx = (f.x0 + f.x1) / 2, cz = (f.z1 + backZ) / 2;
-      g.push(box(pal, '#9AA0A8', W, 0.06, D, cx, 1.0, cz));
-      g.push(box(pal, sc.trim, W + 0.06, 0.12, 0.08, cx, 1.0, f.z1 + WALL_T), box(pal, sc.trim, W + 0.06, 0.12, 0.08, cx, 1.0, backZ - WALL_T));
-      g.push(box(pal, sc.trim, 0.08, 0.12, D, f.x0 - WALL_T, 1.0, cz), box(pal, sc.trim, 0.08, 0.12, D, f.x1 + WALL_T, 1.0, cz));
+      wallsFull.push(box(pal, '#9AA0A8', W, 0.06, D, cx, 1.0, cz));
+      wallsFull.push(box(pal, sc.trim, W + 0.06, 0.12, 0.08, cx, 1.0, f.z1 + WALL_T), box(pal, sc.trim, W + 0.06, 0.12, 0.08, cx, 1.0, backZ - WALL_T));
+      wallsFull.push(box(pal, sc.trim, 0.08, 0.12, D, f.x0 - WALL_T, 1.0, cz), box(pal, sc.trim, 0.08, 0.12, D, f.x1 + WALL_T, 1.0, cz));
       // A rooftop unit or two.
-      g.push(box(pal, '#B9BCC4', 0.6, 0.3, 0.5, cx - W / 4, 1.06, cz - D / 5), box(pal, '#B9BCC4', 0.5, 0.25, 0.5, cx + W / 5, 1.06, cz + D / 6));
+      wallsFull.push(box(pal, '#B9BCC4', 0.6, 0.3, 0.5, cx - W / 4, 1.06, cz - D / 5), box(pal, '#B9BCC4', 0.5, 0.25, 0.5, cx + W / 5, 1.06, cz + D / 6));
       // Awning in the brand's colours over the windows, and the fascia with the name.
       const fz = f.z1 + WALL_T + 0.02;
       let k = 0;
@@ -175,8 +207,11 @@ export class RivalsView {
       if (this.assets.has('furniture/bench')) g.push(place(this.assets.geometry('furniture/bench').clone(), -1.7, 0, f.z1 + WALL_T + 0.42));
       if (this.assets.has('furniture/trashcan')) g.push(place(this.assets.geometry('furniture/trashcan').clone(), 1.25, 0, f.z1 + WALL_T + 0.3));
       if (this.assets.has('market/shopping-cart')) for (let i = 0; i < 3; i++) g.push(place(this.assets.geometry('market/shopping-cart').clone(), L.apron.x0 + 0.5 + i * 0.18, 0, 0.9, Math.PI / 2));
-      open.add(mesh(g));
+      open.add(Object.assign(mesh(g), { name: 'rival-front' }));
       root.add(open); }
+    const full = Object.assign(mesh(wallsFull), { name: 'rival-walls' }), stub = Object.assign(mesh(wallsStub), { name: 'rival-stubs' });
+    stub.visible = false;
+    open.add(full, stub);
     const windows = new Mesh(merge(lit), this.glowMat);
     windows.visible = false;
     open.add(windows);
@@ -184,10 +219,11 @@ export class RivalsView {
     // ---- Boards facing the road: "Coming soon" before opening, "SALE!" while one runs.
     const board = (text: string, bg: string, fg: string, side: string, x: number) => {
       const g = merge([box(pal, '#38383D', 0.1, 1.2, 0.1, x - 1.1, 0, 2.2), box(pal, '#38383D', 0.1, 1.2, 0.1, x + 1.1, 0, 2.2), box(pal, bg, 2.6, 0.55, 0.12, x, 1.0, 2.2), place(textGeometry(pal, text, 0.24, 0.05, fg, side), x, 1.15, 2.28)]);
-      const m = new Mesh(g, this.assets.material); m.castShadow = true; m.visible = false; root.add(m); return m;
+      const m = new Mesh(g, this.assets.material); m.castShadow = true; m.visible = false; m.name = 'rival-board'; root.add(m); return m;
     };
     const soon = board(`${r.name.toUpperCase()} - SOON`, '#FFFFFF', '#38383D', sc.primary, 1.8);
     const sale = board('SALE!', '#FFC044', '#E8573F', '#B8402E', -L.halfW - 0.6 + 3.2);
-    return { id: r.id, root, lot, build, open, sale, soon, windows };
+    const footprint = rectToWorld(c, { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T + 0.5 });
+    return { id: r.id, root, lot, build, open, sale, soon, windows, full, stub, footprint };
   }
 }

@@ -1,6 +1,8 @@
-import type { SkinnedMesh, AnimationAction, BufferGeometry, Vector3} from 'three';
-import { Group, Mesh, AnimationMixer, LoopRepeat, Object3D, Float32BufferAttribute } from 'three';
+import type { SkinnedMesh, AnimationAction, BufferGeometry, Vector3, Frustum } from 'three';
+import { Group, Mesh, AnimationMixer, LoopRepeat, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color } from 'three';
+import { BlobShadows } from './blobs';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim } from '@/sim/types';
 import { box, merge } from './geometry';
@@ -25,18 +27,79 @@ interface Instance {
   current: Anim | null;
   dog: Mesh | null;
   seen: number;
+  /** What they hold: a box in both arms, or shopping bags in one hand. */
+  box: Mesh | null;
+  bags: Mesh | null;
+  bagKey: string;
 }
 
-/** Skinned character pool. One mesh clone per person; geometry shared per model + variant. */
+const SHIRTS = ['#E8573F', '#3570BC', '#FFC044', '#3FA87A', '#9B6FE0', '#F27CC1', '#38383D', '#FFFFFF', '#D9A066', '#4FA3C7'];
+const SKINS = ['#F2C9A0', '#D9A066', '#A87B45', '#7A5236', '#F5D7B8'];
+
+/** Bag colours: the player's shop, then each rival (by id). The art pass adds per-shop schemes. */
+export const BAG_COLOURS: Record<string, string> = { player: '#3FA87A', discount: '#FFC044', premium: '#2E6B4F', chain: '#3570BC' };
+
+/**
+ * Skinned character pool. One mesh per person (Kenney's head and body share a skeleton, so they are
+ * merged into one), geometry shared per model + variant. Nobody casts a shadow-map shadow: a soft
+ * blob under everyone, one instanced draw for the whole crowd, reads better and costs nothing.
+ */
 export class PeopleView {
   /** Debug: stop updating mixers (test hook). */
   static freeze = false;
   readonly group = new Group();
   private readonly live = new Map<number, Instance>();
   private readonly variantGeo = new Map<string, BufferGeometry>();
+  private readonly mergedGeo = new Map<string, BufferGeometry>();
   private dogGeo: BufferGeometry | null = null;
   private frame = 0;
+  private readonly blobs = new BlobShadows(this.group, 192);
+  private readonly sphere = new Sphere(new V3(), 0.9);
+  /** Seen from far off, people are drawn as little stand-ins in two instanced draws: a body in their shirt colour, a head. */
+  static readonly FAR = 40;
+  private pawnBody: InstancedMesh | null = null;
+  private pawnHead: InstancedMesh | null = null;
+  private pawnN = 0;
+  private readonly pd = new Object3D();
+  private readonly tint = new Color();
   constructor(private readonly assets: AssetLibrary) {}
+
+  private pawns(): void {
+    if (this.pawnBody) return;
+    const pal = this.assets.palette;
+    const body = merge([box(pal, '#FFFFFF', 0.3, 0.26, 0.2, 0, 0.2, 0), box(pal, '#55555E', 0.24, 0.2, 0.16, 0, 0, 0)]);
+    const head = box(pal, '#FFFFFF', 0.22, 0.22, 0.2, 0, 0.46, 0);
+    this.pawnBody = new InstancedMesh(body, this.assets.material, 192);
+    this.pawnHead = new InstancedMesh(head, this.assets.material, 192);
+    for (const m of [this.pawnBody, this.pawnHead]) { m.count = 0; m.frustumCulled = false; this.group.add(m); }
+  }
+  private pawn(p: Person, x: number, z: number, moving: boolean): void {
+    this.pawns();
+    const b = this.pawnBody!, h = this.pawnHead!;
+    if (this.pawnN >= b.instanceMatrix.count) return;
+    const d = this.pd;
+    d.position.set(x, moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0, z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.1 * p.look.height); d.updateMatrix();
+    b.setMatrixAt(this.pawnN, d.matrix); h.setMatrixAt(this.pawnN, d.matrix);
+    b.setColorAt(this.pawnN, this.tint.set(SHIRTS[(p.look.model * 3 + p.look.variant) % SHIRTS.length]!));
+    h.setColorAt(this.pawnN, this.tint.set(SKINS[(p.look.model + p.look.variant * 2) % SKINS.length]!));
+    this.pawnN++;
+  }
+
+  /** Head and body as one geometry (same skeleton, same bind pose): one draw call per person. */
+  private mergedGeometry(model: string, variant: number, parts: SkinnedMesh[]): BufferGeometry | null {
+    const key = `${model}|${variant}`;
+    const cached = this.mergedGeo.get(key);
+    if (cached) return cached;
+    const geos = parts.map((m) => {
+      const g = this.variantGeometry(model, variant, m.geometry, m.name).clone();
+      for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(name)) g.deleteAttribute(name);
+      return g;
+    });
+    const out = mergeGeometries(geos, false);
+    for (const g of geos) g.dispose();
+    if (out) this.mergedGeo.set(key, out);
+    return out;
+  }
 
   private variantGeometry(model: string, variant: number, geo: BufferGeometry, meshName: string): BufferGeometry {
     const key = `${model}|${variant}|${meshName}`;
@@ -88,23 +151,28 @@ export class PeopleView {
         box(pal, D, 0.03, 0.03, 0.1, 0, 0.17, -0.16), box(pal, '#222226', 0.05, 0.03, 0.03, 0, 0.17, 0.22),
       ]);
     }
-    const m = new Mesh(this.dogGeo, this.assets.material);
-    m.castShadow = this.shadows;
-    return m;
+    return new Mesh(this.dogGeo, this.assets.material);
   }
 
   private spawn(p: Person): Instance {
     const model = PEOPLE_MODELS[Math.min(p.look.model, PEOPLE_MODELS.length - 1)]!;
     const asset = this.assets.character(model);
     const root = skeletonClone(asset.scene) as Group;
+    const skinned: SkinnedMesh[] = [];
     root.traverse((o) => {
       const m = o as SkinnedMesh;
       if (m.isSkinnedMesh) {
+        skinned.push(m);
         m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name);
         m.material = this.assets.material;
-        m.castShadow = this.shadows; m.receiveShadow = false; m.frustumCulled = false;
-      } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.material; (o as Mesh).castShadow = this.shadows; }
+        m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false;
+      } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.material; (o as Mesh).castShadow = false; }
     });
+    const first = skinned[0];
+    if (first && skinned.length > 1 && skinned.every((m) => m.skeleton.bones.every((b, i) => b === first.skeleton.bones[i]))) {
+      const merged = this.mergedGeometry(model, p.look.variant, skinned);
+      if (merged) { first.geometry = merged; for (const m of skinned.slice(1)) m.removeFromParent(); }
+    }
     const scale = p.look.height;
     root.scale.setScalar(scale);
     const mixer = new AnimationMixer(root);
@@ -113,7 +181,8 @@ export class PeopleView {
       const clip = asset.clips.find((c) => c.name === clipName) ?? asset.clips.find((c) => c.name === 'idle');
       if (clip) { const a = mixer.clipAction(clip); a.setLoop(LoopRepeat, Infinity); actions[anim] = a; }
     }
-    const inst: Instance = { root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame };
+    const inst: Instance = { root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame, box: null, bags: null, bagKey: '' };
+    if (p.kind === 'owner') root.add(this.badge());
     if (p.look.dog) { inst.dog = this.makeDog(); this.group.add(inst.dog); }
     // Randomise the phase so a crowd does not march in step.
     mixer.setTime((p.id % 13) * 0.17);
@@ -132,39 +201,93 @@ export class PeopleView {
     inst.current = anim;
   }
 
-  private shadows = true;
-  /** Shadows on or off for everyone (off when the camera is too high for them to read). */
-  setShadows(on: boolean): void {
-    if (on === this.shadows) return;
-    this.shadows = on;
-    this.group.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = on; });
+
+  /** The manager's name badge and clipboard, so you can always tell which one is you. */
+  private badge(): Group {
+    const pal = this.assets.palette;
+    const g = new Group();
+    const badge = new Mesh(merge([box(pal, '#FFC044', 0.07, 0.05, 0.012, 0.07, 0.42, 0.1), box(pal, '#38383D', 0.05, 0.01, 0.014, 0.07, 0.445, 0.1)]), this.assets.material);
+    const board = new Mesh(merge([box(pal, '#D9A066', 0.1, 0.13, 0.012, 0, 0, 0), box(pal, '#FFFFFF', 0.08, 0.1, 0.014, 0, 0.012, 0), box(pal, '#9AA0A8', 0.04, 0.015, 0.016, 0, 0.12, 0)]), this.assets.material);
+    board.position.set(-0.16, 0.22, 0.02); board.rotation.set(0, 0.3, 0.15);
+    g.add(badge, board);
+    g.name = 'badge';
+    return g;
   }
 
-  /** nearHide: in first person, anyone closer than this to the focus (the eye) is not drawn, so no head ever fills the lens. */
-  update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0): void {
+  private boxMesh(): Mesh {
+    const pal = this.assets.palette;
+    const m = new Mesh(merge([box(pal, '#C99A62', 0.24, 0.17, 0.19, 0, 0, 0), box(pal, '#A87B45', 0.242, 0.03, 0.06, 0, 0.16, 0), box(pal, '#FFF3DC', 0.09, 0.05, 0.004, 0.05, 0.07, 0.096)]), this.assets.material);
+    m.position.set(0, 0.24, 0.17);
+    return m;
+  }
+
+  private bagMesh(hex: string, n: number): Mesh {
+    const pal = this.assets.palette;
+    const parts: BufferGeometry[] = [];
+    for (let i = 0; i < n; i++) {
+      const x = 0.17 + i * 0.03, z = -0.04 + i * 0.07;
+      parts.push(box(pal, hex, 0.06, 0.1, 0.09, x, 0.06 - i * 0.01, z), box(pal, '#FFFFFF', 0.062, 0.02, 0.092, x, 0.12 - i * 0.01, z), box(pal, '#38383D', 0.01, 0.06, 0.01, x, 0.16 - i * 0.01, z));
+    }
+    return new Mesh(merge(parts), this.assets.material);
+  }
+
+  /** Who a person's bags are from and how many: a rival shopper's, or a happy customer of ours on the way out. */
+  private bagsFor(p: Person): { key: string; n: number } | null {
+    if (p.bags && p.rivalId) return { key: p.rivalId, n: 1 + (p.id % 2) };
+    if (p.kind === 'customer' && p.anim === 'carry' && (p.basket?.length ?? 0) > 0) return { key: 'player', n: Math.max(1, Math.min(3, Math.ceil(p.basket!.reduce((a, b) => a + b.qty, 0) / 3))) };
+    return null;
+  }
+
+  /** far: people beyond this distance from the focus are not drawn; nor is anyone outside the camera's view. */
+  update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0, far = 48, view: Frustum | null = null, eye: Vector3 | null = null): void {
     this.frame++;
+    this.blobs.begin();
+    this.pawnN = 0;
     for (const p of state.people) {
       let inst = this.live.get(p.id);
       if (!inst) { inst = this.spawn(p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
       const x = p.px + (p.x - p.px) * alpha, z = p.pz + (p.z - p.pz) * alpha;
-      const hidden = p.state === 'driving' || p.id === hideId;
+      const hidden = p.state === 'driving' || p.state === 'inRival' || p.id === hideId;
       inst.root.visible = !hidden;
       if (hidden) continue;
       inst.root.position.set(x, 0, z);
       inst.root.rotation.y = p.yaw;
       const d = Math.hypot(x - focus.x, z - focus.z);
-      if (d > 48 || d < nearHide) { inst.root.visible = false; continue; }
+      if (d > far || d < nearHide) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; }
+      if (view) { this.sphere.center.set(x, 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }
+      this.blobs.add(x, z, 0.62 * p.look.height);
+      if (eye && Math.hypot(x - eye.x, eye.y, z - eye.z) > PeopleView.FAR) {
+        inst.root.visible = false; if (inst.dog) inst.dog.visible = false;
+        this.pawn(p, x, z, Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4);
+        continue;
+      }
+      // In their arms: a box (the manager and stockers), or bags in the colour of the shop they came from.
+      const carryBox = !!p.carrying;
+      if (carryBox && !inst.box) { inst.box = this.boxMesh(); inst.root.add(inst.box); }
+      if (inst.box) inst.box.visible = carryBox;
+      const bags = this.bagsFor(p);
+      const bk = bags ? `${bags.key}:${bags.n}` : '';
+      if (bk !== inst.bagKey) {
+        if (inst.bags) { inst.root.remove(inst.bags); inst.bags.geometry.dispose(); inst.bags = null; }
+        if (bags) { inst.bags = this.bagMesh(BAG_COLOURS[bags.key] ?? '#FFFFFF', bags.n); inst.root.add(inst.bags); }
+        inst.bagKey = bk;
+      }
       const moving = Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
-      const anim: Anim = moving ? (p.anim === 'carry' ? 'carry' : 'walk') : p.anim === 'walk' ? 'idle' : p.anim;
+      // Shopping bags swing from one hand: walk normally. Only a box needs both arms.
+      const anim: Anim = moving ? (p.anim === 'carry' && !bags ? 'carry' : 'walk') : p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
       this.play(inst, anim, Math.max(0.6, p.speed / 1.6));
       if (d < 30 && !PeopleView.freeze) inst.mixer.update(dt);
       if (inst.dog) {
         const back = { x: -Math.sin(p.yaw) * 0.42 + Math.cos(p.yaw) * 0.3, z: -Math.cos(p.yaw) * 0.42 - Math.sin(p.yaw) * 0.3 };
+        inst.dog.visible = true;
         inst.dog.position.set(x + back.x, moving ? Math.abs(Math.sin(this.frame * 0.35)) * 0.03 : 0, z + back.z);
         inst.dog.rotation.y = p.yaw;
+        this.blobs.add(x + back.x, z + back.z, 0.24, 0.36, p.yaw);
       }
     }
+    this.blobs.end();
+    if (this.pawnBody && this.pawnHead) for (const m of [this.pawnBody, this.pawnHead]) { m.count = this.pawnN; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
     for (const [id, inst] of this.live) {
       if (inst.seen !== this.frame) {
         this.group.remove(inst.root);

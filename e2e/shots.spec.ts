@@ -2,15 +2,18 @@ import { test, expect, type Page } from '@playwright/test';
 import { ready, hooks, settle } from './helpers';
 
 const out = (name: string) => `docs/screens/${name}.png`;
+type Car = { id: number; state: string; lot?: string; x: number; z: number };
+type St = { shop: { fixtures: { id: number; type: string }[]; originX: number; originZ: number }; cars: Car[]; rivals: { id: string; corner: string; x: number; z: number; open: boolean }[] };
+const st = (page: Page) => hooks<St>(page, 'state');
 
-/** Stand at a shop-relative point and look at another, then let a few frames render. */
-async function eye(page: Page, from: [number, number], to: [number, number, number], ms = 700): Promise<void> {
-  await hooks(page, 'aimAt', from[0], from[1], to[0], to[1], to[2]);
+/** Back in play: the manager at a shop-relative point, the follow camera behind (shop-relative yaw) at a distance. */
+async function follow(page: Page, x: number, z: number, dist = 12, yaw = 0, ms = 900, pitch?: number): Promise<void> {
+  await hooks(page, 'fp', x, z, yaw, pitch, dist);
   await settle(page, ms);
 }
 
 test.describe('screenshots', () => {
-  test('lobby, picker, the bare shell, building, stocking, trading, the pocket valley, night', async ({ page }) => {
+  test('lobby, picker, the bare shell, building, stocking, trading, the zooms, the crossroads, night', async ({ page }) => {
     await ready(page);
     await settle(page, 2500);
     await page.screenshot({ path: out('01-lobby') });
@@ -20,83 +23,86 @@ test.describe('screenshots', () => {
     await settle(page, 1200);
     await page.screenshot({ path: out('02-plot-picker') });
 
-    await page.getByRole('button', { name: /main street/i }).click();
+    await page.getByRole('button', { name: /main road corner/i }).click();
     await page.getByPlaceholder(/shop name/i).fill('Corner Fresh');
     await page.getByRole('button', { name: /open the shop/i }).click();
     await hooks(page, 'setSpeed', 0);
-    // The empty shell, from just inside the door, with the first tip.
-    await eye(page, [0.6, -0.6], [-0.6, 0.45, -6], 1500);
+    // The empty shell at the default zoom, with the first job.
+    await follow(page, 0.5, -1.0, 12, 0, 1500);
     await expect(page.locator('.tip')).toBeVisible();
     await page.screenshot({ path: out('03-bare-shell') });
 
-    // Placing a shelf: the ghost sits on the tile under the crosshair.
+    // Placing a shelf: the ghost sits on the tile under the mouse, the camera pulled back so the floor fits beside the card.
     await hooks(page, 'openCard', 'build');
     await hooks(page, 'startPlacing', 'shelf');
-    await eye(page, [-0.3, -1.6], [-2.0, 0, -3.5], 1200);
+    await settle(page, 1500);
+    const g = await hooks<{ x: number; y: number }>(page, 'screenAt', -2.0, -3.5, 0);
+    await page.mouse.move(g.x, g.y);
+    await settle(page, 900);
     await page.screenshot({ path: out('04-build-ghost') });
     await hooks(page, 'openCard', 'build');
+    await page.mouse.move(5, 400);
 
-    // Fitted out and stocked; carrying a box from the pallet to a shelf.
+    // Fitted out and stocked; carrying a box from the pallet to a shelf, close in.
     await hooks(page, 'quickSetup', false);
     await hooks(page, 'fp', -1.5, -4.3);
     await hooks(page, 'dispatch', { type: 'pickUp' });
-    await eye(page, [-1.0, -3.4], [-2.0, 0.45, -3.6]);
+    await hooks(page, 'aimAt', -1.0, -3.4, -2.0, 0.45, -3.6, 8);
+    await settle(page, 900);
     await page.screenshot({ path: out('05-carrying-a-box') });
     // Put the box down out of shot so it does not fill every later view.
     await page.evaluate(() => { const s = (window as unknown as { __shelf: { state: () => { people: { kind: string; carrying?: unknown }[] } } }).__shelf.state(); const o = s.people.find((p) => p.kind === 'owner'); if (o) o.carrying = null; });
 
-    // Open: behind the counter with a line.
-    await hooks(page, 'dispatch', { type: 'stockFixture', fixtureId: (await hooks<{ shop: { fixtures: { id: number; type: string }[] } }>(page, 'state')).shop.fixtures.find((f) => f.type === 'shelf')!.id });
+    // Open, with a line at the till: the close shop view (default zoom), one scroll out, and the overview.
     await hooks(page, 'dispatch', { type: 'openShop' });
+    await hooks(page, 'openRivals');
     await hooks(page, 'advanceScan', 120, 2);
     await hooks(page, 'restock');
     await hooks(page, 'crowd', 6);
+    await hooks(page, 'crowd', 3, false);
     await hooks(page, 'advanceScan', 30, 6);
-    await eye(page, [2.0, -1.5], [-0.5, 0.4, -4.2], 1200);
-    await page.screenshot({ path: out('06-behind-the-counter') });
+    await follow(page, 2.0, -1.5, 12, 0, 1400);
+    await page.screenshot({ path: out('06-close-shop') });
+    await hooks(page, 'zoom', 1.65);
+    await settle(page, 1600);
+    await page.screenshot({ path: out('07-mid-zoom') });
+    for (let i = 0; i < 6; i++) await hooks(page, 'zoom', 1.4);
+    await settle(page, 2200);
+    await page.screenshot({ path: out('08-overview') });
 
-    // The shop floor from the door.
-    await eye(page, [-0.2, -0.5], [0.2, 0.35, -5], 900);
-    await page.screenshot({ path: out('07-shop-floor') });
-
-    // Out on Main Street, looking back at the shop front.
-    await eye(page, [3.2, 4.4], [0, 0.9, -1.0], 1200);
-    await page.screenshot({ path: out('08-main-street') });
-
-    // The pocket valley from above; the tunnel out to the rest of town; the park; the waterfall.
-    await hooks(page, 'camera', 0, 2, 80, 0.45, 0.62);
+    // The crossroads from high above, and at mid zoom with all three rival corners in view.
+    await hooks(page, 'viewWorld', 0, 2.5, 0, 68, 1.22);
     await settle(page, 1500);
-    await page.screenshot({ path: out('09-valley') });
-    await eye(page, [38, 4.8], [50, 1.8, 6], 1500);
-    await page.screenshot({ path: out('10-tunnel') });
-    await eye(page, [4, 4.8], [0, 0.5, 12], 1200);
-    await page.screenshot({ path: out('10b-park') });
-    await eye(page, [-40, 14], [-49, 3, 18.5], 1200);
-    await page.screenshot({ path: out('10c-waterfall') });
+    await page.screenshot({ path: out('09-crossroads-above') });
+    await hooks(page, 'viewWorld', 0, 3, 0.3, 60, 0.9);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('10-rival-corners') });
 
     // A delivery truck at the back door.
     await hooks(page, 'dispatch', { type: 'placeOrder', supplierId: 'express', lines: [{ productId: 'milk', qty: 12 }, { productId: 'chips', qty: 12 }] });
     let unloading = false;
     for (let i = 0; i < 30 && !unloading; i++) {
       await hooks(page, 'advanceScan', 4, 2);
-      unloading = (await hooks<{ cars: { state: string }[] }>(page, 'state')).cars.some((c) => c.state === 'unloading');
+      unloading = (await st(page)).cars.some((c) => c.state === 'unloading');
     }
-    await hooks(page, 'camera', -3.5, -9, 12, 0.9, 0.6);
+    await hooks(page, 'view', -3.0, -8.5, 0.9, 16, 0.85);
     await settle(page, 1200);
     await page.screenshot({ path: out('11-delivery') });
 
     // The Stats card over the shop.
-    await eye(page, [0.4, -1.0], [0, 0.4, -5], 300);
+    await follow(page, 0.4, -1.0, 12, 0, 300);
     await hooks(page, 'openCard', 'stats');
-    await settle(page, 700);
+    await settle(page, 1200);
     await page.screenshot({ path: out('12-finance-card') });
     await hooks(page, 'openCard', 'stats');
 
-    // A rival sale across the road.
-    await hooks(page, 'rivalSale', 'discount');
-    await hooks(page, 'camera', -30, 6, 14, Math.PI, 0.5);
-    await settle(page, 1200);
-    await page.screenshot({ path: out('13-rival-sale') });
+    // A rival sale across Main Road pulls walkers over the zebra.
+    const across = (await st(page)).rivals.find((r) => r.corner === 'se')!;
+    await hooks(page, 'rivalSale', across.id);
+    await hooks(page, 'advanceScan', 50, 2);
+    await hooks(page, 'viewWorld', 11, 4.5, Math.PI - 0.2, 30, 0.85);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('13-rival-sale-zebra') });
 
     // Staff on the floor.
     await page.evaluate(() => {
@@ -105,7 +111,7 @@ test.describe('screenshots', () => {
     });
     await hooks(page, 'dispatch', { type: 'cheat', cash: 20000 });
     await hooks(page, 'advanceScan', 60, 3);
-    await eye(page, [-1.4, -1.0], [1.5, 0.35, -4.5], 1200);
+    await follow(page, -1.4, -1.0, 10, 0.4, 1200);
     await page.screenshot({ path: out('14-staff-on-floor') });
 
     // A market hall with a doubled lot.
@@ -115,38 +121,65 @@ test.describe('screenshots', () => {
     await hooks(page, 'restock');
     await hooks(page, 'crowd', 8);
     await hooks(page, 'advanceScan', 40, 3);
-    await eye(page, [-3.6, -0.6], [1.5, 0.35, -7], 1500);
+    await follow(page, -1.0, -1.2, 14, 0, 1500);
     await page.screenshot({ path: out('15-market-hall') });
-    await hooks(page, 'camera', 4, -5, 26, 0.55, 0.9);
-    await settle(page, 1200);
+    await hooks(page, 'view', 4, -5, 0.55, 30, 0.95);
+    await settle(page, 1400);
     await page.screenshot({ path: out('16-market-hall-lot') });
 
-    // A franchise branch on the Hillside plot.
+    // A full lot: the next driver carries on to a rival's car park.
+    await hooks(page, 'crowd', 14, false);
+    let onward: Car | undefined;
+    for (let i = 0; i < 40 && !onward; i++) {
+      await hooks(page, 'advanceScan', 1.5, 30);
+      onward = (await st(page)).cars.find((c) => c.state === 'arriving' && c.lot !== undefined && c.lot !== 'street');
+    }
+    expect(onward, 'a car sent on to a rival').toBeTruthy();
+    const dest = (await st(page)).rivals.find((r) => r.id === onward!.lot)!;
+    const s0 = await st(page);
+    await hooks(page, 'viewWorld', (s0.shop.originX + dest.x) / 2, (s0.shop.originZ + dest.z) / 2 + 2, Math.atan2(s0.shop.originX - dest.x, 30) * 0.4, 40, 0.95);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('17-full-lot-to-rival') });
+
+    // A franchise branch out in East End: its name goes up on the road sign at the edge of town.
     await page.evaluate(() => {
       const h = (window as unknown as { __shelf: { state: () => { staffPool: { id: number; role: string }[] }; dispatch: (c: unknown) => unknown } }).__shelf;
       const s = h.state();
       if (!s.staffPool.some((c) => c.role === 'manager')) s.staffPool.push({ id: 99999, name: 'Mo Larsen', role: 'manager', skill: 0.8, speed: 1, wage: 95, look: { model: 1, variant: 1, height: 1 } } as never);
       const m = s.staffPool.find((c) => c.role === 'manager')!;
-      h.dispatch({ type: 'openFranchise', plotId: 'hill', managerId: m.id });
+      h.dispatch({ type: 'openFranchise', siteId: 'eastend', managerId: m.id });
     });
-    await hooks(page, 'camera', -22, -2, 20, 0.25, 0.7);
+    await hooks(page, 'viewWorld', 25.5, -0.6, -1.15, 9, 0.62);
     await settle(page, 1500);
-    await page.screenshot({ path: out('17-franchise-branch') });
+    await page.screenshot({ path: out('18-franchise-sign') });
 
     // Night card.
-    await eye(page, [0.4, -1.0], [0, 0.4, -5], 300);
+    await follow(page, 0.4, -1.0, 12, 0, 300);
     await hooks(page, 'advance', 900);
-    await settle(page, 800);
+    await settle(page, 1200);
     await expect(page.getByText(/day 1 done/i)).toBeVisible({ timeout: 15_000 });
-    await page.screenshot({ path: out('18-night-card') });
+    await page.screenshot({ path: out('19-night-card') });
     const stats = await hooks<{ drawCalls: number }>(page, 'stats');
     expect(stats.drawCalls).toBeLessThan(250);
+  });
+
+  test('playing on a phone', async ({ browser }) => {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+    await ready(page);
+    await hooks(page, 'newGame', 3, 'main', 'Corner Fresh', { tutorial: false });
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setSpeed', 0);
+    await hooks(page, 'crowd', 4);
+    await hooks(page, 'advanceScan', 30, 6);
+    await follow(page, 2.0, -1.5, 14, 0, 1500);
+    await page.screenshot({ path: out('20-phone-play') });
+    await page.close();
   });
 
   test('lobby on a phone', async ({ browser }) => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
     await ready(page);
     await settle(page, 2500);
-    await page.screenshot({ path: out('19-lobby-phone') });
+    await page.screenshot({ path: out('21-lobby-phone') });
   });
 });

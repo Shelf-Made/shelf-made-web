@@ -7,7 +7,7 @@ export { tick, expectedCustomers, dayCurve } from './tick';
 export { applyCommand, type Command, type CommandResult } from './commands';
 export { SUPPLIERS, supplier, unitCost, dailyRent, dailyUtilities } from './economy';
 export { clockLabel, gridFor, resetGridCache, withRng } from './state';
-export { fixtureCentre, fixtureFrontWorld, fixtureBackWorld, fixtureFacing, buildGrid, CELL, type Grid } from './grid';
+export { fixtureCentre, fixtureFrontWorld, fixtureBackWorld, fixtureAccessWorld, fixtureFacing, buildGrid, CELL, type Grid } from './grid';
 export { findPath } from './pathfinding';
 export { queueSlot, doorInside, doorOutside, pickCarryTask } from './people';
 export { drivewayX, serviceX, TRUCK_MODEL, CAR_MODELS } from './cars';

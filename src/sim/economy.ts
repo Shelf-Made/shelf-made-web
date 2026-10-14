@@ -16,7 +16,7 @@ import { franchiseDay } from './franchise';
 
 export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
 export const SUPPLIERS: Supplier[] = [
-  { id: 'local', name: 'Valley Wholesale', priceMul: 1.0, minOrder: 0, etaSeconds: 90, blurb: 'Fair prices, delivers within the hour and a half. Pay on order.', terms: 0 },
+  { id: 'local', name: 'Town Wholesale', priceMul: 1.0, minOrder: 0, etaSeconds: 90, blurb: 'Fair prices, delivers within the hour and a half. Pay on order.', terms: 0 },
   { id: 'bulk', name: 'BigBox Supply', priceMul: 0.88, minOrder: 150, etaSeconds: 180, blurb: 'Cheaper by the pallet; $150 minimum, slower truck, invoice due in 3 days.', terms: 3 },
   { id: 'express', name: 'Dash Deliveries', priceMul: 1.15, minOrder: 0, etaSeconds: 40, blurb: 'Pricey but at your back door in forty minutes. Pay on order.', terms: 0 },
 ];

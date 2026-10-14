@@ -2,7 +2,9 @@ import { CORNERS } from './layout';
 import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
-import { cellOf, isBlocked } from './grid';
+import { cellOf, isBlocked, fixtureAccessWorld } from './grid';
+import { canPlace } from './build';
+import { toWorld, toLocal } from './layout';
 
 function runDay(state: GameState, autoScan = true): void {
   const ticks = Math.ceil((DAY_SECONDS + 130) / TICK);
@@ -143,5 +145,40 @@ describe('simulation', () => {
     expect(s.shop.flip).toBe(true);
     // The rivals took the other three corners.
     expect(new Set(s.rivals.map((r) => r.corner))).toEqual(new Set(['nw', 'ne', 'se']));
+  });
+  it('building never traps the manager: not on top of you, never boxing you in', () => {
+    const s = newGame({ seed: 9, plotId: 'main', name: 'Boxed' });
+    s.cash = 5000;
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    const at = toWorld(s.shop, -1.0, -3.5);
+    o.x = o.px = at.x; o.z = o.pz = at.z;
+    expect(canPlace(s, 'shelf', -1.5, -4, 0).reason).toBe('You are standing there');
+    // Walls of shelves round the manager's tile: the last one that would close the ring is refused.
+    const ring: [number, number][] = [[-2.5, -4], [-0.5, -4], [-1.5, -5], [-2.5, -5], [-0.5, -5], [-2.5, -3], [-0.5, -3]];
+    for (const [x, z] of ring) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x, z, rot: 0 }).ok, `${x},${z}`).toBe(true);
+    expect(canPlace(s, 'shelf', -1.5, -3, 0).reason).toBe('Would box you in');
+  });
+
+  it('clicking a shelf against the wall walks you to its room side', () => {
+    const s = newGame({ seed: 10, plotId: 'bus', name: 'Wall' });
+    s.cash = 5000;
+    // Facing west, straight into the wall: its front tile is outside the floor.
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: -4, rot: 3 }).ok).toBe(true);
+    const f = s.shop.fixtures[0]!;
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    const w = fixtureAccessWorld(s.shop, f, o), p = toLocal(s.shop, w.x, w.z);
+    expect(p.x).toBeGreaterThan(s.shop.floor.x0);
+    expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeCloseTo(1, 5);
+  });
+  it('a till line never waits on someone who has left the world', () => {
+    const s = openGame({ seed: 16, plotId: 'main', name: 'Ghost' });
+    const reg = s.shop.fixtures.find((f) => f.type === 'register')!;
+    // Somebody at the head of the line vanishes (closing time sends the last customers home).
+    reg.queue = [987654, ...(reg.queue ?? [])];
+    let served = s.today.served;
+    for (let i = 0; i < 240 / TICK; i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
+    expect(reg.queue.includes(987654)).toBe(false);
+    served = s.today.served - served;
+    expect(served).toBeGreaterThan(0);
   });
 });

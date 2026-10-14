@@ -53,6 +53,7 @@ export class StoreView {
   private font: Font | null = null;
   private deliveryBox = new Box3();
   private chillerGeo: BufferGeometry | null = null;
+  private roof: Mesh | null = null;
 
   constructor(private readonly assets: AssetLibrary) {
     this.group.add(this.root);
@@ -93,11 +94,17 @@ export class StoreView {
 
   setNight(on: boolean): void { this.nightLight.intensity = on ? 2.2 : 0; }
 
+  /** The roof: off whenever you are inside (so the camera sees the floor), on from outside once pulled back. */
+  setRoof(on: boolean): void { if (this.roof) this.roof.visible = on; }
+
   /** Chunky rounded letters from Fredoka Bold: cream faces, sunny-yellow sides (or any two colours). */
-  letters(text: string, size: number, depth: number, face = CREAM, sideHex = YELLOW): BufferGeometry {
+  /** Extruded lettering in two colours. `bevel` rounds the edges (the shop's own fascia); signs seen from afar go without, at a tenth of the triangles. */
+  letters(text: string, size: number, depth: number, face = CREAM, sideHex = YELLOW, bevel = true): BufferGeometry {
     const pal = this.assets.palette;
     if (!this.font) return new Mesh().geometry;
-    const g = new TextGeometry(text, { font: this.font, size, depth, curveSegments: 5, bevelEnabled: true, bevelThickness: depth * 0.25, bevelSize: size * 0.03, bevelSegments: 2 });
+    const g = bevel
+      ? new TextGeometry(text, { font: this.font, size, depth, curveSegments: 5, bevelEnabled: true, bevelThickness: depth * 0.25, bevelSize: size * 0.03, bevelSegments: 2 })
+      : new TextGeometry(text, { font: this.font, size, depth, curveSegments: 2, bevelEnabled: false });
     g.computeBoundingBox();
     const bb = g.boundingBox!;
     g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, 0);
@@ -259,7 +266,7 @@ export class StoreView {
     const fasciaMesh = new Mesh(merge(fascia), this.assets.material);
     fasciaMesh.castShadow = true;
     this.shell.add(fasciaMesh);
-    front.extraFull.push(fasciaMesh);
+    // The fascia stays up whatever the cut-away does: the shop keeps its name.
     // Pylon sign on the lawn by the sidewalk, readable from the street in both directions.
     const px = ox - L.halfW - 0.6, pz = oz + 1.85;
     const boardW = 2.6;
@@ -270,12 +277,19 @@ export class StoreView {
     ];
     for (const yaw of [0, Math.PI]) {
       const zOff = yaw === 0 ? 0.07 : -0.07;
-      pylon.push(place(this.letters(name, psize, 0.04), px, 1.24 - psize * 0.4, pz + zOff, yaw));
+      pylon.push(place(this.letters(name, psize, 0.04, CREAM, YELLOW, false), px, 1.24 - psize * 0.4, pz + zOff, yaw));
       pylon.push(...this.bracket(px, 1.07, pz + zOff, Math.min(boardW - 0.3, this.textWidth(name, psize) + 0.16), yaw));
     }
     const pylonMesh = new Mesh(merge(pylon), this.assets.material);
     pylonMesh.castShadow = true;
     this.shell.add(pylonMesh);
+    // Roof: a flat deck with a parapet in the shop's green, worn when you are outside and pulled back.
+    { const W = f.x1 - f.x0 + 2 * WALL_T, D = f.z1 - backZ + 2 * WALL_T, cx = (f.x0 + f.x1) / 2, cz = (f.z1 + backZ) / 2;
+      const roof = [box(pal, '#9AA0A8', W, 0.06, D, cx, 1.0, cz), box(pal, GREEN, W + 0.06, 0.12, 0.08, cx, 1.0, f.z1 + WALL_T), box(pal, GREEN, W + 0.06, 0.12, 0.08, cx, 1.0, backZ - WALL_T),
+        box(pal, GREEN, 0.08, 0.12, D, f.x0 - WALL_T, 1.0, cz), box(pal, GREEN, 0.08, 0.12, D, f.x1 + WALL_T, 1.0, cz), box(pal, '#B9BCC4', 0.6, 0.3, 0.5, cx - W / 4, 1.06, cz - D / 5)];
+      this.roof = new Mesh(merge(roof), this.assets.material);
+      this.roof.castShadow = true; this.roof.visible = false;
+      this.shell.add(this.roof); }
     this.nightLight.position.set(ox + (f.x0 + f.x1) / 2, 0.95, oz + (backZ + f.z1) / 2);
     this.layoutVersion = -1;
     this.stockKey = '';

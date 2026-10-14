@@ -63,7 +63,7 @@ export class StreetView {
     this.boards.clear();
     for (const site of BILLBOARDS) {
       const face = (bg: string, line1: string, c1: string, line2: string, c2: string) => {
-        const y = site.y === 0 ? 1.3 : 0.45;
+        const y = 1.3;
         const g = merge([
           box(pal, bg, 2.56, 1.06, 0.04, 0, y + 0.07, -0.04),
           place(textGeometry(pal, line1.toUpperCase(), Math.min(0.28, 2.3 / Math.max(6, line1.length * 0.9)), 0.03, c1, c1), 0, y + 0.62, -0.01),

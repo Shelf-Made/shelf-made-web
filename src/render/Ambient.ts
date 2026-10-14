@@ -42,7 +42,7 @@ export class AmbientView {
       this.group.add(obj);
       this.critters.push({ home, obj, parts, seed: i * 7.31 + home.x, x: home.x, z: home.z, tx: home.x, tz: home.z, wait: h01(i) * 3, heading: h01(i + 3) * 6.28 });
     }
-    // Clouds: lumpy white puffs high over the pocket, one mesh turning slowly round the valley.
+    // Clouds: lumpy white puffs high overhead, one mesh turning slowly round the crossroads.
     const sky: BufferGeometry[] = [];
     for (let c = 0; c < 12; c++) {
       const puffs: BufferGeometry[] = [];

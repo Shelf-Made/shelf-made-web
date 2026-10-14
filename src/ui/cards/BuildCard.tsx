@@ -30,7 +30,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
             <div className="name">{b.placing ? `Placing ${FIXTURES[b.placing].name}` : `Moving ${FIXTURES[selected!.type].name}`}</div>
-            <div className="sub">{b.reason || 'Look at a floor tile'}{b.price ? ` · ${money(b.price)}` : ''} · R or the wheel turns it · right-click cancels</div>
+            <div className="sub">{b.reason || 'Point at a floor tile'}{b.price ? ` · ${money(b.price)}` : ''} · R turns it · right-click cancels</div>
           </div>
           <div className="row">
             <button className="btn small ghost" onClick={() => runtime.rotateGhost()}>Rotate</button>
@@ -39,7 +39,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <button className="btn small ghost" onClick={() => { runtime.stopPlacing(); runtime.closeCard(); }}>Done</button>
           </div>
         </div>
-      ) : <p className="muted">Pick something below, then look at a floor tile and click to place it. With this card open, look at a fixture and press E to move, copy or sell it.</p>}
+      ) : <p className="muted">Pick something below, then point at a floor tile and click to place it. With this card open, click a fixture to move, copy or sell it.</p>}
       <div className="row between">
         <span className="muted">Undo and redo: Ctrl+Z / Ctrl+Y</span>
         <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()}>Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()}>Redo</button></span>
@@ -50,7 +50,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         {CATALOG.map(({ type, blurb }) => (
           <div className="item" key={type}>
             <div><div className="name">{FIXTURES[type].name} <span className="tag">{money(FIXTURES[type].price)}</span>{FIXTURES[type].upkeep ? <span className="tag cold">{money(FIXTURES[type].upkeep)}/day power</span> : null}</div><div className="sub">{blurb}</div></div>
-            <button className={`btn small${b.placing === type ? '' : ' ghost'}`} disabled={s.cash < FIXTURES[type].price} onClick={() => { runtime.startPlacing(type); runtime.requestLock(); }}>Place</button>
+            <button className={`btn small${b.placing === type ? '' : ' ghost'}`} disabled={s.cash < FIXTURES[type].price} onClick={() => runtime.startPlacing(type)}>Place</button>
           </div>
         ))}
       </div>

@@ -1,6 +1,6 @@
 /**
  * All audio is synthesised with WebAudio: no recordings, no downloads. Starts after the
- * first user gesture. Music changes with the time of day. Instead of a noise bed, the valley
+ * first user gesture. Music changes with the time of day. Instead of a noise bed, the town
  * has birdsong by day and crickets at night, each call a few short tones.
  */
 export type Cue = 'beep' | 'cash' | 'chime' | 'click' | 'pick' | 'stock' | 'truck' | 'boxes' | 'reward' | 'night' | 'open' | 'order' | 'build' | 'bad' | 'engine'

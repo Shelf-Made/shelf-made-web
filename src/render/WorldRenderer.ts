@@ -1,5 +1,6 @@
-import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NoToneMapping, type PerspectiveCamera, type Fog } from 'three';
-import { FirstPersonView } from './FirstPerson';
+import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NoToneMapping, type PerspectiveCamera, type Fog, type Mesh, type Object3D, Frustum, Matrix4, Sphere } from 'three';
+import { FollowCamera } from './FollowCamera';
+import { TargetMarker } from './TargetMarker';
 import { AssetLibrary } from './assets';
 import { CameraRig } from './CameraRig';
 import { StaticWorld } from './StaticWorld';
@@ -23,12 +24,16 @@ export interface RenderStats { fps: number; drawCalls: number; triangles: number
  */
 export class WorldRenderer {
   readonly scene = new Scene();
+  private readonly viewFrustum = new Frustum();
+  private readonly viewMatrix = new Matrix4();
   readonly renderer: WebGLRenderer;
   /** Cinematic camera: lobby orbit, plot picker, screenshot views. */
   readonly camera: CameraRig;
-  /** The manager's eyes: the game camera. */
-  readonly fp: FirstPersonView;
-  mode: 'fp' | 'cinematic' = 'cinematic';
+  /** The game camera: follows the manager from behind and above. */
+  readonly follow: FollowCamera;
+  mode: 'play' | 'cinematic' = 'cinematic';
+  /** Highlight round whatever pressing Use (or a click) would act on. */
+  readonly marker = new TargetMarker();
   /** Cinematic views cut the near walls down to show the floor; the lobby keeps the building whole. */
   cutaway = true;
   readonly assets = new AssetLibrary();
@@ -59,13 +64,13 @@ export class WorldRenderer {
     this.renderer.shadowMap.type = PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.camera = new CameraRig(canvas.clientWidth / Math.max(1, canvas.clientHeight));
-    this.fp = new FirstPersonView(canvas.clientWidth / Math.max(1, canvas.clientHeight));
+    this.follow = new FollowCamera(canvas.clientWidth / Math.max(1, canvas.clientHeight));
     this.lighting = new Lighting(this.scene);
     this.statics = new StaticWorld(this.assets);
     this.store = new StoreView(this.assets);
     this.people = new PeopleView(this.assets);
     this.cars = new CarsView(this.assets);
-    this.rivals = new RivalsView(this.assets, (t, sz, d, face, side) => this.store.letters(t, sz, d, face, side));
+    this.rivals = new RivalsView(this.assets, (t, sz, d, face, side, bevel) => this.store.letters(t, sz, d, face, side, bevel));
     this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
     this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group);
@@ -81,7 +86,7 @@ export class WorldRenderer {
     await this.assets.loadModels(all, (done, total) => onProgress(0.05 + 0.85 * (done / total), `Loading models (${done}/${total})`));
     await this.store.init();
     this.cars.init();
-    this.fp.attach(this.scene, this.assets);
+    this.scene.add(this.marker.group);
     onProgress(1, 'Ready');
   }
 
@@ -102,40 +107,46 @@ export class WorldRenderer {
   setShop(state: GameState): void { this.store.buildShell(state.shop); this.store.setNight(this.night); }
 
   /** Render one frame. alpha interpolates between the previous and current sim tick. */
-  get activeCamera(): PerspectiveCamera { return this.mode === 'fp' ? this.fp.camera : this.camera.camera; }
+  get activeCamera(): PerspectiveCamera { return this.mode === 'play' ? this.follow.camera : this.camera.camera; }
 
   render(state: GameState, alpha: number, dt: number): void {
     const owner = state.people.find((p) => p.kind === 'owner');
-    const fp = this.mode === 'fp' && !!owner;
+    const fp = this.mode === 'play' && !!owner;
     let focus: Vector3;
     if (fp) {
       const x = owner.px + (owner.x - owner.px) * alpha, z = owner.pz + (owner.z - owner.pz) * alpha;
-      this.fp.update(x, z, owner.look.height, dt, !!owner.carrying);
-      focus = this.tmpFocus.set(x, 0, z);
+      this.follow.follow(x, z);
+      this.follow.update(dt);
+      focus = this.tmpFocus.set(this.follow.target.x, 0, this.follow.target.z);
     } else {
       this.camera.update(dt);
       focus = this.camera.target;
     }
     const night = state.phase === 'night';
     if (night !== this.night) { this.night = night; this.statics.setNight(night); this.store.setNight(night); this.rivals.setNight(night); }
-    this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? 16 : this.camera.viewRadius());
-    // Haze: close in first person, pushed back for the high cinematic views.
+    this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius());
+    // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
     const fog = this.scene.fog as Fog | null;
-    if (fog) { const d = fp ? 0 : this.camera.goalDistance; fog.near = 55 + d * 0.9; fog.far = 210 + d * 1.2; }
+    if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance; fog.near = 45 + d * 1.1; fog.far = 160 + d * 1.6; }
     this.setTown(state.seed, state.shop.plotId);
-    // In first person every wall stands full height; the cinematic camera still cuts the near ones down.
-    // Third person cuts the walls between the camera and the manager down to a ledge; the lobby keeps them whole.
-    // Outside, the shop stands whole; step in and the walls between the camera and the manager drop.
+    // With the manager inside, the roof comes off and the walls between the camera and the manager
+    // drop to stubs. Outside, the shop stands whole and wears its roof once the camera pulls back.
+    // The cinematic camera (picker, screenshots) cuts the near walls down; the lobby keeps them whole.
     let inside = false;
     if (fp) {
-      const f = state.shop.floor, c = this.fp.camera.position;
-      const within = (x: number, z: number) => { const l = toLocal(state.shop, x, z); return l.x > f.x0 - 0.4 && l.x < f.x1 + 0.4 && l.z > f.z0 - 0.4 && l.z < f.z1 + 0.7; };
-      inside = within(owner.x, owner.z) || within(c.x, c.z);
+      const f = state.shop.floor;
+      const l = toLocal(state.shop, owner.x, owner.z);
+      inside = l.x > f.x0 - 0.4 && l.x < f.x1 + 0.4 && l.z > f.z0 - 0.4 && l.z < f.z1 + 0.7;
     }
-    this.store.update(state, fp ? (this.fp.third && inside ? this.fp.yaw : null) : (this.cutaway ? this.camera.yaw : null));
-    // From high up people are specks: their shadows would only cost draw calls.
-    this.people.setShadows(fp || this.camera.goalDistance < 45);
-    this.people.update(state, alpha, dt, focus, fp && !this.fp.third ? owner.id : -1, fp && !this.fp.third ? 0.3 : 0);
+    const camYaw = fp ? this.follow.yaw : this.camera.yaw;
+    this.store.update(state, fp ? (inside ? camYaw : null) : (this.cutaway ? camYaw : null));
+    this.store.setRoof(fp ? !inside && this.follow.distance > 16 : !this.cutaway);
+    if (fp) this.rivals.occlude(this.follow.camera.position, owner.x, owner.z); else this.rivals.occlude(null, 0, 0);
+    // Skinned people are never frustum-culled by three.js (their bounds move with the bones): skip the ones out of view here.
+    const cam = this.activeCamera; cam.updateMatrixWorld();
+    this.viewFrustum.setFromProjectionMatrix(this.viewMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    this.people.update(state, alpha, dt, focus, -1, 0, fp ? 26 + this.follow.distance : 48, this.viewFrustum, cam.position);
+    this.marker.update(dt);
     this.cars.update(state, alpha);
     this.rivals.update(state);
     this.street.update(state);
@@ -149,27 +160,12 @@ export class WorldRenderer {
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
   }
 
-  /** Pick at canvas pixel coordinates. */
+  /** Pick the shop's fixtures, boxes or floor under canvas pixel coordinates. */
   pick(px: number, py: number, state: GameState): StoreHit | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
     return this.store.pick(this.ray, state.shop);
-  }
-
-  /** What the crosshair points at: a fixture, the delivery boxes, or the floor, with the distance. */
-  aim(state: GameState): { hit: StoreHit | null; dist: number; floor: Vector3 | null; point: Vector3 | null } {
-    this.ndc.set(0, 0);
-    this.ray.setFromCamera(this.ndc, this.activeCamera);
-    const hit = this.store.pick(this.ray, state.shop);
-    const t = -this.ray.ray.origin.y / this.ray.ray.direction.y;
-    const floor = t > 0 ? new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t) : null;
-    let dist = Infinity;
-    if (hit) dist = hit.dist;
-    else if (floor) dist = floor.distanceTo(this.ray.ray.origin);
-    // Where the ray lands, so reach is measured from the manager rather than the camera.
-    const point = hit ? new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, hit.dist) : floor;
-    return { hit, dist, floor, point };
   }
 
   /** Ground point under a canvas pixel. */
@@ -196,6 +192,31 @@ export class WorldRenderer {
 
   debugPeople(): unknown { return this.people.debugInfo(); }
   debugFixtures(): unknown { return this.store.debugFixtures(); }
+  /** Where the frame's work goes: meshes and triangles in the camera's view (and shadow casters) per scene group. */
+  breakdown(): Record<string, { meshes: number; tris: number; casterTris: number }> {
+    const out: Record<string, { meshes: number; tris: number; casterTris: number }> = {};
+    const named = new Map<Object3D, string>([[this.ambient.group, 'ambient'], [this.statics.group, 'statics'], [this.store.group, 'store'], [this.people.group, 'people'], [this.cars.group, 'cars'], [this.rivals.group, 'rivals'], [this.street.group, 'street'], [this.overlays.group, 'overlays']]);
+    const cam = this.activeCamera; cam.updateMatrixWorld();
+    const fr = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const sph = new Sphere();
+    for (const top of this.scene.children) {
+      const tn = named.get(top) ?? top.type;
+      top.traverseVisible((o) => {
+        const m = o as Mesh; if (!m.isMesh) return;
+        const g = m.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+        const im = m as unknown as { isInstancedMesh?: boolean; count: number; boundingSphere: Sphere | null; computeBoundingSphere(): void };
+        if (im.isInstancedMesh) { if (!im.boundingSphere) im.computeBoundingSphere(); sph.copy(im.boundingSphere!); } else sph.copy(g.boundingSphere!);
+        sph.applyMatrix4(m.matrixWorld);
+        const inView = !m.frustumCulled || fr.intersectsSphere(sph);
+        const key = `${tn}.${m.name || (m.parent && m.parent !== top ? m.parent.name : '') || (Array.isArray(m.material) ? 'multi' : m.material.name || m.material.type)}`;
+        const e = out[key] ?? (out[key] = { meshes: 0, tris: 0, casterTris: 0 });
+        const c = g.index ? g.index.count : g.attributes.position?.count ?? 0; const n = Math.min(c, g.drawRange.count) / 3 * (im.isInstancedMesh ? im.count : 1);
+        if (inView) { e.meshes++; e.tris += n; }
+        if (m.castShadow) e.casterTris += n;
+      });
+    }
+    return out;
+  }
 
   stats(): RenderStats {
     const i = this.renderer.info.render;
@@ -215,7 +236,7 @@ export class WorldRenderer {
     const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.resize(w / Math.max(1, h));
-    this.fp.resize(w / Math.max(1, h));
+    this.follow.resize(w / Math.max(1, h));
   }
 
   dispose(): void { this.renderer.dispose(); }

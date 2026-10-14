@@ -4,8 +4,8 @@ import { keyLabel } from '@/save/settings';
 import { toWorld } from '@/sim/layout';
 
 /**
- * Screen-space UI over the first-person view: floating "+$" popups, the crosshair with what
- * pressing E would do, the current tip, and a marker over the thing the tip is about.
+ * Screen-space UI over the world: floating "+$" popups, the label over whatever Use (or a click)
+ * would act on, the current tip, and a marker over the thing the tip is about.
  * Positions are written straight to the DOM every frame so nothing re-renders at 60 fps.
  */
 export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
@@ -13,7 +13,6 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
   const root = useRef<HTMLDivElement>(null);
   const markerRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLDivElement>(null);
-  const crossRef = useRef<HTMLDivElement>(null);
   const useRef_ = useRef<HTMLButtonElement>(null);
   const tip = snap.tip;
 
@@ -42,10 +41,10 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
       }
       for (const [id, el] of nodes) if (!seen.has(id)) { el.remove(); nodes.delete(id); }
 
-      // Crosshair prompt.
+      // The label over whatever Use (or a click) would act on.
       const a = runtime.aimInfo();
-      const pr = promptRef.current, cross = crossRef.current;
-      if (pr && cross) {
+      const pr = promptRef.current;
+      if (pr) {
         const key = a ? `${a.key}|${a.text}|${a.ok}` : '';
         if (key !== lastPrompt) {
           lastPrompt = key;
@@ -55,8 +54,12 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
             pr.appendChild(document.createTextNode(a.text));
           }
           pr.className = `aim-prompt${a?.ok ? ' ok' : ''}${a && a.text ? ' show' : ''}`;
-          cross.classList.toggle('active', !!a?.ok);
         }
+        if (a?.at) {
+          r.project(a.at.x, a.at.y, a.at.z, proj);
+          pr.style.left = `${proj.x}px`; pr.style.top = `${proj.y}px`;
+          pr.style.display = proj.visible ? '' : 'none';
+        } else pr.style.display = 'none';
       }
       // The on-screen Use button mirrors the prompt, for mouse, touch and anyone who forgets the key.
       const u = useRef_.current;
@@ -96,18 +99,13 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
     return () => { cancelAnimationFrame(raf); for (const el of nodes.values()) el.remove(); };
   }, [runtime]);
 
-  const fp = snap.firstPerson && !snap.night && !snap.gameOver;
+  const fp = snap.playing && !snap.night && !snap.gameOver;
   const keys = snap.settings.keys;
-  const showLookHint = fp && !snap.locked && !snap.card && !(typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
+  const showLookHint = fp && !snap.card && !(typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
   return (
     <>
       <div ref={root} className="overlay popups" aria-hidden="true" />
-      {fp && (
-        <div className="crosshair-wrap" aria-hidden="true">
-          <div ref={crossRef} className="crosshair" />
-          <div ref={promptRef} className="aim-prompt" />
-        </div>
-      )}
+      {fp && <div ref={promptRef} className="aim-prompt" aria-hidden="true" />}
       {fp && <div ref={markerRef} className="marker" aria-hidden="true" style={{ display: 'none' }}><span /></div>}
       {snap.jobs && tip && tip.anchor !== 'night' && <Jobs runtime={runtime} jobs={snap.jobs} tip={tip.text} current={tip.id} />}
       {!snap.jobs && tip && tip.anchor !== 'night' && (
@@ -124,10 +122,10 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
       )}
       {showLookHint && (
         <div className="look-hint" aria-label="Controls">
-          <span className="ctl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v6" /></svg>Click to look</span>
           <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.forward)}</kbd><kbd>{keyLabel(keys.left)}</kbd><kbd>{keyLabel(keys.back)}</kbd><kbd>{keyLabel(keys.right)}</kbd></span>Walk</span>
+          <span className="ctl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v6" /></svg>Click to walk or use</span>
           <span className="ctl"><kbd>{keyLabel(keys.interact)}</kbd>Use</span>
-          <span className="ctl"><kbd>Esc</kbd>Free mouse</span>
+          <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.turnLeft)}</kbd><kbd>{keyLabel(keys.turnRight)}</kbd></span>Turn · wheel zooms</span>
         </div>
       )}
     </>
