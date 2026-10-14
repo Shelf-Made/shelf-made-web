@@ -5,14 +5,10 @@ type Fx = { id: number; type: string; x: number; z: number; slots: { productId: 
 type S = { phase: string; cash: number; shop: { fixtures: Fx[]; storage: { productId: string; qty: number }[] }; orders: { state: string }[]; people: { kind: string; carrying?: { productId: string; qty: number } | null }[]; today: { served: number } };
 
 const state = (page: Page) => hooks<S>(page, 'state');
-const EYE = 0.6 * 1.04;
 
 /** Stand at (x, z) in the shop and look at a point (shop-relative), the way a player turns the mouse. */
 async function lookAt(page: Page, from: [number, number], to: [number, number, number]): Promise<void> {
-  const dx = to[0] - from[0], dz = to[2] - from[1];
-  const yaw = Math.atan2(-dx, -dz);
-  const pitch = Math.atan2(to[1] - EYE, Math.hypot(dx, dz));
-  await hooks(page, 'fp', from[0], from[1], yaw, pitch);
+  await hooks(page, 'aimAt', from[0], from[1], to[0], to[1], to[2]);
   // A couple of frames so the crosshair (and the build ghost) catch up.
   await page.waitForFunction(() => (window as unknown as { __shelf: { aim: () => unknown } }).__shelf.aim() !== null, null, { timeout: 15_000 }).catch(() => {});
   await settle(page, 350);

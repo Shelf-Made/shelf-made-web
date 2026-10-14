@@ -12,7 +12,10 @@ export const EYE_HEIGHT = 0.6;
 export class FirstPersonView {
   readonly camera: PerspectiveCamera;
   yaw = 0;
-  pitch = -0.12;
+  pitch = -0.42;
+  /** Third person: the camera sits behind and above the manager, who stays in view. */
+  third = true;
+  distance = 2.5;
   private bob = 0;
   private readonly held = new Group();
   private heldBox: Mesh | null = null;
@@ -38,7 +41,7 @@ export class FirstPersonView {
 
   look(dx: number, dy: number, sensitivity = 1): void {
     this.yaw -= dx * 0.0024 * sensitivity;
-    this.pitch = MathUtils.clamp(this.pitch - dy * 0.0022 * sensitivity, -1.25, 1.1);
+    this.pitch = this.third ? MathUtils.clamp(this.pitch - dy * 0.0022 * sensitivity, -1.15, 0.12) : MathUtils.clamp(this.pitch - dy * 0.0022 * sensitivity, -1.25, 1.1);
   }
 
   /** Forward and right vectors on the ground for WASD. */
@@ -52,10 +55,19 @@ export class FirstPersonView {
     this.last.set(x, 0, z);
     if (moved > 1e-4) this.bob += dt * 9; else this.bob *= 0.9;
     const bobY = moved > 1e-4 ? Math.sin(this.bob) * 0.008 : 0;
-    this.camera.position.set(x, EYE_HEIGHT * height + bobY, z);
-    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    if (this.third) {
+      // Over the shoulder: orbit a pivot at chest height, look a little past the manager.
+      const cp = Math.cos(this.pitch), fx = -Math.sin(this.yaw) * cp, fy = Math.sin(this.pitch), fz = -Math.cos(this.yaw) * cp;
+      const py = 0.5 * height, d = this.distance;
+      // The centre of the screen passes just over the manager's head toward what they face.
+      this.camera.position.set(x - fx * d, Math.max(0.35, py - fy * d + 0.3), z - fz * d);
+      this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    } else {
+      this.camera.position.set(x, EYE_HEIGHT * height + bobY, z);
+      this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    }
     if (this.heldBox) {
-      this.heldBox.visible = carrying;
+      this.heldBox.visible = carrying && !this.third;
       this.heldBox.position.y = -0.27 + (moved > 1e-4 ? Math.sin(this.bob * 0.5) * 0.008 : 0);
     }
   }
@@ -63,6 +75,18 @@ export class FirstPersonView {
   /** Face a world point (used when entering first person or after a cut). */
   faceTowards(fromX: number, fromZ: number, toX: number, toZ: number): void {
     this.yaw = Math.atan2(-(toX - fromX), -(toZ - fromZ));
+  }
+
+  /** Turn so the centre of the screen lands on a world point, with the manager standing at (x, z). */
+  aimAt(x: number, z: number, height: number, tx: number, ty: number, tz: number): void {
+    for (let i = 0; i < 8; i++) {
+      const cp = Math.cos(this.pitch), fx = -Math.sin(this.yaw) * cp, fy = Math.sin(this.pitch), fz = -Math.cos(this.yaw) * cp;
+      const d = this.third ? this.distance : 0, py = this.third ? 0.5 * height + 0.3 : EYE_HEIGHT * height;
+      const cx = x - fx * d, cy = Math.max(0.35, py - fy * d), cz = z - fz * d;
+      const dx = tx - cx, dy = ty - cy, dz = tz - cz;
+      this.yaw = Math.atan2(-dx, -dz);
+      this.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+    }
   }
 
   resize(aspect: number): void { this.camera.aspect = aspect; this.camera.updateProjectionMatrix(); }

@@ -138,8 +138,8 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
   return p;
 }
 
-/** Walkers stroll the whole of Main Street, from fog to fog. */
-const WALKER_FAR = MAP_X + 26;
+/** Walkers stroll the whole of Main Street, from one tunnel to the other. */
+const WALKER_FAR = MAP_X + 14;
 
 export function spawnWalker(state: GameState): void {
   withRng(state, 'walkers', (r) => {

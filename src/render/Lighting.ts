@@ -7,6 +7,11 @@ export class Lighting {
   readonly hemi: HemisphereLight;
   readonly ambient: AmbientLight;
   readonly sky = new Color('#BFE3FF');
+  /** The zenith colour for the gradient sky dome. */
+  readonly skyTop = new Color('#5FA8E8');
+  private readonly topDay = new Color('#4D9BE6');
+  private readonly topEve = new Color('#7A86C9');
+  private readonly topNight = new Color('#141833');
   private readonly sunDay = new Color('#FFF4E0');
   private readonly sunEve = new Color('#FFB070');
   private readonly sunNight = new Color('#7F90C8');
@@ -49,11 +54,13 @@ export class Lighting {
     if (night) {
       this.sun.color.copy(this.sunNight); this.sun.intensity = 1.1;
       this.sky.copy(this.skyNight);
+      this.skyTop.copy(this.topNight);
       this.hemi.color.set('#6D7BB8'); this.hemi.groundColor.copy(this.groundNight); this.hemi.intensity = 1.3;
       this.ambient.color.set('#FFD9A8'); this.ambient.intensity = 0.5;
     } else {
       this.sun.color.copy(this.sunDay).lerp(this.sunEve, evening); this.sun.intensity = 2.2 - 0.6 * evening;
       this.sky.copy(this.skyDay).lerp(this.skyEve, evening * 0.8);
+      this.skyTop.copy(this.topDay).lerp(this.topEve, evening);
       this.hemi.color.copy(this.sky); this.hemi.groundColor.copy(this.groundDay); this.hemi.intensity = 1.4;
       this.ambient.color.set('#FFFFFF'); this.ambient.intensity = 0.45;
     }

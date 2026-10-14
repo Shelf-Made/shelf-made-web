@@ -23,8 +23,8 @@ export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf
 /** What the crosshair would do: the key to press and a short label. */
 export interface AimInfo { key: string | null; text: string; ok: boolean }
 
-/** How far the manager can reach from their eyes. */
-const REACH = 2.4;
+/** How far from the manager (on the ground) the crosshair may point and still use a thing. */
+const REACH = 1.9;
 
 /** What React sees. Replaced only when something changed. */
 export interface Snapshot {
@@ -488,7 +488,7 @@ export class GameRuntime {
     if (!s || !r || !this.inFirstPerson || s.phase === 'night') return none;
     const keys = this.settings.keys;
     const E = keyLabel(keys.interact);
-    const { hit } = r.aim(s);
+    const { hit, point } = r.aim(s);
     if (this.build.placing || this.build.selectedId !== null) {
       const type = this.build.placing ?? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type;
       const name = type ? FIXTURES[type].name : '';
@@ -501,7 +501,8 @@ export class GameRuntime {
     if (!hit) return none;
     const owner = s.people.find((p) => p.kind === 'owner');
     if (!owner) return none;
-    const far = hit.dist > REACH;
+    // Reach is how far the manager's hands are from the thing, not the camera.
+    const far = !point || Math.hypot(point.x - owner.x, point.z - owner.z) > REACH;
     if (hit.kind === 'fixture') {
       const f = s.shop.fixtures.find((x) => x.id === hit.id); if (!f) return none;
       const def = FIXTURES[f.type];
@@ -547,7 +548,7 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
     const o = s.people.find((p) => p.kind === 'owner');
     if (o) r.fp.faceTowards(o.x, o.z, s.shop.originX, s.shop.originZ - 3);
-    r.fp.pitch = -0.12;
+    r.fp.pitch = -0.42;
   }
 
   /** Cinematic framing of the shop (screenshots and the picker). */

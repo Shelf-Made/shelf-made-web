@@ -1,5 +1,5 @@
 import type { GameState, Car, Vec2, Order } from './types';
-import { ROAD_Z, LANE_EAST_Z, LANE_WEST_Z, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK, lotLayout, CROSS_XS, BACK_LANE_EAST_Z, BACK_LANE_WEST_Z, ROAD_FAR } from './layout';
+import { ROAD_Z, LANE_EAST_Z, LANE_WEST_Z, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK, lotLayout, ROAD_FAR } from './layout';
 import { followPath, roundPath, turnToward } from './movement';
 
 const FAR = ROAD_FAR;
@@ -80,20 +80,11 @@ export function leaveLot(state: GameState, car: Car): void {
   if (car.bay !== null) { const b = state.shop.bays[car.bay]; if (b && b.carId === car.id) b.carId = null; car.bay = null; }
 }
 
-/** Through traffic. Right-hand driving: westbound on the north lane, southbound on the west lane. */
+/** Through traffic: in from one tunnel, out by the other. Right-hand driving: westbound on the north lane. */
 export function trafficRoutes(): Vec2[][] {
-  const [wx, ex] = CROSS_XS;
   return [
     [{ x: -FAR, z: LANE_EAST_Z }, { x: FAR, z: LANE_EAST_Z }],
     [{ x: FAR, z: LANE_WEST_Z }, { x: -FAR, z: LANE_WEST_Z }],
-    // Down from Back Lane at the east cross street, then west along Main Street.
-    [{ x: FAR, z: BACK_LANE_WEST_Z }, { x: ex - 0.5, z: BACK_LANE_WEST_Z }, { x: ex - 0.5, z: LANE_WEST_Z }, { x: -FAR, z: LANE_WEST_Z }],
-    // Up from the south bridge at the west cross street, then east.
-    [{ x: wx + 0.5, z: FAR }, { x: wx + 0.5, z: LANE_EAST_Z }, { x: FAR, z: LANE_EAST_Z }],
-    // East along Main Street, then south over the east bridge.
-    [{ x: -FAR, z: LANE_EAST_Z }, { x: ex - 0.5, z: LANE_EAST_Z }, { x: ex - 0.5, z: FAR }],
-    // West along Main Street, then up the west cross street and east along Back Lane.
-    [{ x: FAR, z: LANE_WEST_Z }, { x: wx + 0.5, z: LANE_WEST_Z }, { x: wx + 0.5, z: BACK_LANE_EAST_Z }, { x: FAR, z: BACK_LANE_EAST_Z }],
   ];
 }
 

@@ -1,10 +1,62 @@
-import type { BufferGeometry } from 'three';
-import { Group, Mesh, Matrix4, Euler, Vector3, Quaternion, PlaneGeometry, InstancedMesh, Object3D, Color } from 'three';
+import type { BufferGeometry, Material } from 'three';
+import { Group, Mesh, Matrix4, Euler, Vector3, Quaternion, PlaneGeometry, InstancedMesh, Object3D, Color, BufferGeometry as Geo, Float32BufferAttribute, DoubleSide, MeshStandardMaterial } from 'three';
+import type { PaletteMap } from './palette';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AssetLibrary } from './assets';
-import { TOWN_MODEL_IDS, type TownPlan, type Placement } from './town';
+import { TOWN_MODEL_IDS, type TownPlan, type Placement, type ScatterKind } from './town';
 import { box, paint } from './geometry';
-import { terrainGeometry, waterGeometry, bridgeGeometry } from './terrain';
+import { terrainGeometry, waterGeometry, waterMaterial, structuresGeometry } from './terrain';
+
+/** Wind: grass, flowers and leaves sway with height above their base. One clock for all of them. */
+export const wind = { value: 0 };
+function swaying(base: MeshStandardMaterial, amp: number, double = false): MeshStandardMaterial {
+  const m = base.clone();
+  if (double) m.side = DoubleSide;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uWind = wind;
+    sh.vertexShader = 'uniform float uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec4 wp = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      #else
+        vec4 wp = vec4(0.0);
+      #endif
+      float hh = max(position.y, 0.0);
+      transformed.x += sin(uWind * 1.7 + wp.x * 0.7 + wp.z * 0.45) * hh * ${amp.toFixed(3)};
+      transformed.z += cos(uWind * 1.3 + wp.x * 0.35 + wp.z * 0.6) * hh * ${(amp * 0.7).toFixed(3)};`);
+  };
+  m.customProgramCacheKey = () => `sway${amp}${double}`;
+  return m;
+}
+
+/** Generated meadow pieces, all a handful of triangles: a tuft of blades, a flower, a pebble. */
+function scatterGeometry(pal: PaletteMap, kind: ScatterKind): BufferGeometry {
+  const pos: number[] = [], uv: number[] = [];
+  const tri = (a: number[], b: number[], c: number[], hex: string) => { const [u, v] = pal.uv(hex); pos.push(...a, ...b, ...c); uv.push(u, v, u, v, u, v); };
+  const blade = (ang: number, h: number, lean: number, hex: string, w = 0.03) => {
+    const cx = Math.cos(ang), sz = Math.sin(ang);
+    tri([-sz * w, 0, cx * w], [sz * w, 0, -cx * w], [cx * lean, h, sz * lean], hex);
+  };
+  if (kind === 'grass') {
+    const greens = ['#63A854', '#7CC26B', '#4FAE62', '#8CCB72', '#3C8F4E'];
+    for (let i = 0; i < 6; i++) blade(i * 1.05 + 0.3, 0.13 + (i % 3) * 0.05, 0.05 + (i % 2) * 0.03, greens[i % greens.length]!);
+  } else if (kind === 'pebble') {
+    return box(pal, '#ADAAA4', 0.09, 0.04, 0.07, 0, 0, 0);
+  } else {
+    const petal = { 'flower-red': '#E8573F', 'flower-yellow': '#FFC044', 'flower-purple': '#9B6FE0', 'flower-white': '#FCFFFF', 'flower-pink': '#F27CC1' }[kind];
+    blade(0.4, 0.2, 0.0, '#3C8F4E', 0.012); blade(2.1, 0.11, 0.05, '#4FAE62', 0.025); blade(4.0, 0.09, 0.04, '#63A854', 0.025);
+    const y = 0.2, r = 0.055;
+    for (let i = 0; i < 5; i++) {
+      const a0 = (i / 5) * Math.PI * 2, a1 = a0 + 0.9;
+      tri([0, y + 0.004, 0], [Math.cos(a0) * r, y, Math.sin(a0) * r], [Math.cos(a1) * r, y, Math.sin(a1) * r], petal);
+    }
+    tri([-0.018, y + 0.012, -0.018], [0.018, y + 0.012, -0.018], [0, y + 0.012, 0.022], kind === 'flower-yellow' ? '#E8903F' : '#FFC044');
+  }
+  const g = new Geo();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
 
 const CAR_MODEL_IDS = ['cars/sedan', 'cars/hatchback', 'cars/suv', 'cars/sedan-sports', 'cars/van', 'cars/suv-luxury', 'cars/delivery', 'cars/truck', 'cars/taxi', 'cars/truck-flat', 'cars/delivery-flat', 'cars/garbage-truck'];
 export { CAR_MODEL_IDS };
@@ -18,7 +70,12 @@ export class StaticWorld {
   readonly group = new Group();
   private readonly meshes: Mesh[] = [];
   private terrain: Mesh | null = null;
+  private grassMat: Material | null = null;
+  private leafMat: Material | null = null;
   constructor(private readonly assets: AssetLibrary) {}
+
+  /** Advance the wind. */
+  update(time: number): void { wind.value = time; }
 
   static modelsNeeded(plan: TownPlan): string[] {
     return [...new Set(plan.placements.map((p) => p.model).concat(plan.forest.map((p) => p.model), TOWN_MODEL_IDS, CAR_MODEL_IDS))];
@@ -29,15 +86,19 @@ export class StaticWorld {
     const pal = this.assets.palette;
     // The land and the river never change between towns: build them once.
     if (!this.terrain) {
-      const land = new Mesh(terrainGeometry(pal), this.assets.material);
+      const land = new Mesh(terrainGeometry(), new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true }));
       land.receiveShadow = true;
-      const water = new Mesh(waterGeometry(pal), this.assets.material);
+      const water = new Mesh(waterGeometry(plan), waterMaterial(wind));
       water.receiveShadow = true;
       this.terrain = land;
       this.group.add(land, water);
+      const st = structuresGeometry(pal, plan);
+      const lit = new Mesh(st.lit, this.assets.material); lit.castShadow = true; lit.receiveShadow = true;
+      this.group.add(lit, new Mesh(st.dark, this.assets.unlit), new Mesh(st.glow, this.assets.unlit));
+      this.grassMat = swaying(this.assets.material, 0.22, true);
+      this.leafMat = swaying(this.assets.material, 0.018);
     }
     const add = (m: Mesh, cast = true) => { m.castShadow = cast; m.receiveShadow = true; this.group.add(m); this.meshes.push(m); };
-    add(new Mesh(bridgeGeometry(pal, plan), this.assets.material));
 
     // The town is merged per 44-unit chunk, casters apart from flat ground pieces, so the camera and the
     // sun's shadow pass skip what they cannot see.
@@ -78,6 +139,23 @@ export class StaticWorld {
       if (g) { const mesh = new Mesh(g, this.assets.glass); this.group.add(mesh); this.meshes.push(mesh); }
     }
 
+    // Meadows: grass tufts, flowers and pebbles by the thousand, one instanced mesh per kind and map half.
+    {
+      const byKind = new Map<string, typeof plan.scatter>();
+      for (const sc of plan.scatter) { const k = `${sc.kind}|${sc.x < 0 ? 'w' : 'e'}`; const arr = byKind.get(k) ?? []; arr.push(sc); byKind.set(k, arr); }
+      const geos = new Map<ScatterKind, BufferGeometry>();
+      const d = new Object3D();
+      for (const [k, items] of byKind) {
+        const kind = k.split('|')[0] as ScatterKind;
+        if (!geos.has(kind)) geos.set(kind, scatterGeometry(pal, kind));
+        const im = new InstancedMesh(geos.get(kind)!, kind === 'pebble' ? this.assets.material : this.grassMat!, items.length);
+        items.forEach((it, i) => { d.position.set(it.x, 0, it.z); d.rotation.set(0, it.yaw, 0); d.scale.setScalar(it.scale); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
+        im.computeBoundingSphere();
+        im.receiveShadow = true;
+        this.group.add(im); this.meshes.push(im as unknown as Mesh);
+      }
+    }
+
     // Woods: one instanced mesh per model and quarter of the map, so the camera can skip the woods behind it.
     const dummy = new Object3D();
     const buckets = new Map<string, Placement[]>();
@@ -88,7 +166,7 @@ export class StaticWorld {
     }
     for (const [k, trees] of buckets) {
       const model = k.split('|')[0]!;
-      const im = new InstancedMesh(this.assets.geometry(model), this.assets.material, trees.length);
+      const im = new InstancedMesh(this.assets.geometry(model), this.leafMat ?? this.assets.material, trees.length);
       trees.forEach((t, i) => { dummy.position.set(t.x, t.y ?? 0, t.z); dummy.rotation.set(0, t.yaw, 0); const s = t.scale ?? 1; dummy.scale.set(s, s, s); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); });
       im.computeBoundingSphere();
       // No forest shadows: the sun's shadow camera only spans the town around the player, where garden trees do cast.

@@ -31,6 +31,16 @@ export function installTestHooks(rt: GameRuntime): void {
       if (pitch !== undefined) r.fp.pitch = pitch;
       rt.bump();
     },
+    /** Stand at (x, z) shop-relative and turn so the crosshair lands on (tx, ty, tz). */
+    aimAt: (x: number, z: number, tx: number, ty: number, tz: number) => {
+      rt.cinematic = false;
+      const s = rt.state; const r = rt.renderer; if (!s || !r) return;
+      const o = s.people.find((p) => p.kind === 'owner'); if (!o) return;
+      o.x = o.px = s.shop.originX + x; o.z = o.pz = s.shop.originZ + z; o.path = []; o.state = 'idle'; o.moveDir = null;
+      r.fp.aimAt(o.x, o.z, o.look.height, s.shop.originX + tx, ty, s.shop.originZ + tz);
+      o.yaw = Math.atan2(s.shop.originX + tx - o.x, s.shop.originZ + tz - o.z);
+      rt.bump();
+    },
     /** Furnish, stock and (optionally) open the shop the quick way, through commands. */
     quickSetup: (open = true) => { const s = rt.state; if (!s) return; quickSetup(s, open); rt.renderer?.setShop(s); rt.bump(); },
     aim: () => rt.aimInfo(),

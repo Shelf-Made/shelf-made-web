@@ -8,6 +8,7 @@ import { PeopleView, PEOPLE_MODELS } from './People';
 import { CarsView } from './Cars';
 import { Lighting } from './Lighting';
 import { RivalsView } from './RivalsView';
+import { AmbientView } from './Ambient';
 import { Overlays, type OverlayKind } from './Overlays';
 import { buildTown, type TownPlan } from './town';
 import type { GameState } from '@/sim/types';
@@ -36,6 +37,8 @@ export class WorldRenderer {
   private people: PeopleView;
   private cars: CarsView;
   private rivals: RivalsView;
+  private ambient: AmbientView;
+  private clock = 0;
   readonly overlays = new Overlays();
   private plan: TownPlan | null = null;
   private townKey = '';
@@ -61,7 +64,8 @@ export class WorldRenderer {
     this.people = new PeopleView(this.assets);
     this.cars = new CarsView(this.assets);
     this.rivals = new RivalsView(this.assets);
-    this.scene.add(this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.overlays.group);
+    this.ambient = new AmbientView(this.assets);
+    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.overlays.group);
     this.resize();
   }
 
@@ -85,6 +89,7 @@ export class WorldRenderer {
     this.townKey = key;
     this.plan = buildTown(seed, plotId, branches.map((b) => b.plotId));
     this.statics.build(this.plan);
+    this.ambient.build(this.plan);
     this.rivals.build(this.plan, Object.fromEntries(branches.map((b) => [b.plotId, b.name])));
   }
 
@@ -116,12 +121,23 @@ export class WorldRenderer {
     // Branches change the town: rebuild when the set changes (cheap, a few times per game).
     this.setTown(state.seed, state.shop.plotId, state.franchises.map((f) => ({ plotId: f.plotId, name: f.name })));
     // In first person every wall stands full height; the cinematic camera still cuts the near ones down.
-    this.store.update(state, fp || !this.cutaway ? null : this.camera.yaw);
-    this.people.update(state, alpha, dt, focus, fp ? owner.id : -1, fp ? 0.3 : 0);
+    // Third person cuts the walls between the camera and the manager down to a ledge; the lobby keeps them whole.
+    // Outside, the shop stands whole; step in and the walls between the camera and the manager drop.
+    let inside = false;
+    if (fp) {
+      const f = state.shop.floor, ox = state.shop.originX, oz = state.shop.originZ, c = this.fp.camera.position;
+      const within = (x: number, z: number) => x - ox > f.x0 - 0.4 && x - ox < f.x1 + 0.4 && z - oz > f.z0 - 0.4 && z - oz < f.z1 + 0.7;
+      inside = within(owner.x, owner.z) || within(c.x, c.z);
+    }
+    this.store.update(state, fp ? (this.fp.third && inside ? this.fp.yaw : null) : (this.cutaway ? this.camera.yaw : null));
+    this.people.update(state, alpha, dt, focus, fp && !this.fp.third ? owner.id : -1, fp && !this.fp.third ? 0.3 : 0);
     this.cars.update(state, alpha);
     this.rivals.update(state);
     this.overlays.sample(state);
     this.overlays.update(state);
+    this.clock += Math.min(dt, 0.1);
+    this.statics.update(this.clock);
+    this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky);
     this.renderer.render(this.scene, this.activeCamera);
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
@@ -136,7 +152,7 @@ export class WorldRenderer {
   }
 
   /** What the crosshair points at: a fixture, the delivery boxes, or the floor, with the distance. */
-  aim(state: GameState): { hit: StoreHit | null; dist: number; floor: Vector3 | null } {
+  aim(state: GameState): { hit: StoreHit | null; dist: number; floor: Vector3 | null; point: Vector3 | null } {
     this.ndc.set(0, 0);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
     const hit = this.store.pick(this.ray, state.shop);
@@ -145,7 +161,9 @@ export class WorldRenderer {
     let dist = Infinity;
     if (hit) dist = hit.dist;
     else if (floor) dist = floor.distanceTo(this.ray.ray.origin);
-    return { hit, dist, floor };
+    // Where the ray lands, so reach is measured from the manager rather than the camera.
+    const point = hit ? new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, hit.dist) : floor;
+    return { hit, dist, floor, point };
   }
 
   /** Ground point under a canvas pixel. */

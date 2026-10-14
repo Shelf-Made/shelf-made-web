@@ -2,12 +2,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { ready, hooks, settle } from './helpers';
 
 const out = (name: string) => `docs/screens/${name}.png`;
-const EYE = 0.6 * 1.04;
 
 /** Stand at a shop-relative point and look at another, then let a few frames render. */
 async function eye(page: Page, from: [number, number], to: [number, number, number], ms = 700): Promise<void> {
-  const dx = to[0] - from[0], dz = to[2] - from[1];
-  await hooks(page, 'fp', from[0], from[1], Math.atan2(-dx, -dz), Math.atan2(to[1] - EYE, Math.hypot(dx, dz)));
+  await hooks(page, 'aimAt', from[0], from[1], to[0], to[1], to[2]);
   await settle(page, ms);
 }
 

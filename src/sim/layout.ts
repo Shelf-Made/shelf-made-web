@@ -20,19 +20,16 @@ export const MAP_X = 44;
 export const MAP_Z = 18;
 
 /**
- * The valley. Main Street runs east–west through the middle; two cross streets meet it, the north
- * ends of both join Back Lane behind the shops, the south ends cross the river on bridges. Every road
- * runs on past the town edge into the fog, so traffic appears and leaves out of sight.
+ * The pocket. A small green hollow ringed by cliffs. Main Street runs straight through it and
+ * leaves by a tunnel at each end, out to the rest of the town; traffic appears and vanishes in
+ * the dark of the tunnels. A creek runs along the foot of the south cliff.
  */
-export const CROSS_XS = [-35, 39] as const;
-export const BACK_Z = -21.5;
-export const BACK_LANE_WEST_Z = BACK_Z - 0.5;
-export const BACK_LANE_EAST_Z = BACK_Z + 0.5;
-/** Where traffic spawns and despawns along each road (hidden by distance fog). */
-export const ROAD_FAR = 92;
-/** The river: its centre line wanders a little around z = 24. Half width of the water. */
-export const RIVER_HALF_W = 2.3;
-export function riverZ(x: number): number { return 24 + 2.4 * Math.sin(x / 17) + 1.1 * Math.sin(x / 7.3 + 1.3); }
+export const TUNNEL_X = 50;
+/** Where traffic spawns and despawns, inside the tunnels. */
+export const ROAD_FAR = 64;
+/** The creek: its centre line wanders a little around z = 18. Half width of the water. */
+export const RIVER_HALF_W = 1.15;
+export function riverZ(x: number): number { return 18 + 0.8 * Math.sin(x / 9) + 0.4 * Math.sin(x / 4.1 + 1.3); }
 /** Every shop plot owns this rectangle (plot-relative), big enough for the largest shop with the doubled lot. */
 export const PLOT_RECT = { x0: -8, z0: -11.6, x1: 12.6, z1: 2.55 };
 
