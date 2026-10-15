@@ -171,7 +171,6 @@ export class WorldRenderer {
     // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
     const fog = this.scene.fog as Fog | null;
     if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance, k = this.lighting.fogScale; fog.near = (45 + d * 1.1) * k; fog.far = (160 + d * 1.6) * (0.4 + 0.6 * k); }
-    this.lighting.updateEnvironment(this.renderer, this.clock);
     this.setTown(state.seed, state.shop.plotId);
     // With the manager inside, the roof comes off and the walls between the camera and the manager
     // drop to stubs. Outside, the shop stands whole and wears its roof once the camera pulls back.

@@ -1,13 +1,25 @@
-import type { Scene, Texture, WebGLRenderer, WebGLRenderTarget } from 'three';
-import { DirectionalLight, HemisphereLight, AmbientLight, Color, Vector3, Fog, PMREMGenerator, Scene as ThreeScene, Mesh, SphereGeometry, ShaderMaterial, BackSide } from 'three';
+import type { Scene } from 'three';
+import { DirectionalLight, HemisphereLight, AmbientLight, Color, Vector3, Fog } from 'three';
+
+/**
+ * The sky's colours for shaders that reflect it (wet ground, puddles): the zenith, the horizon, where
+ * the sun is and how bright. Worked out analytically in the shader, never as an environment map (an
+ * environment map on every material doubled the cost of a frame on modest hardware).
+ */
+export const skyUniforms = {
+  uSkyTop: { value: new Color('#3F8FE0') },
+  uSkyHorizon: { value: new Color('#C4E4FF') },
+  uSunDir: { value: new Vector3(0, 1, 0) },
+  uSunCol: { value: new Color(1, 1, 1) },
+};
 
 /** What the weather does to the light: cloud cover, rain, how dark the storm is, a lightning flash (each 0..1). */
 export interface SkyWeather { cloud: number; rain: number; storm: number; fog: number; flash: number }
 export const CLEAR_SKY: SkyWeather = { cloud: 0.15, rain: 0, storm: 0, fog: 0, flash: 0 };
 
 /**
- * The sun and the sky. Strong warm sunlight with a cooler sky fill (and the sky itself, as an
- * environment map, lighting everything from every side), so shade reads blue and lit sides warm. The
+ * The sun and the sky. Strong warm sunlight with a cooler sky fill from above and grass bounce from
+ * below, so shade reads blue and lit sides warm. The
  * sun climbs from a low golden morning to a high white noon and sinks to a long amber evening; clouds
  * dim and soften it (an overcast day has no hard shadows), rain greys the air, a storm darkens it and
  * lightning floods it white for a blink.
@@ -42,15 +54,8 @@ export class Lighting {
   private readonly groundNight = new Color('#2A3328');
   private readonly flashColour = new Color('#E6EEFF');
   private readonly fog: Fog;
-  // The environment: a little sky scene rendered to a prefiltered map when the sky has changed enough to see.
-  private pmrem: PMREMGenerator | null = null;
-  private envTarget: WebGLRenderTarget | null = null;
-  private readonly envScene = new ThreeScene();
-  private readonly envMat: ShaderMaterial;
-  private envKey = '';
-  private envAt = -1;
 
-  constructor(private readonly scene: Scene) {
+  constructor(scene: Scene) {
     this.sun = new DirectionalLight(0xffffff, 3);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -60,25 +65,12 @@ export class Lighting {
     this.sun.shadow.radius = 2.5;
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 120;
-    this.hemi = new HemisphereLight(this.skyDay, this.groundDay, 0.8);
-    this.ambient = new AmbientLight(0xffffff, 0.12);
+    this.hemi = new HemisphereLight(this.skyDay, this.groundDay, 1.15);
+    this.ambient = new AmbientLight(0xffffff, 0.16);
     scene.add(this.sun, this.sun.target, this.hemi, this.ambient);
     scene.background = this.sky;
     this.fog = new Fog(this.sky, 55, 210);
     scene.fog = this.fog;
-    this.envMat = new ShaderMaterial({
-      side: BackSide, depthWrite: false,
-      uniforms: { top: { value: new Color() }, horizon: { value: new Color() }, ground: { value: new Color() }, sunDir: { value: new Vector3() }, sunCol: { value: new Color() } },
-      vertexShader: 'varying vec3 vD; void main() { vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 ground; uniform vec3 sunDir; uniform vec3 sunCol; varying vec3 vD;
-        void main() {
-          vec3 d = normalize(vD);
-          vec3 c = d.y > 0.0 ? mix(horizon, top, pow(d.y, 0.6)) : mix(horizon, ground, smoothstep(0.0, 0.25, -d.y));
-          c += sunCol * pow(max(dot(d, sunDir), 0.0), 24.0) * 2.0;
-          gl_FragColor = vec4(c, 1.0);
-        }`,
-    });
-    this.envScene.add(new Mesh(new SphereGeometry(10, 32, 16), this.envMat));
   }
 
   /**
@@ -121,8 +113,8 @@ export class Lighting {
       // The fill: the sky's own colour from above, sunlit grass bouncing up from below. Under cloud the
       // fill takes over from the sun, so it brightens a little as the sun goes.
       this.hemi.color.copy(this.sky); this.hemi.groundColor.copy(this.groundDay);
-      this.hemi.intensity = (0.8 + 0.55 * dull) * (1 - 0.6 * storm) * (1 - 0.15 * w.rain);
-      this.ambient.color.set('#FFFFFF'); this.ambient.intensity = 0.12 + 0.1 * dull;
+      this.hemi.intensity = (1.15 + 0.45 * dull) * (1 - 0.6 * storm) * (1 - 0.15 * w.rain);
+      this.ambient.color.set('#FFFFFF'); this.ambient.intensity = 0.16 + 0.1 * dull;
       this.sunVisible = 1 - dull;
     }
     // Shadows fade as the cloud thickens: none at all under a full overcast.
@@ -136,30 +128,10 @@ export class Lighting {
     // Haze: rain and fog pull the far side of town into the sky's colour.
     const thick = Math.max(w.rain * 0.7, w.fog);
     this.fog.color.copy(this.sky);
-    this.envStrength = 0.55 * (1 - 0.55 * storm) * (1 - 0.2 * dull);
-    this.scene.environmentIntensity = this.envStrength;
     this.fogScale = 1 - 0.65 * thick;
+    skyUniforms.uSkyTop.value.copy(this.skyTop); skyUniforms.uSkyHorizon.value.copy(this.sky);
+    skyUniforms.uSunDir.value.copy(this.sunDir); skyUniforms.uSunCol.value.copy(this.sun.color).multiplyScalar(this.sunVisible);
   }
   /** Rain and mist bring the haze in (the renderer scales its fog distances by this). */
   fogScale = 1;
-  /** How strongly the sky's environment lights the scene (dimmer under a storm). */
-  private envStrength = 0.55;
-
-  /** The sky as an environment map, redrawn when it has changed enough to notice (and not more than twice a second). */
-  updateEnvironment(renderer: WebGLRenderer, now: number): void {
-    const q = (c: Color) => `${Math.round(c.r * 40)},${Math.round(c.g * 40)},${Math.round(c.b * 40)}`;
-    const key = `${q(this.sky)}|${q(this.skyTop)}|${q(this.sun.color)}|${Math.round(this.sunDir.x * 12)},${Math.round(this.sunDir.y * 12)}|${Math.round(this.sunVisible * 8)}`;
-    if (key === this.envKey || (this.envAt >= 0 && now - this.envAt < 0.5)) return;
-    this.envKey = key; this.envAt = now;
-    const u = this.envMat.uniforms;
-    u.top!.value.copy(this.skyTop); u.horizon!.value.copy(this.sky); u.ground!.value.copy(this.groundDay).multiplyScalar(0.6);
-    u.sunDir!.value.copy(this.sunDir); u.sunCol!.value.copy(this.sun.color).multiplyScalar(0.6 * this.sunVisible);
-    this.pmrem ??= new PMREMGenerator(renderer);
-    const prev = this.envTarget;
-    this.envTarget = this.pmrem.fromScene(this.envScene, 0.04);
-    this.scene.environment = this.envTarget.texture as Texture;
-    // The sky lights gently: most of the fill still comes from the hemisphere light above.
-    this.scene.environmentIntensity = this.envStrength;
-    prev?.dispose();
-  }
 }
