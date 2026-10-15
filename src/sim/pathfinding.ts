@@ -46,10 +46,13 @@ export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Wayp
   const si = cellIndex(g, sx, sz), gi = cellIndex(g, gx, gz);
   gScore[si] = 0;
   const open = new Heap();
-  // Across floors, distances are taken as if each floor stood over the ground one, plus the least a ride costs.
+  // Across floors, distances are taken as if each floor stood over the ground one. A ride costs at least 7 and
+  // carries you at most 6 cells across (stairs come up three tiles from their foot), so each floor between adds
+  // at least 1, and 7 at the least: never more than the way really costs, or a dearer flight nearer the start
+  // (the stairs by the door) would win over a cheaper one (the escalator a tile further on).
   const lv = g.rowLevel, shift = g.levelRows ?? 0, gl = lv ? lv[gz]! : 0;
   const h = lv
-    ? (cx: number, cz: number) => { const l = lv[cz]!, dx = Math.abs(cx - gx), dz = Math.abs(cz - l * shift - (gz - gl * shift)); return Math.max(dx, dz) + 0.4142 * Math.min(dx, dz) + Math.abs(l - gl) * 7; }
+    ? (cx: number, cz: number) => { const l = lv[cz]!, dx = Math.abs(cx - gx), dz = Math.abs(cz - l * shift - (gz - gl * shift)), n = Math.abs(l - gl); return Math.max(Math.max(dx, dz) + 0.4142 * Math.min(dx, dz) + n, 7 * n); }
     : (cx: number, cz: number) => { const dx = Math.abs(cx - gx), dz = Math.abs(cz - gz); return Math.max(dx, dz) + 0.4142 * Math.min(dx, dz); };
   const via = new Map<number, Portal>();
   open.push(si, h(sx, sz));

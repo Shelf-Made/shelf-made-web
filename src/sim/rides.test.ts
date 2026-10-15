@@ -4,6 +4,7 @@ import { openGame } from './testUtil';
 import { toLocal, toWorld, zOnLevel } from './layout';
 import { fixtureFacingWorld, nearestWalkable } from './grid';
 import { gridFor } from './state';
+import { findPath } from './pathfinding';
 import { levelOfPerson } from './storeys';
 import { spawnCustomer } from './people';
 import { bolt } from './shoplifting';
@@ -99,6 +100,43 @@ describe('riding the stairs with the keys', () => {
     applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
     run(s, 4, () => o.climb === undefined);
     expect(levelOfPerson(s.shop, o)).toBe(0);
+  });
+});
+
+describe('which way up', () => {
+  it('shoppers take an escalator (or a lift) over stairs that cost them more, wherever the stairs stand', () => {
+    // Stairs cost 12 (half-tile steps), an escalator 7, a lift 9; stairs and an escalator come up three tiles back.
+    for (const [a, b, z, want] of [['stairs', 'escalator', -5.5, 'escalator'], ['escalator', 'stairs', -5.5, 'escalator'], ['stairs', 'elevator', -0.5, 'elevator']] as const) {
+      const s = shop(77);
+      // One right by the door, the other a tile over.
+      expect(place(s, a, -0.5, -2).ok).toBe(true);
+      expect(place(s, b, 0.5, -2).ok).toBe(true);
+      const kind = (id?: number) => s.shop.fixtures.find((f) => f.id === id)?.type;
+      const g = gridFor(s), door = at(s, 0, -0.7);
+      for (const x of [-2, 0, 2]) {
+        const path = findPath(g, door, at(s, x, z, 1))!;
+        expect(path.filter((w) => w.ride !== undefined).map((w) => kind(w.via)), `${a} by the door, ${b} beside, to ${x}, ${z}`).toEqual([want]);
+      }
+    }
+  });
+
+  it('shoppers after a shelf at the back upstairs ride the escalator, not the stairs by the door', () => {
+    const s = shop(78);
+    expect(place(s, 'stairs', -0.5, -2).ok).toBe(true);
+    expect(place(s, 'escalator', 0.5, -2).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, zOnLevel(-5, 1), 1).ok).toBe(true);
+    const up = s.shop.fixtures.find((f) => f.type === 'shelf' && f.z < -12)!;
+    up.slots = up.slots.map(() => ({ productId: 'apples', qty: 8 }));
+    s.phase = 'open';
+    const rode = new Map<number, string | undefined>();
+    for (let i = 0; i < 120 / TICK && rode.size < 4; i++) {
+      if (i % 60 === 0) { const p = spawnCustomer(s, true); if (p) p.list = [{ productId: 'apples', qty: 1 }]; }
+      tick(s);
+      if (i % 4 === 0) applyCommand(s, { type: 'scan' });
+      for (const p of s.people) if (p.kind === 'customer' && p.climb !== undefined && !rode.has(p.id) && levelOfPerson(s.shop, p) === 0) rode.set(p.id, s.shop.fixtures.find((f) => f.id === p.path[p.pathIdx]?.via)?.type);
+    }
+    expect(rode.size).toBe(4);
+    expect([...rode.values()]).toEqual(['escalator', 'escalator', 'escalator', 'escalator']);
   });
 });
 
