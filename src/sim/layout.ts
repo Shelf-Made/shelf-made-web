@@ -174,29 +174,76 @@ export interface LotLayout {
   truckStop: { x: number; z: number; yaw: number }; plot: Rect; halfW: number; depth: number;
 }
 
-/** The lot around a shop of any size: parking along the east wall, service lane down the west, yard behind. */
+/**
+ * The lot around a shop of any size: parking along the east wall, service lane down the west, yard
+ * behind, all laid out from the floor's outer edges (its bounding rectangle: a shop grown a tile at a
+ * time need not be symmetric about its door).
+ */
 export function lotLayout(shop: { floor: Rect; storeroom: Rect; lotRows?: number }): LotLayout {
-  const halfW = (shop.floor.x1 - shop.floor.x0) / 2;
-  const depth = shop.floor.z1 - shop.storeroom.z0;
+  const east = shop.floor.x1, west = -shop.floor.x0;
+  const halfW = (east + west) / 2;
+  const depth = shop.floor.z1 - Math.min(shop.floor.z0, shop.storeroom.z0);
   const rows = shop.lotRows ?? 1;
   const bays: { x: number; z: number; yaw: number }[] = [];
   const n = Math.min(8, Math.floor((depth - 1.2) / 1.1));
-  for (let k = 0; k < n; k++) bays.push({ x: halfW + 1.6, z: -(depth - 1.1) + k * 1.1, yaw: Math.PI / 2 });
-  if (rows > 1) for (let k = 0; k < n; k++) bays.push({ x: halfW + 6.0, z: -(depth - 1.1) + k * 1.1, yaw: -Math.PI / 2 });
-  const eastEdge = rows > 1 ? halfW + 7.2 : halfW + 4.5;
+  for (let k = 0; k < n; k++) bays.push({ x: east + 1.6, z: -(depth - 1.1) + k * 1.1, yaw: Math.PI / 2 });
+  if (rows > 1) for (let k = 0; k < n; k++) bays.push({ x: east + 6.0, z: -(depth - 1.1) + k * 1.1, yaw: -Math.PI / 2 });
+  const eastEdge = rows > 1 ? east + 7.2 : east + 4.5;
   return {
     halfW, depth,
-    apron: { x0: -halfW - 1, z0: WALL_T, x1: eastEdge, z1: 1.2 },
+    apron: { x0: -west - 1, z0: WALL_T, x1: eastEdge, z1: 1.2 },
     walkwayX: 0,
     bays,
-    aisle: { x0: halfW + 2.45, z0: -(depth - 0.4), x1: halfW + 4.45, z1: -0.5 },
-    driveway: { x0: halfW + 2.5, z0: -0.5, x1: halfW + 4.4, z1: 1.5 },
-    serviceLane: { x0: -halfW - 2.9, z0: -(depth + 2.4), x1: -halfW - 1.1, z1: 1.5 },
-    backYard: { x0: -halfW - 1.1, z0: -(depth + 2.4), x1: eastEdge, z1: -depth - WALL_T },
-    truckStop: { x: -halfW + 1.3, z: -(depth + 1.4), yaw: Math.PI / 2 },
+    aisle: { x0: east + 2.45, z0: -(depth - 0.4), x1: east + 4.45, z1: -0.5 },
+    driveway: { x0: east + 2.5, z0: -0.5, x1: east + 4.4, z1: 1.5 },
+    serviceLane: { x0: -west - 2.9, z0: -(depth + 2.4), x1: -west - 1.1, z1: 1.5 },
+    backYard: { x0: -west - 1.1, z0: -(depth + 2.4), x1: eastEdge, z1: -depth - WALL_T },
+    truckStop: { x: -west + 1.3, z: -(depth + 1.4), yaw: Math.PI / 2 },
     plot: { x0: -8, z0: -(depth + 3), x1: Math.max(8, eastEdge + 0.8), z1: 1.5 },
   };
 }
+
+// ---- The floor, tile by tile. It grows a tile at a time inside the market hall's footprint: `floor`
+// is its bounding rectangle and `gaps` the tiles inside that are not floor yet (keys "x,z" of their
+// corner). A shop without gaps is the plain rectangle every older save has.
+
+/** The most floor a shop can have (the front wall never moves). */
+export const MAX_FLOOR: Rect = { x0: -4.5, z0: -8, x1: 4.5, z1: 0 };
+export const tileKey = (x: number, z: number): string => `${x},${z}`;
+type FloorShape = { floor: Rect; gaps?: string[] };
+const gapSets = new WeakMap<string[], Set<string>>();
+function gapSet(shop: FloorShape): Set<string> | null {
+  if (!shop.gaps?.length) return null;
+  let g = gapSets.get(shop.gaps);
+  if (!g) { g = new Set(shop.gaps); gapSets.set(shop.gaps, g); }
+  return g;
+}
+/** Is the tile with its corner at (x, z) shop floor? */
+export function isFloor(shop: FloorShape, x: number, z: number): boolean {
+  const f = shop.floor, e = 1e-6;
+  if (x < f.x0 - e || x + 1 > f.x1 + e || z < f.z0 - e || z + 1 > f.z1 + e) return false;
+  return !gapSet(shop)?.has(tileKey(x, z));
+}
+/** Every floor tile's corner. */
+export function floorTileList(shop: FloorShape): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  const f = shop.floor;
+  for (let z = f.z0; z < f.z1 - 1e-6; z++) for (let x = f.x0; x < f.x1 - 1e-6; x++) if (isFloor(shop, x, z)) out.push({ x, z });
+  return out;
+}
+export function floorTileCount(shop: FloorShape): number {
+  const f = shop.floor;
+  return Math.round((f.x1 - f.x0) * (f.z1 - f.z0)) - (shop.gaps?.length ?? 0);
+}
+/**
+ * What a tile of floor costs when the shop has `n`: a little more as it grows, fitted so growing to the
+ * old sizes costs what they did (about $900 to the 7×7, $1,500 more to the 9×8).
+ */
+export function tilePriceAt(n: number): number { return Math.round(39.7 + 0.85 * Math.max(0, n - 30)); }
+/** What the next tile of floor costs. */
+export function tilePrice(shop: FloorShape): number { return tilePriceAt(floorTileCount(shop)); }
+/** The name the old sizes went by, from how much floor there is (goals and reviews still speak of them). */
+export function sizeOfTiles(n: number): 'starter' | 'medium' | 'large' { return n >= 72 ? 'large' : n >= 49 ? 'medium' : 'starter'; }
 
 /** Shop sizes you can grow into. Costs include the land. */
 export const SHOP_SIZES: { id: string; name: string; floor: Rect; storeroom: Rect; cost: number }[] = [

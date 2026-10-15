@@ -14,7 +14,7 @@ import type { GameState, Person, Look, CustomerType } from './types';
 import { withRng } from './state';
 import type { Rng } from './rng';
 import { productDef } from './products';
-import { FIXTURES, FLOORS, DAY_SECONDS, TICK } from './layout';
+import { FIXTURES, FLOORS, DAY_SECONDS, TICK, floorTileList, floorTileCount, tileKey } from './layout';
 import { priceIndex } from './customers';
 import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
@@ -100,14 +100,16 @@ export function looksOf(state: GameState): Looks {
   let slots = 0, full = 0;
   for (const f of shop.fixtures) for (const s of f.slots) { slots++; if (s.productId) full += Math.min(1, s.qty / Math.max(1, FIXTURES[f.type].capacity)); }
   const shelves = slots ? clamp((full / slots) * 1.15, 0, 1) : 0;
-  const area = (shop.floor.x1 - shop.floor.x0) * (shop.floor.z1 - shop.floor.z0);
+  const area = floorTileCount(shop);
   const used = shop.fixtures.reduce((a, f) => a + FIXTURES[f.type].w * FIXTURES[f.type].d, 0) / Math.max(1, area);
   // Best between about a fifth and a half of the floor: bare below, crammed above.
   const space = used < 0.2 ? clamp(used / 0.2, 0, 1) : used > 0.5 ? clamp(1 - (used - 0.5) / 0.25, 0, 1) : 1;
   const mess = (state.life?.litter ?? []).filter((l) => onFrontage(state, l)).length;
   const teens = (state.life?.hangouts ?? []).some((h) => h.mine);
   const outside = clamp(1 - mess * 0.18 - (teens ? 0.35 : 0), 0, 1);
-  const floor = FLOORS.find((x) => x.id === (shop.floorStyle ?? 'lino'))?.looks ?? 0;
+  // The floor, tile by tile: what each finish adds, averaged over the shop.
+  const tiles = floorTileList(shop);
+  const floor = tiles.reduce((a, t) => a + (FLOORS.find((x) => x.id === (shop.tileStyles?.[tileKey(t.x, t.z)] ?? shop.floorStyle ?? 'lino'))?.looks ?? 0), 0) / Math.max(1, tiles.length);
   // Windows: daylight on more of the shop (a few each make a difference; past a dozen, not much).
   const windows = Math.min(count('window'), 15) * 0.016;
   const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.lotRows > 1 ? 0.15 : 0) + (count('produce') > 0 ? 0.25 : 0) + floor + windows + 0.1, 0, 1);

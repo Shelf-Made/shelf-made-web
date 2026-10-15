@@ -4,7 +4,7 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld } from './layout';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
@@ -18,21 +18,21 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const shop = state.shop;
   const f = shop.floor;
   const price = def.price;
-  if (x < f.x0 || x + 1 > f.x1 || z < f.z0 || z + 1 > f.z1) return { ok: false, reason: 'Only inside the shop floor', price };
   if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a floor tile', price };
+  if (!isFloor(shop, x, z)) return { ok: false, reason: 'Only inside the shop floor', price };
   // One thing per tile, except a window: it is up in the wall behind, so a shelf can stand in front of it
   // (but a light hung on the same wall cannot share it).
   const sameWall = (fx: Fixture) => !!def.onWall && !!FIXTURES[fx.type].onWall && fx.rot === rot;
   if (shop.fixtures.some((fx) => fx.id !== ignoreId && fx.x === x && fx.z === z && (sameWall(fx) || (type !== 'window' && fx.type !== 'window')))) return { ok: false, reason: 'Something is already there', price };
   // A doormat, a rug, a light on the wall: nothing anyone could bump into, so they may go by the doors.
   if (!def.walkable && Math.abs(x + 0.5 - shop.door.x) < 0.6 && z === f.z1 - 1) return { ok: false, reason: 'Keep the front door clear', price };
-  if (!def.walkable && Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && z === f.z0) return { ok: false, reason: 'Keep the back door clear', price };
+  if (!def.walkable && Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && z === shop.backDoor.z) return { ok: false, reason: 'Keep the back door clear', price };
   if (def.onWall) {
     // Its back against the outer wall: the tile behind it is outside the floor.
     const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][rot & 3]!;
     const bx = x - fc.x, bz = z - fc.z;
-    if (bx >= f.x0 && bx + 1 <= f.x1 && bz >= f.z0 && bz + 1 <= f.z1) return { ok: false, reason: 'Hang it on a wall, facing in (R turns it)', price };
-    const onDoor = (Math.abs(x + 0.5 - shop.door.x) < 0.6 && bz >= f.z1) || (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && bz < f.z0);
+    if (isFloor(shop, bx, bz)) return { ok: false, reason: 'Hang it on a wall, facing in (R turns it)', price };
+    const onDoor = (Math.abs(x + 0.5 - shop.door.x) < 0.6 && bz >= f.z1) || (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && fc.z === 1 && bz + 1 === shop.backDoor.z);
     if (onDoor) return { ok: false, reason: 'Not over a door', price };
     if (type === 'window' && bz >= f.z1) return { ok: false, reason: 'The front is all windows already', price };
   }
@@ -75,28 +75,104 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : def.name, price };
 }
 
-/** The floor's tiles (the shop floor and the storeroom strip). */
-function floorTiles(state: GameState): number {
-  const f = state.shop.floor, back = Math.min(f.z0, state.shop.storeroom.z0);
-  return Math.round((f.x1 - f.x0) * (f.z1 - back));
+/** The finish on one tile of floor. */
+export function styleAt(shop: GameState['shop'], x: number, z: number): FloorStyle {
+  return shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino';
 }
 
-/** What laying a floor would cost now. */
+/** What laying a finish over the whole shop would cost now (the tiles that have another finish). */
 export function floorCost(state: GameState, style: FloorStyle): number {
-  return (FLOORS.find((x) => x.id === style)?.perTile ?? 0) * floorTiles(state);
+  const per = FLOORS.find((x) => x.id === style)?.perTile ?? 0;
+  return per * floorTileList(state.shop).filter((t) => styleAt(state.shop, t.x, t.z) !== style).length;
 }
 
-/** Lay a new floor finish over the whole shop. */
+/** Lay a finish over the whole shop. */
 export function setFloor(state: GameState, style: FloorStyle): string | null {
   const def = FLOORS.find((x) => x.id === style);
   if (!def) return 'No such floor.';
-  if ((state.shop.floorStyle ?? 'lino') === style) return 'That floor is down already.';
   const cost = floorCost(state, style);
+  if (!floorTileList(state.shop).some((t) => styleAt(state.shop, t.x, t.z) !== style)) return 'That floor is down already.';
   if (state.cash < cost) return `Need ${dollars(cost)}`;
   state.cash -= cost;
   state.shop.floorStyle = style;
-  state.shop.layoutVersion++;
+  delete state.shop.tileStyles;
   return null;
+}
+
+/** Can this tile of floor be given this finish? */
+export function canPaintFloor(state: GameState, x: number, z: number, style: FloorStyle): PlaceCheck {
+  const price = FLOORS.find((f) => f.id === style)?.perTile ?? 0;
+  if (!isFloor(state.shop, x, z)) return { ok: false, reason: 'Only on the shop floor', price };
+  if (styleAt(state.shop, x, z) === style) return { ok: false, reason: 'That floor is down already', price };
+  if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
+  return { ok: true, reason: FLOORS.find((f) => f.id === style)?.name ?? style, price };
+}
+
+/** Lay a finish on one tile. */
+export function paintFloor(state: GameState, x: number, z: number, style: FloorStyle): string | null {
+  const check = canPaintFloor(state, x, z, style);
+  if (!check.ok) return check.reason;
+  state.cash -= check.price;
+  const shop = state.shop;
+  const styles = { ...shop.tileStyles };
+  if (style === (shop.floorStyle ?? 'lino')) delete styles[tileKey(x, z)]; else styles[tileKey(x, z)] = style;
+  shop.tileStyles = styles;
+  return null;
+}
+
+/** Can this tile be bought and built on? Next to the floor you have, inside the plot's limit, behind the front wall. */
+export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
+  const shop = state.shop, price = tilePrice(shop), m = MAX_FLOOR, f = shop.floor;
+  if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a tile', price };
+  if (isFloor(shop, x, z)) return { ok: false, reason: 'That is floor already', price };
+  if (z + 1 > m.z1) return { ok: false, reason: 'The front wall stays where it is', price };
+  if (x < m.x0 || x + 1 > m.x1 || z < m.z0) return { ok: false, reason: 'The plot ends here', price };
+  if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => isFloor(shop, x + dx!, z + dz!))) return { ok: false, reason: 'Next to the floor you have', price };
+  if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
+  return { ok: true, reason: 'More floor', price };
+}
+
+/** Build one more tile of shop: the walls move out round it. */
+export function buyTile(state: GameState, x: number, z: number): string | null {
+  const check = canBuyTile(state, x, z);
+  if (!check.ok) return check.reason;
+  state.cash -= check.price;
+  addFloor(state.shop, [{ x, z }]);
+  reshape(state);
+  return null;
+}
+
+/** Make tiles floor: the bounding rectangle grows to hold them, the new tiles in it that are not floor become gaps. */
+function addFloor(shop: GameState['shop'], tiles: { x: number; z: number }[]): void {
+  const was = new Set(floorTileList(shop).map((t) => tileKey(t.x, t.z)));
+  for (const t of tiles) was.add(tileKey(t.x, t.z));
+  const f = shop.floor;
+  const nf = { x0: Math.min(f.x0, ...tiles.map((t) => t.x)), z0: Math.min(f.z0, ...tiles.map((t) => t.z)), x1: Math.max(f.x1, ...tiles.map((t) => t.x + 1)), z1: Math.max(f.z1, ...tiles.map((t) => t.z + 1)) };
+  const gaps: string[] = [];
+  for (let zz = nf.z0; zz < nf.z1 - 1e-6; zz++) for (let xx = nf.x0; xx < nf.x1 - 1e-6; xx++) if (!was.has(tileKey(xx, zz))) gaps.push(tileKey(xx, zz));
+  shop.floor = nf;
+  if (gaps.length) shop.gaps = gaps; else delete shop.gaps;
+}
+
+/** After the floor changed: the back door, windows and lights go out with their walls; the lot, the storage and the size follow. */
+function reshape(state: GameState): void {
+  const shop = state.shop, f = shop.floor;
+  shop.storeroom = { x0: f.x0, z0: f.z0, x1: f.x1, z1: f.z0 };
+  // The back door stays in its column, at the back edge of the floor there.
+  let bz = shop.backDoor.z;
+  while (isFloor(shop, shop.backDoor.x - 0.5, bz - 1)) bz--;
+  shop.backDoor = { x: shop.backDoor.x, z: bz };
+  for (const fx of shop.fixtures) {
+    if (!FIXTURES[fx.type].onWall) continue;
+    const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][fx.rot & 3]!;
+    while (isFloor(shop, fx.x - fc.x, fx.z - fc.z)) { fx.x -= fc.x; fx.z -= fc.z; }
+  }
+  const n = floorTileCount(shop);
+  shop.sizeId = sizeOfTiles(n);
+  shop.storageCapacity = 120 + 5 * Math.max(0, n - 30);
+  const L = lotLayout(shop);
+  shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
+  shop.layoutVersion++;
 }
 
 /**
@@ -112,12 +188,10 @@ export function wallOf(f: { x: number; z: number; rot: Rot }): { side: 'back' | 
  * (the way it already faces if that works, in a corner), or null when the tile is not against one.
  */
 export function facingOffWall(state: GameState, type: FixtureType, x: number, z: number, prefer: Rot): Rot | null {
-  const f = state.shop.floor;
+  if (!isFloor(state.shop, x, z)) return null;
   for (const r of [prefer, 0, 1, 3, 2] as Rot[]) {
     const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][r]!;
-    const bx = x - fc.x, bz = z - fc.z;
-    const behindOutside = bx < f.x0 || bx + 1 > f.x1 || bz < f.z0 || bz + 1 > f.z1;
-    if (behindOutside && !(type === 'window' && r === 2)) return r;
+    if (!isFloor(state.shop, x - fc.x, z - fc.z) && !(type === 'window' && r === 2)) return r;
   }
   return null;
 }
@@ -135,31 +209,26 @@ export function windowsFromSides(state: GameState): void {
   shop.layoutVersion++;
 }
 
+/**
+ * Grow to one of the old sizes in one go (every tile of its footprint the shop does not have yet, at the
+ * tile price as each goes in): the shortcut the balance bots and older tests use.
+ */
 export function expandShop(state: GameState, sizeId: string): string | null {
   const size = SHOP_SIZES.find((s) => s.id === sizeId);
   if (!size) return 'No such size.';
-  const current = SHOP_SIZES.findIndex((s) => s.id === state.shop.sizeId);
-  const target = SHOP_SIZES.indexOf(size);
-  if (target <= current) return 'The shop is already that big.';
-  const cost = size.cost - (SHOP_SIZES[current]?.cost ?? 0);
-  if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
   const shop = state.shop;
+  const want: { x: number; z: number }[] = [];
+  for (let z = size.floor.z0; z < size.floor.z1; z++) for (let x = size.floor.x0; x < size.floor.x1; x++) if (!isFloor(shop, x, z)) want.push({ x, z });
+  if (!want.length) return 'The shop is already that big.';
+  let n = floorTileCount(shop), cost = 0;
+  for (let i = 0; i < want.length; i++, n++) cost += tilePriceAt(n);
+  if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
   state.cash -= cost;
-  shop.floor = { ...size.floor }; shop.storeroom = { ...size.storeroom }; shop.sizeId = size.id;
-  shop.delivery = deliveryZone(size.floor);
-  shop.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
-  // Fixtures keep their tiles (the shop grows back and sideways; the front wall does not move), but
-  // windows and lights on a wall that moved go with it.
-  for (const fx of shop.fixtures) {
-    if (!FIXTURES[fx.type].onWall) continue;
-    if (fx.rot === 0) fx.z = size.floor.z0;
-    else if (fx.rot === 1) fx.x = size.floor.x0;
-    else if (fx.rot === 3) fx.x = size.floor.x1 - 1;
-  }
-  const L = lotLayout(shop);
-  shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
-  shop.storageCapacity = 120 + target * 100;
-  shop.layoutVersion++;
+  addFloor(shop, want);
+  // The delivery pallet goes to the new back corner, by the back door.
+  shop.delivery = deliveryZone(shop.floor);
+  shop.backDoor = { x: shop.backDoor.x, z: shop.floor.z0 };
+  reshape(state);
   state.notices.push({ day: state.day, text: `Extension built: the shop is now a ${size.name.toLowerCase()}.`, kind: 'info' });
   return null;
 }

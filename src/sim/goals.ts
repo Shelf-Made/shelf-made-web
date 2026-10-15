@@ -6,7 +6,7 @@
 import type { GameState, DayStats } from './types';
 import { popup, cue } from './state';
 import { doorOutside } from './people';
-import { SHOP_SIZES } from './layout';
+import { SHOP_SIZES, floorTileCount } from './layout';
 import { dollars } from './money';
 
 export interface GoalDef {
@@ -31,9 +31,9 @@ export const GOALS: GoalDef[] = [
   { id: 'doors', title: 'Open your doors', target: 'Serve 30 customers in one day', reward: { cash: 100 }, rewardText: '$100', when: 'now' },
   { id: 'regulars', title: 'Regulars', target: 'Reach 60% reputation', reward: { unlock: 'signLit' }, rewardText: 'Lit sign letters', when: 'night' },
   { id: 'cheapo', title: 'Beat the discounter', target: 'Out-sell Cheapo 3 days running', reward: { cash: 250 }, rewardText: '$250', when: 'night' },
-  { id: 'grocer', title: 'Neighbourhood grocer', target: 'Move up to the 7×7 shop and net $120 in a day', reward: { unlock: 'openingEvent' }, rewardText: 'Opening-day events (bunting and a crowd)', when: 'night' },
+  { id: 'grocer', title: 'Neighbourhood grocer', target: 'Grow the shop to 49 tiles and net $120 in a day', reward: { unlock: 'openingEvent' }, rewardText: 'Opening-day events (bunting and a crowd)', when: 'night' },
   { id: 'busiest', title: 'Busiest corner', target: 'A third of the crossroads\' shoppers over a week', reward: { cash: 500 }, rewardText: '$500', when: 'night' },
-  { id: 'hall', title: 'Market hall', target: 'Move up to the 9×8 market hall with a doubled lot', reward: { unlock: 'franchises' }, rewardText: 'Branches out of town', when: 'now' },
+  { id: 'hall', title: 'Market hall', target: 'Grow the shop to 72 tiles, with a doubled lot', reward: { unlock: 'franchises' }, rewardText: 'Branches out of town', when: 'now' },
   { id: 'own', title: 'Own the crossroads', target: "Buy a closed rival's corner", reward: { ending: true }, rewardText: 'Crossroads Champion', when: 'now' },
 ];
 
@@ -93,7 +93,8 @@ export function goalProgress(state: GameState, g: GoalDef): { frac: number; text
       return { frac: Math.min(1, run / CHEAPO_DAYS), text: `${run} of ${CHEAPO_DAYS} days ahead of Cheapo${c?.lastSales !== undefined && c.open ? ` (they took ${dollars(c.lastSales)} last night)` : ''}` };
     }
     case 'grocer': {
-      if (sizeRank(state.shop.sizeId) < 1) return { frac: Math.min(0.5, (state.cash / (SHOP_SIZES[1]!.cost)) * 0.5), text: `Move up to the 7×7 shop (${dollars(SHOP_SIZES[1]!.cost)}, Build card)` };
+      const n = floorTileCount(state.shop);
+      if (sizeRank(state.shop.sizeId) < 1) return { frac: Math.min(0.5, ((n - 30) / 19) * 0.5), text: `${n} of 49 tiles (add floor in the Build card, Shop)` };
       const best = Math.max(0, ...state.history.filter((d) => d.day >= state.goals.since).map((d) => d.profit), state.phase === 'night' ? t.profit : 0);
       return { frac: 0.5 + 0.5 * Math.min(1, best / GROCER_NET), text: `Best day since: ${dollars(best)} of ${dollars(GROCER_NET)}` };
     }
@@ -105,7 +106,8 @@ export function goalProgress(state: GameState, g: GoalDef): { frac: number; text
     }
     case 'hall': {
       const big = state.shop.sizeId === 'large', lot = state.shop.lotRows >= 2;
-      return { frac: (big ? 0.5 : sizeRank(state.shop.sizeId) * 0.25) + (lot ? 0.5 : 0), text: big && !lot ? 'Now double the lot (Build card)' : !big && lot ? 'Now the 9×8 market hall (Build card)' : big && lot ? 'Done' : 'The 9×8 market hall and a doubled lot (Build card)' };
+      const n = floorTileCount(state.shop);
+      return { frac: Math.min(0.5, Math.max(0, (n - 30) / 42) * 0.5) + (lot ? 0.5 : 0), text: big && !lot ? 'Now double the lot (Build card)' : !big ? `${n} of 72 tiles${lot ? '' : ', and a doubled lot'} (Build card)` : 'Done' };
     }
     case 'own': {
       const bought = state.rivals.some((r) => r.boughtDay !== undefined);

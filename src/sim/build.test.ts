@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, FIXTURES, buildGrid, findPath, type GameState } from './index';
-import { canPlace, floorCost, windowsFromSides } from './build';
-import { toWorld, storageCap, PALLET_UNITS } from './layout';
+import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt } from './build';
+import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, lotLayout, FLOORS } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint } from './people';
 
@@ -148,5 +148,71 @@ describe('pallets', () => {
     o.x = o.px = at.x; o.z = o.pz = at.z;
     expect(applyCommand(s, { type: 'pickUp', productId: 'beans' }).ok).toBe(true);
     expect(o.carrying).toEqual({ productId: 'beans', qty: 8 });
+  });
+});
+
+describe('growing the shop a tile at a time', () => {
+  it('buys a tile next to the floor, and walls move out round it', () => {
+    const s = shop();
+    const f0 = { ...s.shop.floor };
+    const cash = s.cash, price = tilePrice(s.shop);
+    // Not next to the floor, in front of the front wall, or already floor: no.
+    expect(canBuyTile(s, f0.x1 + 1, -3).reason).toMatch(/next to/i);
+    expect(canBuyTile(s, f0.x0, f0.z1).reason).toMatch(/front wall/i);
+    expect(canBuyTile(s, f0.x0, -3).reason).toMatch(/floor already/i);
+    // One tile out to the east: the floor's rectangle grows and the rest of that column is a gap.
+    expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
+    expect(s.cash).toBeCloseTo(cash - price);
+    expect(isFloor(s.shop, f0.x1, -3)).toBe(true);
+    expect(isFloor(s.shop, f0.x1, -4)).toBe(false);
+    expect(s.shop.floor.x1).toBe(f0.x1 + 1);
+    expect(floorTileCount(s.shop)).toBe((f0.x1 - f0.x0) * (f0.z1 - f0.z0) + 1);
+    // Something can go on it; the gap beside it is not floor.
+    expect(canPlace(s, 'shelf', f0.x1, -3, 3).ok).toBe(true);
+    expect(canPlace(s, 'shelf', f0.x1, -4, 3).reason).toMatch(/inside the shop/);
+    // Filling a gap: it is floor now and the gap list shrinks.
+    expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -4 }).ok).toBe(true);
+    expect(isFloor(s.shop, f0.x1, -4)).toBe(true);
+  });
+
+  it('nobody walks through the new walls, and the parking moves out with the east wall', () => {
+    const s = shop();
+    const bay0 = lotLayout(s.shop).bays[0]!.x;
+    const f0 = { ...s.shop.floor };
+    expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
+    expect(lotLayout(s.shop).bays[0]!.x).toBe(bay0 + 1);
+    const g = buildGrid(s.shop, 99);
+    // From the new tile, out through its north side (a gap, walled off) is blocked; through the door is fine.
+    const inTile = toWorld(s.shop, f0.x1 + 0.5, -2.5);
+    const path = findPath(g, inTile, toWorld(s.shop, f0.x1 + 0.5, -4.5));
+    // The path exists (out of the door and round) but is long: never straight through the wall.
+    expect(path).not.toBeNull();
+    let len = 0, at = inTile;
+    for (const q of path!) { len += Math.hypot(q.x - at.x, q.z - at.z); at = q; }
+    expect(len).toBeGreaterThan(5);
+  });
+
+  it('a window on a wall that moves goes out with it; the back door moves back with the back wall', () => {
+    const s = shop();
+    const f0 = { ...s.shop.floor };
+    expect(place(s, 'window', f0.x1 - 1, -3, 3).ok).toBe(true);
+    expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
+    const w = s.shop.fixtures.find((x) => x.type === 'window')!;
+    expect(w.x).toBe(f0.x1);
+    const bd = { ...s.shop.backDoor };
+    expect(applyCommand(s, { type: 'buyTile', x: bd.x - 0.5, z: bd.z - 1 }).ok).toBe(true);
+    expect(s.shop.backDoor.z).toBe(bd.z - 1);
+  });
+
+  it('lays a finish on one tile at a time', () => {
+    const s = shop();
+    const f0 = s.shop.floor;
+    const cash = s.cash;
+    expect(applyCommand(s, { type: 'paintFloor', x: f0.x0, z: -3, style: 'wood' }).ok).toBe(true);
+    expect(s.cash).toBeCloseTo(cash - FLOORS.find((x) => x.id === 'wood')!.perTile);
+    expect(styleAt(s.shop, f0.x0, -3)).toBe('wood');
+    expect(styleAt(s.shop, f0.x0, -4)).toBe('lino');
+    expect(applyCommand(s, { type: 'paintFloor', x: f0.x0, z: -3, style: 'wood' }).ok).toBe(false);
+    expect(applyCommand(s, { type: 'paintFloor', x: f0.x0 - 1, z: -3, style: 'wood' }).ok).toBe(false);
   });
 });

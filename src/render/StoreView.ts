@@ -7,7 +7,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, toLocal, rectToWorld } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, toLocal, rectToWorld, isFloor, floorTileList, tileKey } from '@/sim/layout';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
 const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window']);
@@ -25,7 +25,6 @@ import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
 import { fittingGeometry, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS } from './fittings';
-import { wallOf } from '@/sim/build';
 import { BlobShadows } from './blobs';
 import { cornerProps, pylonSpot, cornerGarden } from './dressing';
 import { tuftMesh } from './StaticWorld';
@@ -191,10 +190,10 @@ export class StoreView {
 
     // ---- Floor: warm checker lino, a tile a square, with fine joints between; then the lot paving outside.
     const floorParts: BufferGeometry[] = [];
-    const W = f.x1 - f.x0, D = f.z1 - backZ, cx0 = ox + (f.x0 + f.x1) / 2, cz0 = oz + (backZ + f.z1) / 2;
-    const fin = floorPaint(shop.floorStyle ?? 'lino', sc);
-    floorParts.push(box(pal, fin.joint, W, 0.052, D, cx0, -0.04, cz0));
-    for (let x = f.x0; x < f.x1 - 0.01; x++) for (let z = backZ; z < f.z1 - 0.01; z++) {
+    // Tile by tile, each in its own finish (laid a tile at a time), the joints showing between.
+    for (const { x, z } of floorTileList(shop)) {
+      const fin = floorPaint(shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino', sc);
+      floorParts.push(box(pal, fin.joint, 1, 0.052, 1, ox + x + 0.5, -0.04, oz + z + 0.5));
       const i = Math.round(x - f.x0), j = Math.round(z - backZ);
       if (fin.boards) {
         // Boards: four to a tile, each its own shade of honey.
@@ -205,7 +204,7 @@ export class StoreView {
     }
     // Door thresholds: steel strips across each opening.
     floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.door.x, -0.008, oz + f.z1 + WALL_T / 2));
-    floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.backDoor.x, -0.008, oz + backZ - WALL_T / 2));
+    floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.backDoor.x, -0.008, oz + shop.backDoor.z - WALL_T / 2));
     // Delivery zone: yellow-and-charcoal hazard border and a pallet.
     const d = shop.delivery;
     const dw = d.x1 - d.x0, dd = d.z1 - d.z0;
@@ -258,83 +257,122 @@ export class StoreView {
     // Where the inside paint stops around a window: its pane, or (Kenney's glass is painted in the atlas) the frame set back in the wall.
     const opening = pane ?? recessOf(windowG);
     const posters: BufferGeometry[] = [];
-    const glassParts: BufferGeometry[] = [], litPanes: BufferGeometry[] = [];
-    const side = (tiles: number[], line: number, axis: 'x' | 'z', outward: number, yaw: number, doorAt: number | null, windowAt: (t: number) => boolean) => {
-      const full: BufferGeometry[] = [], ledge: BufferGeometry[] = [];
-      // The inside face of the wall pieces sits 0.05 inside the floor edge; the paint goes just in front of it.
-      const lo = (axis === 'x' ? f.x0 : backZ) + 0.12, hi = (axis === 'x' ? f.x1 : f.z1) - 0.12;
-      for (const t of tiles) {
-        const isDoor = doorAt !== null && Math.abs(t - doorAt) < 0.01;
-        const isWindow = windowAt(t) && !isDoor && Math.abs(t - (doorAt ?? 99)) > 0.6;
+    const litPanes: BufferGeometry[] = [];
+    // Walls follow the floor's outline, a piece on every outside edge of a floor tile, gathered by the way
+    // they face (so the cut-away drops the ones toward the camera). Each end of a run either turns a corner
+    // of the room (the paint stops short of it), carries on, or meets a wall coming the other way round a
+    // notch in the floor (the paint runs on to meet it; the piece along x stops short, the other covers the corner).
+    type Dir = { name: 'front' | 'back' | 'left' | 'right'; nx: number; nz: number; axis: 'x' | 'z'; yaw: number };
+    const DIRS: Dir[] = [
+      { name: 'front', nx: 0, nz: 1, axis: 'x', yaw: 0 }, { name: 'back', nx: 0, nz: -1, axis: 'x', yaw: Math.PI },
+      { name: 'left', nx: -1, nz: 0, axis: 'z', yaw: -Math.PI / 2 }, { name: 'right', nx: 1, nz: 0, axis: 'z', yaw: Math.PI / 2 },
+    ];
+    const tiles = floorTileList(shop);
+    const at = (x: number, z: number) => isFloor(shop, x, z);
+    // Windows: the whole front line is glass; elsewhere wherever a Window was put in (keyed by the wall it is in).
+    const wins = new Set(shop.fixtures.filter((fx) => fx.type === 'window').map((fx) => {
+      // Its wall is behind it: facing +z (rot 0) it is in the back wall, and so on round.
+      const r = fx.rot & 3, dir = r === 0 ? DIRS[1]! : r === 1 ? DIRS[2]! : r === 2 ? DIRS[0]! : DIRS[3]!;
+      const line = dir.axis === 'x' ? (dir.nz > 0 ? fx.z + 1 : fx.z) : (dir.nx > 0 ? fx.x + 1 : fx.x);
+      return `${dir.name}@${line}@${dir.axis === 'x' ? fx.x + 0.5 : fx.z + 0.5}`;
+    }));
+    let front: Side | null = null;
+    for (const dir of DIRS) {
+      const full: BufferGeometry[] = [], ledge: BufferGeometry[] = [], glass: BufferGeometry[] = [];
+      const ax = dir.axis === 'x' ? 1 : 0, az = dir.axis === 'z' ? 1 : 0;
+      for (const tile of tiles) {
+        if (at(tile.x + dir.nx, tile.z + dir.nz)) continue;
+        const line = dir.axis === 'x' ? (dir.nz > 0 ? tile.z + 1 : tile.z) : (dir.nx > 0 ? tile.x + 1 : tile.x);
+        const t = dir.axis === 'x' ? tile.x + 0.5 : tile.z + 0.5;
+        const outward = dir.axis === 'x' ? dir.nz : dir.nx;
+        const isFront = dir.name === 'front' && line === f.z1;
+        const isDoor = (isFront && Math.abs(t - shop.door.x) < 0.01) || (dir.name === 'back' && line === shop.backDoor.z && Math.abs(t - shop.backDoor.x) < 0.01);
+        const nearDoor = isFront && Math.abs(t - shop.door.x) <= 0.6;
+        const isWindow = !isDoor && !nearDoor && (isFront || wins.has(`${dir.name}@${line}@${t}`));
         const src = isDoor ? doorG : isWindow ? windowG : wallG;
-        const px = axis === 'x' ? ox + t : ox + line + outward * WALL_T / 2;
-        const pz = axis === 'x' ? oz + line + outward * WALL_T / 2 : oz + t;
-        full.push(place(src.clone(), px, 0, pz, yaw));
+        // How each end of this piece meets its neighbours along the wall.
+        const ends = [-1, 1].map((e) => {
+          const nx = tile.x + ax * e, nz = tile.z + az * e;
+          if (!at(nx, nz)) return 'corner' as const;
+          return at(nx + dir.nx, nz + dir.nz) ? 'notch' as const : 'run' as const;
+        });
+        // Along x, a piece that meets a notch's wall gives way to it by half a tile at that end.
+        const cutLo = dir.axis === 'x' && ends[0] === 'notch', cutHi = dir.axis === 'x' && ends[1] === 'notch';
+        const len = 1 - (cutLo ? 0.5 : 0) - (cutHi ? 0.5 : 0), mid = t + (cutLo ? 0.25 : 0) - (cutHi ? 0.25 : 0);
+        const px = dir.axis === 'x' ? ox + mid : ox + line + outward * WALL_T / 2;
+        const pz = dir.axis === 'x' ? oz + line + outward * WALL_T / 2 : oz + mid;
+        // A shortened piece is the plain wall (a window or door never sits by a notch's end).
+        const piece = len < 1 ? wallG : src;
+        full.push(place(piece.clone(), px, 0, pz, dir.yaw, len, 1, 1));
         // Cut down, a window is a plain wall: the opening starts below the ledge, and squashing its frame
         // and pane onto the cut left a jumble of colours fighting on the sill.
-        ledge.push(place(isDoor ? src.clone() : cutDown(isWindow ? wallG : src, LEDGE), px, 0, pz, yaw));
-        if (isWindow && windowGlass) glassParts.push(place(windowGlass.clone(), px, 0, pz, yaw));
-        // Offers in every other front window, on the outside of the glass.
-        if (isWindow && pane && axis === 'x' && outward > 0 && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + WALL_T / 2 + pane.z1 + 0.006));
-        if (isWindow && pane && axis === 'x' && outward > 0) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, pane.y0 + 0.01, line + 0.08));
+        ledge.push(place(isDoor ? src.clone() : cutDown(isWindow ? wallG : piece, LEDGE), px, 0, pz, dir.yaw, len, 1, 1));
+        if (isWindow && windowGlass && len === 1) glass.push(place(windowGlass.clone(), px, 0, pz, dir.yaw));
+        // Offers in every other front window, on the outside of the glass; the front windows glow at night.
+        if (isFront && isWindow && pane && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + WALL_T / 2 + pane.z1 + 0.006));
+        if (isFront && isWindow && pane) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, pane.y0 + 0.01, line + 0.08));
         if (!isDoor) {
-          const a = Math.max(t - 0.5, lo), b = Math.min(t + 0.5, hi);
+          const a = t - 0.5 + (ends[0] === 'corner' ? 0.12 : ends[0] === 'notch' ? -0.062 : 0);
+          const b = t + 0.5 - (ends[1] === 'corner' ? 0.12 : ends[1] === 'notch' ? -0.062 : 0);
           const hole = isWindow && opening ? { a: t + opening.x0, b: t + opening.x1, y0: opening.y0, y1: opening.y1 } : null;
-          full.push(...this.paintPanels(line - outward * 0.062, axis, a, b, 1, hole));
-          ledge.push(...this.paintPanels(line - outward * 0.062, axis, a, b, LEDGE, null));
+          full.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole));
+          ledge.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null));
         }
       }
+      if (!full.length) continue;
       const fullMesh = new Mesh(merge(full), this.assets.material);
       const ledgeMesh = new Mesh(merge(ledge), this.assets.material);
       for (const m of [fullMesh, ledgeMesh]) { m.castShadow = true; m.receiveShadow = true; this.shell.add(m); }
-      const nx = axis === 'z' ? outward : 0, nz = axis === 'x' ? outward : 0;
-      const s: Side = { full: fullMesh, ledge: ledgeMesh, nx, nz, extraFull: [] };
-      this.sides.push(s);
-      return s;
-    };
-    const xs: number[] = []; for (let x = f.x0 + 0.5; x < f.x1; x++) xs.push(x);
-    const zs: number[] = []; for (let z = backZ + 0.5; z < f.z1; z++) zs.push(z);
-    // The front is all windows; the other walls have a window wherever one was put in.
-    const wins = new Set(shop.fixtures.filter((fx) => fx.type === 'window').map((fx) => { const w = wallOf(fx); return `${w.side}@${w.t}`; }));
-    const front = side(xs, f.z1, 'x', 1, 0, shop.door.x, () => true);
-    side(xs, backZ, 'x', -1, Math.PI, shop.backDoor.x, (t) => wins.has(`back@${t}`));
-    side(zs, f.x0, 'z', -1, -Math.PI / 2, null, (t) => wins.has(`left@${t}`));
-    side(zs, f.x1, 'z', 1, Math.PI / 2, null, (t) => wins.has(`right@${t}`));
-    // Corner posts: a half-width wall piece turned to close each corner.
+      const side: Side = { full: fullMesh, ledge: ledgeMesh, nx: dir.nx, nz: dir.nz, extraFull: [] };
+      if (glass.length) { const gm = new Mesh(merge(glass), this.assets.glass); this.shell.add(gm); side.extraFull.push(gm); }
+      this.sides.push(side);
+      if (dir.name === 'front') front = side;
+    }
+    // Corner posts: a half-width wall piece closing the square outside each outer corner of the floor.
     const corner = place(wallG.clone(), 0, 0, 0, 0, 0.5, 1, 1);
     const posts: BufferGeometry[] = [];
-    for (const [cx, cz] of [[f.x0 - 0.25, f.z1 + 0.25], [f.x1 + 0.25, f.z1 + 0.25], [f.x0 - 0.25, backZ - 0.25], [f.x1 + 0.25, backZ - 0.25]] as const) posts.push(place(corner.clone(), ox + cx, 0, oz + cz));
-    const postMesh = new Mesh(merge(posts), this.assets.material);
-    postMesh.castShadow = true;
-    this.shell.add(postMesh);
-    if (glassParts.length) { const gm = new Mesh(merge(glassParts), this.assets.glass); this.shell.add(gm); front.extraFull.push(gm); }
-    if (posters.length) { const pm = new Mesh(merge(posters), this.assets.material); this.shell.add(pm); front.extraFull.push(pm); }
+    const seen = new Set<string>();
+    for (const tile of tiles) for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      if (at(tile.x + dx, tile.z) || at(tile.x, tile.z + dz)) continue;
+      const cx = tile.x + 0.5 + dx * 0.75, cz = tile.z + 0.5 + dz * 0.75, k = `${cx},${cz}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      posts.push(place(corner.clone(), ox + cx, 0, oz + cz));
+    }
+    if (posts.length) { const postMesh = new Mesh(merge(posts), this.assets.material); postMesh.castShadow = true; this.shell.add(postMesh); }
+    if (posters.length && front) { const pm = new Mesh(merge(posters), this.assets.material); this.shell.add(pm); front.extraFull.push(pm); }
+    const frontSide: Side = front ?? { full: new Mesh(), ledge: new Mesh(), nx: 0, nz: 1, extraFull: [] };
 
-    // ---- Front: striped awning over the windows, the name on a fascia, and a pylon by the road.
-    const width = f.x1 - f.x0;
+    // ---- Front: striped awning over the windows, the name on a fascia, and a pylon by the road. They span
+    // the run of front wall either side of the door.
+    let rx0 = shop.door.x - 0.5, rx1 = shop.door.x + 0.5;
+    while (at(rx0 - 1, f.z1 - 1)) rx0--;
+    while (at(rx1, f.z1 - 1)) rx1++;
+    const fr = { x0: rx0, x1: rx1 };
+    const width = fr.x1 - fr.x0;
     const fz = oz + f.z1 + WALL_T + 0.02;
     const awning: BufferGeometry[] = [];
     let k = 0;
-    for (let x = ox + f.x0; x < ox + f.x1 - 0.01; x += 0.25, k++) {
+    for (let x = ox + fr.x0; x < ox + fr.x1 - 0.01; x += 0.25, k++) {
       if (Math.abs(x + 0.125 - (ox + shop.door.x)) < 0.55) continue;
       const g = box(pal, k % 2 ? sc.accent : sc.primary, 0.25, 0.035, 0.42, 0, 0, 0);
       g.rotateX(0.42);
       g.translate(x + 0.125, 0.86, fz + 0.18);
       awning.push(g);
     }
-    awning.push(box(pal, sc.dark, width, 0.05, 0.06, ox + (f.x0 + f.x1) / 2, 0.98, fz + 0.01));
+    awning.push(box(pal, sc.dark, width, 0.05, 0.06, ox + (fr.x0 + fr.x1) / 2, 0.98, fz + 0.01));
     const awningMesh = new Mesh(merge(awning), this.assets.material);
     awningMesh.castShadow = true;
     this.shell.add(awningMesh);
-    front.extraFull.push(awningMesh);
+    frontSide.extraFull.push(awningMesh);
     const name = shop.name;
     const fascia: BufferGeometry[] = [];
     const size = Math.min(0.3, (width - 0.6) / Math.max(1, this.textWidth(name, 1)));
-    fascia.push(box(pal, sc.primary, width + 0.5, 0.5, 0.1, ox + (f.x0 + f.x1) / 2, 1.0, fz - 0.02));
-    fascia.push(box(pal, sc.dark, width + 0.54, 0.05, 0.14, ox + (f.x0 + f.x1) / 2, 1.48, fz - 0.02));
+    fascia.push(box(pal, sc.primary, width + 0.5, 0.5, 0.1, ox + (fr.x0 + fr.x1) / 2, 1.0, fz - 0.02));
+    fascia.push(box(pal, sc.dark, width + 0.54, 0.05, 0.14, ox + (fr.x0 + fr.x1) / 2, 1.48, fz - 0.02));
     const fl = this.letters(name, size, 0.05, CREAM, sc.trim);
-    fascia.push(place(fl, ox + (f.x0 + f.x1) / 2, 1.25 - size * 0.4, fz + 0.04));
-    fascia.push(...this.bracket(ox + (f.x0 + f.x1) / 2, 1.06, fz + 0.04, Math.min(width - 0.3, this.textWidth(name, size) + 0.2)));
+    fascia.push(place(fl, ox + (fr.x0 + fr.x1) / 2, 1.25 - size * 0.4, fz + 0.04));
+    fascia.push(...this.bracket(ox + (fr.x0 + fr.x1) / 2, 1.06, fz + 0.04, Math.min(width - 0.3, this.textWidth(name, size) + 0.2)));
     const fasciaMesh = new Mesh(merge(fascia), this.assets.material);
     fasciaMesh.castShadow = true;
     this.shell.add(fasciaMesh);
@@ -358,9 +396,21 @@ export class StoreView {
     pylonMesh.castShadow = true;
     this.shell.add(pylonMesh);
     // Roof: a flat deck with a parapet in the shop's green, worn when you are outside and pulled back.
-    { const W = f.x1 - f.x0 + 2 * WALL_T, D = f.z1 - backZ + 2 * WALL_T, cx = (f.x0 + f.x1) / 2, cz = (f.z1 + backZ) / 2;
-      const roof = [box(pal, '#9AA0A8', W, 0.06, D, cx, 1.0, cz), box(pal, sc.primary, W + 0.06, 0.12, 0.08, cx, 1.0, f.z1 + WALL_T), box(pal, sc.primary, W + 0.06, 0.12, 0.08, cx, 1.0, backZ - WALL_T),
-        box(pal, sc.primary, 0.08, 0.12, D, f.x0 - WALL_T, 1.0, cz), box(pal, sc.primary, 0.08, 0.12, D, f.x1 + WALL_T, 1.0, cz), box(pal, '#B9BCC4', 0.6, 0.3, 0.5, cx - W / 4, 1.06, cz - D / 5)];
+    { // Over the floor and its walls, tile by tile, with the parapet round the outline.
+      const roof: BufferGeometry[] = [];
+      const T = WALL_T;
+      for (const tile of tiles) {
+        roof.push(box(pal, '#9AA0A8', 1, 0.06, 1, tile.x + 0.5, 1.0, tile.z + 0.5));
+        for (const dir of DIRS) {
+          if (at(tile.x + dir.nx, tile.z + dir.nz)) continue;
+          const cx = tile.x + 0.5 + dir.nx * (0.5 + T / 2), cz = tile.z + 0.5 + dir.nz * (0.5 + T / 2);
+          roof.push(box(pal, '#9AA0A8', dir.axis === 'x' ? 1 + T : T, 0.06, dir.axis === 'x' ? T : 1 + T, cx, 1.0, cz));
+          const px = tile.x + 0.5 + dir.nx * (0.5 + T), pz = tile.z + 0.5 + dir.nz * (0.5 + T);
+          roof.push(box(pal, sc.primary, dir.axis === 'x' ? 1 + 2 * T : 0.08, 0.12, dir.axis === 'x' ? 0.08 : 1 + 2 * T, px, 1.0, pz));
+        }
+      }
+      const mid = tiles[Math.floor(tiles.length / 3)];
+      if (mid) roof.push(box(pal, '#B9BCC4', 0.6, 0.3, 0.5, mid.x + 0.5, 1.06, mid.z + 0.5));
       this.roof = new Mesh(merge(roof), this.assets.material);
       this.roof.castShadow = true; this.roof.visible = false;
       this.shell.add(this.roof); }
@@ -698,6 +748,31 @@ export class StoreView {
     return glow ? merge([g.clone(), glow]) : g.clone();
   }
 
+  /** A tile tool's tile under the pointer: green when it can be bought or laid, red when not. */
+  private tileGhost: Mesh | null = null;
+  // Drawn over the grass (and anything else on the tile) so it always shows.
+  private tileGhostMat = new MeshBasicMaterial({ color: '#3FA87A', transparent: true, opacity: 0.55, depthWrite: false, depthTest: false });
+  setTileGhost(t: { x: number; z: number; ok: boolean } | null): void {
+    if (!t) { if (this.tileGhost) this.tileGhost.visible = false; return; }
+    if (!this.tileGhost) { this.tileGhost = new Mesh(box(this.assets.palette, '#FFFFFF', 0.96, 0.04, 0.96, 0, 0, 0), this.tileGhostMat); this.tileGhost.renderOrder = 6; this.root.add(this.tileGhost); }
+    this.tileGhostMat.color.set(t.ok ? '#3FA87A' : '#E8573F');
+    this.tileGhost.position.set(t.x + 0.5, 0.05, t.z + 0.5);
+    this.tileGhost.visible = true;
+  }
+  /** Growing the shop: every tile that could be bought, faintly marked on the ground. */
+  private growHints: InstancedMesh | null = null;
+  setGrowHints(tiles: { x: number; z: number }[]): void {
+    if (!this.growHints) {
+      this.growHints = new InstancedMesh(box(this.assets.palette, '#FFFFFF', 0.9, 0.02, 0.9, 0, 0, 0), new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0.35, depthWrite: false, depthTest: false }), 128);
+      this.growHints.frustumCulled = false; this.growHints.renderOrder = 5;
+      this.root.add(this.growHints);
+    }
+    const m = new Matrix4();
+    tiles.slice(0, 128).forEach((t, i) => this.growHints!.setMatrixAt(i, m.makeTranslation(t.x + 0.5, 0.025, t.z + 0.5)));
+    this.growHints.count = Math.min(128, tiles.length);
+    this.growHints.instanceMatrix.needsUpdate = true;
+  }
+
   /** Build-mode ghost: green when it can go there, red when it cannot. */
   setGhost(type: FixtureType | null, shop: Shop, x: number, z: number, rot: Rot, valid: boolean): void {
     if (!type) { if (this.ghost) this.ghost.visible = false; return; }
@@ -741,7 +816,7 @@ function stockKey(shop: Shop): string {
 
 export { mergeGeometries, paint };
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`).join(';')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`).join(';')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
 function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; gap: number; boards?: string[] } {

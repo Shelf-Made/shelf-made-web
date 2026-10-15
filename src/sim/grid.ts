@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld, FIXTURES } from './layout';
+import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld, FIXTURES, isFloor, floorTileList } from './layout';
 
 export const CELL = 0.5;
 
@@ -60,14 +60,14 @@ export function fixtureFront(f: Fixture): Vec2 {
  * shop's walking grid); the nearest to `from` wins, the front by half a tile. Null when no side will do.
  */
 export function fixtureStandWorld(shop: Shop, f: Fixture, from?: Vec2, grid: Grid = shopGrid(shop)): Vec2 | null {
-  const cx = f.x + 0.5, cz = f.z + 0.5, fl = shop.floor;
+  const cx = f.x + 0.5, cz = f.z + 0.5;
   const front = fixtureFront(f);
   const tiles = [front, { x: 2 * cx - front.x, z: 2 * cz - front.z }, { x: cx + (front.z - cz), z: cz + (front.x - cx) }, { x: cx - (front.z - cz), z: cz - (front.x - cx) }];
   // Reachable cells are already off the walls, the pallet and every fixture; the floor keeps it indoors.
   const reach = reachableCells(shop, grid);
   let best: Vec2 | null = null, bestD = Infinity;
   tiles.forEach((t, i) => {
-    if (!(t.x > fl.x0 && t.x < fl.x1 && t.z > fl.z0 && t.z < fl.z1)) return;
+    if (!isFloor(shop, t.x - 0.5, t.z - 0.5)) return;
     const w = toWorld(shop, t.x, t.z);
     const [gx, gz] = cellOf(grid, w);
     if (!inBounds(grid, gx, gz) || !reach[cellIndex(grid, gx, gz)]) return;
@@ -124,8 +124,8 @@ export function fixtureAccessWorld(shop: Shop, f: Fixture, from: Vec2, grid?: Gr
 
 /** Is a fixture's front tile on the shop floor (not through a wall)? */
 export function frontInside(shop: Shop, f: Fixture): boolean {
-  const t = fixtureFront(f), fl = shop.floor;
-  return t.x > fl.x0 && t.x < fl.x1 && t.z > fl.z0 && t.z < fl.z1;
+  const t = fixtureFront(f);
+  return isFloor(shop, t.x - 0.5, t.z - 0.5);
 }
 
 /** Direction the fixture faces, unit vector. */
@@ -151,26 +151,22 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   R({ x0: L.plot.x0, z0: 2.6, x1: L.plot.x1, z1: 3.5 }, 1);
   // Parking bays are walkable when empty (cars block them later).
   for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
-  // Shop floor (one room; `storeroom` only exists in old saves).
+  // Shop floor, tile by tile (`storeroom` only exists in old saves).
   const f = shop.floor, s = shop.storeroom;
-  R(f, 1, true);
+  const tiles = floorTileList(shop);
+  for (const t of tiles) R({ x0: t.x, z0: t.z, x1: t.x + 1, z1: t.z + 1 }, 1, true);
   if (s.z1 > s.z0) R(s, 1, true);
-  const backZ = Math.min(f.z0, s.z0);
-  // Walls: a ring of blocked cells WALL_T thick just outside the floor, with door gaps.
+  // Walls: WALL_T thick just outside every edge of the floor (and round its corners), with door gaps.
   const T = WALL_T;
-  const gap = (cx: number) => ({ x0: cx - 0.5, x1: cx + 0.5 });
-  const wallRow = (z0: number, z1: number, doorX: number) => {
-    const d = gap(doorX);
-    R({ x0: f.x0 - T, z0, x1: d.x0, z1 }, 0);
-    R({ x0: d.x1, z0, x1: f.x1 + T, z1 }, 0);
-  };
-  wallRow(f.z1, f.z1 + T, shop.door.x);
-  wallRow(backZ - T, backZ, shop.backDoor.x);
-  R({ x0: f.x0 - T, z0: backZ - T, x1: f.x0, z1: f.z1 + T }, 0);
-  R({ x0: f.x1, z0: backZ - T, x1: f.x1 + T, z1: f.z1 + T }, 0);
+  for (const t of tiles) {
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if ((!dx && !dz) || isFloor(shop, t.x + dx, t.z + dz)) continue;
+      R({ x0: dx < 0 ? t.x - T : dx > 0 ? t.x + 1 : t.x, z0: dz < 0 ? t.z - T : dz > 0 ? t.z + 1 : t.z, x1: dx < 0 ? t.x : dx > 0 ? t.x + 1 + T : t.x + 1, z1: dz < 0 ? t.z : dz > 0 ? t.z + 1 + T : t.z + 1 }, 0);
+    }
+  }
   // The door openings are paved and walkable.
   R({ x0: shop.door.x - 0.5, z0: f.z1, x1: shop.door.x + 0.5, z1: f.z1 + T }, 1);
-  R({ x0: shop.backDoor.x - 0.5, z0: backZ - T, x1: shop.backDoor.x + 0.5, z1: backZ }, backDoorShut ? 0 : 1.1);
+  R({ x0: shop.backDoor.x - 0.5, z0: shop.backDoor.z - T, x1: shop.backDoor.x + 0.5, z1: shop.backDoor.z }, backDoorShut ? 0 : 1.1);
   // Delivered boxes stand here.
   if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.

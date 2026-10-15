@@ -106,6 +106,9 @@ export function migrate(file: SaveFile): SaveFile {
   // Elm Street's bays moved apart (same count, same version): seat them where they stand now.
   const st = raw as unknown as GameState;
   if (Array.isArray(st.streetBays)) st.streetBays = STREET_BAYS.map((b, i) => ({ ...b, carId: st.streetBays[i]?.carId ?? null }));
+  // A storeroom strip from the oldest saves is floor now (the walls go round the floor's tiles).
+  const sr = st.shop.storeroom;
+  if (sr && sr.z1 > sr.z0) { st.shop.floor = { ...st.shop.floor, z0: Math.min(st.shop.floor.z0, sr.z0) }; st.shop.storeroom = { x0: st.shop.floor.x0, z0: st.shop.floor.z0, x1: st.shop.floor.x1, z1: st.shop.floor.z0 }; }
   // Whole walls of windows become a Window piece on each tile of them.
   windowsFromSides(st);
   // Staff all wore the one shop-worker character: each gets a look of their own.

@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS, FLOORS, PALLET_UNITS } from '@/sim/layout';
+import { FIXTURES, LOT_EXPANSION_COST, CORNERS, FLOORS, PALLET_UNITS, floorTileCount, tilePrice, MAX_FLOOR } from '@/sim/layout';
 import type { BuildCategory, FixtureType } from '@/sim/types';
-import { floorCost } from '@/sim/build';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
 import { StoresSection } from './StoresSection';
@@ -36,7 +35,6 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const s = runtime.state!;
   const b = snap.build;
   const selected = b.selectedId !== null ? s.shop.fixtures.find((f) => f.id === b.selectedId) : null;
-  const current = SHOP_SIZES.findIndex((z) => z.id === s.shop.sizeId);
   const [tab, setTabState] = useState<Tab>(() => (runtime.buildTab as Tab | null) ?? (b.placing ? FIXTURES[b.placing].category : s.shop.fixtures.some((f) => f.type === 'register') ? 'shelves' : 'checkout'));
   const setTab = (t: Tab) => { runtime.rememberBuildTab(t); setTabState(t); };
   const thumbs = runtime.renderer?.fixtureThumbs ?? {};
@@ -44,7 +42,15 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const floor = s.shop.floorStyle ?? 'lino';
   return (
     <>
-      {(b.placing || selected) ? (
+      {b.tool ? (
+        <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
+          <div>
+            <div className="name">{b.tool.kind === 'grow' ? 'Adding floor' : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
+            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : 'Click a tile of floor')}{b.price ? ` · ${money(b.price)} a tile` : ''}</div>
+          </div>
+          <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
+        </div>
+      ) : (b.placing || selected) ? (
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
             <div className="name">{b.placing ? FIXTURES[b.placing].name : `Moving ${FIXTURES[selected!.type].name}`}</div>
@@ -86,12 +92,12 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {tab === 'floors' && (
         <div className="list">
           {FLOORS.map((fl) => {
-            const cost = floorCost(s, fl.id), now = fl.id === floor;
+            const on = b.tool?.kind === 'floor' && b.tool.style === fl.id;
             return (
               <div className="item" key={fl.id}>
                 <span className="swatch big" style={{ background: floorSwatch(fl.id, schemeById(s.shop.scheme).light) }} aria-hidden="true" />
-                <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{now ? 'Down now' : cost ? money(cost) : 'Free'}</div></div>
-                {!now && <button className="btn small" disabled={s.cash < cost} onClick={() => runtime.dispatch({ type: 'setFloor', style: fl.id })}>Lay</button>}
+                <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{fl.perTile ? `${money(fl.perTile)} a tile` : 'Free'}{fl.id === floor && !s.shop.tileStyles ? ' · down now' : ''}</div></div>
+                <button className={`btn small${on ? ' ghost' : ''}`} disabled={s.cash < fl.perTile} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'floor', style: fl.id }))}>{on ? 'Done' : 'Lay'}</button>
               </div>
             );
           })}
@@ -99,13 +105,16 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       )}
       {tab === 'shop' && (
         <>
-          <h3>Size</h3>
-          {SHOP_SIZES.map((z, i) => (
-            <div className="item" key={z.id}>
-              <div><div className="name">{z.name}{i === current ? ' (now)' : ''}</div>{i > current && <div className="sub">{money(z.cost - SHOP_SIZES[current]!.cost)}</div>}</div>
-              {i > current && <button className="btn small" disabled={s.cash < z.cost - SHOP_SIZES[current]!.cost} onClick={() => runtime.dispatch({ type: 'expandShop', sizeId: z.id })}>Extend</button>}
-            </div>
-          ))}
+          <h3>Floor</h3>
+          {(() => {
+            const n = floorTileCount(s.shop), max = (MAX_FLOOR.x1 - MAX_FLOOR.x0) * (MAX_FLOOR.z1 - MAX_FLOOR.z0), price = tilePrice(s.shop), on = b.tool?.kind === 'grow';
+            return (
+              <div className="item">
+                <div><div className="name">{n} tiles</div><div className="sub">{n < max ? `Next tile ${money(price)} · room for ${max - n} more` : 'As big as the plot allows'}</div></div>
+                {n < max && <button className={`btn small${on ? ' ghost' : ''}`} disabled={!on && s.cash < price} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'grow' }))}>{on ? 'Done' : 'Add tiles'}</button>}
+              </div>
+            );
+          })()}
           <div className="item">
             <div><div className="name">Bigger car park</div><div className="sub">{s.shop.lotRows > 1 ? `${s.shop.bays.length} bays` : `Twice the bays · ${money(LOT_EXPANSION_COST)}`}</div></div>
             {s.shop.lotRows === 1 && <button className="btn small" disabled={s.cash < LOT_EXPANSION_COST} onClick={() => runtime.dispatch({ type: 'expandLot' })}>Expand</button>}

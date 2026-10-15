@@ -383,7 +383,7 @@ test('after a fast-forwarded day the manager walks at normal pace, and the shop 
   expect((await state(page)).phase).toBe('night');
 });
 
-test('the Build card: tabs of pictures, a café table placed, a floor laid, windows put in', async ({ page }) => {
+test('the Build card: tabs of pictures, a café table placed, a tile of floor laid, a window put in', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
   await hooks(page, 'quickSetup', false);
@@ -410,9 +410,13 @@ test('the Build card: tabs of pictures, a café table placed, a floor laid, wind
   await page.keyboard.press('Escape');
   // Floors: wooden boards over the whole shop. Walls: a window in the left wall, turned to face in by itself.
   await build.getByRole('tab', { name: 'Floors' }).click();
+  // A tile at a time: pick the finish, then click tiles.
   await build.locator('.item', { hasText: 'Wooden boards' }).getByRole('button', { name: 'Lay' }).click();
-  await expect.poll(async () => (await hooks<{ shop: { floorStyle?: string } }>(page, 'state')).shop.floorStyle).toBe('wood');
-  await expect(build.locator('.item', { hasText: 'Wooden boards' })).toContainText('Down now');
+  await pointAt(page, -0.0, -1.5);
+  await expect.poll(() => aimText(page)).toMatch(/^Lay wooden boards/i);
+  await clickAt(page, 0.0, -1.5);
+  await expect.poll(async () => (await hooks<{ shop: { tileStyles?: Record<string, string> } }>(page, 'state')).shop.tileStyles?.['-0.5,-2']).toBe('wood');
+  await page.keyboard.press('Escape');
   await build.getByRole('tab', { name: 'Walls' }).click();
   await build.getByRole('button', { name: /^Window/ }).dispatchEvent('click');
   await pointAt(page, -2.0, -2.5);

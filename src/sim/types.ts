@@ -247,8 +247,12 @@ export interface Shop {
   originX: number; originZ: number;
   /** South corners: the shop-relative frame is turned half round (the door faces north). */
   flip?: boolean;
-  /** Interior bounds in store-relative tiles. */
+  /** Interior bounds in store-relative tiles: the floor's bounding rectangle (see `gaps`). */
   floor: { x0: number; z0: number; x1: number; z1: number };
+  /** Tiles inside `floor` that are not floor yet (the shop grows a tile at a time), keys "x,z" of their corner. */
+  gaps?: string[];
+  /** Floor finish tile by tile, where it differs from `floorStyle` (keys as `gaps`). */
+  tileStyles?: Record<string, FloorStyle>;
   storeroom: { x0: number; z0: number; x1: number; z1: number };
   door: Vec2;
   backDoor: Vec2;

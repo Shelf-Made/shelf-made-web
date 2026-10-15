@@ -412,6 +412,8 @@ export class WorldRenderer {
   setOverlay(kind: OverlayKind): void { this.overlays.kind = kind; }
 
   setGhost(type: Parameters<StoreView['setGhost']>[0], state: GameState, x: number, z: number, rot: Parameters<StoreView['setGhost']>[4], valid: boolean): void { this.store.setGhost(type, state.shop, x, z, rot, valid); }
+  setTileGhost(t: { x: number; z: number; ok: boolean } | null): void { this.store.setTileGhost(t); }
+  setGrowHints(tiles: { x: number; z: number }[]): void { this.store.setGrowHints(tiles); }
 
   debugPeople(): unknown { return this.people.debugInfo(); }
   debugFixtures(): unknown { return this.store.debugFixtures(); }

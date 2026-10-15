@@ -1,11 +1,11 @@
 import { frontageLitter } from '@/sim/life';
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
-import type { Difficulty, FixtureType, Rot, CustomerType, Look } from '@/sim/types';
+import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle } from '@/sim/types';
 import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
-import { canPlace, facingOffWall } from '@/sim/build';
+import { canPlace, facingOffWall, canBuyTile, canPaintFloor } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
-import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame, rectToWorld, type Rect } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, type Rect } from '@/sim/layout';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -90,7 +90,9 @@ export interface Snapshot {
   photoVersion: number;
 }
 
-export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
+/** A tile tool in Build: buying floor to grow the shop, or laying a finish on a tile. */
+export type TileTool = { kind: 'grow' } | { kind: 'floor'; style: FloorStyle };
+export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
 
 /** Short titles for the tutorial steps (the coach card shows one at a time). */
 const JOB_TITLES: Record<string, string> = {
@@ -137,7 +139,9 @@ export class GameRuntime {
   private lastPhase: GameState['phase'] | null = null;
   private noticesSeen = 0;
   /** Build mode: what is being placed, where the pointer hovers, selection, undo stack. */
-  build: { placing: FixtureType | null; rot: Rot; hover: { x: number; z: number } | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, rot: 0, hover: null, selectedId: null, reason: '', valid: false, price: 0 };
+  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, selectedId: null, reason: '', valid: false, price: 0 };
+  /** Placing, moving or using a tile tool: the pointer works on tiles. */
+  private get building(): boolean { return !!this.build.placing || this.build.selectedId !== null || !!this.build.tool; }
   overlay: 'none' | 'heat' | 'exposure' | 'paths' = 'none';
   private undoStack: string[] = [];
   private redoStack: string[] = [];
@@ -184,7 +188,7 @@ export class GameRuntime {
       settings: this.settings,
       saving: this.saving,
       gameOver: s ? s.gameOver : false,
-      build: { active: this.card === 'build', placing: this.build.placing, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay },
+      build: { active: this.card === 'build', placing: this.build.placing, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay },
       playing: this.inPlay,
       jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
       dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
@@ -367,7 +371,7 @@ export class GameRuntime {
   /** Esc: stop placing, then let go of the person you were looking at, then close the open card. */
   escape(): void {
     if (this.fixtureMenu !== null) { this.openFixtureMenu(null); return; }
-    if (this.build.placing || this.build.selectedId !== null) { this.closeCard(); return; }
+    if (this.building) { this.closeCard(); return; }
     if (this.selectedPerson !== null) { this.selectPerson(null); return; }
     if (!this.card && this.state?.phase === 'night' && !this.nightLogHidden) { this.showNightLog(false); return; }
     this.closeCard();
@@ -607,7 +611,7 @@ export class GameRuntime {
       for (const th of r.weather.thunder.splice(0)) this.audio.thunder(th.distance, th.delay, th.strength);
       if (r.mode === 'play') {
         // The build ghost sits on the tile under the mouse.
-        if ((this.build.placing || this.build.selectedId !== null) && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y); if (g) this.hoverWorld(g.x, g.z); }
+        if (this.building && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y); if (g) this.hoverWorld(g.x, g.z); }
         this.runPendingUse(s);
         this.aimCache = this.resolveAim();
       } else { this.aimCache = { info: null, run: null }; r.marker.set(null); }
@@ -620,7 +624,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -663,7 +667,7 @@ export class GameRuntime {
     if (!res.ok && res.message) { this.showToast(res.message); this.audio.play('bad'); }
     if (cmd.type === 'placeFixture' || cmd.type === 'removeFixture' || cmd.type === 'choosePlot') { this.stateVersion++; }
     if (cmd.type === 'choosePlot' && res.ok) { this.renderer?.setTown(this.state.seed, this.state.shop.plotId); this.renderer?.setShop(this.state); this.faceShop(); applyCommand(this.state, { type: 'setTimeScale', scale: this.speed || 1 }); this.autosaveNow(); }
-    if ((cmd.type === 'expandShop' || cmd.type === 'expandLot') && res.ok) this.renderer?.setShop(this.state);
+    if ((cmd.type === 'expandShop' || cmd.type === 'expandLot' || cmd.type === 'buyTile') && res.ok) this.renderer?.setShop(this.state);
     this.stateVersion++;
     this.maybeEmit();
     return res;
@@ -707,7 +711,7 @@ export class GameRuntime {
     this.updateSideOffset();
     this.emit();
   }
-  closeCard(): void { if (this.build.placing || this.build.selectedId !== null) { this.stopPlacing(); this.emit(); return; } if (this.card) { this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); } }
+  closeCard(): void { if (this.building) { this.stopPlacing(); this.emit(); return; } if (this.card) { this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); } }
   // ---- Your manager, designed in the lobby: kept with your settings, worn in every game you play.
   /** The look you designed, or the default shop worker. */
   get managerLook(): ManagerLook { return this.settings.managerLook ?? { model: MANAGER_DEFAULT_MODEL, height: 1.04 }; }
@@ -789,10 +793,25 @@ export class GameRuntime {
 
   // ---- Build mode
   setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
-  startPlacing(type: FixtureType): void { this.build.placing = type; this.build.selectedId = null; this.build.reason = ''; this.emit(); }
-  stopPlacing(): void { this.build.placing = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); }
+  startPlacing(type: FixtureType): void { this.build.placing = type; this.build.tool = null; this.build.selectedId = null; this.build.reason = ''; this.renderer?.setTileGhost(null); this.emit(); }
+  /** A tile tool: click tiles next to the shop to buy them, or tiles of floor to lay a finish on them. */
+  startTool(tool: TileTool): void {
+    this.build.tool = tool; this.build.placing = null; this.build.selectedId = null; this.build.reason = '';
+    this.renderer?.setGhost(null, this.state!, 0, 0, 0, false);
+    this.showGrowHints();
+    this.emit();
+  }
+  /** While growing: the tiles that could be bought, marked on the ground. */
+  private showGrowHints(): void {
+    const s = this.state; const r = this.renderer; if (!s || !r) return;
+    if (this.build.tool?.kind !== 'grow') { r.setGrowHints([]); return; }
+    const out: { x: number; z: number }[] = [];
+    for (let z = MAX_FLOOR.z0; z < MAX_FLOOR.z1; z++) for (let x = MAX_FLOOR.x0; x < MAX_FLOOR.x1; x++) { const c = canBuyTile({ ...s, cash: Infinity }, x, z); if (c.ok) out.push({ x, z }); }
+    r.setGrowHints(out);
+  }
+  stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setGrowHints([]); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
-  selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.emit(); }
+  selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {
     const s = this.state; if (!s) return;
@@ -805,6 +824,16 @@ export class GameRuntime {
   }
   private refreshGhost(): void {
     const s = this.state; const r = this.renderer; if (!s || !r || !this.build.hover) return;
+    const tool = this.build.tool;
+    if (tool) {
+      // A tile tool: the tile under the pointer lit green or red, the price or the reason.
+      const { x, z } = this.build.hover;
+      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : canPaintFloor(s, x, z, tool.style);
+      this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
+      r.setTileGhost({ x, z, ok: check.ok });
+      this.maybeEmit();
+      return;
+    }
     const type = this.build.placing ?? (this.build.selectedId !== null ? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type ?? null : null);
     if (!type) { r.setGhost(null, s, 0, 0, 0, false); return; }
     // Windows and lights turn to face into the room from whichever wall they are pointed at.
@@ -818,6 +847,15 @@ export class GameRuntime {
   clickBuild(hit: StoreHit | null): void {
     const s = this.state; if (!s || !this.build.hover) return;
     const { x, z } = this.build.hover;
+    const tool = this.build.tool;
+    if (tool) {
+      this.snapshotForUndo();
+      const res = this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : { type: 'paintFloor', x, z, style: tool.style });
+      if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
+      else if (tool.kind === 'grow') this.showGrowHints();
+      this.refreshGhost();
+      return;
+    }
     if (this.build.placing) {
       this.snapshotForUndo();
       const res = this.dispatch({ type: 'placeFixture', fixtureType: this.build.placing, x, z, rot: this.build.rot });
@@ -925,12 +963,12 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer;
     this.audio.start();
     if (!s || !r || !this.inPlay) return;
-    const building = this.build.placing || this.build.selectedId !== null || this.card === 'build';
+    const building = this.building || this.card === 'build';
     // At night the shop is shut but the manager can still fit it out for tomorrow: only the build tools work.
     if (s.phase === 'night' && !building) return;
     if (building) {
       const g = r.groundAt(px, py);
-      if (g && (this.build.placing || this.build.selectedId !== null)) { this.hoverWorld(g.x, g.z); this.clickBuild(null); return; }
+      if (g && this.building) { this.hoverWorld(g.x, g.z); this.clickBuild(null); return; }
       const hit = r.pick(px, py, s);
       if (hit?.kind === 'fixture') { this.clickBuild(hit); return; }
       return;
@@ -963,7 +1001,7 @@ export class GameRuntime {
   }
 
   /** Right click: cancel placing or moving. */
-  secondary(): void { if (this.build.placing || this.build.selectedId !== null) { this.stopPlacing(); this.emit(); } }
+  secondary(): void { if (this.building) { this.stopPlacing(); this.emit(); } }
 
   /** Space: scan the next item if you stand behind a till. */
   scanHere(repeat = false): void {
@@ -1127,9 +1165,17 @@ export class GameRuntime {
   private resolveAim(): { info: AimInfo | null; run: (() => void) | null } {
     const s = this.state; const r = this.renderer;
     const none = { info: null, run: null };
-    if (!s || !r || !this.inPlay || (s.phase === 'night' && !this.build.placing && this.build.selectedId === null && this.card !== 'build')) { r?.marker.set(null); return none; }
+    if (!s || !r || !this.inPlay || (s.phase === 'night' && !this.building && this.card !== 'build')) { r?.marker.set(null); return none; }
     const keys = this.settings.keys;
     const useKey = keyLabel(keys.interact), scanKey = keyLabel(keys.scan);
+    if (this.build.tool) {
+      const tool = this.build.tool;
+      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : 'Point at a floor tile', ok: false }, run: null }; }
+      const h = this.build.hover, at = toWorld(s.shop, h.x + 0.5, h.z + 0.5);
+      r.marker.set(null);
+      const what = tool.kind === 'grow' ? 'Add this tile' : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
+      return { info: { key: 'Click', text: this.build.valid ? `${what} · ${dollars(this.build.price)}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 0.6, z: at.z } }, run: this.build.valid ? () => this.clickBuild(null) : null };
+    }
     if (this.build.placing || this.build.selectedId !== null) {
       const type = this.build.placing ?? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type;
       const name = type ? FIXTURES[type].name : '';
