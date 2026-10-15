@@ -2,7 +2,7 @@ import type { Object3D, SkinnedMesh, Texture, AnimationClip, Material} from 'thr
 import { BufferGeometry, Group, Mesh, MeshStandardMaterial, TextureLoader, Matrix4, MeshBasicMaterial, Color, Float32BufferAttribute, type BufferAttribute } from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { detailTexture, addSurfaceDetail } from './detail';
+import { detailTexture, addSurfaceDetail, addWetness, addWetSheen } from './detail';
 import { detailedTrees } from './trees';
 import { PaletteMap, configureAtlas, type PaletteData } from './palette';
 
@@ -23,8 +23,10 @@ export class AssetLibrary {
   atlas!: Texture;
   palette!: PaletteMap;
   material!: MeshStandardMaterial;
-  /** The town's roads and pavements: the same, but its own, so the rain can wet it (darker, glossier). */
+  /** Roads, pavements and lots: the same, plus rain (wet sheen, puddles that mirror the sky, ripples). */
   ground!: MeshStandardMaterial;
+  /** Cars: clean like people and products, but they get wet in the rain (glossy roofs catching the sky). */
+  carMaterial!: MeshStandardMaterial;
   /** Without surface detail: for people, cars, products and the pictures of them. */
   plainMaterial!: MeshStandardMaterial;
   glass!: MeshStandardMaterial;
@@ -51,8 +53,9 @@ export class AssetLibrary {
     // the products on the shelves keep the clean material.
     this.plainMaterial = new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false });
     const detail = detailTexture();
-    this.material = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail);
-    this.ground = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail);
+    this.material = addWetSheen(addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail), true);
+    this.carMaterial = addWetSheen(new MeshStandardMaterial({ map: atlas, roughness: 0.9, metalness: 0, flatShading: false }), false);
+    this.ground = addWetness(addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail));
     this.glass = new MeshStandardMaterial({ color: new Color('#CFE9F7'), roughness: 0.2, metalness: 0, transparent: true, opacity: 0.45, depthWrite: false });
     this.unlit = new MeshBasicMaterial({ map: atlas });
     // The town's trees are our own detailed ones under Kenney's ids (their GLBs are then never fetched).

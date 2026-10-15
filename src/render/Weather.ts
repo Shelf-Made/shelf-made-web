@@ -1,8 +1,19 @@
-import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicMaterial, ShaderMaterial, Vector2, Vector3, Vector4, type MeshStandardMaterial } from 'three';
+import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicMaterial, ShaderMaterial, Vector2, Vector3, Vector4, type MeshStandardMaterial, type Texture } from 'three';
 import { lightningAt, type WeatherNow } from '@/sim/weather';
+import { wetUniforms } from './detail';
+import { MASK_HALF, HEIGHT_RANGE } from './grass';
 
-/** Rain drops at the heaviest (drawn: as many as the rain is heavy), and splashes on the ground. */
-const DROPS = 7000, SPLASHES = 700;
+/** GLSL: the height of whatever is built at a point (roof, awning, bench, pavement), from the top-down mask; 0 on open ground. */
+const BUILT_AT = `uniform sampler2D uHeight; uniform float uHeightOn;
+  float builtAt(vec2 xz) {
+    vec2 m = (xz + ${MASK_HALF.toFixed(1)}) / ${(2 * MASK_HALF).toFixed(1)};
+    if (uHeightOn < 0.5 || m.x <= 0.0 || m.x >= 1.0 || m.y <= 0.0 || m.y >= 1.0) return 0.0;
+    float r = texture2D(uHeight, vec2(m.x, 1.0 - m.y)).r;
+    return r < 0.03 ? 0.0 : (r - 0.1) / 0.9 * ${HEIGHT_RANGE.toFixed(1)};
+  }`;
+
+/** Rain drops at the heaviest (drawn: as many as the rain is heavy), splashes where they land, and the droplets each splash throws up. */
+const DROPS = 7000, SPLASHES = 700, BOUNCE = 3;
 /** The box of falling rain round the camera's focus, in units: wide, and as tall as the camera is high. */
 const BOX = 34, HEIGHT = 22;
 
@@ -25,8 +36,10 @@ export class WeatherView {
   readonly group = new Group();
   private readonly rain: Mesh;
   private readonly splash: Mesh;
+  private readonly bounce: Mesh;
   private readonly rainU = {
     uCentre: { value: new Vector3() }, uTime: { value: 0 }, uWind: { value: new Vector2() }, uNoRain: { value: new Vector4(0, 0, 0, 0) }, uColour: { value: new Color('#C9D6E6') }, uAlpha: { value: 0.32 },
+    uHeight: { value: null as Texture | null }, uHeightOn: { value: 0 },
   };
   private readonly strikes: Strike[] = [];
   private readonly boltMat = new MeshBasicMaterial({ color: new Color(5.5, 5.8, 7.5), side: DoubleSide, toneMapped: true, fog: false });
@@ -61,6 +74,7 @@ export class WeatherView {
       vertexShader: `attribute vec3 seed;
         uniform vec3 uCentre; uniform float uTime; uniform vec2 uWind; uniform vec4 uNoRain;
         varying float vA;
+        ${BUILT_AT}
         void main() {
           float H = ${HEIGHT.toFixed(1)}, B = ${BOX.toFixed(1)};
           float speed = 26.0 + seed.z * 8.0;
@@ -81,7 +95,9 @@ export class WeatherView {
           vec3 p = base - dir * len * position.y + side * position.x * 2.0;
           // None inside the shop, nor below the ground.
           bool inside = xz.x > uNoRain.x && xz.x < uNoRain.z && xz.y > uNoRain.y && xz.y < uNoRain.w;
-          vA = (inside || y < 0.0) ? 0.0 : (1.0 - position.y * 0.7) * smoothstep(0.0, 1.5, y) * (1.0 - 0.55 * smoothstep(14.0, 40.0, far));
+          // Rain stops on whatever it lands on: a roof, an awning, a bench, the pavement.
+          float floorY = builtAt(xz);
+          vA = (inside || y < floorY) ? 0.0 : (1.0 - position.y * 0.7) * smoothstep(floorY, floorY + 1.5, y) * (1.0 - 0.55 * smoothstep(14.0, 40.0, far));
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
         }`,
       fragmentShader: 'uniform vec3 uColour; uniform float uAlpha; varying float vA; void main() { if (vA <= 0.0) discard; gl_FragColor = vec4(uColour, uAlpha * vA); }',
@@ -102,6 +118,7 @@ export class WeatherView {
         uniform vec3 uCentre; uniform float uTime; uniform vec4 uNoRain;
         varying vec2 vP; varying float vT; varying float vA;
         float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        ${BUILT_AT}
         void main() {
           float life = 0.45;
           float k = uTime / life + seed.x * 7.0;
@@ -112,18 +129,63 @@ export class WeatherView {
           vA = inside ? 0.0 : 1.0;
           vP = position.xz;
           float r = 0.05 + vT * 0.09;
-          gl_Position = projectionMatrix * viewMatrix * vec4(at.x + position.x * r, 0.065, at.y + position.z * r, 1.0);
+          // On top of whatever is there (open ground sits just under the pavements, hidden in the grass).
+          float y = builtAt(at) + 0.018;
+          gl_Position = projectionMatrix * viewMatrix * vec4(at.x + position.x * r, y, at.y + position.z * r, 1.0);
         }`,
       fragmentShader: `uniform vec3 uColour; varying vec2 vP; varying float vT; varying float vA;
         void main() { float d = length(vP); float ring = smoothstep(0.62, 0.8, d) * (1.0 - smoothstep(0.85, 1.0, d)); float a = ring * (1.0 - vT) * 0.55 * vA; if (a <= 0.01) discard; gl_FragColor = vec4(uColour, a); }`,
     });
     this.splash = new Mesh(sg, splashMat);
     this.splash.frustumCulled = false; this.splash.renderOrder = 2; this.splash.name = 'splashes';
-    this.group.add(this.rain, this.splash);
+
+    // The bounce: each splash throws up a few droplets that arc out and fall back (tiny bright beads, facing the camera).
+    const bg = new InstancedBufferGeometry();
+    bg.setAttribute('position', new Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+    const bs = new Float32Array(SPLASHES * BOUNCE * 3);
+    for (let i = 0; i < SPLASHES; i++) for (let k = 0; k < BOUNCE; k++) { const j = (i * BOUNCE + k) * 3; bs[j] = ss[i * 2]!; bs[j + 1] = ss[i * 2 + 1]!; bs[j + 2] = k; }
+    bg.setAttribute('seed', new InstancedBufferAttribute(bs, 3));
+    bg.instanceCount = 0;
+    const bounceMat = new ShaderMaterial({
+      uniforms: this.rainU, transparent: true, depthWrite: false,
+      vertexShader: `attribute vec3 seed;
+        uniform vec3 uCentre; uniform float uTime; uniform vec4 uNoRain;
+        varying vec2 vP; varying float vA;
+        float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        ${BUILT_AT}
+        void main() {
+          // The same landing as its splash (same seed, same cycle), then a ballistic hop.
+          float life = 0.45;
+          float k = uTime / life + seed.x * 7.0;
+          float cyc = floor(k), t = fract(k);
+          vec2 s = seed.xy;
+          vec2 at = uCentre.xz + (vec2(h(s + cyc), h(s.yx + cyc * 1.7)) - 0.5) * ${(BOX * 0.7).toFixed(1)};
+          bool inside = at.x > uNoRain.x && at.x < uNoRain.z && at.y > uNoRain.y && at.y < uNoRain.w;
+          float ang = 6.2832 * (seed.z / 3.0 + h(s + cyc * 2.3));
+          float out_ = (0.05 + 0.07 * h(s.yx + seed.z + cyc)) * t;
+          float up = (0.07 + 0.06 * h(s + seed.z * 3.1 + cyc)) * 4.0 * t * (1.0 - t);
+          vec3 p = vec3(at.x + cos(ang) * out_, builtAt(at) + 0.02 + up, at.y + sin(ang) * out_);
+          vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+          vec3 upV = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+          float size = 0.009 + 0.004 * h(s * 5.0 + seed.z);
+          p += (right * position.x + upV * position.y) * size;
+          vP = position.xy;
+          vA = inside ? 0.0 : (1.0 - t * t);
+          gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        }`,
+      fragmentShader: `uniform vec3 uColour; varying vec2 vP; varying float vA;
+        void main() { float a = (1.0 - smoothstep(0.5, 1.0, length(vP))) * 0.8 * vA; if (a <= 0.01) discard; gl_FragColor = vec4(uColour * 1.15, a); }`,
+    });
+    this.bounce = new Mesh(bg, bounceMat);
+    this.bounce.frustumCulled = false; this.bounce.renderOrder = 2; this.bounce.name = 'rain-bounce';
+    this.group.add(this.rain, this.splash, this.bounce);
   }
 
   /** Where rain never falls (the shop floor, in world coordinates). */
-  setShelter(x0: number, z0: number, x1: number, z1: number): void { this.rainU.uNoRain.value.set(x0, z0, x1, z1); }
+  setShelter(x0: number, z0: number, x1: number, z1: number): void { this.rainU.uNoRain.value.set(x0, z0, x1, z1); wetUniforms.uShelter.value.set(x0, z0, x1, z1); }
+
+  /** The top-down height of what is built (from the grass mask): rain stops on roofs and splashes land on top. */
+  setHeights(tex: Texture | null): void { this.rainU.uHeight.value = tex; this.rainU.uHeightOn.value = tex ? 1 : 0; }
 
   /**
    * Each frame: the weather now, the camera's focus, real seconds since the last frame (rain and
@@ -138,16 +200,21 @@ export class WeatherView {
     this.rainLevel = w.rain;
     const drops = Math.round(DROPS * Math.min(1, w.rain) * rainScale);
     (this.rain.geometry as InstancedBufferGeometry).instanceCount = drops;
-    (this.splash.geometry as InstancedBufferGeometry).instanceCount = Math.round(SPLASHES * Math.min(1, w.rain * 1.3) * rainScale);
-    this.rain.visible = drops > 0; this.splash.visible = drops > 0;
+    const splashes = Math.round(SPLASHES * Math.min(1, w.rain * 1.3) * rainScale);
+    (this.splash.geometry as InstancedBufferGeometry).instanceCount = splashes;
+    (this.bounce.geometry as InstancedBufferGeometry).instanceCount = splashes * BOUNCE;
+    this.rain.visible = drops > 0; this.splash.visible = drops > 0; this.bounce.visible = drops > 0;
     // Darker drops against a stormy sky read better than pale ones.
     this.rainU.uColour.value.set(w.storm > 0.3 ? '#AFC0D4' : '#D5E0EC');
     this.rainU.uAlpha.value = 0.32 + 0.3 * w.rain;
     // The ground soaks up the rain in a minute or so and takes several to dry.
     this.wet += (Math.min(1, w.rain * 1.6) - this.wet) * Math.min(1, dt * (w.rain > this.wet ? 0.08 : 0.015));
+    // Roads, pavements and lots: puddles, ripples and the sky in them (the wet-ground shader).
+    wetUniforms.uWet.value = this.wet; wetUniforms.uRain.value = w.rain; wetUniforms.uRainTime.value = this.time;
+    // The lawn just darkens and dulls a little.
     for (const m of this.groundMats) {
-      m.roughness = 0.95 - 0.6 * this.wet;
-      m.color.setScalar(1 - 0.32 * this.wet);
+      m.roughness = 0.95 - 0.35 * this.wet;
+      m.color.setScalar(1 - 0.22 * this.wet);
     }
     // Lightning.
     const s = lightningAt(w.storm, this.time, dt, seed);

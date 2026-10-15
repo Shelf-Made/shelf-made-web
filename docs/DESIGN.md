@@ -46,6 +46,21 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   Fixtures mark cells blocked; people reserve queue slots; a stuck watchdog teleports a
   person to the nearest free cell after 8 s and logs it (the balance harness asserts zero).
 - **Entities**: `people` (customers, staff, pedestrians), `cars`, `fixtures`, `stock`.
+- **Weather** (`weather.ts`): each day has a sky kind (clear, heat, fair, cloudy, showers, grey,
+  drizzle, rain, storm) decided with tomorrow's plan from its forecast; a heavy-rain forecast is a
+  thunderstorm about half the time, a grey one often drizzle (a hash of seed and day, so no random
+  stream moves). How cloud, rain, storm, mist and wind go through the day, and when lightning strikes,
+  are pure functions of seed, day and time: only the day's kind is saved.
+- **Town life** (`life.ts`, its own random stream): dog walkers stop while the dog squats (most
+  owners bag it); after school a group of teenagers hangs about at the bus stop, a rival's door or
+  outside your shop, smoking and dropping cans, wrappers and cigarette ends until they leave or the
+  manager asks them to move along; now and then a car still rolling bumps a stopped one on Main Road,
+  both hold with their hazards on and the drivers argue on the pavement for a few minutes of game
+  time (shorter than the eight seconds after which a queue starts to creep). Mess on your frontage
+  costs a little cleanliness, makes passing shoppers pull a face (a dog's mess sometimes counts as a
+  "messy" complaint) and can be picked up; the town is swept every night.
+- **Day logs**: each night's goal progress and forecast are kept with that day's stats, so every
+  night card can be read again in Stats.
 
 ### 2.2 Render
 
@@ -70,7 +85,7 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   north–south, a shop on each corner, zebras on all four arms, a timed light. There is nothing
   beyond the corners: both roads run on into the haze, so the traffic drives in out of nowhere and
   away into nothing. The ground is one flat mesh, mottled lawn over the town fading to even green;
-  grass and flowers on the verges are merged into one swaying mesh. Characters are skinned meshes
+  grass and flowers on the verges are merged into one still mesh. Characters are skinned meshes
   with Kenney's own clips, head and body merged into one draw; nobody casts a shadow-map shadow
   (a soft instanced blob under every person and car instead), and from far off people become
   instanced stand-ins.
@@ -105,6 +120,27 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   exit, the heading turning only as the car rolls. It eases off the mark, slows to a stop across the
   aisle, takes a moment to change gear and pulls away to finish the turn. A car turning across the
   oncoming lane keeps checking for a gap until its nose is in that lane.
+- **Lawn.** Short blades over every lawn round the camera's focus: one instanced draw of a unit
+  patch (100 blades, darker at the root) over a 36×36 ring of cells that snaps to whole cells,
+  turning and mirroring cell by cell. Where it may grow is a top-down render of the static scene
+  (drawn again only when the town, the shop's lot or a rival's corner changes); the same texture holds
+  the height of whatever is built, which the rain uses. Off on Low quality.
+- **Light.** Khronos Neutral tone mapping; a strong warm sun with soft PCF shadows on a real path
+  through the day (about 20° at opening, high after noon, a few degrees at closing), a hemisphere fill
+  of sky above and grass below, and a sun disc and halo on the sky dome. No environment map (it doubled
+  the cost of a frame); the sky's colours and the sun are shared uniforms for whatever reflects the
+  sky. Bloom only crosses the threshold for lights; a soft vignette finishes the frame.
+- **Weather you see.** A procedural cloud deck in the sky dome thickens and darkens with the day's
+  weather, and the light dims, loses its shadows under a full overcast and hazes over in rain. Rain
+  falls as camera-facing streaks round the focus, slanted by the wind, stopping on whatever is built
+  (roofs, awnings, benches) and never inside the shop; splashes ring and droplets bounce where it
+  lands. Roads, pavements and lots soak: darker and glossier, with puddles (broad smooth noise, never
+  the whole road) that mirror the sky with Fresnel and carry procedural ripple rings; they dry slowly.
+  People out in it put up umbrellas. A storm brings lightning: a forked bolt that flickers, the whole
+  scene flashed blue-white, and thunder later the further away the strike. Rain sounds like a patter
+  of drops; birds go quiet.
+- **Town life you see**: litter on the pavements, smoke curling up from the teenagers' cigarettes,
+  hazard lights blinking on two bumped cars, drivers shaking their heads at each other.
 - **Surfaces.** Nothing in the town is flat colour. The world material samples a small tileable
   noise texture in world space along each surface's main axis (no UVs needed, three texture reads a
   pixel) and decides by colour what a surface is: light greys are concrete (grain and slab joints a tile apart), dark greys are asphalt (grain and

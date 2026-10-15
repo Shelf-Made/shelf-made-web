@@ -3,7 +3,48 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Follow-up: shelves, backing out, trees, moving furniture (latest)
+## Round: day logs, windows, shoppers' hands, lawns, light, weather, town life, rain (latest)
+
+- [x] **Day logs.** The night card has a close button (and Esc); a bar at the top brings it back
+  and keeps Open tomorrow to hand. A card opened at night takes the log's place instead of opening
+  behind it. A complaint's Staff button says "day 3" until Staff opens. Stats lists every day's log
+  (the goal and forecast as they stood that night); tap a day to read it again.
+- [x] **Crutches gone** from the first female character (they were in her body mesh).
+- [x] **Window sills.** A window wall cut down to a ledge is drawn as a plain wall (its frame and
+  pane were squashed into a jumble on the sill), and from inside the windows show (the paint used to
+  cover them).
+- [x] **Shoppers' hands.** At a shelf they look, then reach once as they take the item; at the till
+  they put their things down and stand; they carry a red basket while shopping instead of holding
+  nothing in both arms; staff stock with a placing motion and bend once for a box.
+- [x] **Grass.** No wind; thick short blades over every lawn round the camera, stopping at every
+  path, lot and building (a top-down mask of the scene). Fixed on the way: town chunks with a tree
+  in them were not drawn at all.
+- [x] **Light.** Neutral tone mapping, a warm sun on a real path (golden low mornings and evenings,
+  long shadows), cooler sky fill, soft shadows, a sun disc in the sky, a gentle vignette.
+- [x] **Weather.** Each day's sky follows its forecast: clear, fair, cloudy, passing showers, grey,
+  drizzle, rain, thunderstorms. Clouds close over; the light dims and softens; rain falls (stopping
+  on roofs and awnings, never in the shop) with splashes and bouncing droplets; people put up
+  umbrellas; storms bring lightning, a flash and thunder; rain patters and the birds go quiet.
+- [x] **Rain on the ground.** Roads, pavements and lots darken and shine, puddles form and mirror the
+  sky with ripple rings where the drops land; car roofs and awnings catch the sky; it all dries slowly.
+- [x] **Town life.** Dog walkers stop for the dog (some bag it, some don't); after school teenagers
+  hang about (sometimes outside your shop), smoking and dropping litter, until they leave or you ask
+  them to move along; now and then a car bumps another on Main Road and the drivers argue for a few
+  minutes. Shoppers pull a face at mess outside your door; you can pick it up; the town is swept
+  overnight.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 106 passed; new: day logs kept and read back, the grass patch, weather (forecast to sky, bounds through the day, lightning pace), town life over a week (dogs, teenagers, bumps, the nightly sweep, moving along, picking up) |
+| `npm run e2e` | 19 passed (the first-day journey now has 240 s locally; the phone test waits for the manager to stop walking before measuring); new: the day's log (close, reopen, a card in its place, Staff on day 3, Stats), weather and town-life screenshots |
+| Perf (`npm run perf`) | default zoom 107 draw calls / 329k triangles (the lawn's blades are about 130k of that, one draw); busy 127 / 350k; selected 139 / 381k; mid 136 / 374k; overview 174 / 469k (budget 250 / 900k) |
+| `npm run balance -- --check` | passed in 404 s with town life: nobody stuck or bust; guided about $94/day in week one |
+| Frame time (software GL test browser) | about 0.77 s dry, 0.9 s in rain (0.71 s before this round's town life and rain surfaces; the sky environment map, dropped, had taken it to 1.1 s) |
+
+New screenshots: `42-lawn-up-close` to `49-fender-bender`.
+
+## Follow-up: shelves, backing out, trees, moving furniture
 
 - [x] **A box goes on a shelf with room.** Stocking tops up the product's slots and then takes free
   ones; "That one is full" only when it is, otherwise "No room for Soup there: every spot holds

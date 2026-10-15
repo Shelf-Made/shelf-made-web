@@ -38,6 +38,8 @@ async function clickAt(page: Page, x: number, z: number, y = 0): Promise<void> {
 }
 
 test('the first day with the follow camera: build, walk, stock, open, scan, close up', async ({ page }) => {
+  // The longest journey in the suite (a whole first day in a software-rendered browser).
+  test.setTimeout(240_000);
   await ready(page);
   await hooks(page, 'newGame', 5, 'main', 'E2E Mart', { tutorial: true });
   await hooks(page, 'setSpeed', 0);
@@ -359,6 +361,8 @@ test.describe('on a phone', () => {
     // Tapping a shelf empty-handed opens its menu; Stock opens the Stock card at what goes on it, with
     // the products' pictures; the manager stays put.
     const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
+    // Arrived: done walking (within 0.6 of the spot, the last steps can still be under way).
+    await expect.poll(async () => (await owner(page)).walking, { timeout: 10_000 }).toBe(false);
     const before = await owner(page);
     const q = await screenAt(page, shelf.x + 0.5, shelf.z + 0.5, 0.6);
     await page.touchscreen.tap(q.x, q.y);

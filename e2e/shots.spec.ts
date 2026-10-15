@@ -433,6 +433,44 @@ test.describe('screenshots', () => {
     expect((await hooks<{ flash: number }>(page, 'weather')).flash).toBeGreaterThan(0.2);
     await page.screenshot({ path: out('46-lightning') });
     await hooks(page, 'freezeStrike', false);
+    // Close up in the rain: puddles holding the sky, rings where the drops land, splashes bouncing.
+    await hooks(page, 'setSky', 'rain');
+    await hooks(page, 'soak');
+    await follow(page, 0.5, 2.6, 5, 0.5, 1800, 0.45);
+    await page.screenshot({ path: out('47-puddles-and-ripples') });
+  });
+
+  test('town life: teenagers outside the shop, a bump on Main Road', async ({ page }) => {
+    test.setTimeout(240_000);
+    await ready(page);
+    await hooks(page, 'newGame', 8, 'main', 'Lively', { tutorial: false });
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setSky', 'fair');
+    await hooks(page, 'setSpeed', 0);
+    await hooks(page, 'setTime', 335);
+    type Life = { hangouts: { x: number; z: number }[]; bumps: { x: number; z: number }[] };
+    let life: Life | null = null;
+    // Run the afternoon until a group is hanging about and two cars have bumped (each comes round every few minutes).
+    for (let i = 0; i < 400 && !(life?.hangouts.length && life.bumps.length); i++) {
+      await hooks(page, 'advanceNoScan', 5);
+      life = await page.evaluate(() => { const s = (window as unknown as { __shelf: { state: () => { time: number; life?: Life & { nextTeens: number; nextBump: number } } } }).__shelf.state(); if (s.time > 620) { s.time = 335; if (s.life) { s.life.nextTeens = 0; s.life.nextBump = 0; } } return s.life ?? null; });
+    }
+    expect(life?.hangouts.length).toBeGreaterThan(0);
+    const h = life!.hangouts[0]!;
+    await hooks(page, 'viewWorld', h.x, h.z, 0.6, 6, 1.0);
+    await settle(page, 1800);
+    await page.screenshot({ path: out('48-teens-hanging-about') });
+    // A bump: when none has come round by itself, two cars on Main Road have one now.
+    for (let i = 0; i < 30 && !life!.bumps.length; i++) {
+      if (await hooks<boolean>(page, 'bump')) life = await page.evaluate(() => (window as unknown as { __shelf: { state: () => { life: Life } } }).__shelf.state().life);
+      else await hooks(page, 'advanceNoScan', 3);
+    }
+    if (life!.bumps.length) {
+      const b = life!.bumps[0]!;
+      await hooks(page, 'viewWorld', b.x, b.z, 0.9, 7, 0.6);
+      await settle(page, 1800);
+      await page.screenshot({ path: out('49-fender-bender') });
+    }
   });
 
   test('design your manager in the lobby', async ({ page }) => {

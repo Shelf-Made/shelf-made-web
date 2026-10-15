@@ -16,6 +16,7 @@ import { AmbientView } from './Ambient';
 import { Overlays, type OverlayKind } from './Overlays';
 import { GrassField, GRASS_RING } from './grass';
 import { WeatherView } from './Weather';
+import { LifeView } from './Life';
 import { weatherAt } from '@/sim/weather';
 import { buildTown, type TownPlan } from './town';
 import { renderProductThumbs, renderCharacterThumbs } from './thumbnails';
@@ -56,6 +57,8 @@ export class WorldRenderer {
   private readonly grass = new GrassField();
   /** Rain, wet ground and lightning. */
   readonly weather = new WeatherView();
+  /** Town life: litter, smoke, hazard lights (made once the palette has loaded). */
+  private life: LifeView | null = null;
   private clock = 0;
   readonly overlays = new Overlays();
   private plan: TownPlan | null = null;
@@ -114,7 +117,8 @@ export class WorldRenderer {
     this.characterThumbs = renderCharacterThumbs(this.renderer, this.assets, PEOPLE_MODELS.filter((id) => this.assets.hasCharacter(id)));
     this.cars.init();
     this.scene.add(this.marker.group);
-    this.weather.groundMats.push(this.assets.ground);
+    this.life = new LifeView(this.assets.palette, this.assets.plainMaterial);
+    this.scene.add(this.life.group);
     onProgress(1, 'Ready');
   }
 
@@ -167,6 +171,7 @@ export class WorldRenderer {
     if (terrainMat && !this.weather.groundMats.includes(terrainMat)) this.weather.groundMats.push(terrainMat);
     this.ambient.weather.cloud = wx.cloud; this.ambient.weather.storm = wx.storm; this.ambient.weather.wind = wx.wind; this.ambient.weather.flash = this.weather.flash;
     this.people.rain = this.weather.rainLevel;
+    this.life?.update(state, Math.min(dt, 0.1));
     this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius(), { cloud: wx.cloud, rain: wx.rain, storm: wx.storm, fog: wx.fog, flash: this.weather.flash });
     // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
     const fog = this.scene.fog as Fog | null;
@@ -203,6 +208,7 @@ export class WorldRenderer {
     if (this.grass.mesh.visible) {
       this.grass.refreshMask(this.renderer, this.scene, [this.statics.group, this.store.group, this.rivals.group, this.street.group], WorldRenderer.notGround, `${this.townKey}|${this.store.layoutKey}|${this.rivals.layoutKey()}`);
       this.grass.update(focus.x, focus.z, Math.min(GRASS_RING / 2, 9 + dist * 0.8));
+      this.weather.setHeights(this.grass.mask);
     }
     this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky, this.lighting);
     this.renderer.info.reset();

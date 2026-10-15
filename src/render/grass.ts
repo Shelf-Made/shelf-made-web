@@ -1,5 +1,5 @@
 import type { Object3D} from 'three';
-import { BufferGeometry, Color, DoubleSide, ShaderChunk, Float32BufferAttribute, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, OrthographicCamera, RedFormat, type Scene, type Texture, Vector2, Vector4, WebGLRenderTarget, type WebGLRenderer } from 'three';
+import { BufferGeometry, Color, DoubleSide, ShaderChunk, Float32BufferAttribute, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshStandardMaterial, ShaderMaterial, NearestFilter, OrthographicCamera, RedFormat, type Scene, type Texture, Vector2, Vector4, WebGLRenderTarget, type WebGLRenderer } from 'three';
 
 /**
  * A lawn of real blades round wherever the camera looks: the ground carries the colour and the mottling,
@@ -16,7 +16,10 @@ const BLADES = 100;
 /** Cells across the ring (one cell = one unit, about three metres). */
 export const GRASS_RING = 36;
 /** The mask covers x, z in [-MASK_HALF, MASK_HALF]; outside it nothing grows (out there the fog has the plain). */
-const MASK_HALF = 96, MASK_RES = 1024;
+export const MASK_HALF = 96;
+const MASK_RES = 1024;
+/** The mask holds the height of what is built (0 where nothing is): 0.1 + 0.9 * y / HEIGHT_RANGE. */
+export const HEIGHT_RANGE = 12;
 
 /** A repeatable stream of 0..1 numbers. */
 function rng(seed: number): () => number {
@@ -65,7 +68,16 @@ export class GrassField {
     uOn: { value: 0 },
   };
   private readonly maskCam = new OrthographicCamera(-MASK_HALF, MASK_HALF, MASK_HALF, -MASK_HALF, 0.1, 200);
-  private readonly white = new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide, fog: false });
+  /** Draws the height of the top surface (seen from above) into the mask. */
+  private readonly white = new ShaderMaterial({
+    side: DoubleSide, fog: false,
+    vertexShader: `varying float vY; void main() { vec4 p = vec4(position, 1.0);
+      #ifdef USE_INSTANCING
+        p = instanceMatrix * p;
+      #endif
+      vec4 w = modelMatrix * p; vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying float vY; void main() { gl_FragColor = vec4(0.1 + 0.9 * clamp(vY / ${HEIGHT_RANGE.toFixed(1)}, 0.0, 1.0), 0.0, 0.0, 1.0); }`,
+  });
   private maskKey = '';
 
   constructor() {
@@ -98,7 +110,7 @@ float grassHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 4375
   if (grassHash(gcell + 7.1) > 0.5) gr.x = -gr.x;
   vec2 groot = gcell + 0.5 + gr;
   vec2 gm = (groot - uMaskRect.xy) * uMaskRect.zw;
-  float gfree = (gm.x > 0.0 && gm.x < 1.0 && gm.y > 0.0 && gm.y < 1.0) ? 1.0 - texture2D(uMask, vec2(gm.x, 1.0 - gm.y)).r : 0.0;
+  float gfree = (gm.x > 0.0 && gm.x < 1.0 && gm.y > 0.0 && gm.y < 1.0) ? 1.0 - step(0.03, texture2D(uMask, vec2(gm.x, 1.0 - gm.y)).r) : 0.0;
   float gd = distance(groot, uFocus);
   float gsize = uOn * gfree * (1.0 - smoothstep(uRadius * 0.62, uRadius, gd));
   float gpatch = 0.75 + 0.5 * grassHash(floor(groot * 0.45));
@@ -162,6 +174,9 @@ float grassHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 4375
     this.uniforms.uMask.value = this.target.texture;
     this.uniforms.uOn.value = 1;
   }
+
+  /** The mask (where grass may not grow, and how high what is built there stands), once drawn. */
+  get mask(): Texture | null { return this.uniforms.uMask.value; }
 
   /** Has the mask been drawn (so the blades show)? */
   get ready(): boolean { return this.uniforms.uOn.value > 0; }

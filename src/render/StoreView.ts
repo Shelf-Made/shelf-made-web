@@ -208,7 +208,8 @@ export class StoreView {
     // Painted like the street's zebras: slim bars along the traffic, in the same soft off-white.
     for (let x = L.driveway.x0 + 0.2; x + 0.15 <= L.driveway.x1 - 0.1; x += 0.3) floorParts.push(box(pal, '#D8DADF', 0.15, 0.004, swOut - swIn - 0.12, ox + x + 0.075, 0.026, oz + (swIn + swOut) / 2));
     this.dressLot(shop, floorParts);
-    const floorMesh = new Mesh(merge(floorParts), this.assets.material);
+    // The ground material: the lot and the pavement get wet in the rain (the shop floor is sheltered).
+    const floorMesh = new Mesh(merge(floorParts), this.assets.ground);
     floorMesh.receiveShadow = true;
     this.shell.add(floorMesh);
 

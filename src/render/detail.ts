@@ -1,4 +1,5 @@
-import { CanvasTexture, RepeatWrapping, LinearMipmapLinearFilter, LinearFilter, type MeshStandardMaterial } from 'three';
+import { CanvasTexture, RepeatWrapping, LinearMipmapLinearFilter, LinearFilter, Vector4, type MeshStandardMaterial } from 'three';
+import { skyUniforms } from './Lighting';
 
 /**
  * Surface detail for everything that makes up the town and the shops: no flat colour anywhere. A small
@@ -101,5 +102,129 @@ export function addSurfaceDetail(mat: MeshStandardMaterial, tex: CanvasTexture |
         }`);
   };
   mat.customProgramCacheKey = () => 'surface-detail-4';
+  return mat;
+}
+
+/** How wet the town is, shared by every wet-able material: wetness 0..1, rain 0..1, a clock, and the shop's dry floor (x0, z0, x1, z1). */
+export const wetUniforms = {
+  uWet: { value: 0 },
+  uRain: { value: 0 },
+  uRainTime: { value: 0 },
+  uShelter: { value: new Vector4(0, 0, 0, 0) },
+};
+
+/**
+ * Rain on the ground, the way most games do it cheaply: everything facing up darkens and turns glossy
+ * as it gets wet; puddles grow out of the low patches (a broad noise, so the road is never one mirror);
+ * in them the water is near black and smooth, reflects the sky strongly at the angles you look at it
+ * from, and is broken by rings spreading from the drops (procedural ripples: four cells a pixel, no
+ * textures, no extra draws). Under the shop's floor nothing gets wet. Layered on the surface detail.
+ */
+export function addWetness(mat: MeshStandardMaterial): MeshStandardMaterial {
+  const base = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    base.call(mat, sh, r);
+    Object.assign(sh.uniforms, wetUniforms, skyUniforms);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uWet; uniform float uRain; uniform float uRainTime; uniform vec4 uShelter;
+        uniform vec3 uSkyTop; uniform vec3 uSkyHorizon; uniform vec3 uSunDir; uniform vec3 uSunCol;
+        float wetHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        // Rings spreading from raindrops on standing water: the slope of the surface at p (world units).
+        vec2 rainRipples(vec2 p, float t) {
+          vec2 q = p / 0.32;
+          vec2 base = floor(q - 0.5);
+          vec2 slope = vec2(0.0);
+          for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+            vec2 cell = base + vec2(float(i), float(j));
+            float h = wetHash(cell);
+            vec2 c = cell + 0.2 + 0.6 * vec2(h, wetHash(cell + 3.7));
+            float tt = fract(t * (0.9 + 0.7 * h) + wetHash(cell + 9.1));
+            vec2 dv = q - c;
+            float d = length(dv) + 1e-4;
+            float x = d - tt * 0.85;
+            float wave = cos(x * 34.0) * exp(-x * x * 90.0) * (1.0 - tt) * (1.0 - tt);
+            slope += dv / d * wave;
+          }
+          return slope;
+        }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        // Wet: facing up, outdoors (not on the shop floor), as wet as the weather has made it.
+        float wetUp = smoothstep(0.75, 0.95, normalize(vDetailNormal).y);
+        float sheltered = step(uShelter.x, vDetailPos.x) * step(vDetailPos.x, uShelter.z) * step(uShelter.y, vDetailPos.z) * step(vDetailPos.z, uShelter.w);
+        float wetK = uWet * wetUp * (1.0 - sheltered);
+        float puddle = 0.0;
+        // Dry days skip all of it (the same branch for every pixel, so it costs next to nothing).
+        if (uWet > 0.005) {
+          // Puddles: broad smooth blobs (two octaves of the mottle, never the fine grain), soft at the
+          // edges, spreading as the ground soaks.
+          float pn = texture2D(uDetail, vDetailPos.xz * 0.035 + 0.37).r * 0.65 + texture2D(uDetail, mat2(0.8, -0.6, 0.6, 0.8) * vDetailPos.xz * 0.09 + 0.11).r * 0.35;
+          float pt = 0.67 - 0.09 * uWet;
+          puddle = wetK * smoothstep(pt - 0.025, pt + 0.025, pn);
+          diffuseColor.rgb *= mix(1.0, 0.62, wetK) * mix(1.0, 0.55, puddle);
+          roughnessFactor = mix(roughnessFactor, 0.34, wetK);
+          roughnessFactor = mix(roughnessFactor, 0.04, puddle);
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (puddle > 0.01 && uRain > 0.01) {
+          vec2 sl = rainRipples(vDetailPos.xz, uRainTime) * 0.22 * uRain * puddle;
+          normal = normalize(normal + (viewMatrix * vec4(-sl.x, 0.0, -sl.y, 0.0)).xyz);
+        }`)
+      .replace('#include <opaque_fragment>', `
+        // The sky in the water: worked out from the sky's colours in the reflected direction (no
+        // environment map), with the sun's glint, weighted by Fresnel so it shines most at a low angle.
+        // Standing water mirrors it; a merely wet surface only takes a faint sheen.
+        if (wetK > 0.01) {
+          vec3 rv = inverseTransformDirection(reflect(-geometryViewDir, normal), viewMatrix);
+          vec3 sky = mix(uSkyHorizon, uSkyTop, pow(max(rv.y, 0.0), 0.6));
+          float sd = max(dot(rv, uSunDir), 0.0);
+          sky += uSunCol * (pow(sd, 600.0) * 8.0 + pow(sd, 60.0) * 0.5);
+          float fres = 0.04 + 0.96 * pow(1.0 - saturate(dot(normal, geometryViewDir)), 5.0);
+          float k = puddle * clamp(0.5 + fres * 1.5, 0.0, 0.9) + (wetK - puddle) * (0.1 + fres * 0.6);
+          outgoingLight = mix(outgoingLight, sky, k);
+        }
+        #include <opaque_fragment>`);
+  };
+  mat.customProgramCacheKey = () => 'surface-detail-4-wet-2';
+  return mat;
+}
+
+/**
+ * A wet sheen for anything out in the rain that is not the ground: car roofs and bonnets, awnings,
+ * benches, bins. Facing up and outdoors it darkens a touch, turns glossy and catches the sky (Fresnel),
+ * all in the shader from the shared uniforms. `outdoorsOnly` keeps it off the shop floor's fixtures
+ * (needs the surface detail's world position; cars are always outdoors).
+ */
+export function addWetSheen(mat: MeshStandardMaterial, outdoorsOnly: boolean): MeshStandardMaterial {
+  const base = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    base.call(mat, sh, r);
+    Object.assign(sh.uniforms, wetUniforms, skyUniforms);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uWet; uniform vec4 uShelter;
+        uniform vec3 uSkyTop; uniform vec3 uSkyHorizon; uniform vec3 uSunDir; uniform vec3 uSunCol;`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        float sheen = 0.0;
+        if (uWet > 0.01) {
+          vec3 nW = inverseTransformDirection(normalize(vNormal), viewMatrix);
+          sheen = uWet * smoothstep(0.55, 0.9, nW.y);
+          ${outdoorsOnly ? 'sheen *= 1.0 - step(uShelter.x, vDetailPos.x) * step(vDetailPos.x, uShelter.z) * step(uShelter.y, vDetailPos.z) * step(vDetailPos.z, uShelter.w);' : ''}
+          diffuseColor.rgb *= 1.0 - 0.18 * sheen;
+          roughnessFactor = mix(roughnessFactor, 0.25, sheen);
+        }`)
+      .replace('#include <opaque_fragment>', `
+        if (sheen > 0.01) {
+          vec3 rv = inverseTransformDirection(reflect(-geometryViewDir, normal), viewMatrix);
+          vec3 sky = mix(uSkyHorizon, uSkyTop, pow(max(rv.y, 0.0), 0.6));
+          float sd = max(dot(rv, uSunDir), 0.0);
+          sky += uSunCol * pow(sd, 300.0) * 4.0;
+          float fres = 0.04 + 0.96 * pow(1.0 - saturate(dot(normal, geometryViewDir)), 5.0);
+          outgoingLight = mix(outgoingLight, sky, sheen * (0.06 + fres * 0.7));
+        }
+        #include <opaque_fragment>`);
+  };
+  const key = mat.customProgramCacheKey.bind(mat);
+  mat.customProgramCacheKey = () => `${key()}|wet-sheen-${outdoorsOnly ? 1 : 0}`;
   return mat;
 }
