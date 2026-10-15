@@ -18,7 +18,7 @@ import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './l
 import { noteVisit } from './reviews';
 import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './shoplifting';
 import { freeStand, standPoint, freeStands } from './lot';
-import { rideAt, rideStep, startRide } from './storeys';
+import { RIDE_REACH, rideAt, rideStep, startRide } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
 import { RACK_STANDS } from './layout';
 
@@ -731,8 +731,9 @@ function steer(state: GameState, p: Person, dyn: Set<number>): void {
   // Walls from the grid; the furniture by the shape of each model, so you can walk right up to any of it.
   const g = wallGridFor(state);
   const d = p.moveDir!;
-  // Pushing into the stairs at their foot (or their top, or a lift's door): ride them.
-  if (p.rideLock && Math.hypot(p.x - p.rideLock.x, p.z - p.rideLock.z) > 0.4) p.rideLock = undefined;
+  // Pushing into the stairs at their foot (or their top, or a lift's door): ride them. Off at the other end,
+  // not again till they let go or step clear and back (sliding along a lift's doors is not stepping back on).
+  if (p.rideLock && Math.hypot(p.x - p.rideLock.x, p.z - p.rideLock.z) > RIDE_REACH + 0.1) p.rideLock = undefined;
   const ride = p.rideLock ? null : rideAt(state, p, d);
   if (ride) { startRide(state, p, ride); p.rideLock = { x: ride.x, z: ride.z }; p.anim = p.carrying ? 'carry' : 'walk'; if (p.task && !p.carrying) p.task = null; return; }
   const len = Math.hypot(d.x, d.z) || 1;

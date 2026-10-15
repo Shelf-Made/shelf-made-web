@@ -102,6 +102,30 @@ describe('riding the stairs with the keys', () => {
   });
 });
 
+describe('riding the lift with the keys', () => {
+  it('holding a key a little off into the lift takes the manager up once, not up and down for ever', () => {
+    for (const turn of [0.3, -0.3, 0]) {
+      const s = quiet(76, 'elevator');
+      const o = owner(s);
+      put(o, foot(s));
+      const d = into(s), c = Math.cos(turn), n = Math.sin(turn);
+      applyCommand(s, { type: 'moveDir', x: d.x * c - d.z * n, z: d.x * n + d.z * c });
+      const w = rideWatch(s);
+      run(s, 12, w.check);
+      expect(w.started, `turned ${turn}`).toBe(1);
+      expect(levelOfPerson(s.shop, o)).toBe(1);
+      // Let go and push into it again: back down.
+      applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
+      run(s, 0.1);
+      put(o, toWorld(s.shop, STAIRS.x + 0.5, zOnLevel(STAIRS.z + 1.5, 1)));
+      applyCommand(s, { type: 'moveDir', x: d.x, z: d.z });
+      run(s, 6, () => w.check() || (w.started === 2 && o.climb === undefined));
+      expect(w.started, `turned ${turn}`).toBe(2);
+      expect(levelOfPerson(s.shop, o)).toBe(0);
+    }
+  });
+});
+
 describe('a change of plan on the stairs', () => {
   it('a click while the manager rides up takes them on from the top, never back to the foot', () => {
     const s = quiet(75);

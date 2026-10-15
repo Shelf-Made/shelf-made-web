@@ -180,13 +180,16 @@ export function levelOfPerson(shop: Shop, p: Vec2): number {
 
 // ---- Walking with the keys: push into the stairs (up at the foot, down at the top) or a lift's door to ride.
 
+/** How near the start of a ride walking into it gets you on. */
+export const RIDE_REACH = 0.45;
+
 /** The ride a person pushing that way stands at the start of, or null. */
 export function rideAt(state: GameState, p: Person, dir: Vec2): Waypoint | null {
   const g = gridFor(state);
   if (!g.portals) return null;
   const len = Math.hypot(dir.x, dir.z) || 1;
   for (const list of g.portals.values()) for (const pt of list) {
-    if (Math.hypot(pt.from.x - p.x, pt.from.z - p.z) > 0.45) continue;
+    if (Math.hypot(pt.from.x - p.x, pt.from.z - p.z) > RIDE_REACH) continue;
     if ((dir.x * Math.sin(pt.yaw) + dir.z * Math.cos(pt.yaw)) / len < 0.6) continue;
     return { x: pt.at.x, z: pt.at.z, ride: pt.ride, via: pt.via, yaw: pt.yaw };
   }
