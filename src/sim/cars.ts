@@ -65,7 +65,22 @@ function makeCar(state: GameState, model: number, path: Vec2[], carState: Car['s
   return car;
 }
 
-export function freeBay(state: GameState): number { return state.shop.bays.findIndex((b) => b.carId === null); }
+/**
+ * The free bay a car pulls into: the first row before the second, the back of the car park first (so
+ * a car on its way in never has to squeeze past one just parked by the driveway), whatever order the
+ * bays were painted in.
+ */
+export function freeBay(state: GameState): number {
+  const shop = state.shop;
+  let best = -1, bestKey = Infinity;
+  shop.bays.forEach((b, i) => {
+    if (b.carId !== null) return;
+    const l = toLocal(shop, b.x, b.z);
+    const key = (l.x > shop.floor.x1 + 4 ? 100 : 0) + l.z;
+    if (key < bestKey) { bestKey = key; best = i; }
+  });
+  return best;
+}
 
 /** Into a lot's free bay from Main Road. fromWest is the world direction the car comes from. */
 function pathIntoLot(site: LotSite, bayIdx: number, fromWest: boolean): Vec2[] {

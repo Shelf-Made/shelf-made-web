@@ -17,14 +17,17 @@ import { WALL_COLOURS } from './storeArt';
 /** Furniture models the pieces are made from (loaded with the shop's other models). */
 export const FITTING_MODELS = ['furniture/bench-cushion', 'furniture/side-table', 'furniture/chair', 'furniture/desk', 'furniture/computer-screen', 'furniture/trashcan',
   'furniture/speaker', 'furniture/cabinet-television', 'furniture/television-modern', 'furniture/bookcase-open', 'furniture/books', 'furniture/plant-small-1', 'furniture/plant-small-2',
-  'furniture/plant-small-3', 'furniture/rug-rectangle', 'furniture/rug-doormat', 'furniture/lamp-wall', 'furniture/lamp-square-ceiling', 'market/fence', 'market/fence-door', 'food/cup-coffee'];
+  'furniture/plant-small-3', 'furniture/rug-rectangle', 'furniture/rug-doormat', 'furniture/lamp-wall', 'furniture/lamp-square-ceiling', 'market/fence', 'market/fence-door', 'food/cup-coffee',
+  'furniture/bench', 'furniture/potted-plant', 'nature/tree-oak', 'nature/tree-default', 'nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb', 'suburban/planter'];
 
 /** Where each new piece's geometry comes from: a Kenney model as it is, or one composed here ("gen:"). */
 export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
-  sofa: 'furniture/bench-cushion', cafe: 'gen:cafe', desk: 'gen:desk', bin: 'furniture/trashcan', trolleys: 'gen:trolleys', speaker: 'furniture/speaker',
+  sofa: 'gen:sofa', cafe: 'gen:cafe', desk: 'gen:desk', bin: 'gen:bin', trolleys: 'gen:trolleys', speaker: 'gen:speaker', plant: 'gen:plant',
   screen: 'gen:screen', bookcase: 'gen:bookcase', flowers: 'gen:flowers', rug: 'gen:rug', doormat: 'gen:doormat',
   wall: 'gen:wall', wallWindow: 'gen:wallWindow', doorway: 'gen:doorway', railing: 'gen:railing', gate: 'market/fence-door',
   floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim', pallet: 'gen:pallet',
+  bench: 'gen:bench',
+  flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
@@ -88,6 +91,37 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:pendant': return merge([box(pal, '#38383D', 0.008, 0.2, 0.008, 0, 0.8, 0), m('furniture/lamp-square-ceiling', 0, 0.64, 0, 0, 1.6)]);
     case 'gen:neon': return merge([box(pal, '#222226', 0.56, 0.3, 0.02, 0, 0.52, WALL_FACE + 0.01)]);
     case 'gen:windowTrim': return windowTrim(assets);
+    // Kenney's park bench is doll's-house size next to the shop's shelves: one a grown-up can sit on.
+    case 'gen:bench': case 'gen:parkBench': return m('furniture/bench', 0, 0, 0, 0, 2.6, 1.35, 2.4);
+    case 'gen:sofa': return m('furniture/bench-cushion', 0, 0, 0, 0, 2.6, 1.35, 2.4);
+    // A little bigger than Kenney's, to sit with the shop's shelves.
+    case 'gen:bin': return m('furniture/trashcan', 0, 0, 0, 0, 1.35);
+    case 'gen:speaker': return m('furniture/speaker', 0, 0, 0, 0, 1.4);
+    case 'gen:plant': return m('furniture/potted-plant', 0, 0, 0, 0, 1.45);
+    // Out on the lot.
+    case 'gen:flowerBed': {
+      // A low timber edge round dark soil, planted in rows.
+      const parts: BufferGeometry[] = [box(pal, '#6B4A35', 0.84, 0.05, 0.84, 0, 0, 0)];
+      for (const [x, z, w, d] of [[0, -0.41, 0.88, 0.06], [0, 0.41, 0.88, 0.06], [-0.41, 0, 0.06, 0.88], [0.41, 0, 0.06, 0.88]] as const) parts.push(box(pal, '#A87B45', w, 0.09, d, x, 0, z));
+      const kinds = ['nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb'];
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) parts.push(m(kinds[(i * 3 + j * 2) % kinds.length]!, -0.24 + i * 0.24, 0.05, -0.24 + j * 0.24, (i + j) * 0.9, 0.85));
+      return merge(parts);
+    }
+    case 'gen:tree': return merge([m('nature/tree-oak', 0, 0, 0, 0.4, 1.05), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
+    case 'gen:planter': return m('suburban/planter', 0, 0, 0, 0, 1.2);
+    case 'gen:bikeRack': {
+      // Three steel hoops side by side; bikes are wheeled in from the front (drawn as they come and go).
+      const parts: BufferGeometry[] = [box(pal, '#9AA0A8', 0.84, 0.02, 0.06, 0, 0, -0.1)];
+      for (let i = 0; i < 3; i++) { const x = (i - 1) * 0.28; parts.push(box(pal, '#9AA0A8', 0.025, 0.24, 0.025, x, 0, -0.22), box(pal, '#9AA0A8', 0.025, 0.24, 0.025, x, 0, 0.02), box(pal, '#9AA0A8', 0.025, 0.025, 0.27, x, 0.23, -0.1)); }
+      return merge(parts);
+    }
+    case 'gen:billboard': {
+      // Two legs and a board across both tiles, in the shop's colours (the name goes on in the store view).
+      const parts: BufferGeometry[] = [];
+      for (const x of [-0.75, 0.75]) parts.push(box(pal, '#4A4A52', 0.09, 1.0, 0.09, x, 0, -0.32));
+      parts.push(box(pal, '#38383D', 1.86, 0.86, 0.06, 0, 0.82, -0.36), box(pal, sc.primary, 1.78, 0.78, 0.02, 0, 0.86, -0.32), box(pal, sc.accent, 1.78, 0.1, 0.022, 0, 0.9, -0.318));
+      return merge(parts);
+    }
     case 'gen:pallet': {
       // Like the delivery pallet by the back door: a hazard border on the floor round a wooden pallet.
       const parts: BufferGeometry[] = [];

@@ -4,17 +4,20 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments } from './layout';
+import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
+import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays } from './lot';
 
 export interface PlaceCheck { ok: boolean; reason: string; price: number }
 
 /** Can this fixture go here? Reason is in plain words for the ghost label. */
 export function canPlace(state: GameState, type: FixtureType, x: number, z: number, rot: Rot, ignoreId?: number): PlaceCheck {
   const def = FIXTURES[type];
+  // Out on the lot: its own grid and rules.
+  if (def.outdoor) return canPlaceOutside(state, type, x, z, rot, ignoreId);
   const shop = state.shop;
   const f = shop.floor;
   const price = def.price;
@@ -163,6 +166,13 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = tileKey(tx + dx!, tz + dz!); if (keys.has(k) && !seen.has(k)) { seen.add(k); todo.push(k); } }
   }
   if (seen.size !== keys.size) return { ok: false, reason: 'The shop would come apart', price };
+  // The lot moves in with the walls: nothing out there may end up on its paths, and no painted bay may go.
+  const trial = { ...shop };
+  setFloorTiles(trial, rest);
+  trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 };
+  if (paintedBays(trial).bays.length < paintedBays(shop).bays.length) return { ok: false, reason: 'A bay at the back would go: paint it out first', price };
+  const clash = lotClash(state, trial);
+  if (clash) return { ok: false, reason: clash, price };
   return { ok: true, reason: 'Sell this tile', price };
 }
 
@@ -202,6 +212,12 @@ export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
   if (z + 1 > m.z1) return { ok: false, reason: 'The front wall stays where it is', price };
   if (x < m.x0 || x + 1 > m.x1 || z < m.z0) return { ok: false, reason: 'The plot ends here', price };
   if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => isFloor(shop, x + dx!, z + dz!))) return { ok: false, reason: 'Next to the floor you have', price };
+  // The walls and the lot move out with it: nothing out on the lot may end up in the way.
+  const trial = { ...shop };
+  setFloorTiles(trial, [...floorTileList(shop), { x, z }]);
+  trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 };
+  const clash = lotClash(state, trial);
+  if (clash) return { ok: false, reason: clash, price };
   if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   return { ok: true, reason: 'More floor', price };
 }
@@ -253,6 +269,9 @@ function reshape(state: GameState): void {
   shop.storageCapacity = 120 + 5 * Math.max(0, n - 30);
   const L = lotLayout(shop);
   shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
+  shop.lotRows = paintedBays(shop).rows;
+  // Paving the building or the moved lanes now cover is gone with the grass.
+  pruneSurfaces(shop);
   shop.layoutVersion++;
 }
 
@@ -301,6 +320,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const want: { x: number; z: number }[] = [];
   for (let z = size.floor.z0; z < size.floor.z1; z++) for (let x = size.floor.x0; x < size.floor.x1; x++) if (!isFloor(shop, x, z)) want.push({ x, z });
   if (!want.length) return 'The shop is already that big.';
+  { const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash; }
   let n = floorTileCount(shop), cost = 0;
   for (let i = 0; i < want.length; i++, n++) cost += tilePriceAt(n);
   if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
@@ -314,23 +334,18 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   return null;
 }
 
+/** Paint every bay the car park has room for, at the bay price each (the Build card paints them one at a time). */
 export function expandLot(state: GameState): string | null {
-  const shop = state.shop;
-  if (shop.lotRows >= 2) return 'The lot is as big as the plot allows.';
-  if (state.cash < LOT_EXPANSION_COST) return `Need ${dollars(LOT_EXPANSION_COST)} for the extra bays.`;
-  state.cash -= LOT_EXPANSION_COST;
-  shop.lotRows = 2;
-  const L = lotLayout(shop);
-  shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
-  shop.layoutVersion++;
-  state.notices.push({ day: state.day, text: `Parking doubled: ${shop.bays.length} bays now.`, kind: 'info' });
-  return null;
+  const err = paintAllBays(state);
+  if (!err) state.notices.push({ day: state.day, text: `More parking: ${state.shop.bays.length} bays now.`, kind: 'info' });
+  return err;
 }
 
 export function moveFixture(state: GameState, id: number, x: number, z: number, rot: Rot): string | null {
   const f = state.shop.fixtures.find((fx) => fx.id === id);
   if (!f) return 'No such fixture.';
   if (f.type === 'register' && (f.serving || (f.queue?.length ?? 0) > 0)) return 'Wait until the line is served.';
+  if (f.bikes?.some((b) => b !== null)) return 'Bikes are locked to it: wait till they ride off.';
   const check = canPlace(state, f.type, x, z, rot, id);
   if (!check.ok) return check.reason;
   f.x = x; f.z = z; f.rot = rot;

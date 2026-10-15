@@ -19,7 +19,7 @@ const place = (s: GameState, fixtureType: keyof typeof FIXTURES, x: number, z: n
 describe('building: walls, doors, lights, floors and windows', () => {
   it('sorts every piece onto a Build tab', () => {
     const tabs = new Set(Object.values(FIXTURES).map((d) => d.category));
-    expect([...tabs].sort()).toEqual(['checkout', 'decor', 'furniture', 'lights', 'shelves', 'walls']);
+    expect([...tabs].sort()).toEqual(['checkout', 'decor', 'furniture', 'lights', 'outside', 'shelves', 'walls']);
     for (const d of Object.values(FIXTURES)) { expect(d.price).toBeGreaterThan(0); if (d.onWall) expect(d.walkable).toBe(true); }
   });
 

@@ -12,10 +12,14 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window'
-  | 'floorLamp' | 'wallLight' | 'pendant' | 'neon';
+  | 'floorLamp' | 'wallLight' | 'pendant' | 'neon'
+  /** Out on the lot. */
+  | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard';
 
 /** The Build card's tabs. */
-export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights';
+export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights' | 'outside';
+/** What a tile of the lot is laid with (grass where none is). */
+export type LotSurface = 'gravel' | 'asphalt' | 'paving' | 'brick';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
 export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete';
 /** The inside finish of a stretch of outer wall. */
@@ -45,6 +49,15 @@ export interface FixtureDef {
   onWall?: boolean;
   /** What it adds to how the shop looks (decor, 0..1 in all), for up to `looksCap` of them. */
   looks?: number; looksCap?: number;
+  /**
+   * How far it reaches forward from the back of its tile (pieces stand flush at the back), when that is
+   * no more than about half: the front of the tile is open floor people can walk across. Unset: all of it.
+   */
+  depth?: number;
+  /** Stands out on the lot, on its own grid (see lotTile): never on the shop floor. */
+  outdoor?: boolean;
+  /** Out on the lot: what it adds to how the lot looks from the street, for up to `looksCap` of them. */
+  curb?: number;
 }
 
 export interface Slot { productId: string | null; qty: number; }
@@ -64,6 +77,8 @@ export interface Fixture {
   scanned?: number;
   /** Register only: id of the staff member working it. */
   staffId?: number | null;
+  /** Bike rack only: who has a bike in each stand (a person id), or null. */
+  bikes?: (number | null)[];
 }
 
 export type CustomerType = 'bargain' | 'convenience' | 'loyalist' | 'impulse';
@@ -72,7 +87,11 @@ export type PersonState =
   | 'driving' | 'toDoor' | 'entering' | 'shopping' | 'browsing' | 'toQueue' | 'queued' | 'paying' | 'leaving' | 'toCar' | 'walking' | 'gone'
   | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working' | 'inRival' | 'loading'
   /** A shoplifter making a run for the door, and the staff member after them. */
-  | 'fleeing' | 'chasing';
+  | 'fleeing' | 'chasing'
+  /** Came by bike: riding over to the rack, and walking back to it to ride home. */
+  | 'toRack' | 'toBike'
+  /** Sat on a bench or at the café table, or asking at the help desk (see Person.rest). */
+  | 'resting';
 
 export type Anim = 'idle' | 'walk' | 'browse' | 'carry' | 'pay' | 'sit';
 
@@ -169,6 +188,13 @@ export interface Person {
   chase?: number | null;
   /** Staff: seconds at their post with nothing to do (they go and tidy a shelf after a while). */
   idleFor?: number;
+  /** Came by bike: the rack and stand it is locked to, and whether they are riding it now. */
+  bike?: { rackId: number; slot: number } | null;
+  riding?: boolean;
+  /** Sitting down (a bench, the café table) or asking at the help desk: where, which place, and what next. */
+  rest?: { kind: 'seat' | 'cafe' | 'desk'; fixtureId: number; seat: number; productId?: string } | null;
+  /** Has had a sit down this visit. */
+  rested?: boolean;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -176,6 +202,30 @@ export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'sta
 
 export interface Candidate { id: number; name: string; role: StaffRole; skill: number; speed: number; wage: number; look: { model: number; variant: number; height: number } }
 export interface ManagerRules { reorderPoint: number; spendCap: number; priceMin: number; priceMax: number; wageCap: number; adBudget: number }
+
+/**
+ * When a manager places a saved order: every morning, every few days, when the pallet runs low, when
+ * one product (on the shelves and the pallet together) runs low.
+ */
+export type OrderRule =
+  | { kind: 'never' }
+  | { kind: 'daily' }
+  | { kind: 'everyDays'; days: number }
+  | { kind: 'palletBelow'; units: number }
+  | { kind: 'productBelow'; productId: string; units: number };
+
+/** An order you saved to place again (yourself, or the manager by its rule). */
+export interface SavedOrder {
+  id: number;
+  name: string;
+  supplierId: string;
+  lines: { productId: string; qty: number }[];
+  when: OrderRule;
+  /** Only when there is at least this much in the till after paying for it. */
+  minCash: number;
+  /** The day it was last placed (a manager places each at most once a day). */
+  lastDay?: number;
+}
 export interface Litter { id: number; x: number; z: number }
 
 export type CarState = 'arriving' | 'parking' | 'parked' | 'leaving' | 'passing' | 'delivering' | 'unloading' | 'gone' | 'turnedAway';
@@ -226,6 +276,8 @@ export interface Order {
   /** Game seconds until arrival (counts down). */
   eta: number;
   state: 'pending' | 'arriving' | 'delivered';
+  /** Placed from a saved order (its id). */
+  savedId?: number;
 }
 
 export interface StockEntry { productId: string; qty: number; /** day received, for spoilage */ day: number }
@@ -288,6 +340,10 @@ export interface Shop {
   /** Windows bought for the side and back walls. */
   /** Old saves only: whole walls of windows, turned into Window pieces on load. */
   windows?: Partial<Record<WindowSide, boolean>>;
+  /** The lot, tile by tile (keys from lotKey): what is laid where it is not grass. */
+  lotTiles?: Record<string, LotSurface>;
+  /** Which parking bays are painted, by slot (see baySlots), in the order they were painted (`bays` follows it). Old saves: every slot of `lotRows` rows. */
+  bayPlan?: number[];
 }
 
 /** What went wrong for shoppers today, counted as it happens (the night card's "why"). */
@@ -526,6 +582,8 @@ export interface GameState {
   gameOver: boolean;
   staffPool: Candidate[];
   rules: ManagerRules;
+  /** Orders you saved, and when the manager should place them. */
+  savedOrders?: SavedOrder[];
   marketing: { campaigns: Campaign[]; billboards: string[]; promotion: Promotion | null; ad: AdTemplate | null; outsideSign: boolean; openingEventDay?: number };
   franchises: Franchise[];
   goals: GoalState;

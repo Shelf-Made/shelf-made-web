@@ -51,7 +51,7 @@ describe('reviews', () => {
     for (let d = 0; d < 4; d++) { playDay(good); playDay(bad, true); nextDay(good); nextDay(bad); }
     const g = listingOf(good), b = listingOf(bad);
     expect(g.count).toBeGreaterThan(10);
-    expect(b.count).toBeGreaterThan(10);
+    expect(b.count).toBeGreaterThan(7); // a messy shop sees fewer shoppers, so fewer reviews
     expect(g.stars.reduce((a, n) => a + n, 0)).toBe(g.count);
     expect(rating(good)).toBeGreaterThan(rating(bad) + 0.4);
     expect(rating(good)).toBeGreaterThanOrEqual(3.8);

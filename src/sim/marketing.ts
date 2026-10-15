@@ -7,6 +7,8 @@ import type { GameState, Promotion, AdTemplate, DayPlan } from './types';
 import { productDef } from './products';
 import { withRng, cue } from './state';
 import { OFFMAP_SITES, BILLBOARDS } from './layout';
+import { lotBillboardReach } from './lot';
+import { neonReach } from './furniture';
 import { dollars } from './money';
 
 /** Flyers go out in the neighbourhoods the roads lead to (each signposted at the edge of town). */
@@ -80,6 +82,10 @@ export function marketingDay(state: GameState, plan: Pick<DayPlan, 'eventDemand'
   for (const id of m.billboards) { const site = BILLBOARD_SITES.find((b) => b.id === id); if (site) { aw += site.reach; state.cash -= site.rent; state.today.other += site.rent; } }
   if (m.ad) { state.cash -= AD_COST; state.today.other += AD_COST; aw += 0.03; }
   if (m.outsideSign) aw += 0.02;
+  // Billboards on your own lot: no rent, the traffic on Main Road sees them every day.
+  aw += lotBillboardReach(state.shop);
+  // A neon sign in the window: seen from the street.
+  aw += neonReach(state);
   state.shop.awareness = Math.min(1, state.shop.awareness + aw);
   // Dishonoured ads: the advertised product is not on a shelf.
   if (m.ad && m.ad.productId && !state.shop.fixtures.some((f) => f.slots.some((s) => s.productId === m.ad!.productId && s.qty > 0))) {

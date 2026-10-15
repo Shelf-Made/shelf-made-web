@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld, FIXTURES, isFloor, floorTileList } from './layout';
+import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES } from './layout';
 
 export const CELL = 0.5;
 
@@ -39,7 +39,7 @@ function fillRect(g: Grid, x0: number, z0: number, x1: number, z1: number, cost:
 }
 
 export function fixtureFootprint(f: Fixture): { x0: number; z0: number; x1: number; z1: number } {
-  return { x0: f.x, z0: f.z, x1: f.x + 1, z1: f.z + 1 };
+  return footprintOf(f.type, f.x, f.z, f.rot);
 }
 
 /** The tile centre a person stands on to use a fixture (in front of it). */
@@ -136,7 +136,9 @@ export function fixtureFacing(rot: number): Vec2 {
 /** Grid in world coordinates: store-relative rects are carried into the world by the shop's frame. */
 export function buildGrid(shop: Shop, version: number, backDoorShut = false): Grid {
   const L = lotLayout(shop);
-  const bounds = rectToWorld(shop, { x0: L.plot.x0, z0: L.plot.z0, x1: L.plot.x1, z1: 3.5 });
+  // The whole plot (pieces out on the lot can stand anywhere on it), to the far side of the frontage sidewalk.
+  // Edges on the half-tile, so cells line up with tiles on every corner (the south ones are turned round).
+  const bounds = rectToWorld(shop, { x0: Math.floor(PLOT_RECT.x0 * 2) / 2, z0: Math.floor(PLOT_RECT.z0 * 2) / 2, x1: Math.floor(PLOT_RECT.x1 * 2) / 2, z1: 3.5 });
   const { x0, z0, x1, z1 } = bounds;
   const w = Math.round((x1 - x0) / CELL), h = Math.round((z1 - z0) / CELL);
   const g: Grid = { x0, z0, w, h, cost: new Float32Array(w * h), edges: new Set(), inside: new Uint8Array(w * h), version };
@@ -147,8 +149,10 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   R(L.apron, 1);
   R({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.5 }, 1);
   R(L.aisle, 1.2); R(L.driveway, 1.2); R(L.serviceLane, 1.2); R(L.backYard, 1.2);
+  // Surfaces laid on the lot: people take to paving over the grass.
+  for (const [k, sf] of Object.entries(shop.lotTiles ?? {})) { const [x, z] = k.split(',').map(Number) as [number, number]; R({ x0: x, z0: z, x1: x + 1, z1: z + 1 }, SURFACES.find((q) => q.id === sf)?.walk ?? 1); }
   // Sidewalk strip along the whole plot.
-  R({ x0: L.plot.x0, z0: 2.6, x1: L.plot.x1, z1: 3.5 }, 1);
+  R({ x0: PLOT_RECT.x0, z0: 2.6, x1: PLOT_RECT.x1, z1: 3.5 }, 1);
   // Parking bays are walkable when empty (cars block them later).
   for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
   // Shop floor, tile by tile (`storeroom` only exists in old saves).
@@ -170,15 +174,17 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   // Delivered boxes stand here.
   if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.
+  // Fixtures: a shallow one (a chiller, a produce stand) only blocks the back of its tile, so people can
+  // walk right up to it and between two that face each other.
   for (const fx of shop.fixtures) {
     if (FIXTURES[fx.type].walkable) continue;
-    R(fixtureFootprint(fx), 0);
+    R(blockedRect(fx), 0);
   }
   return g;
 }
 
-/** World-space centre of a fixture. */
-export function fixtureCentre(shop: Shop, f: Fixture): Vec2 { return toWorld(shop, f.x + 0.5, f.z + 0.5); }
+/** World-space centre of a fixture (of its footprint: a billboard is two tiles wide). */
+export function fixtureCentre(shop: Shop, f: Fixture): Vec2 { const r = footprintOf(f.type, f.x, f.z, f.rot); return toWorld(shop, (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2); }
 
 /** World-space standing point in front of a fixture. */
 export function fixtureFrontWorld(shop: Shop, f: Fixture): Vec2 { const p = fixtureFront(f); return toWorld(shop, p.x, p.z); }

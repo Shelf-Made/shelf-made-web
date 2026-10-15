@@ -4,12 +4,15 @@ import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/produ
 import { SUPPLIERS, unitCost, deliveryStatus } from '@/sim/economy';
 import { FIXTURES, storageCap } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
+import { savedOrderCost, ruleText, MAX_SAVED } from '@/sim/savedOrders';
+import type { OrderRule, SavedOrder } from '@/sim/types';
 
 export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
   void snap.stateVersion;
   const [supplierId, setSupplierId] = useState('local');
   const [qty, setQty] = useState<Record<string, number>>({});
+  const [saveName, setSaveName] = useState('');
   // Opened from a shelf: start at the products that go on it (a chiller's dairy, a stand's produce).
   const [cat, setCat] = useState<Category | 'all'>(() => {
     const t = runtime.takeStockFor();
@@ -70,7 +73,77 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <button className="btn" disabled={lines.length === 0} onClick={() => { const r = runtime.dispatch({ type: 'placeOrder', supplierId, lines }); if (r.ok) { setQty({}); runtime.showToast('Order placed. The truck is on its way.'); } }}>Place order</button>
       </div>
       {total > s.cash && <p className="muted">You have {money(s.cash)}.</p>}
+      {lines.length > 0 && (s.savedOrders?.length ?? 0) < MAX_SAVED && (
+        <div className="row between save-order">
+          <input type="text" value={saveName} maxLength={30} placeholder={`Order ${(s.savedOrders?.length ?? 0) + 1}`} onChange={(e) => setSaveName(e.target.value)} aria-label="Name for this order" />
+          <button className="btn small ghost" onClick={() => { const r = runtime.dispatch({ type: 'saveOrder', name: saveName, supplierId, lines }); if (r.ok) { setSaveName(''); runtime.showToast('Saved: it is under Saved orders below.'); } else if (r.message) runtime.showToast(r.message); }}>Save this order</button>
+        </div>
+      )}
+      <SavedOrders runtime={runtime} />
       <p className="muted">{productDef('milk').chilled ? 'Chilled goods need a fridge on the floor.' : ''}</p>
+    </>
+  );
+}
+
+/** The conditions a manager can place a saved order on. */
+const RULES: { kind: OrderRule['kind']; label: string }[] = [
+  { kind: 'never', label: 'Only when I place it' }, { kind: 'daily', label: 'Every morning' }, { kind: 'everyDays', label: 'Every few days' },
+  { kind: 'palletBelow', label: 'When the pallet runs low' }, { kind: 'productBelow', label: 'When a product runs low' },
+];
+function ruleOf(kind: OrderRule['kind'], o: SavedOrder): OrderRule {
+  switch (kind) {
+    case 'everyDays': return { kind, days: 3 };
+    case 'palletBelow': return { kind, units: 30 };
+    case 'productBelow': return { kind, productId: o.lines[0]!.productId, units: 10 };
+    default: return { kind };
+  }
+}
+
+/** Orders you saved: place one again, or tell the manager when to. */
+function SavedOrders({ runtime }: { runtime: GameRuntime }) {
+  const s = runtime.state!;
+  const list = s.savedOrders ?? [];
+  if (!list.length) return null;
+  const manager = s.people.some((p) => p.kind === 'staff' && p.role === 'manager');
+  const edit = (id: number, patch: Partial<Pick<SavedOrder, 'name' | 'when' | 'minCash'>>) => runtime.dispatch({ type: 'editSavedOrder', id, patch });
+  return (
+    <>
+      <h3>Saved orders</h3>
+      <p className="muted">{manager ? 'Your manager places each one when its condition comes true (once a day at most).' : 'Hire a manager (Staff) and they place these for you when you say.'}</p>
+      <div className="list">
+        {list.map((o) => {
+          const r = o.when;
+          return (
+            <div className="item saved-order" key={o.id}>
+              <div style={{ flex: 1 }}>
+                <div className="name">{o.name}</div>
+                <div className="sub">{o.lines.map((l) => `${l.qty} ${productDef(l.productId).name.toLowerCase()}`).join(', ')} · {money(savedOrderCost(s, o))}</div>
+                <div className="row" style={{ flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                  <select value={r.kind} aria-label={`When to place ${o.name}`} onChange={(e) => edit(o.id, { when: ruleOf(e.target.value as OrderRule['kind'], o) })}>
+                    {RULES.map((x) => <option key={x.kind} value={x.kind}>{x.label}</option>)}
+                  </select>
+                  {r.kind === 'everyDays' && <label className="row">every <input type="number" min={2} max={14} value={r.days} onChange={(e) => edit(o.id, { when: { kind: 'everyDays', days: Math.max(2, Math.min(14, Number(e.target.value) || 2)) } })} /> days</label>}
+                  {r.kind === 'palletBelow' && <label className="row">under <input type="number" min={0} value={r.units} onChange={(e) => edit(o.id, { when: { kind: 'palletBelow', units: Math.max(0, Number(e.target.value) || 0) } })} /> units</label>}
+                  {r.kind === 'productBelow' && (
+                    <>
+                      <select value={r.productId} aria-label="Which product" onChange={(e) => edit(o.id, { when: { ...r, productId: e.target.value } })}>
+                        {o.lines.map((l) => <option key={l.productId} value={l.productId}>{productDef(l.productId).name}</option>)}
+                      </select>
+                      <label className="row">under <input type="number" min={0} value={r.units} onChange={(e) => edit(o.id, { when: { ...r, units: Math.max(0, Number(e.target.value) || 0) } })} /></label>
+                    </>
+                  )}
+                  {r.kind !== 'never' && <label className="row">keep {'$'}<input type="number" min={0} step={50} value={o.minCash} onChange={(e) => edit(o.id, { minCash: Number(e.target.value) || 0 })} /> in the till</label>}
+                </div>
+                <div className="sub">{ruleText(r)}{o.lastDay !== undefined ? ` · last placed day ${o.lastDay}` : ''}</div>
+              </div>
+              <span className="row" style={{ flexDirection: 'column', gap: 4 }}>
+                <button className="btn small" disabled={s.cash < savedOrderCost(s, o)} onClick={() => { const res = runtime.dispatch({ type: 'placeSavedOrder', id: o.id }); runtime.showToast(res.ok ? 'Order placed. The truck is on its way.' : res.message ?? 'Could not place it.'); }}>Order now</button>
+                <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'deleteSavedOrder', id: o.id })}>Delete</button>
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }

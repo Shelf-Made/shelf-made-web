@@ -1,11 +1,12 @@
 import { frontageLitter } from '@/sim/life';
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
-import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle, WallStyle } from '@/sim/types';
+import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle, WallStyle, LotSurface } from '@/sim/types';
 import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
-import { PLOTS, FIXTURES, FLOORS, WALLS, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, type Rect, type WallSeg } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg } from '@/sim/layout';
+import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -91,7 +92,11 @@ export interface Snapshot {
 }
 
 /** A tile tool in Build: buying floor to grow the shop, or laying a finish on a tile. */
-export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle };
+export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle }
+  /** Out on the lot: lay a surface (null takes it up), paint a parking bay, or paint one out. */
+  | { kind: 'pave'; surface: LotSurface | null } | { kind: 'bay' } | { kind: 'unbay' };
+/** Tools and pieces that work on the lot's own grid (whole x, half z), not the shop floor's. */
+const LOT_TOOLS = new Set<TileTool['kind']>(['pave', 'bay', 'unbay']);
 export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
 
 /** Short titles for the tutorial steps (the coach card shows one at a time). */
@@ -139,7 +144,7 @@ export class GameRuntime {
   private lastPhase: GameState['phase'] | null = null;
   private noticesSeen = 0;
   /** Build mode: what is being placed, where the pointer hovers, selection, undo stack. */
-  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; at: { x: number; z: number } | null; wall: string | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, at: null, wall: null, selectedId: null, reason: '', valid: false, price: 0 };
+  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; at: { x: number; z: number } | null; wall: string | null; slot: number | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, at: null, wall: null, slot: null, selectedId: null, reason: '', valid: false, price: 0 };
   /** Placing, moving or using a tile tool: the pointer works on tiles. */
   private get building(): boolean { return !!this.build.placing || this.build.selectedId !== null || !!this.build.tool; }
   overlay: 'none' | 'heat' | 'exposure' | 'paths' = 'none';
@@ -696,7 +701,12 @@ export class GameRuntime {
   togglePause(): void { if (this.speed === 0) this.setSpeed(this.prevSpeed || 1); else { this.prevSpeed = this.speed; this.setSpeed(0); } }
   /** The Build card's last tab, so it opens where you left it. */
   buildTab: string | null = null;
-  rememberBuildTab(tab: string): void { this.buildTab = tab; }
+  rememberBuildTab(tab: string): void {
+    this.buildTab = tab;
+    // Building outside: pull back far enough to see the lot round the shop.
+    const f = this.renderer?.follow;
+    if (tab === 'outside' && f && f.following && f.goalDistance < 18) { const from = f.goalDistance; f.zoom(18 / from); this.buildZoom ??= { from, to: f.goalDistance }; }
+  }
 
   openCard(card: CardId): void {
     this.fixtureMenu = null;
@@ -817,10 +827,13 @@ export class GameRuntime {
     const s = this.state; if (!s) return;
     // Floor tiles sit on half-integer x (the door is at x = 0) and integer z.
     const l = toLocal(s.shop, wx, wz);
-    const x = Math.floor(l.x + 0.5) - 0.5, z = Math.floor(l.z);
+    // Out on the lot the tiles sit half a tile over from the floor's, flush with the outside of the walls.
+    const placing = this.build.placing ?? (this.build.selectedId !== null ? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type ?? null : null);
+    const outside = (placing && FIXTURES[placing].outdoor) || (this.build.tool && LOT_TOOLS.has(this.build.tool.kind));
+    const { x, z } = outside ? lotTileAt(l.x, l.z) : { x: Math.floor(l.x + 0.5) - 0.5, z: Math.floor(l.z) };
     this.build.at = { x: l.x, z: l.z };
-    // A wall tool follows the pointer within a tile too (which of its edges it is nearest).
-    if (this.build.hover && this.build.hover.x === x && this.build.hover.z === z && this.build.tool?.kind !== 'wall') return;
+    // A wall or bay tool follows the pointer within a tile too (which edge, which bay it is nearest).
+    if (this.build.hover && this.build.hover.x === x && this.build.hover.z === z && this.build.tool?.kind !== 'wall' && this.build.tool?.kind !== 'bay' && this.build.tool?.kind !== 'unbay') return;
     this.build.hover = { x, z };
     this.refreshGhost();
   }
@@ -840,7 +853,16 @@ export class GameRuntime {
         this.maybeEmit();
         return;
       }
-      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : tool.kind === 'sell' ? canSellTile(s, x, z) : canPaintFloor(s, x, z, tool.style);
+      if (tool.kind === 'bay' || tool.kind === 'unbay') {
+        const sl = this.build.at ? nearestSlot(s.shop, this.build.at.x, this.build.at.z) : null;
+        this.build.slot = sl?.id ?? null;
+        const check = sl ? (tool.kind === 'bay' ? canPaintBay(s, sl.id) : canEraseBay(s, sl.id)) : { ok: false, reason: 'Point at the car park beside the shop', price: 0 };
+        this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
+        r.setTileGhost(sl ? { x: sl.x - 0.85, z: sl.z - 0.55, w: 1.7, d: 1.1, ok: check.ok } : null);
+        this.maybeEmit();
+        return;
+      }
+      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : tool.kind === 'sell' ? canSellTile(s, x, z) : tool.kind === 'pave' ? canPave(s, x, z, tool.surface) : canPaintFloor(s, x, z, tool.style);
       this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
       r.setTileGhost({ x, z, ok: check.ok });
       this.maybeEmit();
@@ -864,7 +886,9 @@ export class GameRuntime {
       this.snapshotForUndo();
       const res = tool.kind === 'wall'
         ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style }) : { ok: false, message: 'Point at a wall' })
-        : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : tool.kind === 'sell' ? { type: 'sellTile', x, z } : { type: 'paintFloor', x, z, style: tool.style });
+        : tool.kind === 'bay' || tool.kind === 'unbay'
+          ? (this.build.slot !== null ? this.dispatch({ type: tool.kind === 'bay' ? 'paintBay' : 'eraseBay', slot: this.build.slot }) : { ok: false, message: 'Point at the car park' })
+          : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : tool.kind === 'sell' ? { type: 'sellTile', x, z } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface } : { type: 'paintFloor', x, z, style: tool.style });
       if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
       else if (tool.kind === 'grow' || tool.kind === 'sell') this.showGrowHints();
       this.refreshGhost();
@@ -1030,7 +1054,7 @@ export class GameRuntime {
 
   /** Something you can use: a fixture, the delivery pallet, a spill. */
   private thingRect(s: GameState, t: Thing): Rect {
-    if (t.kind === 'fixture') { const f = s.shop.fixtures.find((x) => x.id === t.id)!; return rectToWorld(s.shop, { x0: f.x, z0: f.z, x1: f.x + 1, z1: f.z + 1 }); }
+    if (t.kind === 'fixture') { const f = s.shop.fixtures.find((x) => x.id === t.id)!; return rectToWorld(s.shop, footprintOf(f.type, f.x, f.z, f.rot)); }
     if (t.kind === 'delivery') return rectToWorld(s.shop, s.shop.delivery);
     const l = t.kind === 'mess' ? s.life!.litter.find((x) => x.id === t.id)! : s.shop.litter.find((x) => x.id === t.id)!;
     return { x0: l.x - 0.25, z0: l.z - 0.25, x1: l.x + 0.25, z1: l.z + 0.25 };
@@ -1039,6 +1063,21 @@ export class GameRuntime {
   /** The thing under a screen point, if any. */
   private thingAt(px: number, py: number): Thing | null {
     const s = this.state; const r = this.renderer; if (!s || !r) return null;
+    // A spill: its marker floating above it, or the puddle itself, close to the pointer on screen (a
+    // shelf behind it, or the floor beyond the marker, must not take the click).
+    {
+      const rect = this.canvas?.getBoundingClientRect();
+      const ox = rect?.left ?? 0, oy = rect?.top ?? 0;
+      const pt = { x: 0, y: 0, visible: false };
+      let best: { id: number; d: number } | null = null;
+      for (const l of s.shop.litter) for (const y of [0.03, 0.5]) {
+        r.project(l.x, y, l.z, pt);
+        if (!pt.visible) continue;
+        const d = Math.hypot(pt.x - (px - ox), pt.y - (py - oy));
+        if (d < 30 && (!best || d < best.d)) best = { id: l.id, d };
+      }
+      if (best) return { kind: 'spill', id: best.id };
+    }
     const hit = r.pick(px, py, s);
     // Mess on the frontage, outside: picked against the ground under the pointer.
     if (s.life?.litter.length) {
@@ -1055,7 +1094,7 @@ export class GameRuntime {
     const lp = toLocal(s.shop, hit.x, hit.z), d = s.shop.delivery;
     if (lp.x >= d.x0 && lp.x <= d.x1 && lp.z >= d.z0 && lp.z <= d.z1) return { kind: 'delivery', id: 0 };
     // So does a piece's: pieces stand back against an edge of their tile, and a click on the floor in front still means them.
-    const f = s.shop.fixtures.find((x) => !FIXTURES[x.type].walkable && lp.x >= x.x && lp.x < x.x + 1 && lp.z >= x.z && lp.z < x.z + 1);
+    const f = s.shop.fixtures.find((x) => { if (FIXTURES[x.type].walkable) return false; const r = footprintOf(x.type, x.x, x.z, x.rot); return lp.x >= r.x0 && lp.x < r.x1 && lp.z >= r.z0 && lp.z < r.z1; });
     if (f) return { kind: 'fixture', id: f.id };
     return null;
   }
@@ -1070,9 +1109,12 @@ export class GameRuntime {
       const cx = Math.max(r.x0, Math.min(r.x1, o.x)), cz = Math.max(r.z0, Math.min(r.z1, o.z));
       const dx = cx - o.x, dz = cz - o.z, d = Math.hypot(dx, dz);
       if (d > REACH) return;
-      if (d > 0.35 && (dx * fx + dz * fz) / d < 0.26) return;
-      // Things you can actually do something with win over things you can only look at.
-      const score = d - (this.actionFor(s, t, true).ok ? 0.3 : 0);
+      // A spill at your feet counts whichever way you face; anything else has to be in front.
+      const mess = t.kind === 'spill' || t.kind === 'mess';
+      if (d > (mess ? 0.6 : 0.35) && (dx * fx + dz * fz) / d < 0.26) return;
+      // Things you can actually do something with win over things you can only look at, and a spill
+      // in reach wins over the shelf it lies by (a shelf's tile is always nearer than the spill's middle).
+      const score = d - (this.actionFor(s, t, true).ok ? 0.3 : 0) - (mess ? 0.6 : 0);
       if (score < bestD) { bestD = score; best = t; }
     };
     for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet') consider({ kind: 'fixture', id: f.id });
@@ -1184,11 +1226,13 @@ export class GameRuntime {
     const useKey = keyLabel(keys.interact), scanKey = keyLabel(keys.scan);
     if (this.build.tool) {
       const tool = this.build.tool;
-      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : tool.kind === 'wall' ? 'Point at a wall' : 'Point at a floor tile', ok: false }, run: null }; }
+      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : tool.kind === 'wall' ? 'Point at a wall' : tool.kind === 'pave' ? 'Point at the grass' : tool.kind === 'bay' || tool.kind === 'unbay' ? 'Point at the car park' : 'Point at a floor tile', ok: false }, run: null }; }
       const h = this.build.hover, at = toWorld(s.shop, h.x + 0.5, h.z + 0.5);
       r.marker.set(null);
       const what = tool.kind === 'grow' ? 'Add this tile' : tool.kind === 'sell' ? 'Sell this tile'
-        : tool.kind === 'wall' ? `Finish the wall: ${WALLS.find((w) => w.id === tool.style)?.name.toLowerCase() ?? ''}` : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
+        : tool.kind === 'wall' ? `Finish the wall: ${WALLS.find((w) => w.id === tool.style)?.name.toLowerCase() ?? ''}`
+        : tool.kind === 'pave' ? (tool.surface ? `Lay ${SURFACES.find((x) => x.id === tool.surface)?.name.toLowerCase() ?? ''}` : 'Back to grass')
+        : tool.kind === 'bay' ? 'Paint a parking bay' : tool.kind === 'unbay' ? 'Paint out this bay' : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
       const cost = this.build.price > 0 ? dollars(this.build.price) : this.build.price < 0 ? `${dollars(-this.build.price)} back` : 'free';
       return { info: { key: 'Click', text: this.build.valid ? `${what} · ${cost}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 0.6, z: at.z } }, run: this.build.valid ? () => this.clickBuild(null) : null };
     }

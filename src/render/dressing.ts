@@ -4,7 +4,7 @@
  * prop ever stands on a path, the paving or a parking bay: props only go on the lawn between them.
  * A bigger shop gets more of them; opening days get bunting (drawn by the views).
  */
-import { lotLayout, WALL_T, PLOT_RECT, type Rect } from '@/sim/layout';
+import { lotLayout, WALL_T, PLOT_RECT, pylonSpot as simPylonSpot, type Rect } from '@/sim/layout';
 import type { Vec2 } from '@/sim/types';
 import { MAIN_N, TREE_MIX, BUSH_MIX } from './town';
 
@@ -13,21 +13,18 @@ export interface Prop { model: string; x: number; z: number; yaw: number; scale?
 /** The z of a north corner's shop origin: frontage maths is done as if every shop faced south. */
 const NORTH_Z = -1.6;
 
-export interface CornerShape { floor: Rect; storeroom: Rect; lotRows?: number; door: Vec2 }
+/** A corner's shape: its floor, lot and door; the player's also its painted bays and what the player built on the lot (props and the garden keep off it). */
+export interface CornerShape { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; door: Vec2; extra?: Rect[] }
 
 /**
  * Where the pylon sign stands, shop-relative: on the lawn by the sidewalk, between the service lane
  * (where the delivery truck turns in) and the walkway to the door, never on either. `w` is the board's width.
  */
-export function pylonSpot(shape: Pick<CornerShape, 'floor' | 'storeroom' | 'lotRows'>): { x: number; z: number; w: number } {
-  const L = lotLayout({ floor: shape.floor, storeroom: shape.storeroom, lotRows: shape.lotRows });
-  const left = L.serviceLane.x1 + 0.35, right = L.walkwayX - 0.5 - 0.35;
-  return { x: (left + right) / 2, z: 1.85, w: Math.min(2.6, right - left) };
-}
+export function pylonSpot(shape: Pick<CornerShape, 'floor' | 'storeroom' | 'lotRows' | 'bayPlan'>): { x: number; z: number; w: number } { return simPylonSpot(shape); }
 
 /** Everything a prop must keep off, shop-relative: the building, every paved path and the bays (each grown by a margin when tested). */
 export function pavedRects(shape: CornerShape): Rect[] {
-  const L = lotLayout({ floor: shape.floor, storeroom: shape.storeroom, lotRows: shape.lotRows });
+  const L = lotLayout({ floor: shape.floor, storeroom: shape.storeroom, lotRows: shape.lotRows, bayPlan: shape.bayPlan });
   const f = shape.floor, backZ = Math.min(f.z0, shape.storeroom.z0);
   const py = pylonSpot(shape);
   return [
@@ -36,6 +33,7 @@ export function pavedRects(shape: CornerShape): Rect[] {
     { x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3 },
     { x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 }, // pylon sign
     ...L.bays.map((b) => ({ x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 })),
+    ...(shape.extra ?? []),
   ];
 }
 
@@ -46,8 +44,8 @@ export const SIDEWALK_IN = MAIN_N[0] - NORTH_Z;
  * Props for one corner. tier 0 is the starter shop, 1 medium, 2 large (rivals pick theirs). `colour`
  * is the store's own (trolley shelter canopy). Each prop takes the free lawn spot nearest its anchor.
  */
-export function cornerProps(shape: CornerShape, tier: number, opts: { trolleys?: boolean } = {}): Prop[] {
-  const L = lotLayout({ floor: shape.floor, storeroom: shape.storeroom, lotRows: shape.lotRows });
+export function cornerProps(shape: CornerShape, tier: number, opts: { trolleys?: boolean; noBikes?: boolean } = {}): Prop[] {
+  const L = lotLayout({ floor: shape.floor, storeroom: shape.storeroom, lotRows: shape.lotRows, bayPlan: shape.bayPlan });
   const f = shape.floor, backZ = Math.min(f.z0, shape.storeroom.z0);
   const paved = pavedRects(shape);
   const out: Prop[] = [];
@@ -70,7 +68,8 @@ export function cornerProps(shape: CornerShape, tier: number, opts: { trolleys?:
   put('furniture/bench', shape.door.x - 2.4, doorZ + 0.6, 0.45);
   put('furniture/trashcan', shape.door.x - 1.6, doorZ + 0.9, 0.18);
   put('generated/sandwich-board', L.walkwayX + 0.85, SIDEWALK_IN - 0.45, 0.2, 0.3);
-  put('generated/bike-rack', L.walkwayX + 3.1, SIDEWALK_IN - 0.6, 0.32, Math.PI / 2);
+  // (The player builds their own bike racks; rivals come with theirs.)
+  if (!opts.noBikes) put('generated/bike-rack', L.walkwayX + 3.1, SIDEWALK_IN - 0.6, 0.32, Math.PI / 2);
   put('generated/recycling-bins', L.backYard.x0 - 0.6, L.backYard.z0 + 0.6, 0.38, Math.PI / 2);
   put('roads/dumpster', L.backYard.x1 + 0.9, L.backYard.z0 + 0.5, 0.55, Math.PI / 2);
   put('generated/pallet', L.serviceLane.x0 - 0.6, backZ + 0.8, 0.35);
@@ -84,7 +83,7 @@ export function cornerProps(shape: CornerShape, tier: number, opts: { trolleys?:
   }
   // Large: a second rack, more crates, a parasol and bench to sit out under.
   if (tier >= 2) {
-    put('generated/bike-rack', L.walkwayX - 2.2, SIDEWALK_IN - 0.6, 0.32, Math.PI / 2);
+    if (!opts.noBikes) put('generated/bike-rack', L.walkwayX - 2.2, SIDEWALK_IN - 0.6, 0.32, Math.PI / 2);
     put('generated/pallet', L.serviceLane.x0 - 0.6, backZ + 1.8, 0.35, 0.4);
     put('commercial/parasol-a', shape.door.x + 2.8, doorZ + 0.9, 0.5);
   }

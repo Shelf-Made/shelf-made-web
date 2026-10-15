@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, LOT_EXPANSION_COST, CORNERS, FLOORS, WALLS, PALLET_UNITS, floorTileCount, tilePrice, MAX_FLOOR } from '@/sim/layout';
+import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, tilePrice, MAX_FLOOR, lotLayout } from '@/sim/layout';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
 import { StoresSection } from './StoresSection';
 import { forSale, CORNER_PRICE } from '@/sim/rivals';
 import { managerCandidates } from '@/sim/franchise';
+import { FURNITURE_USE } from '@/sim/furniture';
 
 type Tab = BuildCategory | 'floors' | 'shop';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'checkout', label: 'Tills' }, { id: 'shelves', label: 'Shelves' }, { id: 'furniture', label: 'Furniture' }, { id: 'decor', label: 'Decor' },
-  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'shop', label: 'Shop' },
+  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'outside', label: 'Outside' }, { id: 'shop', label: 'Shop' },
 ];
 /** A word on what each piece is for (the tile's tooltip). */
 const NOTES: Partial<Record<FixtureType, string>> = {
@@ -22,7 +23,23 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   plant: 'Shoppers like plants', flowers: 'Pots of herbs and flowers', sign: 'Shoppers find things faster', rug: 'Walk on it', doormat: 'Just inside the door',
   window: 'In a side or back wall, one tile at a time', wall: 'Divide the floor', wallWindow: 'A wall you can see through', doorway: 'A wall you can walk through', railing: 'A low divider', gate: 'A railing you can walk through',
   floorLamp: 'Warm light after dark', wallLight: 'On an outside wall', pendant: 'Hangs over the aisle', neon: 'On an outside wall, always lit',
+  flowerBed: 'Brightens the frontage', planter: 'A tub of greenery', tree: 'Shade and green round the car park', parkBench: 'Somewhere to sit outside',
+  bikeRack: `Shoppers ride in and lock up (${RACK_STANDS} bikes); brings in a few more`, billboard: `Your own board: no rent, seen from Main Road (up to ${LOT_MAX.billboard})`,
 };
+
+/** What a piece is for: what the furniture does, or the note above. */
+const noteFor = (t: FixtureType): string | undefined => FURNITURE_USE[t] ?? NOTES[t];
+
+/** The swatch for a surface on the lot. */
+function surfaceSwatch(id: string | null): string {
+  switch (id) {
+    case 'asphalt': return '#6E717C';
+    case 'paving': return 'conic-gradient(#D8DADF 0 25%, #C8CBD2 0 50%, #D8DADF 0 75%, #C8CBD2 0)';
+    case 'brick': return 'repeating-linear-gradient(0deg, #B8573F 0 6px, #D8DADF 6px 7px)';
+    case 'gravel': return 'radial-gradient(circle at 30% 40%, #B5A88A 0 2px, transparent 3px) 0 0 / 8px 8px, #CFC3A6';
+    default: return '#7CC26B';
+  }
+}
 
 /** The swatch for a wall finish: its bands, bottom to top. */
 function wallSwatch(id: string, sc: { primary: string; light: string }): string {
@@ -56,8 +73,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {b.tool ? (
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
-            <div className="name">{b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
-            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
+            <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
+            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : b.tool.kind === 'bay' || b.tool.kind === 'unbay' ? 'Click a bay beside the shop' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
         </div>
@@ -65,7 +82,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
             <div className="name">{b.placing ? FIXTURES[b.placing].name : `Moving ${FIXTURES[selected!.type].name}`}</div>
-            <div className="sub">{b.reason || 'Point at a floor tile'}{b.price ? ` · ${money(b.price)}` : ''} · R turns</div>
+            {noteFor(b.placing ?? selected!.type) && <div className="sub">{noteFor(b.placing ?? selected!.type)}</div>}
+            <div className="sub">{b.reason || (FIXTURES[b.placing ?? selected!.type].outdoor ? 'Point at the grass outside' : 'Point at a floor tile')}{b.price ? ` · ${money(b.price)}` : ''} · R turns</div>
           </div>
           <div className="row">
             <button className="btn small ghost" onClick={() => runtime.rotateGhost()}>Rotate</button>
@@ -91,7 +109,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           {items.map((type) => {
             const def = FIXTURES[type];
             return (
-              <button key={type} className={`build-tile${b.placing === type ? ' on' : ''}`} disabled={s.cash < def.price} onClick={() => runtime.startPlacing(type)} title={NOTES[type]}>
+              <button key={type} className={`build-tile${b.placing === type ? ' on' : ''}`} disabled={s.cash < def.price} onClick={() => runtime.startPlacing(type)} title={noteFor(type)}>
                 {thumbs[type] ? <img src={thumbs[type]} alt="" /> : <span className="pic" />}
                 <b>{def.name}</b>
                 <span>{money(def.price)}{def.upkeep ? <small> +{money(def.upkeep)}/day</small> : null}</span>
@@ -131,6 +149,38 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           })}
         </div>
       )}
+      {tab === 'outside' && (
+        <>
+          <h3>Parking</h3>
+          {(() => {
+            const slots = lotLayout(s.shop).slots.length, n = s.shop.bays.length;
+            const tool = b.tool?.kind;
+            return (
+              <div className="item">
+                <span className="swatch big" style={{ background: 'repeating-linear-gradient(90deg, #6E717C 0 14px, #F2F2F2 14px 16px)' }} aria-hidden="true" />
+                <div style={{ flex: 1 }}><div className="name">{n} of {slots} bays</div><div className="sub">{n < slots ? `${money(BAY_PRICE)} a bay · paint them one at a time` : 'As many as the car park takes'}</div></div>
+                <span className="row">
+                  {n < slots && <button className={`btn small${tool === 'bay' ? ' ghost' : ''}`} disabled={tool !== 'bay' && s.cash < BAY_PRICE} onClick={() => (tool === 'bay' ? runtime.stopPlacing() : runtime.startTool({ kind: 'bay' }))}>{tool === 'bay' ? 'Done' : 'Paint'}</button>}
+                  {n > 0 && <button className="btn small ghost" onClick={() => (tool === 'unbay' ? runtime.stopPlacing() : runtime.startTool({ kind: 'unbay' }))}>{tool === 'unbay' ? 'Done' : 'Remove'}</button>}
+                </span>
+              </div>
+            );
+          })()}
+          <h3>Surfaces</h3>
+          <div className="list">
+            {[...SURFACES, { id: null, name: 'Grass', perTile: 0 }].map((sf) => {
+              const on = b.tool?.kind === 'pave' && b.tool.surface === sf.id;
+              return (
+                <div className="item" key={sf.id ?? 'grass'}>
+                  <span className="swatch big" style={{ background: surfaceSwatch(sf.id) }} aria-hidden="true" />
+                  <div style={{ flex: 1 }}><div className="name">{sf.name}</div><div className="sub">{sf.perTile ? `${money(sf.perTile)} a tile` : 'Takes up what was laid, for part of what it cost'}</div></div>
+                  <button className={`btn small${on ? ' ghost' : ''}`} disabled={!on && s.cash < sf.perTile} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'pave', surface: sf.id as never }))}>{on ? 'Done' : sf.id ? 'Lay' : 'Dig up'}</button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
       {tab === 'shop' && (
         <>
           <h3>Floor</h3>
@@ -146,10 +196,6 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               </div>
             );
           })()}
-          <div className="item">
-            <div><div className="name">Bigger car park</div><div className="sub">{s.shop.lotRows > 1 ? `${s.shop.bays.length} bays` : `Twice the bays · ${money(LOT_EXPANSION_COST)}`}</div></div>
-            {s.shop.lotRows === 1 && <button className="btn small" disabled={s.cash < LOT_EXPANSION_COST} onClick={() => runtime.dispatch({ type: 'expandLot' })}>Expand</button>}
-          </div>
           <h3>Sign letters</h3>
           <div className="item">
             <div><div className="name">{s.shop.signStyle === 'lit' ? 'Lit letters' : 'Painted letters'}</div><div className="sub">{s.goals.unlocked.includes('signLit') || s.sandbox ? 'Lit letters glow after dark' : 'Unlocks with the Regulars goal'}</div></div>

@@ -1,5 +1,5 @@
 import type { GameState, Franchise } from '@/sim/types';
-import { storeFrame, lotLayout, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES } from '@/sim/layout';
+import { storeFrame, lotLayout, paintedBays, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES } from '@/sim/layout';
 
 import { makeRivals, RIVAL_ECON } from '@/sim/rivals';
 import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
@@ -111,6 +111,11 @@ export function migrate(file: SaveFile): SaveFile {
   if (sr && sr.z1 > sr.z0) { st.shop.floor = { ...st.shop.floor, z0: Math.min(st.shop.floor.z0, sr.z0) }; st.shop.storeroom = { x0: st.shop.floor.x0, z0: st.shop.floor.z0, x1: st.shop.floor.x1, z1: st.shop.floor.z0 }; }
   // Whole walls of windows become a Window piece on each tile of them.
   windowsFromSides(st);
+  // Bays were painted a row at a time: the same bays, in the same order, as a plan to paint one at a time from.
+  if (!st.shop.bayPlan) {
+    st.shop.bayPlan = paintedBays(st.shop).bays.map((b) => b.id);
+    st.shop.bays = lotLayout(st.shop).bays.map((b, i) => ({ ...toWorld(st.shop, b.x, b.z), yaw: yawToWorld(st.shop, b.yaw), carId: st.shop.bays[i]?.carId ?? null }));
+  }
   // Staff all wore the one shop-worker character: each gets a look of their own.
   for (const p of st.people ?? []) if (p.kind === 'staff' && p.look.model >= 12) p.look = staffLook(p.id, { model: p.id % 12, variant: p.look.variant, height: p.look.height });
   return { ...file, version: v, state: st };

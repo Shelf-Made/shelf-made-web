@@ -1,4 +1,5 @@
 import type { GameState, Person } from './types';
+import { thiefFactor } from './furniture';
 import { TICK } from './layout';
 import { productDef } from './products';
 import { followPath } from './movement';
@@ -28,7 +29,8 @@ const BUSTED = 1.4;
 
 export function maybeThief(state: GameState, p: Person): void {
   if (state.day < FROM_DAY) return;
-  if (withRng(state, 'thieves', (r) => r.chance(THIEF_CHANCE))) p.thief = true;
+  // A well-lit shop puts some of them off.
+  if (withRng(state, 'thieves', (r) => r.chance(THIEF_CHANCE * thiefFactor(state)))) p.thief = true;
 }
 
 /** Staff with nothing on: on shift, at their post or walking back to it, hands empty, nobody at their till. */

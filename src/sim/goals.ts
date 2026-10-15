@@ -9,6 +9,9 @@ import { doorOutside } from './people';
 import { SHOP_SIZES, floorTileCount } from './layout';
 import { dollars } from './money';
 
+/** Bays the Market hall goal asks for (the bigger car park). */
+export const HALL_BAYS = 10;
+
 export interface GoalDef {
   id: string;
   title: string;
@@ -33,7 +36,7 @@ export const GOALS: GoalDef[] = [
   { id: 'cheapo', title: 'Beat the discounter', target: 'Out-sell Cheapo 3 days running', reward: { cash: 250 }, rewardText: '$250', when: 'night' },
   { id: 'grocer', title: 'Neighbourhood grocer', target: 'Grow the shop to 49 tiles and net $120 in a day', reward: { unlock: 'openingEvent' }, rewardText: 'Opening-day events (bunting and a crowd)', when: 'night' },
   { id: 'busiest', title: 'Busiest corner', target: 'A third of the crossroads\' shoppers over a week', reward: { cash: 500 }, rewardText: '$500', when: 'night' },
-  { id: 'hall', title: 'Market hall', target: 'Grow the shop to 72 tiles, with a doubled lot', reward: { unlock: 'franchises' }, rewardText: 'Branches out of town', when: 'now' },
+  { id: 'hall', title: 'Market hall', target: `Grow the shop to 72 tiles, with ${HALL_BAYS} parking bays`, reward: { unlock: 'franchises' }, rewardText: 'Branches out of town', when: 'now' },
   { id: 'own', title: 'Own the crossroads', target: "Buy a closed rival's corner", reward: { ending: true }, rewardText: 'Crossroads Champion', when: 'now' },
 ];
 
@@ -105,9 +108,9 @@ export function goalProgress(state: GameState, g: GoalDef): { frac: number; text
       return { frac: Math.min(full ? 1 : 0.95, w.share / SHARE_TARGET), text: `${Math.round(w.share * 100)}% of the crossroads over the last ${w.days} day${w.days === 1 ? '' : 's'} (a third over a week)` };
     }
     case 'hall': {
-      const big = state.shop.sizeId === 'large', lot = state.shop.lotRows >= 2;
+      const big = state.shop.sizeId === 'large', bays = state.shop.bays.length, lot = bays >= HALL_BAYS;
       const n = floorTileCount(state.shop);
-      return { frac: Math.min(0.5, Math.max(0, (n - 30) / 42) * 0.5) + (lot ? 0.5 : 0), text: big && !lot ? 'Now double the lot (Build card)' : !big ? `${n} of 72 tiles${lot ? '' : ', and a doubled lot'} (Build card)` : 'Done' };
+      return { frac: Math.min(0.5, Math.max(0, (n - 30) / 42) * 0.5) + Math.min(0.5, (bays / HALL_BAYS) * 0.5) * (lot ? 1 : 0.8), text: big && !lot ? `Now paint more bays: ${bays} of ${HALL_BAYS} (Build card, Outside)` : !big ? `${n} of 72 tiles${lot ? '' : `, and ${HALL_BAYS} bays`} (Build card)` : 'Done' };
     }
     case 'own': {
       const bought = state.rivals.some((r) => r.boughtDay !== undefined);
@@ -125,7 +128,7 @@ function met(state: GameState, g: GoalDef): boolean {
     case 'cheapo': return state.goals.run >= CHEAPO_DAYS;
     case 'grocer': return sizeRank(state.shop.sizeId) >= 1 && state.phase === 'night' && state.today.profit >= GROCER_NET;
     case 'busiest': { const w = weekShare(state); return !!w && w.days >= SHARE_DAYS && w.share >= SHARE_TARGET; }
-    case 'hall': return state.shop.sizeId === 'large' && state.shop.lotRows >= 2;
+    case 'hall': return state.shop.sizeId === 'large' && state.shop.bays.length >= HALL_BAYS;
     case 'own': return state.rivals.some((r) => r.boughtDay !== undefined);
   }
   return false;

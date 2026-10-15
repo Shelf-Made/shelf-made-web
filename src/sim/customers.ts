@@ -5,6 +5,7 @@
 import type { GameState, CustomerType, RivalState, StoreScores } from './types';
 import { PRODUCTS, productDef } from './products';
 import { plotDef, PLOTS, DIFFICULTY, FIXTURES, floorTileCount } from './layout';
+import { bikePull, lotAppeal } from './lot';
 
 export const TYPE_WEIGHTS: Record<CustomerType, StoreScores> = {
   bargain: { price: 0.45, availability: 0.15, layout: 0.05, wait: 0.1, parking: 0.05, awareness: 0.2 },
@@ -41,13 +42,14 @@ export function shelfFullness(state: GameState): number {
 export function layoutQuality(state: GameState): number {
   const shop = state.shop;
   const tiles = floorTileCount(shop);
-  const fixtures = shop.fixtures.filter((f) => f.type !== 'register' && f.type !== 'kiosk' && !FIXTURES[f.type].walkable);
+  const fixtures = shop.fixtures.filter((f) => f.type !== 'register' && f.type !== 'kiosk' && !FIXTURES[f.type].walkable && !FIXTURES[f.type].outdoor);
   const density = fixtures.length / Math.max(1, tiles);
   const densityScore = density < 0.15 ? density / 0.15 * 0.6 : density <= 0.45 ? 0.6 + (density - 0.15) / 0.3 * 0.4 : Math.max(0.2, 1 - (density - 0.45) * 2);
   const endcaps = Math.min(2, fixtures.filter((f) => f.type === 'endcap' || f.type === 'rack').length) * 0.08;
   const signs = Math.min(2, fixtures.filter((f) => f.type === 'sign').length) * 0.06;
   const decor = Math.min(3, shop.fixtures.filter((f) => f.type !== 'sign' && (FIXTURES[f.type].looks ?? 0) > 0).length) * 0.03;
-  return clamp01(densityScore * 0.75 + endcaps + signs + decor);
+  // A lot that looks cared for (flowers, trees, paving) draws people in off the street.
+  return clamp01(densityScore * 0.75 + endcaps + signs + decor + 0.06 * lotAppeal(shop));
 }
 
 export function computeScores(state: GameState): StoreScores {
@@ -161,7 +163,7 @@ export function expectedByType(state: GameState): Record<CustomerType, number> {
   const plot = plotDef(state.shop.plotId);
   const base = state.demandBase;
   const openRivals = state.rivals.filter((r) => r.open).length;
-  const pool = base * plot.traffic * (1 + 0.75 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand;
+  const pool = base * plot.traffic * (1 + 0.75 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand * bikePull(state.shop);
   const share = playerShare(state);
   const out = {} as Record<CustomerType, number>;
   for (const type of Object.keys(TYPE_BASE) as CustomerType[]) out[type] = pool * TYPE_BASE[type] * plot.mix[type] * share[type];

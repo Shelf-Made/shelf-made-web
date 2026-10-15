@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { ready, hooks, settle } from './helpers';
 
 type Fx = { id: number; type: string; x: number; z: number; rot?: number; slots: { productId: string | null; qty: number }[]; serving?: number | null; scanned?: number };
-type S = { phase: string; cash: number; shop: { fixtures: Fx[]; storage: { productId: string; qty: number }[]; delivery: { x0: number; z0: number; x1: number; z1: number } }; orders: { state: string }[]; people: { kind: string; carrying?: { productId: string; qty: number } | null }[]; today: { served: number } };
+type S = { phase: string; cash: number; shop: { fixtures: Fx[]; storage: { productId: string; qty: number }[]; delivery: { x0: number; z0: number; x1: number; z1: number }; litter: { id: number }[] }; orders: { state: string }[]; people: { kind: string; carrying?: { productId: string; qty: number } | null }[]; today: { served: number } };
 type Pt = { x: number; y: number; visible: boolean };
 
 const state = (page: Page) => hooks<S>(page, 'state');
@@ -393,7 +393,7 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   await page.keyboard.press('KeyB');
   const build = page.locator('.card.t-build');
   await expect(build).toBeVisible();
-  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Floors', 'Shop']);
+  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Floors', 'Outside', 'Shop']);
   await build.getByRole('tab', { name: 'Furniture' }).click();
   const cafe = build.getByRole('button', { name: /^Café table/ });
   await expect(cafe.locator('img')).toHaveAttribute('src', /^data:image\/png/);
@@ -423,6 +423,75 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   await expect.poll(() => aimText(page)).toMatch(/^Place Window/);
   await clickAt(page, -2.0, -2.5);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`)).toEqual(['-2.5,-3,1']);
+});
+
+test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 5000; });
+  await hooks(page, 'fp', 0.5, -1.0);
+  await page.keyboard.press('KeyB');
+  const build = page.locator('.card.t-build');
+  await build.getByRole('tab', { name: 'Outside' }).click();
+  // A flower bed on the grass out front (the lot's tiles sit flush with the outside of the walls).
+  const bed = build.getByRole('button', { name: /^Flower bed/ });
+  await expect(bed.locator('img')).toHaveAttribute('src', /^data:image\/png/);
+  await bed.dispatchEvent('click');
+  await pointAt(page, 3.5, 2.0);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Flower bed/);
+  await clickAt(page, 3.5, 2.0);
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'flowerBed').map((f) => `${f.x},${f.z}`)).toEqual(['3,1.5']);
+  await page.keyboard.press('Escape');
+  // Brick paving, a tile at a time; not on the walkway (paved already).
+  await build.locator('.item', { hasText: 'Brick paving' }).getByRole('button', { name: 'Lay' }).click();
+  await pointAt(page, 0.0, 2.0);
+  await expect.poll(() => aimText(page)).toMatch(/Paved already/);
+  await pointAt(page, 2.5, 2.0);
+  await expect.poll(() => aimText(page)).toMatch(/^Lay brick paving/i);
+  await clickAt(page, 2.5, 2.0);
+  await expect.poll(async () => (await hooks<{ shop: { lotTiles?: Record<string, string> } }>(page, 'state')).shop.lotTiles?.['2,1.5']).toBe('brick');
+  await page.keyboard.press('Escape');
+  // A fifth bay, across the aisle from the four the lot came with.
+  const bays = (await hooks<{ shop: { bays: unknown[] } }>(page, 'state')).shop.bays.length;
+  await build.locator('.item', { hasText: 'bays' }).getByRole('button', { name: 'Paint' }).click();
+  // Over to the car park, so it is not behind the card.
+  await hooks(page, 'fp', 6.9, -1.0);
+  await pointAt(page, 8.5, -1.6);
+  await expect.poll(() => aimText(page)).toMatch(/^Paint a parking bay/);
+  await clickAt(page, 8.5, -1.6);
+  await expect.poll(async () => (await hooks<{ shop: { bays: unknown[] } }>(page, 'state')).shop.bays.length).toBe(bays + 1);
+});
+
+test('a spill beside a shelf: F mops it rather than stocking the shelf, and clicking its marker walks over to mop it', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Mop Shop', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  // A spill on the floor in front of a shelf, and the manager stood on it facing the shelf.
+  const at = await page.evaluate(() => {
+    const w = window as unknown as { __shelf: { state: () => { shop: { originX: number; originZ: number; fixtures: { type: string; x: number; z: number; rot: number }[]; litter: { id: number; x: number; z: number }[] }; nextId: number } } };
+    const s = w.__shelf.state();
+    const f = s.shop.fixtures.find((x) => x.type === 'shelf' && x.rot === 1)!;
+    const lx = f.x + 1.5, lz = f.z + 0.5;
+    s.shop.litter.push({ id: s.nextId++, x: s.shop.originX + lx, z: s.shop.originZ + lz });
+    return { lx, lz };
+  });
+  await hooks(page, 'aimAt', at.lx + 0.1, at.lz, at.lx - 1, 0.5, at.lz);
+  await expect.poll(() => aimText(page)).toMatch(/^Mop up the spill/);
+  await page.keyboard.press('KeyF');
+  await expect.poll(async () => (await state(page)).shop.litter.length).toBe(0);
+  // Another, a few steps away: a click on the marker floating above it sends the manager to mop it.
+  await page.evaluate((p) => {
+    const w = window as unknown as { __shelf: { state: () => { shop: { originX: number; originZ: number; litter: { id: number; x: number; z: number }[] }; nextId: number } } };
+    const s = w.__shelf.state();
+    s.shop.litter.push({ id: s.nextId++, x: s.shop.originX + p.lx + 1.5, z: s.shop.originZ + p.lz - 1 });
+  }, at);
+  await hooks(page, 'setSpeed', 1);
+  await clickAt(page, at.lx + 1.5, at.lz - 1, 0.5);
+  await hooks(page, 'advanceNoScan', 6);
+  await expect.poll(async () => (await state(page)).shop.litter.length).toBe(0);
 });
 
 test("the shop's business profile: reviews come in, the badge counts them, photos develop, and the owner replies", async ({ page }) => {

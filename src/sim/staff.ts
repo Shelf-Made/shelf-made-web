@@ -75,11 +75,10 @@ export function refreshPool(state: GameState): void {
 export function hire(state: GameState, candidateId: number): string | null {
   const c = state.staffPool.find((x) => x.id === candidateId);
   if (!c) return 'They already found another job.';
-  const staffCount = state.people.filter((p) => p.kind === 'staff').length;
-  if (staffCount >= 6) return 'The shop is full of staff already.';
   if (state.cash < c.wage) return `You need a day's wage (${dollars(c.wage)}) in the till to hire.`;
-  if (c.role === 'cashier' && !state.shop.fixtures.some((f) => (f.type === 'register' || f.type === 'kiosk') && !f.staffId)) return 'Every register already has a cashier.';
-  state.staffPool = state.staffPool.filter((x) => x.id !== c.id);
+  // Hire as many as you like: someone else answers the ad in their place. A cashier with no till of
+  // their own takes over one whose cashier is off shift, and helps on the floor until then.
+  state.staffPool = state.staffPool.map((x) => (x.id === c.id ? makeCandidate(state, c.role) : x));
   const d = doorOutside(state);
   const p: Person = {
     id: c.id, kind: 'staff', look: staffLook(c.id, c.look), x: d.x, z: d.z + 1.5, yaw: Math.PI, px: d.x, pz: d.z + 1.5,

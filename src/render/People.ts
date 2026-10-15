@@ -7,7 +7,7 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim as SimAnim, CustomerType, Look } from '@/sim/types';
 import { box, merge, paint } from './geometry';
 import { rectToWorld } from '@/sim/layout';
-import { bagsGeometry, basketGeometry, BAG_HEIGHT } from './props';
+import { bagsGeometry, basketGeometry, BAG_HEIGHT, rideBikeGeometry } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
 
@@ -62,6 +62,11 @@ const OUTFIT_PERMS: number[][] = [
   [3, 1, 5, 0, 6, 7, 4, 2],
 ];
 
+/** Frame colours for the bikes shoppers ride in on. */
+export const BIKE_COLOURS = ['#E8573F', '#4F8FE0', '#3FA87A', '#FFC044', '#38383D', '#9B6FD0'];
+/** How high a rider sits (the 'sit' pose on the saddle). */
+const RIDE_SEAT = 0.17;
+
 interface Instance {
   root: Group;
   model: string;
@@ -83,6 +88,8 @@ interface Instance {
   prop: Group | null;
   /** Up over their head when it rains and they are out in it. */
   umbrella: Mesh | null;
+  /** Under them while they ride to or from the shop. */
+  bike?: Mesh | null;
   armL: Object3D | null;
   /** Regulars wave at the staff once as they pass. */
   greetUntil: number;
@@ -554,6 +561,15 @@ export class PeopleView {
 
   /** Bags in one hand, in the colour of the store they came from; the geometry is shared per colour and count. */
   private bagGeo = new Map<string, BufferGeometry>();
+  /** A bike to ride, in one of a few colours (by who rides it). */
+  private bikeGeo = new Map<string, BufferGeometry>();
+  bikeMesh(id: number): Mesh {
+    const hex = BIKE_COLOURS[id % BIKE_COLOURS.length]!;
+    let g = this.bikeGeo.get(hex);
+    if (!g) { g = rideBikeGeometry(this.assets.palette, hex); this.bikeGeo.set(hex, g); }
+    return new Mesh(g, this.assets.plainMaterial);
+  }
+
   private bagMesh(hex: string, n: number): Mesh {
     const k = `${hex}:${n}`;
     let g = this.bagGeo.get(k);
@@ -589,8 +605,12 @@ export class PeopleView {
       const hidden = p.state === 'driving' || p.state === 'inRival' || p.id === hideId;
       inst.root.visible = !hidden;
       if (hidden) continue;
-      inst.root.position.set(x, 0, z);
+      // Riding: sat up on the saddle, the bike under them.
+      const riding = !!p.riding && p.kind === 'customer';
+      inst.root.position.set(x, riding ? RIDE_SEAT : 0, z);
       inst.root.rotation.y = p.yaw;
+      if (riding && !inst.bike) { inst.bike = this.bikeMesh(p.id); inst.root.add(inst.bike); }
+      if (inst.bike) { inst.bike.visible = riding; inst.bike.scale.setScalar(1 / p.look.height); inst.bike.position.set(0, -RIDE_SEAT / p.look.height, 0); }
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d > far || d < nearHide) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; }
       if (view) { this.sphere.center.set(x, 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }
@@ -625,7 +645,8 @@ export class PeopleView {
       // Shopping bags swing from one hand: walk normally. Only a box needs both arms.
       let rate = Math.max(0.6, p.speed / 1.6);
       let anim: Anim;
-      if (moving) anim = carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk';
+      if (riding) anim = 'sit';
+      else if (moving) anim = carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk';
       else if (carryBox) anim = 'carry';
       else if (p.anim === 'browse' || p.anim === 'pay') ({ anim, rate } = this.hands(state, p, inst));
       // Town life: drivers after a bump shake their heads at each other; teenagers take a drag now and then, or flick something away.

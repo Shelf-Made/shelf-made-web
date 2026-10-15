@@ -81,3 +81,25 @@ describe('idle staff', () => {
     expect(s.stuckRescues).toBe(0);
   });
 });
+
+describe('restocking keeps the range', () => {
+  it('a sold-out slot waits for its own product: staff never fill it with something already on the shelves', () => {
+    const s = openGame({ seed: 25, plotId: 'main', name: 'T', tutorial: false });
+    resetGridCache();
+    const st = s.staffPool.find((c) => c.role === 'stocker')!;
+    s.cash = 2000;
+    expect(applyCommand(s, { type: 'hire', candidateId: st.id }).ok).toBe(true);
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf' && f.slots.filter((sl) => sl.productId).length >= 2)!;
+    const [a, b] = shelf.slots.filter((sl) => sl.productId) as [typeof shelf.slots[number], typeof shelf.slots[number]];
+    // One product sold out; plenty of another (already on the shelf) waits on the pallet.
+    a.qty = 0; b.qty = 2;
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl !== a && sl !== b && sl.productId) sl.qty = 8;
+    const keep = a.productId!;
+    s.shop.storage = [{ productId: b.productId!, qty: 40, day: s.day }];
+    s.people = s.people.filter((p) => p.kind !== 'customer');
+    for (let i = 0; i < 60 / TICK; i++) tick(s);
+    expect(b.qty).toBe(8);
+    expect(a.productId).toBe(keep);
+    expect(a.qty).toBe(0);
+  });
+});

@@ -1,4 +1,5 @@
-import { CORNERS } from './layout';
+import { CORNERS, FIXTURES, solidRect, footprintOf } from './layout';
+import { wallGridFor } from './state';
 import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
@@ -129,21 +130,29 @@ describe('simulation', () => {
     expect(applyCommand(s, { type: 'scan' }).ok).toBe(true);
   });
 
-  it('WASD steering never walks through walls or fixtures', () => {
+  it('WASD steering never walks through walls or into a piece, but right up to its face', () => {
     const s = openGame({ seed: 13, plotId: 'main', name: 'T' });
     const owner = s.people.find((p) => p.kind === 'owner')!;
-    const g = gridFor(s);
+    const walls = wallGridFor(s);
+    const solids = s.shop.fixtures.filter((f) => !FIXTURES[f.type].walkable).map((f) => solidRect(f) ?? footprintOf(f.type, f.x, f.z, f.rot));
+    const gap = () => { const l = toLocal(s.shop, owner.x, owner.z); return Math.min(...solids.map((b) => Math.hypot(Math.max(b.x0 - l.x, 0, l.x - b.x1), Math.max(b.z0 - l.z, 0, l.z - b.z1)))); };
     const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const;
+    let closest = Infinity;
     for (let k = 0; k < 40; k++) {
       const [x, z] = dirs[(k * 5) % dirs.length]!;
       applyCommand(s, { type: 'moveDir', x, z });
       for (let i = 0; i < 40; i++) {
         tick(s);
-        const [cx, cz] = cellOf(g, owner);
-        expect(isBlocked(g, cx, cz)).toBe(false);
+        const [cx, cz] = cellOf(walls, owner);
+        expect(isBlocked(walls, cx, cz)).toBe(false);
+        const d = gap();
+        expect(d).toBeGreaterThan(0.12);
+        closest = Math.min(closest, d);
       }
     }
     applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
+    // Up against something at some point: no invisible margin round the furniture.
+    expect(closest).toBeLessThan(0.25);
   });
 
   it('plot picking sets up the shop and the sign name', () => {

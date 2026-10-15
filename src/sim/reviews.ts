@@ -19,6 +19,7 @@ import { priceIndex } from './customers';
 import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
 import { onFrontage } from './life';
+import { lotAppeal } from './lot';
 import { weatherAt } from './weather';
 
 export type PhotoKind = 'outside' | 'aisle' | 'haul' | 'selfie';
@@ -84,6 +85,8 @@ export interface Looks {
   space: number;
   /** The frontage: litter, dog mess, a gang of teenagers by the door. */
   outside: number;
+  /** The lot: what is planted and laid out there (0..1). */
+  curb: number;
   /** A lit sign, a bigger shop, a bigger car park, a fresh produce display. */
   extras: number;
   score: number;
@@ -101,12 +104,14 @@ export function looksOf(state: GameState): Looks {
   for (const f of shop.fixtures) for (const s of f.slots) { slots++; if (s.productId) full += Math.min(1, s.qty / Math.max(1, FIXTURES[f.type].capacity)); }
   const shelves = slots ? clamp((full / slots) * 1.15, 0, 1) : 0;
   const area = floorTileCount(shop);
-  const used = shop.fixtures.reduce((a, f) => a + FIXTURES[f.type].w * FIXTURES[f.type].d, 0) / Math.max(1, area);
+  const used = shop.fixtures.reduce((a, f) => a + (FIXTURES[f.type].outdoor ? 0 : FIXTURES[f.type].w * FIXTURES[f.type].d), 0) / Math.max(1, area);
   // Best between about a fifth and a half of the floor: bare below, crammed above.
   const space = used < 0.2 ? clamp(used / 0.2, 0, 1) : used > 0.5 ? clamp(1 - (used - 0.5) / 0.25, 0, 1) : 1;
   const mess = (state.life?.litter ?? []).filter((l) => onFrontage(state, l)).length;
   const teens = (state.life?.hangouts ?? []).some((h) => h.mine);
   const outside = clamp(1 - mess * 0.18 - (teens ? 0.35 : 0), 0, 1);
+  // The lot itself: flower beds, trees, benches, paving.
+  const curb = lotAppeal(shop);
   // The floor, tile by tile: what each finish adds, averaged over the shop.
   const tiles = floorTileList(shop);
   const floor = tiles.reduce((a, t) => a + (FLOORS.find((x) => x.id === (shop.tileStyles?.[tileKey(t.x, t.z)] ?? shop.floorStyle ?? 'lino'))?.looks ?? 0), 0) / Math.max(1, tiles.length);
@@ -115,10 +120,10 @@ export function looksOf(state: GameState): Looks {
   const wallLooks = segs.reduce((a, w) => a + (WALLS.find((x) => x.id === (shop.wallStyles?.[w.key] ?? shop.wallStyle ?? 'bands'))?.looks ?? 0), 0) / Math.max(1, segs.length);
   // Windows: daylight on more of the shop (a few each make a difference; past a dozen, not much).
   const windows = Math.min(count('window'), 15) * 0.016;
-  const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.lotRows > 1 ? 0.15 : 0) + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + 0.1, 0, 1);
+  const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.bays.length >= 8 ? 0.15 : 0) + 0.25 * curb + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + 0.1, 0, 1);
   // Decor matters most: a clean, full shop with nothing on show is fine, not lovely.
   const score = 0.3 * decor + 0.16 * tidy + 0.18 * shelves + 0.1 * space + 0.14 * outside + 0.12 * extras;
-  return { decor, tidy, shelves, space, outside, extras, score };
+  return { decor, tidy, shelves, space, outside, curb, extras, score };
 }
 
 /** What one shopper made of their visit, topic by topic (-1 bad .. 1 good), and overall (0..1). */
@@ -137,7 +142,8 @@ function judge(state: GameState, p: Person, happy: boolean, looks: Looks, r: Rng
   let clean = clamp((state.shop.cleanliness - 0.72) * 3.5 - state.shop.litter.length * 0.25);
   if (p.sawMess) clean = Math.min(clean, -0.5);
   const lk = clamp((looks.score - 0.5) * 2.4);
-  const outside = clamp((looks.outside - 0.85) * 3, -1, 0.3);
+  // Mess out front counts against; a lot with flowers and trees and paving is worth a word.
+  const outside = clamp(clamp((looks.outside - 0.85) * 3, -1, 0.3) + (looks.outside > 0.85 ? looks.curb * 1.2 : 0), -1, 0.9);
   const staff = p.servedBy === 'staff' ? 0.5 + 0.4 * (p.servedSkill ?? 0.5) : p.servedBy === 'owner' ? 0.45 : p.servedBy === 'kiosk' ? (p.ctype === 'loyalist' ? -0.3 : 0) : gaveUp ? -0.5 : 0;
   const parking = p.carId !== null && p.carId !== undefined ? (state.today.complaints.lotFull > 0 ? -0.4 : 0.3) : 0;
   const fresh = basket.some((b) => productDef(b.productId).category === 'produce') ? 0.55 : 0;
@@ -176,7 +182,7 @@ const SAY: Record<Topic, { good: string[]; bad: string[] }> = {
   price: { good: ['Prices are really fair.', 'Cheaper than {rival} for {p}.', 'Good value, especially the {p}.', 'Great prices for a local shop.'], bad: ['{x} at {price}?! Daylight robbery.', 'A bit pricey.', 'Way dearer than {rival}.', 'Prices seem to go up every week.'] },
   clean: { good: ['Spotless inside.', 'Clean and tidy.', 'Floors gleaming.'], bad: ['Floor was sticky.', "Someone's mess was still on the floor.", 'Could do with a mop.'] },
   looks: { good: ['Really bright and welcoming inside.', 'Love the plants and the signs, feels like a proper little market.', 'Beautifully laid out.', 'The {colour} shopfront is so cheerful.', 'Lovely displays.'], bad: ['Feels a bit bare inside.', 'Looks like a warehouse, no character.', 'Crammed in, hard to get round with a basket.', 'Shelves half empty, looks a bit sad.', 'Messy and tired looking.'] },
-  outside: { good: [], bad: ['Litter all over the pavement outside.', 'Teenagers smoking right by the door.', 'Dog mess by the entrance. Gross.'] },
+  outside: { good: ['Lovely flower beds out front.', 'Pretty outside: trees, benches, the lot.', 'Nice place to sit outside with a coffee.'], bad: ['Litter all over the pavement outside.', 'Teenagers smoking right by the door.', 'Dog mess by the entrance. Gross.'] },
   staff: { good: ['{name} on the till was lovely.', 'Staff are so friendly.', 'The owner was really helpful.', 'Friendly service.'], bad: ['Nobody on the tills.', 'Staff seemed rushed off their feet.', "Didn't like the self-checkout."] },
   parking: { good: ['Easy parking.', 'Plenty of spaces out front.'], bad: ['Car park was full, had to circle round.', 'Nowhere to park.'] },
   fresh: { good: ['Fruit and veg really fresh.', 'The {p} was lovely and fresh.'], bad: [] },
@@ -185,6 +191,20 @@ const SAY: Record<Topic, { good: string[]; bad: string[] }> = {
 const COLOUR_NAMES: Record<string, string> = { green: 'green', berry: 'pink', tangerine: 'orange', plum: 'purple', teal: 'teal', cocoa: 'brown' };
 
 function fill(text: string, ctx: Record<string, string>): string { return text.replace(/\{(\w+)\}/g, (_, k: string) => ctx[k] ?? ''); }
+
+/** Something nice about the lot, about what is actually out there. */
+function outsideGood(state: GameState, r: Rng): string {
+  const has = (t: string) => state.shop.fixtures.some((f) => f.type === t);
+  const laid = Object.values(state.shop.lotTiles ?? {});
+  const lines = [
+    ...(has('flowerBed') || has('planter') ? ['Lovely flowers out front.', 'The flower beds outside are gorgeous.'] : []),
+    ...(has('tree') ? ['Nice trees round the car park, very green.'] : []),
+    ...(has('parkBench') ? ['Benches outside to sit and have a snack.'] : []),
+    ...(has('bikeRack') ? ['Somewhere to lock the bike, finally.'] : []),
+    ...(laid.includes('brick') || laid.includes('paving') ? ['Smart paving out front.'] : []),
+  ];
+  return lines.length ? r.pick(lines) : 'Looks lovely from the street.';
+}
 
 /** The sentence for the shop's worst-looking part. */
 function looksBad(looks: Looks): string {
@@ -197,6 +217,8 @@ function write(state: GameState, p: Person, v: Visit, stars: number, looks: Look
   // What stood out: the strongest feelings, good or bad, matching the stars' mood.
   const ranked = (Object.entries(v.scores) as [Topic, number][])
     .filter(([t, s]) => Math.abs(s) > 0.25 && (s > 0 ? SAY[t].good.length : SAY[t].bad.length) > 0)
+    // A tidy frontage is only worth a word when something has been planted or laid out there.
+    .filter(([t, s]) => t !== 'outside' || s < 0 || looks.curb > 0.08)
     .filter(([, s]) => (stars >= 4 ? s > -0.6 : stars <= 2 ? s < 0.6 : true))
     .sort((a, b) => Math.abs(b[1]) * (0.7 + r.next() * 0.6) - Math.abs(a[1]) * (0.7 + r.next() * 0.6));
   const n = Math.min(ranked.length, r.chance(0.3) ? 1 : r.chance(0.6) ? 2 : 3);
@@ -220,6 +242,7 @@ function write(state: GameState, p: Person, v: Visit, stars: number, looks: Look
     let s = topic === 'looks' && !good ? looksBad(looks) : r.pick(good ? SAY[topic].good : SAY[topic].bad);
     if (topic === 'wait' && !good && v.scores.wait <= -1) s = 'Stood in the queue for ages and gave up. Left my basket.';
     if (topic === 'outside' && !good) s = (state.life?.hangouts ?? []).some((h) => h.mine) && r.chance(0.6) ? 'Teenagers smoking right by the door.' : (state.life?.litter ?? []).some((l) => l.kind === 'poop' && onFrontage(state, l)) ? 'Dog mess by the entrance. Gross.' : 'Litter all over the pavement outside.';
+    if (topic === 'outside' && good) s = outsideGood(state, r);
     if (topic === 'staff' && good && p.servedBy === 'owner') s = 'The owner served me and was really helpful.';
     if (topic === 'price' && good && !rivals.length && s.includes('{rival}')) s = 'Prices are really fair.';
     lines.push(fill(s, ctx));

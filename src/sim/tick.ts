@@ -1,4 +1,5 @@
 import { tickLife } from './life';
+import { managerSavedOrders } from './savedOrders';
 import { tickReviews } from './reviews';
 import type { GameState } from './types';
 import { TICK, DAY_SECONDS, DIFFICULTY } from './layout';
@@ -60,6 +61,8 @@ export function tick(state: GameState): void {
       spawnCustomer(state);
     }
     tickRivalSpawns(state, dayCurve(state.time));
+    // Twice a minute the manager looks over your saved orders for one whose stock condition has come true.
+    if (state.tick % 600 === 0) managerSavedOrders(state, false);
     if (isClosingTime(state)) state.phase = 'closing';
   }
   ambient(state, 1);

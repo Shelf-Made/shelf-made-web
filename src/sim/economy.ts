@@ -1,4 +1,5 @@
 import type { GameState, Order, DayPlan } from './types';
+import { managerSavedOrders } from './savedOrders';
 import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME, storageCap } from './layout';
 import { productDef } from './products';
 import { emptyDayStats } from './newGame';
@@ -207,6 +208,8 @@ export function dailyAutomation(state: GameState): void {
   const staff = state.people.filter((p) => p.kind === 'staff');
   const manager = staff.find((p) => p.role === 'manager');
   const orderer = staff.find((p) => p.role === 'orderer');
+  // Your saved orders first (their conditions are yours), then the manager's own top-ups.
+  managerSavedOrders(state, true);
   if (manager) { autoOrder(state, state.rules, state.rules.spendCap); managerPrices(state, state.rules); }
   else if (orderer) autoOrder(state, { ...state.rules, reorderPoint: 0.8 }, Math.min(state.rules.spendCap, state.cash * 0.5));
 }

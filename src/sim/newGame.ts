@@ -30,6 +30,9 @@ export function makeFixture(id: number, type: Fixture['type'], x: number, z: num
 }
 
 /** A bare shell: concrete floor, four walls, a front door and a back door. The player fits it out. */
+/** The bays a new lot comes with: the first row, front to back. */
+const STARTER_BAYS = [0, 1, 2, 3];
+
 export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_SCHEME): Shop {
   const plot = PLOTS.find((p) => p.id === plotId) ?? PLOTS[0]!;
   const fr = storeFrame(plot.id);
@@ -39,7 +42,9 @@ export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_
     fixtures: [],
     storage: [],
     storageCapacity: 120,
-    bays: lotLayout({ floor: STARTER.floor, storeroom: STARTER.storeroom }).bays.map((b) => ({ ...toWorld(fr, b.x, b.z), yaw: yawToWorld(fr, b.yaw), carId: null })),
+    // Four bays painted along the east wall come with the lot; more go on one at a time.
+    bays: lotLayout({ floor: STARTER.floor, storeroom: STARTER.storeroom, bayPlan: STARTER_BAYS }).bays.map((b) => ({ ...toWorld(fr, b.x, b.z), yaw: yawToWorld(fr, b.yaw), carId: null })),
+    bayPlan: [...STARTER_BAYS],
     reputation: 0.5, awareness: 0.35, cleanliness: 1, layoutVersion: 1, litter: [], sizeId: 'starter', lotRows: 1,
     // Plain plaster walls come with the shop; finishes go on a stretch at a time.
     wallStyle: 'plain',

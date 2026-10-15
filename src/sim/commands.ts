@@ -4,18 +4,20 @@
  */
 import { pickUpLitter, moveAlong } from './life';
 import { replyToReview } from './reviews';
-import type { GameState, Rot, FixtureType, FloorStyle, WallStyle } from './types';
+import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder } from './types';
+import { saveOrder, editSavedOrder, deleteSavedOrder, placeSaved } from './savedOrders';
 import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
-import { PLOTS, FIXTURES, PALLET_UNITS, storageCap } from './layout';
+import { PLOTS, FIXTURES, PALLET_UNITS, RACK_STANDS, storageCap } from './layout';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift } from './staff';
 import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall } from './build';
+import { pave, paintBay, eraseBay } from './lot';
 import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
 import { schemeById } from './schemes';
@@ -66,6 +68,16 @@ export type Command =
   | { type: 'sellTile'; x: number; z: number }
   /** One stretch of outer wall (a key from wallKey) given a finish. */
   | { type: 'paintWall'; key: string; style: WallStyle }
+  /** One tile of the lot laid with a surface (null: back to grass). */
+  | { type: 'pave'; x: number; z: number; surface: LotSurface | null }
+  /** One parking bay (a slot id from baySlots) painted, or painted out. */
+  | { type: 'paintBay'; slot: number }
+  | { type: 'eraseBay'; slot: number }
+  /** Saved orders: keep this order to place again, set when the manager places it, place it now, delete it. */
+  | { type: 'saveOrder'; name: string; supplierId: string; lines: { productId: string; qty: number }[] }
+  | { type: 'editSavedOrder'; id: number; patch: Partial<Pick<SavedOrder, 'name' | 'when' | 'minCash' | 'supplierId'>> }
+  | { type: 'placeSavedOrder'; id: number }
+  | { type: 'deleteSavedOrder'; id: number }
   | { type: 'ackChampion' }
   | { type: 'takeLoan'; offerId: string }
   | { type: 'repayLoan'; loanId: number; amount: number }
@@ -235,6 +247,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       state.cash -= def.price;
       const fx = { id: state.nextId++, type: cmd.fixtureType, x: cmd.x, z: cmd.z, rot: cmd.rot, slots: Array.from({ length: def.slots }, () => ({ productId: null, qty: 0 })) } as GameState['shop']['fixtures'][number];
       if (fx.type === 'register' || fx.type === 'kiosk') { fx.queue = []; fx.serving = null; fx.scanned = 0; fx.staffId = null; }
+      if (fx.type === 'bikeRack') fx.bikes = Array.from({ length: RACK_STANDS }, () => null);
       state.shop.fixtures.push(fx);
       state.shop.layoutVersion++;
       popup(state, fixtureCentre(state.shop, fx), dollars(-def.price), 'bad', 1.2);
@@ -249,6 +262,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const f = state.shop.fixtures[i]!;
       if (f.type === 'register' && state.shop.fixtures.filter((x) => x.type === 'register').length === 1) return { ok: false, message: 'You need one register.' };
       if ((f.type === 'register' || f.type === 'kiosk') && (f.serving || (f.queue?.length ?? 0) > 0)) return { ok: false, message: 'Wait until the line is served.' };
+      if (f.bikes?.some((b) => b !== null)) return { ok: false, message: 'Bikes are locked to it: wait till they ride off.' };
       if (f.type === 'pallet') { const units = state.shop.storage.reduce((a, e) => a + e.qty, 0); if (units > storageCap(state.shop) - PALLET_UNITS) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
       const refund = Math.round(FIXTURES[f.type].price * 0.6);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });
@@ -273,6 +287,13 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'buyTile': { const err = buyTile(state, cmd.x, cmd.z); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'sellTile': { const err = sellTile(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintWall': { const err = paintWall(state, cmd.key, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'pave': { const err = pave(state, cmd.x, cmd.z, cmd.surface); if (!err) cue(state, cmd.surface ? 'place' : 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'paintBay': { const err = paintBay(state, cmd.slot); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'saveOrder': { const err = saveOrder(state, cmd.name, cmd.supplierId, cmd.lines); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'editSavedOrder': { const err = editSavedOrder(state, cmd.id, cmd.patch); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'placeSavedOrder': { const err = placeSaved(state, cmd.id); if (!err) cue(state, 'order'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'deleteSavedOrder': { const err = deleteSavedOrder(state, cmd.id); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'eraseBay': { const err = eraseBay(state, cmd.slot); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'signStyle': {
       if (cmd.style === 'lit' && !state.goals.unlocked.includes('signLit') && !state.sandbox) return { ok: false, message: 'Reach the Regulars goal to light the sign.' };
       state.shop.signStyle = cmd.style; state.shop.layoutVersion++;

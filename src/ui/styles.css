@@ -639,3 +639,9 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .build-tile span { font-size: 0.8em; font-weight: 700; color: var(--green-dark); }
 .build-tile span small { color: #8a8f99; font-weight: 600; margin-left: 2px; }
 .swatch.big { width: 38px; height: 38px; border-radius: 8px; flex: none; margin-right: 10px; border: 2px solid rgba(0,0,0,0.12); }
+
+/* Saved orders: a name to save the order under, and each saved order's condition. */
+.save-order input[type='text'] { flex: 1; min-width: 0; margin-right: 8px; padding: 6px 8px; border: 2px solid var(--line, #e2dccf); border-radius: 10px; font: inherit; }
+.saved-order select, .saved-order input[type='number'] { font: inherit; font-size: 12px; padding: 3px 6px; border: 2px solid var(--line, #e2dccf); border-radius: 8px; background: #fff; }
+.saved-order input[type='number'] { width: 58px; margin: 0 4px; }
+.saved-order label { font-size: 12px; align-items: center; }

@@ -81,6 +81,13 @@ export function bikeGeometry(pal: PaletteMap, hex: string): BufferGeometry {
     box(pal, '#38383D', 0.06, 0.02, 0.03, -0.05, 0.2, 0), box(pal, '#38383D', 0.015, 0.015, 0.1, 0.1, 0.21, 0)]);
 }
 
+/** A bike at full size for a rider (the street-dressing one is half scale): along z, its front toward +z. */
+export function rideBikeGeometry(pal: PaletteMap, hex: string): BufferGeometry {
+  const g = bikeGeometry(pal, hex);
+  g.rotateY(-Math.PI / 2); g.scale(1.7, 1.7, 1.7);
+  return g;
+}
+
 /** A steel bike rack (three hoops) with two bikes in it. */
 export function bikeRackGeometry(pal: PaletteMap): BufferGeometry {
   const parts: BufferGeometry[] = [];

@@ -5,7 +5,7 @@
  * the same layout turned half round (their doors face north), so shop-relative coordinates mean
  * the same thing on every corner and only the frame (origin + flip) changes.
  */
-import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle, WallStyle } from './types';
+import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle, WallStyle, LotSurface } from './types';
 
 export const TICK = 0.05;
 /** 12 game hours of 60 real seconds each. */
@@ -172,6 +172,41 @@ export interface Rect { x0: number; z0: number; x1: number; z1: number }
 export interface LotLayout {
   apron: Rect; walkwayX: number; bays: { x: number; z: number; yaw: number }[]; aisle: Rect; driveway: Rect; serviceLane: Rect; backYard: Rect;
   truckStop: { x: number; z: number; yaw: number }; plot: Rect; halfW: number; depth: number;
+  /** Every place a bay could be painted (the painted ones are `bays`). */
+  slots: BaySlot[];
+}
+
+/** A place in the car park where a bay can be painted: `id` is row × 8 + its place in the row, front first. */
+export interface BaySlot { id: number; row: number; x: number; z: number; yaw: number }
+/** What painting the lines of one more bay costs. */
+export const BAY_PRICE = 60;
+/** A bay's painted rectangle round its centre. */
+export function bayRect(b: { x: number; z: number }): Rect { return { x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 }; }
+
+/**
+ * Where bays can go: nose-in along the east wall, and (once one is painted there) a second row facing
+ * them across the aisle. As many as fit down the side of the shop, front first, so a bay stays put
+ * when the shop grows deeper.
+ */
+export function baySlots(shop: { floor: Rect; storeroom: Rect }): BaySlot[] {
+  const east = shop.floor.x1;
+  const depth = shop.floor.z1 - Math.min(shop.floor.z0, shop.storeroom.z0);
+  const n = Math.min(8, Math.floor((depth - 1.2) / 1.1));
+  const out: BaySlot[] = [];
+  for (let row = 0; row < 2; row++) for (let k = 0; k < n; k++) out.push({ id: row * 8 + k, row, x: east + (row ? 6.0 : 1.6), z: -1.6 - k * 1.1, yaw: row ? -Math.PI / 2 : Math.PI / 2 });
+  return out;
+}
+/** Old saves (and rivals) paint whole rows, in the order the bays were always listed: back to front. */
+function rowsPlan(slots: BaySlot[], rows: number): number[] {
+  return slots.filter((s) => s.row < rows).sort((a, b) => a.row - b.row || b.id - a.id).map((s) => s.id);
+}
+/** The bays painted, in their order (`plan`, or whole rows), and how many rows the car park spans. */
+export function paintedBays(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[] }): { bays: BaySlot[]; rows: number; slots: BaySlot[] } {
+  const slots = baySlots(shop);
+  const plan = shop.bayPlan ?? rowsPlan(slots, shop.lotRows ?? 1);
+  const bays = plan.map((id) => slots.find((s) => s.id === id)).filter((s): s is BaySlot => !!s);
+  const rows = shop.bayPlan ? (bays.some((b) => b.row > 0) ? 2 : 1) : shop.lotRows ?? 1;
+  return { bays, rows, slots };
 }
 
 /**
@@ -179,21 +214,18 @@ export interface LotLayout {
  * behind, all laid out from the floor's outer edges (its bounding rectangle: a shop grown a tile at a
  * time need not be symmetric about its door).
  */
-export function lotLayout(shop: { floor: Rect; storeroom: Rect; lotRows?: number }): LotLayout {
+export function lotLayout(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[] }): LotLayout {
   const east = shop.floor.x1, west = -shop.floor.x0;
   const halfW = (east + west) / 2;
   const depth = shop.floor.z1 - Math.min(shop.floor.z0, shop.storeroom.z0);
-  const rows = shop.lotRows ?? 1;
-  const bays: { x: number; z: number; yaw: number }[] = [];
-  const n = Math.min(8, Math.floor((depth - 1.2) / 1.1));
-  for (let k = 0; k < n; k++) bays.push({ x: east + 1.6, z: -(depth - 1.1) + k * 1.1, yaw: Math.PI / 2 });
-  if (rows > 1) for (let k = 0; k < n; k++) bays.push({ x: east + 6.0, z: -(depth - 1.1) + k * 1.1, yaw: -Math.PI / 2 });
+  const { bays, rows, slots } = paintedBays(shop);
   const eastEdge = rows > 1 ? east + 7.2 : east + 4.5;
   return {
     halfW, depth,
     apron: { x0: -west - 1, z0: WALL_T, x1: eastEdge, z1: 1.2 },
     walkwayX: 0,
-    bays,
+    bays: bays.map((b) => ({ x: b.x, z: b.z, yaw: b.yaw })),
+    slots,
     aisle: { x0: east + 2.45, z0: -(depth - 0.4), x1: east + 4.45, z1: -0.5 },
     driveway: { x0: east + 2.5, z0: -0.5, x1: east + 4.4, z1: 1.5 },
     serviceLane: { x0: -west - 2.9, z0: -(depth + 2.4), x1: -west - 1.1, z1: 1.5 },
@@ -203,14 +235,60 @@ export function lotLayout(shop: { floor: Rect; storeroom: Rect; lotRows?: number
   };
 }
 
+// ---- The lot round the shop, for building on: a grid of its own, half a tile off the floor's, so its
+// tiles sit flush against the outside of the walls (corners on whole x and half z). Grass where nothing
+// is laid; pieces stand on it, never on the paths, lanes and bays the shop needs.
+
+/** The front of the lot: the frontage sidewalk's inner edge (shop-relative). */
+export const LOT_FRONT = SIDEWALK_N_Z - 0.3 + 1.6;
+export const lotKey = (x: number, z: number): string => `${x},${z}`;
+/** The lot tile under a shop-relative point (its corner). */
+export function lotTileAt(x: number, z: number): { x: number; z: number } { return { x: Math.floor(x), z: Math.floor(z - 0.5) + 0.5 }; }
+/** Is this rectangle on the plot, behind the sidewalk? */
+export function inLot(r: Rect): boolean { const e = 1e-6; return r.x0 >= PLOT_RECT.x0 - e && r.x1 <= PLOT_RECT.x1 + e && r.z0 >= PLOT_RECT.z0 - e && r.z1 <= LOT_FRONT + e; }
+/** Surfaces to lay on the lot: the price a tile, what each adds to the frontage, how gladly people walk on it (1 = paving). */
+export const SURFACES: { id: LotSurface; name: string; perTile: number; curb: number; walk: number }[] = [
+  { id: 'gravel', name: 'Gravel', perTile: 4, curb: 0.004, walk: 1.2 },
+  { id: 'asphalt', name: 'Asphalt', perTile: 6, curb: 0, walk: 1.1 },
+  { id: 'paving', name: 'Sidewalk slabs', perTile: 8, curb: 0.006, walk: 1 },
+  { id: 'brick', name: 'Brick paving', perTile: 12, curb: 0.01, walk: 1 },
+];
+/** A piece's footprint: one tile, or two side by side (a billboard), turned with it. */
+export function footprintOf(type: FixtureType, x: number, z: number, rot: number): Rect {
+  const w = FIXTURES[type].w;
+  return rot % 2 === 0 ? { x0: x, z0: z, x1: x + w, z1: z + 1 } : { x0: x, z0: z, x1: x + 1, z1: z + w };
+}
+export function overlaps(a: Rect, b: Rect, m = 1e-6): boolean { return a.x0 < b.x1 - m && a.x1 > b.x0 + m && a.z0 < b.z1 - m && a.z1 > b.z0 + m; }
+/** Does this rectangle touch the building (the floor and the walls round it)? */
+export function onBuilding(shop: FloorShape, r: Rect): boolean {
+  return floorTileList(shop).some((t) => overlaps(r, { x0: t.x - WALL_T, z0: t.z - WALL_T, x1: t.x + 1 + WALL_T, z1: t.z + 1 + WALL_T }));
+}
+/**
+ * Where the pylon sign stands, shop-relative: on the lawn by the sidewalk, between the service lane
+ * (where the delivery truck turns in) and the walkway to the door, never on either. `w` is the board's width.
+ */
+export function pylonSpot(shape: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[] }): { x: number; z: number; w: number } {
+  const L = lotLayout(shape);
+  const left = L.serviceLane.x1 + 0.35, right = L.walkwayX - 0.5 - 0.35;
+  return { x: (left + right) / 2, z: 1.85, w: Math.min(2.6, right - left) };
+}
+/** What on the lot is spoken for: the apron, the walkway, lanes and yard, the painted bays and the pylon sign. Nothing is built on them. */
+export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[] }): Rect[] {
+  const L = lotLayout(shop), py = pylonSpot(shop);
+  return [
+    L.apron, { x0: L.walkwayX - 0.5, z0: L.apron.z0, x1: L.walkwayX + 0.5, z1: LOT_FRONT }, L.aisle, { ...L.driveway, z1: LOT_FRONT }, { ...L.serviceLane, z1: LOT_FRONT }, L.backYard,
+    ...L.bays.map(bayRect), { x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 },
+  ];
+}
+
 // ---- The floor, tile by tile. It grows a tile at a time inside the market hall's footprint: `floor`
 // is its bounding rectangle and `gaps` the tiles inside that are not floor yet (keys "x,z" of their
 // corner). A shop without gaps is the plain rectangle every older save has.
 
 /** The most floor a shop can have (the front wall never moves). */
 export const MAX_FLOOR: Rect = { x0: -4.5, z0: -8, x1: 4.5, z1: 0 };
-export const tileKey = (x: number, z: number): string => `${x},${z}`;
 type FloorShape = { floor: Rect; gaps?: string[] };
+export const tileKey = (x: number, z: number): string => `${x},${z}`;
 const gapSets = new WeakMap<string[], Set<string>>();
 function gapSet(shop: FloorShape): Set<string> | null {
   if (!shop.gaps?.length) return null;
@@ -281,30 +359,30 @@ export function storeFrame(plotId: string): Frame {
 export const FIXTURES: Record<FixtureType, FixtureDef> = {
   // Checkout.
   register: { type: 'register', name: 'Checkout counter', price: 180, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'checkout' },
-  kiosk: { type: 'kiosk', name: 'Self-checkout', price: 650, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3, category: 'checkout' },
+  kiosk: { type: 'kiosk', name: 'Self-checkout', price: 650, w: 1, d: 1, depth: 0.49, slots: 0, capacity: 0, chilled: false, upkeep: 3, category: 'checkout' },
   rack: { type: 'rack', name: 'Checkout rack', price: 45, w: 1, d: 1, slots: 2, capacity: 8, chilled: false, upkeep: 0, category: 'checkout' },
   // Shelves and fridges.
   shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 4, capacity: 8, chilled: false, upkeep: 0, category: 'shelves' },
-  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0, category: 'shelves' },
-  produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'], category: 'shelves' },
+  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, depth: 0.41, slots: 2, capacity: 6, chilled: false, upkeep: 0, category: 'shelves' },
+  produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, depth: 0.61, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'], category: 'shelves' },
   /** More room for deliveries, on the shop floor wherever you put it. */
   pallet: { type: 'pallet', name: 'Pallet', price: 60, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'shelves' },
-  fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, slots: 4, capacity: 6, chilled: true, upkeep: 6, category: 'shelves' },
-  freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'], category: 'shelves' },
+  fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, depth: 0.61, slots: 4, capacity: 6, chilled: true, upkeep: 6, category: 'shelves' },
+  freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, depth: 0.51, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'], category: 'shelves' },
   // Furniture.
-  bench: { type: 'bench', name: 'Bench', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.08, looksCap: 2 },
-  sofa: { type: 'sofa', name: 'Cushioned bench', price: 70, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.09, looksCap: 2 },
+  bench: { type: 'bench', name: 'Bench', price: 45, w: 1, d: 1, depth: 0.39, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.08, looksCap: 2 },
+  sofa: { type: 'sofa', name: 'Cushioned bench', price: 70, w: 1, d: 1, depth: 0.39, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.09, looksCap: 2 },
   cafe: { type: 'cafe', name: 'Café table', price: 120, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.12, looksCap: 2 },
-  desk: { type: 'desk', name: 'Help desk', price: 150, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'furniture', looks: 0.05, looksCap: 1 },
+  desk: { type: 'desk', name: 'Help desk', price: 150, w: 1, d: 1, depth: 0.43, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'furniture', looks: 0.05, looksCap: 1 },
   basketStack: { type: 'basketStack', name: 'Baskets', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.1, looksCap: 1 },
   trolleys: { type: 'trolleys', name: 'Trolley bay', price: 90, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.05, looksCap: 1 },
   bin: { type: 'bin', name: 'Litter bin', price: 20, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.04, looksCap: 2 },
   speaker: { type: 'speaker', name: 'Music speaker', price: 60, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'furniture', looks: 0.05, looksCap: 1 },
-  screen: { type: 'screen', name: 'Promo screen', price: 140, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'furniture', looks: 0.07, looksCap: 2 },
-  bookcase: { type: 'bookcase', name: 'Magazine shelf', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.06, looksCap: 2 },
+  screen: { type: 'screen', name: 'Promo screen', price: 140, w: 1, d: 1, depth: 0.23, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'furniture', looks: 0.07, looksCap: 2 },
+  bookcase: { type: 'bookcase', name: 'Magazine shelf', price: 55, w: 1, d: 1, depth: 0.29, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.06, looksCap: 2 },
   // Decor.
   plant: { type: 'plant', name: 'Plant', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.13, looksCap: 4 },
-  flowers: { type: 'flowers', name: 'Flower table', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.1, looksCap: 3 },
+  flowers: { type: 'flowers', name: 'Flower table', price: 35, w: 1, d: 1, depth: 0.21, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.1, looksCap: 3 },
   sign: { type: 'sign', name: 'Aisle sign', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.1, looksCap: 3 },
   rug: { type: 'rug', name: 'Rug', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', walkable: true, looks: 0.08, looksCap: 3 },
   doormat: { type: 'doormat', name: 'Doormat', price: 12, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', walkable: true, looks: 0.06, looksCap: 1 },
@@ -321,7 +399,65 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   wallLight: { type: 'wallLight', name: 'Wall light', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.06, looksCap: 4 },
   pendant: { type: 'pendant', name: 'Hanging light', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, looks: 0.06, looksCap: 6 },
   neon: { type: 'neon', name: 'Neon sign', price: 80, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.1, looksCap: 2 },
+  // Out on the lot (looksCap counts toward the frontage's looks, as `looks` does inside).
+  flowerBed: { type: 'flowerBed', name: 'Flower bed', price: 20, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.06, looksCap: 6 },
+  planter: { type: 'planter', name: 'Planter', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.05, looksCap: 6 },
+  tree: { type: 'tree', name: 'Tree', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.08, looksCap: 5 },
+  parkBench: { type: 'parkBench', name: 'Bench', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.05, looksCap: 3 },
+  /** Shoppers ride over and leave their bikes here (three to a rack). */
+  bikeRack: { type: 'bikeRack', name: 'Bike rack', price: 50, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.02, looksCap: 2 },
+  /** Your own board on your own lot: no rent, and drivers on Main Road see it every day. */
+  billboard: { type: 'billboard', name: 'Billboard', price: 300, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true },
 };
+
+/**
+ * The part of a piece's tile people cannot walk through, in tile coordinates: the back half for a piece
+ * that reaches no further than a little past the middle (a chiller, an end cap: the floor in front of
+ * it is open), otherwise the whole of its footprint.
+ */
+export function blockedRect(f: { type: FixtureType; x: number; z: number; rot: number }): Rect {
+  const d = FIXTURES[f.type].depth;
+  if (d === undefined || d > 0.65) return footprintOf(f.type, f.x, f.z, f.rot);
+  switch (f.rot & 3) {
+    case 0: return { x0: f.x, z0: f.z, x1: f.x + 1, z1: f.z + 0.5 };
+    case 1: return { x0: f.x, z0: f.z, x1: f.x + 0.5, z1: f.z + 1 };
+    case 2: return { x0: f.x, z0: f.z + 0.5, x1: f.x + 1, z1: f.z + 1 };
+    default: return { x0: f.x + 0.5, z0: f.z, x1: f.x + 1, z1: f.z + 1 };
+  }
+}
+/**
+ * What each piece's model actually covers (measured from the models, as drawn): its width across the
+ * tile and depth from the back edge, or for a piece standing in the middle of its tile its size there.
+ * Missing: the whole tile.
+ */
+const BODY: Partial<Record<FixtureType, { w: number; d: number; centred?: boolean }>> = {
+  register: { w: 0.85, d: 0.86 }, shelf: { w: 0.8, d: 0.71 }, rack: { w: 0.8, d: 0.71 }, fridge: { w: 0.8, d: 0.61 }, freezer: { w: 1, d: 0.51 },
+  produce: { w: 0.7, d: 0.61 }, endcap: { w: 0.8, d: 0.41 }, kiosk: { w: 0.46, d: 0.49 }, trolleys: { w: 0.5, d: 0.75 }, desk: { w: 0.76, d: 0.43 },
+  screen: { w: 0.7, d: 0.23 }, bookcase: { w: 0.44, d: 0.29 }, flowers: { w: 0.48, d: 0.21 }, bench: { w: 0.83, d: 0.39 }, sofa: { w: 0.83, d: 0.39 },
+  sign: { w: 0.72, d: 0.72, centred: true }, plant: { w: 0.3, d: 0.3, centred: true }, basketStack: { w: 0.36, d: 0.36, centred: true },
+  cafe: { w: 0.9, d: 0.5, centred: true }, bin: { w: 0.24, d: 0.24, centred: true }, speaker: { w: 0.2, d: 0.2, centred: true }, floorLamp: { w: 0.2, d: 0.2, centred: true },
+  wall: { w: 1, d: 0.22, centred: true }, wallWindow: { w: 1, d: 0.22, centred: true }, railing: { w: 1, d: 0.16, centred: true },
+};
+/** The floor a piece's body covers, in tile coordinates (null: nothing to bump into, or no measure: the grid has it). */
+export function solidRect(f: { type: FixtureType; x: number; z: number; rot: number }): Rect | null {
+  if (FIXTURES[f.type].walkable) return null;
+  const b = BODY[f.type];
+  if (!b) return null;
+  const along = (f.rot & 1) === 0; // its width runs along x
+  const hw = b.w / 2;
+  if (b.centred) { const cx = f.x + 0.5, cz = f.z + 0.5, hx = along ? hw : b.d / 2, hz = along ? b.d / 2 : hw; return { x0: cx - hx, z0: cz - hz, x1: cx + hx, z1: cz + hz }; }
+  switch (f.rot & 3) {
+    case 0: return { x0: f.x + 0.5 - hw, z0: f.z, x1: f.x + 0.5 + hw, z1: f.z + b.d };
+    case 1: return { x0: f.x, z0: f.z + 0.5 - hw, x1: f.x + b.d, z1: f.z + 0.5 + hw };
+    case 2: return { x0: f.x + 0.5 - hw, z0: f.z + 1 - b.d, x1: f.x + 0.5 + hw, z1: f.z + 1 };
+    default: return { x0: f.x + 1 - b.d, z0: f.z + 0.5 - hw, x1: f.x + 1, z1: f.z + 0.5 + hw };
+  }
+}
+
+/** Most of each that the lot takes. */
+export const LOT_MAX: Partial<Record<FixtureType, number>> = { billboard: 2, bikeRack: 4 };
+/** Bikes a rack holds. */
+export const RACK_STANDS = 3;
 
 /** Floor finishes: the price per tile, and what each adds to how the shop looks. */
 /** Inside finishes for the outer walls, a stretch (one tile's edge) at a time. Plain plaster comes with the shop. */

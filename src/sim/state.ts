@@ -47,7 +47,16 @@ export function gridFor(state: GameState): Grid {
   return gridCache.grid;
 }
 
-export function resetGridCache(): void { gridCache = null; }
+/** The same grid without the fixtures: walls, doors and the delivery pallet only (the manager steers round fixtures by their real shape). */
+let wallCache: { key: string; version: number; grid: Grid } | null = null;
+export function wallGridFor(state: GameState): Grid {
+  const shop = state.shop;
+  const key = `${state.seed}:${shop.plotId}`;
+  if (!wallCache || wallCache.key !== key || wallCache.version !== shop.layoutVersion) wallCache = { key, version: shop.layoutVersion, grid: buildGrid({ ...shop, fixtures: [] }, shop.layoutVersion) };
+  return wallCache.grid;
+}
+
+export function resetGridCache(): void { gridCache = null; wallCache = null; }
 
 export function clockLabel(time: number): string {
   const totalMin = 8 * 60 + Math.floor(time / 60) * 60 + Math.floor((time % 60));

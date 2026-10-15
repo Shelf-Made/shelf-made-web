@@ -4,10 +4,10 @@
  *   npm run balance -- --check exits non-zero when any assertion fails
  *   --progress prints each run's time; --only franchiser:3 runs one strategy (and seed); --trace prints it day by day
  */
-import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, GOALS, playerShareOf, SHOP_SIZES, LOT_EXPANSION_COST, type GameState, type Difficulty, type FixtureType } from '../src/sim/index';
+import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, GOALS, playerShareOf, SHOP_SIZES, type GameState, type Difficulty, type FixtureType } from '../src/sim/index';
 import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
 import { TYPE_BASE, priceIndex, rivalPriceIndex } from '../src/sim/customers';
-import { plotDef } from '../src/sim/layout';
+import { plotDef, lotLayout, BAY_PRICE } from '../src/sim/layout';
 import { writeFileSync } from 'node:fs';
 
 type Strategy = (s: GameState, day: number) => void;
@@ -137,8 +137,11 @@ const STRATEGIES: Record<string, Strategy> = {
     const can = (cost: number) => s.cash - cost >= reserve;
     // Moving up comes first on the morning it is affordable (with $200 kept back for the day's stock).
     if (s.shop.sizeId === 'starter' && day >= 6 && s.cash - SHOP_SIZES[1]!.cost >= 200) applyCommand(s, { type: 'expandShop', sizeId: 'medium' });
-    // So does doubling the lot once drivers are being turned away.
-    if (s.shop.sizeId !== 'starter' && s.shop.lotRows < 2 && (last?.turnedAway ?? 0) >= 15 && s.cash - LOT_EXPANSION_COST >= 200) applyCommand(s, { type: 'expandLot' });
+    // A bigger shop has room for more bays down its side: paint them in the first row.
+    if (s.shop.sizeId !== 'starter') for (const sl of lotLayout(s.shop).slots) if (sl.row === 0 && can(BAY_PRICE) && !s.shop.bayPlan?.includes(sl.id)) applyCommand(s, { type: 'paintBay', slot: sl.id });
+    // And the second row once drivers are being turned away.
+    const freeBays = lotLayout(s.shop).slots.length - s.shop.bays.length;
+    if (s.shop.sizeId !== 'starter' && freeBays > 0 && (last?.turnedAway ?? 0) >= 15 && s.cash - freeBays * BAY_PRICE >= 200) applyCommand(s, { type: 'expandLot' });
     if (s.cash > 120) orderToFill(s, 'local', 2.5, Math.max(220, s.cash * 0.5));
     if (s.cash > reserve) orderNew(s, (s.cash - reserve) * 0.5);
     if (goal === 'hall' && s.shop.sizeId === 'medium' && can(SHOP_SIZES[2]!.cost - SHOP_SIZES[1]!.cost)) applyCommand(s, { type: 'expandShop', sizeId: 'large' });
@@ -171,6 +174,7 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
   let salePull = 0;
   const takes: number[] = [];
   const trace = process.argv.includes('--trace');
+  const shelfDays = process.argv.includes('--shelves') ? process.argv[process.argv.indexOf('--shelves') + 1]!.split(',').map(Number) : [];
   for (let day = 1; day <= days; day++) {
     const t0 = Date.now();
     act(s, day);
@@ -199,6 +203,13 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
         const fmt = (c: typeof worst) => `      car ${c.id} ${c.state} lot=${c.lot ?? '-'} bay=${c.bay} at ${c.x.toFixed(2)},${c.z.toFixed(2)} yaw ${c.yaw.toFixed(2)} waited ${(c.waited ?? 0).toFixed(1)} rev=${!!c.reversing} yield=${!!c.yielding} gap=${c.gap?.toFixed(2)} path ${c.pathIdx}/${c.path.length} ${c.path.map((p) => p.x.toFixed(1) + ',' + p.z.toFixed(1)).join(' ')}`;
         console.log('    near the worst:');
         for (const c of s.cars.filter((c) => Math.hypot(c.x - worst.x, c.z - worst.z) < 3)) { console.log(fmt(c)); const o = s.people.find((p) => p.id === c.ownerId); console.log(`        owner ${c.ownerId}: ${o ? `${o.kind} ${o.state} at ${o.x.toFixed(1)},${o.z.toFixed(1)} rival=${o.rivalId ?? '-'} path ${o.pathIdx}/${o.path.length}` : 'gone'}`); }
+      }
+      // --shelves 17,20: at midday on those days, what is on the pallet and on each shelf, and what the workers are doing.
+      if (shelfDays.includes(day) && i === Math.round(DAY_SECONDS / 2 / TICK)) {
+        const st = new Map<string, number>(); for (const e of s.shop.storage) st.set(e.productId, (st.get(e.productId) ?? 0) + e.qty);
+        console.log(`    day ${day} pallet: ${[...st].map(([k, v]) => `${k} ${v}`).join(', ') || 'empty'}`);
+        for (const f of sellers(s)) console.log(`      ${f.type} ${f.id} at ${f.x},${f.z}: ${f.slots.map((sl) => `${sl.productId ?? '-'} ${sl.qty}`).join(', ')}`);
+        for (const p of s.people.filter((x) => x.kind === 'staff' || x.kind === 'owner')) console.log(`      ${p.kind}${p.role ? ' ' + p.role : ''}: ${p.state}${p.task ? ` (${p.task.productId} for ${p.task.fixtureId})` : ''}${p.carrying ? `, holding ${p.carrying.qty} ${p.carrying.productId}` : ''}`);
       }
       const scanner = !hasCashier();
       if (scanner && waiting() && !busy() && i % (strategy === 'careless' ? 14 : 6) === 0) applyCommand(s, { type: 'scan' });
