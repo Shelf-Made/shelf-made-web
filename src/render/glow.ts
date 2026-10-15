@@ -7,7 +7,7 @@ import { MeshBasicMaterial, CircleGeometry, Float32BufferAttribute, AdditiveBlen
 export const WINDOW_GLOW = new MeshBasicMaterial({ color: new Color(2.3, 1.85, 1.1) });
 export const LAMP_GLOW = new MeshBasicMaterial({ color: new Color(2.6, 2.2, 1.5) });
 /** Lit sign letters: just over the bloom threshold, so they glow softly and stay readable. */
-export const SIGN_GLOW = new MeshBasicMaterial({ color: new Color(1.3, 1.2, 0.95) });
+export const SIGN_GLOW = new MeshBasicMaterial({ color: new Color(1.85, 1.7, 1.35) });
 
 /** Light spilling onto the pavement: a warm pool that fades to nothing at its rim, added on top of the ground. */
 export const SPILL = new MeshBasicMaterial({ color: new Color('#FFD27A'), vertexColors: true, transparent: true, depthWrite: false, blending: AdditiveBlending });

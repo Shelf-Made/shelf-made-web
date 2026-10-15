@@ -11,6 +11,7 @@ import { VerticalTiltShiftShader } from 'three/examples/jsm/shaders/VerticalTilt
  * The miniature look, kept mild: a soft bloom on things that glow (windows, signs and street lamps at
  * night are pushed brighter than any lit surface gets, so only they cross the threshold), and a
  * tilt-shift blur at the top and bottom of the screen that fades in only at the far overview zoom.
+ * Tone mapping (in the output pass) and a soft vignette finish the frame.
  * Off on Low quality; Medium renders the bloom at a quarter of the pixels.
  */
 export class PostFX {
@@ -27,7 +28,7 @@ export class PostFX {
     this.composer.renderTarget1.texture.type = HalfFloatType;
     this.composer.renderTarget2.texture.type = HalfFloatType;
     this.pass = new RenderPass(scene, camera);
-    this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.45, 0.5, 1.05);
+    this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.45, 0.5, 1.4);
     this.tiltH = new ShaderPass(HorizontalTiltShiftShader);
     this.tiltV = new ShaderPass(VerticalTiltShiftShader);
     for (const p of [this.tiltH, this.tiltV]) p.uniforms.r!.value = 0.45;
@@ -43,6 +44,12 @@ export class PostFX {
     this.composer.addPass(this.tiltH);
     this.composer.addPass(this.tiltV);
     this.composer.addPass(new OutputPass());
+    // A lens's gentle fall-off to the corners, after tone mapping (so it darkens, never tints).
+    this.composer.addPass(new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 d = vUv - 0.5; float v = 1.0 - 0.22 * smoothstep(0.25, 0.75, dot(d, d) * 2.2); gl_FragColor = vec4(c.rgb * v, c.a); }',
+    }));
   }
 
   setQuality(q: 'high' | 'medium' | 'low'): void {

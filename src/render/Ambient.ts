@@ -1,4 +1,4 @@
-import { Group, Mesh, Object3D, IcosahedronGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, type BufferGeometry, type Camera } from 'three';
+import { Group, Mesh, Object3D, IcosahedronGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, Vector3, type BufferGeometry, type Camera } from 'three';
 import type { AssetLibrary } from './assets';
 import type { TownPlan, AnimalHome, AnimalKind } from './town';
 import { box, merge, paint } from './geometry';
@@ -22,9 +22,18 @@ export class AmbientView {
   constructor(private readonly assets: AssetLibrary) {
     this.skyMat = new ShaderMaterial({
       side: BackSide, depthWrite: false, fog: false,
-      uniforms: { top: { value: new Color('#5FA8E8') }, bottom: { value: new Color('#CFE8FF') } },
+      uniforms: { top: { value: new Color('#5FA8E8') }, bottom: { value: new Color('#CFE8FF') }, sunDir: { value: new Vector3(0, 1, 0) }, sunCol: { value: new Color(0, 0, 0) } },
       vertexShader: 'varying vec3 vP; void main() { vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vP; void main() { float t = clamp(vP.y * 1.6 + 0.05, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, pow(t, 0.8)), 1.0); }',
+      // The gradient, and the sun: a bright disc in a soft halo that widens and warms near the horizon.
+      fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunCol; varying vec3 vP;
+        void main() {
+          vec3 d = normalize(vP);
+          float t = clamp(d.y * 1.6 + 0.05, 0.0, 1.0);
+          vec3 c = mix(bottom, top, pow(t, 0.8));
+          float s = max(dot(d, sunDir), 0.0);
+          c += sunCol * (smoothstep(0.9993, 0.9997, s) * 3.0 + pow(s, 64.0) * 0.6 + pow(s, 6.0) * 0.18);
+          gl_FragColor = vec4(c, 1.0);
+        }`,
     });
     this.sky = new Mesh(new SphereGeometry(200, 24, 12), this.skyMat);
     this.sky.renderOrder = -10;
@@ -114,10 +123,11 @@ export class AmbientView {
     return { obj: g, parts };
   }
 
-  update(t: number, dt: number, camera: Camera, skyTop: Color, skyBottom: Color): void {
+  update(t: number, dt: number, camera: Camera, skyTop: Color, skyBottom: Color, sun?: { sunDir: Vector3; sunVisible: number; sun: { color: Color } }): void {
     this.sky.position.copy(camera.position);
     this.skyMat.uniforms.top!.value.copy(skyTop);
     this.skyMat.uniforms.bottom!.value.copy(skyBottom);
+    if (sun) { this.skyMat.uniforms.sunDir!.value.copy(sun.sunDir); this.skyMat.uniforms.sunCol!.value.copy(sun.sun.color).multiplyScalar(sun.sunVisible); }
     // Animals far from the camera are too small to see and cost a draw call per part: skip them.
     const cp = camera.position;
     for (const c of this.critters) {

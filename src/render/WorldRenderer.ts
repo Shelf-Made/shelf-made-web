@@ -1,4 +1,4 @@
-import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NoToneMapping, type PerspectiveCamera, type Fog, type Mesh, type Object3D, Frustum, Matrix4, Sphere } from 'three';
+import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NeutralToneMapping, type PerspectiveCamera, type Fog, type Mesh, type Object3D, Frustum, Matrix4, Sphere } from 'three';
 import { FollowCamera } from './FollowCamera';
 import { TargetMarker } from './TargetMarker';
 import { AssetLibrary } from './assets';
@@ -73,7 +73,9 @@ export class WorldRenderer {
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = SRGBColorSpace;
-    this.renderer.toneMapping = NoToneMapping;
+    // Highlights roll off instead of clipping; mid-tones (the toy colours) are left as they are.
+    this.renderer.toneMapping = NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
@@ -154,7 +156,8 @@ export class WorldRenderer {
     this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius());
     // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
     const fog = this.scene.fog as Fog | null;
-    if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance; fog.near = 45 + d * 1.1; fog.far = 160 + d * 1.6; }
+    if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance, k = this.lighting.fogScale; fog.near = (45 + d * 1.1) * k; fog.far = (160 + d * 1.6) * (0.4 + 0.6 * k); }
+    this.lighting.updateEnvironment(this.renderer, this.clock);
     this.setTown(state.seed, state.shop.plotId);
     // With the manager inside, the roof comes off and the walls between the camera and the manager
     // drop to stubs. Outside, the shop stands whole and wears its roof once the camera pulls back.
@@ -188,7 +191,7 @@ export class WorldRenderer {
       this.grass.refreshMask(this.renderer, this.scene, [this.statics.group, this.store.group, this.rivals.group, this.street.group], WorldRenderer.notGround, `${this.townKey}|${this.store.layoutKey}|${this.rivals.layoutKey()}`);
       this.grass.update(focus.x, focus.z, Math.min(GRASS_RING / 2, 9 + dist * 0.8));
     }
-    this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky);
+    this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky, this.lighting);
     this.renderer.info.reset();
     // Tilt-shift fades in only as the camera pulls right out over the town.
     const far = fp ? this.follow.distance : this.camera.goalDistance;
