@@ -25,6 +25,8 @@ describe('detailed trees', () => {
       const tris = g.getAttribute('position').count / 3;
       expect(tris, `${id} triangles`).toBeGreaterThan(100);
       expect(tris, `${id} triangles`).toBeLessThan(800);
+      // Indexed like the Kenney models they merge with in the town's chunks.
+      expect(g.index, `${id} indexed`).not.toBeNull();
     }
   });
 

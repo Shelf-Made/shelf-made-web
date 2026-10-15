@@ -224,6 +224,12 @@ function build(pal: PaletteMap, s: Spec): BufferGeometry {
 /** Every detailed tree, by the Kenney id it stands in for. */
 export function detailedTrees(pal: PaletteMap): Map<string, BufferGeometry> {
   const out = new Map<string, BufferGeometry>();
-  for (const [id, spec] of Object.entries(SPECS)) out.set(id, build(pal, spec));
+  for (const [id, spec] of Object.entries(SPECS)) {
+    const g = build(pal, spec);
+    // Indexed like every Kenney model, so a tree merges into the town's chunks with the rest (a
+    // non-indexed piece makes the whole chunk fail to merge, and none of it is drawn).
+    if (!g.index) g.setIndex(Array.from({ length: g.getAttribute('position').count }, (_, i) => i));
+    out.set(id, g);
+  }
   return out;
 }
