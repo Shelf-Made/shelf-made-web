@@ -102,6 +102,27 @@ describe('riding the stairs with the keys', () => {
   });
 });
 
+describe('a change of plan on the stairs', () => {
+  it('a click while the manager rides up takes them on from the top, never back to the foot', () => {
+    const s = quiet(75);
+    const o = owner(s), stairs = s.shop.fixtures.find((f) => f.type === 'stairs')!;
+    put(o, foot(s));
+    expect(applyCommand(s, { type: 'ride', fixtureId: stairs.id }).ok).toBe(true);
+    const w = rideWatch(s);
+    run(s, 1, w.check);
+    const there = at(s, -1.5, -0.5);
+    expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
+    // Up to the top first, then back down and over.
+    expect(o.climb).toBeDefined();
+    run(s, 2, () => w.check() || o.climb === undefined);
+    expect(levelOfPerson(s.shop, o)).toBe(1);
+    run(s, 15, () => w.check() || Math.hypot(o.x - there.x, o.z - there.z) < 0.3);
+    expect(Math.hypot(o.x - there.x, o.z - there.z)).toBeLessThan(0.3);
+    expect(w.started).toBe(2);
+    expect(w.dropped).toBe(0);
+  });
+});
+
 describe('shoplifters and the stairs', () => {
   it('one bolting from upstairs gets down the stairs and away (a re-plan never starts a ride over)', () => {
     const s = quiet(72);

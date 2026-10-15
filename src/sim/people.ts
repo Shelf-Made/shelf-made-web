@@ -52,11 +52,13 @@ export function dynamicBlockers(state: GameState): Set<number> {
 }
 
 export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): boolean {
-  p.climb = undefined;
-  const path = findPath(gridFor(state), { x: p.x, z: p.z }, to, dyn);
-  if (!path) { p.path = [to]; p.pathIdx = 0; return false; }
-  p.path = path; p.pathIdx = 0;
-  return true;
+  // Partway up the stairs: up to the top first, and the new way on from there.
+  const ride = p.climb !== undefined && p.path[p.pathIdx]?.ride !== undefined ? [p.path[p.pathIdx]!] : [];
+  if (!ride.length) p.climb = undefined;
+  const from = ride[0] ?? p;
+  const path = findPath(gridFor(state), { x: from.x, z: from.z }, to, dyn);
+  p.path = [...ride, ...(path ?? [to])]; p.pathIdx = 0;
+  return !!path;
 }
 
 /** Queue slot k for a register: straight back from the front, then bending toward the middle of the shop. */
