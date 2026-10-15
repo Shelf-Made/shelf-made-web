@@ -3,7 +3,7 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Follow-up: shelves, backing out, trees (latest)
+## Follow-up: shelves, backing out, trees, moving furniture (latest)
 
 - [x] **A box goes on a shelf with room.** Stocking tops up the product's slots and then takes free
   ones; "That one is full" only when it is, otherwise "No room for Soup there: every spot holds
@@ -13,15 +13,20 @@ an empty repository in this session.
   moment to change gear, then away. Turning across the oncoming lane waits for a longer gap.
 - [x] **Detailed trees** in the same style: branches, faceted leaf clusters lit and shaded, egg
   crowns, poplar columns, a birch, jagged conifers.
+- [x] **Move furniture by clicking it.** With empty hands a click on any piece opens a small menu at
+  it: its use (Stock, Serve here), Move (it follows the pointer; click to put it down, R turns it,
+  Esc puts it back) and Turn (a quarter turn where it stands).
 
 | Check | Result |
 |---|---|
 | `npm run lint` | clean |
 | `npm test` | 96 passed; new: stocking a shelf whose slot for the product is full, backing out of every bay without sliding or touching a neighbour, the trees' size, budget and determinism |
-| `npm run e2e` | 15 passed |
+| `npm run e2e` | 16 passed; new: click a shelf, Move it somewhere free (its stock goes with it), Turn it, pick it up and Esc puts it back; the counter's menu serves; a tapped shelf's menu opens Stock |
 | `npm run audit:art` | passed |
 | `npm run balance -- --check` | passed in 356 s: nobody stuck or bust; guided ≈ $97/day in week one |
 | Perf (`npm run perf`) | default zoom 97 draw calls / 140k triangles; busy 113 / 171k; selected 121 / 188k; mid 123 / 197k; overview 162 / 281k (budget 250 / 900k) |
+
+New screenshots: `40-furniture-menu`, `41-moving-a-shelf`.
 
 ## Feedback round: first day, controls, the town, your manager
 

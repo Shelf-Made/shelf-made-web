@@ -363,6 +363,23 @@ test.describe('screenshots', () => {
     await page.keyboard.press('Escape');
     await hooks(page, 'dispatch', { type: 'skipTutorial' });
     await hooks(page, 'quickSetup', true);
+    // Furniture clicked with empty hands: its menu (Stock, Move, Turn); Move picks it up and the ghost follows the pointer.
+    {
+      const sh = (await st(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
+      await follow(page, 0.5, -1.2, 9, 0, 1200);
+      const p = await hooks<{ x: number; y: number }>(page, 'screenAt', (sh as unknown as { x: number }).x + 0.5, (sh as unknown as { z: number }).z + 0.5, 0.6);
+      await page.mouse.click(p.x, p.y);
+      await expect(page.getByRole('menu', { name: 'Shelf' })).toBeVisible();
+      await settle(page, 600);
+      await page.screenshot({ path: out('40-furniture-menu') });
+      await page.getByRole('menuitem', { name: 'Move' }).click();
+      const q = await hooks<{ x: number; y: number }>(page, 'screenAt', 1.0, -2.5, 0);
+      await page.mouse.move(q.x, q.y);
+      await settle(page, 900);
+      await page.screenshot({ path: out('41-moving-a-shelf') });
+      await page.keyboard.press('Escape');
+      await page.mouse.move(5, 400);
+    }
     // A greener town: textured lawns with grass and flowers, a mix of trees round every corner, softer zebras.
     await hooks(page, 'openRivals');
     await hooks(page, 'viewWorld', 2, 2, 0.3, 40, 0.92);

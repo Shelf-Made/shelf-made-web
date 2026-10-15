@@ -132,6 +132,11 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - Lobby: a shop front (striped awning, the manager's head as the logo, the name with the shelf
   bracket, a price-tag beta badge, menu items as shelf-edge labels under a swinging OPEN sign, an
   LED ticker) over a live demo shop at golden hour.
+- **Furniture menu.** Click or tap a piece of furniture with empty hands and a small menu pops up
+  above it: what it is for (Stock on shelves and fridges, Serve here at a counter), Move and Turn.
+  Move picks it up: a ghost follows the pointer, a click puts it down (stock and all), R turns it
+  and Esc puts it back. Turn gives it a quarter turn where it stands. Carrying a box, a click on a
+  shelf still stocks it, and F in front of a piece still does its job directly.
 - Inspect: click or tap anyone but the manager and a small panel opens beside them (docked at the
   bottom on a phone) with a yellow outline round them: name, type icon, mood face and word, what
   they are doing, their list with ticks and crosses, basket against budget, patience, and "Came
