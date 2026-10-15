@@ -3,6 +3,7 @@ import { BufferGeometry, Group, Mesh, MeshStandardMaterial, TextureLoader, Matri
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { detailTexture, addSurfaceDetail } from './detail';
+import { detailedTrees } from './trees';
 import { PaletteMap, configureAtlas, type PaletteData } from './palette';
 
 export interface ModelInfo { pack: string; name: string; file: string; size: [number, number, number]; min: [number, number, number]; tris: number; skinned: boolean; clips: string[] }
@@ -50,6 +51,8 @@ export class AssetLibrary {
     this.material = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detailTexture());
     this.glass = new MeshStandardMaterial({ color: new Color('#CFE9F7'), roughness: 0.2, metalness: 0, transparent: true, opacity: 0.45, depthWrite: false });
     this.unlit = new MeshBasicMaterial({ map: atlas });
+    // The town's trees are our own detailed ones under Kenney's ids (their GLBs are then never fetched).
+    for (const [id, g] of detailedTrees(this.palette)) if (this.index.has(id)) this.geoms.set(id, { atlas: g, glass: null });
     onProgress?.(1, 1);
   }
 
