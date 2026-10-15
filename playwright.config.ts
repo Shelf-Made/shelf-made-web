@@ -3,7 +3,8 @@ import { defineConfig } from '@playwright/test';
 const port = 4173;
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 120_000,
+  // GitHub's runners render SwiftShader slower than a workstation: CI gets more time per test.
+  timeout: process.env.CI ? 300_000 : 120_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
