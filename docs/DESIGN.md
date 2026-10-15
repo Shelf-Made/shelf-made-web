@@ -183,6 +183,10 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - Stats card, "Who shops where": today's shoppers so far by type at each store (yours counted as
   they set out, the rivals' modelled day scaled by the hour). A row marks every shopper of that
   type in town for ten seconds.
+- **Build card**: tabs Tills / Shelves / Furniture / Decor / Walls / Lights / Floors / Shop, each a
+  grid of pictures (rendered at load from the pieces' own models) with name and price; the tooltip
+  says what a piece is for. Undo, redo and the view overlays sit in one row above. Floors and Shop
+  are lists (a swatch per floor finish; sizes, the car park, windows per wall, the sign, corners).
 - **Business profile** (the storefront button by the speed controls, badge = review count, red
   while some are unread; the rating under it). The shop's listing on a made-up map app, Pinpoint,
   in that app's own look (white, Roboto/Arial, teal accents, yellow stars), docked like a card:

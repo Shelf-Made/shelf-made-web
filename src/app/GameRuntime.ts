@@ -665,6 +665,10 @@ export class GameRuntime {
     this.emit();
   }
   togglePause(): void { if (this.speed === 0) this.setSpeed(this.prevSpeed || 1); else { this.prevSpeed = this.speed; this.setSpeed(0); } }
+  /** The Build card's last tab, so it opens where you left it. */
+  buildTab: string | null = null;
+  rememberBuildTab(tab: string): void { this.buildTab = tab; }
+
   openCard(card: CardId): void {
     this.fixtureMenu = null;
     this.card = this.card === card ? null : card;

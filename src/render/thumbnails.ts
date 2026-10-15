@@ -1,4 +1,4 @@
-import { Scene, PerspectiveCamera, Mesh, WebGLRenderTarget, SRGBColorSpace, HemisphereLight, DirectionalLight, Color, Vector3, AnimationMixer, type WebGLRenderer, type Object3D, type SkinnedMesh } from 'three';
+import { Scene, PerspectiveCamera, Mesh, WebGLRenderTarget, SRGBColorSpace, HemisphereLight, DirectionalLight, Color, Vector3, AnimationMixer, type WebGLRenderer, type Object3D, type SkinnedMesh, type BufferGeometry } from 'three';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { AssetLibrary } from './assets';
 import { productGeometry } from './storeArt';
@@ -36,6 +36,23 @@ export function renderCharacterThumbs(renderer: WebGLRenderer, assets: AssetLibr
     cam.position.set(0.32, 0.66, 1.45);
     cam.lookAt(0, 0.5, 0);
     return root;
+  });
+}
+
+/** Pictures of the Build card's pieces, three-quarter view from the front, each framed to fill its square. */
+export function renderGeometryThumbs(renderer: WebGLRenderer, assets: AssetLibrary, entries: { id: string; geometry: BufferGeometry }[], size = 96): Record<string, string> {
+  const byId = new Map(entries.map((e) => [e.id, e.geometry]));
+  return renderThumbs(renderer, entries.map((e) => e.id), size, (scene, cam, id) => {
+    const g = byId.get(id)!;
+    g.computeBoundingSphere();
+    const s = g.boundingSphere!;
+    const mesh = new Mesh(g, assets.plainMaterial);
+    mesh.position.set(-s.center.x, -s.center.y, -s.center.z);
+    scene.add(mesh);
+    const dist = (s.radius * 1.02) / Math.sin((cam.fov / 2) * Math.PI / 180);
+    cam.position.copy(VIEW).multiplyScalar(dist);
+    cam.lookAt(0, 0, 0);
+    return mesh;
   });
 }
 

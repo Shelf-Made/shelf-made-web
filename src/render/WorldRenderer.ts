@@ -19,14 +19,15 @@ import { WeatherView } from './Weather';
 import { LifeView } from './Life';
 import { weatherAt } from '@/sim/weather';
 import { buildTown, type TownPlan } from './town';
-import { renderProductThumbs, renderCharacterThumbs } from './thumbnails';
+import { renderProductThumbs, renderCharacterThumbs, renderGeometryThumbs } from './thumbnails';
+import type { FixtureType } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
 import type { GameState, CustomerType, Look } from '@/sim/types';
 import type { ReviewPhoto } from '@/sim/reviews';
 import { box, merge } from './geometry';
 import { PhotoBooth, PHOTO_W, PHOTO_H, haulScene, photoRng, photoProduct } from './photos';
 import { shopScheme } from '@/sim/schemes';
-import { DAY_SECONDS, toLocal, toWorld, rectToWorld } from '@/sim/layout';
+import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld } from '@/sim/layout';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -75,6 +76,8 @@ export class WorldRenderer {
   quality: 'high' | 'medium' | 'low' = 'high';
   /** A picture of every product (PNG data URLs), rendered at load from the shelf models. */
   productThumbs: Record<string, string> = {};
+  /** A picture of every piece the Build card sells, by fixture type. */
+  fixtureThumbs: Record<string, string> = {};
   /** Portraits of every character (for the manager designer), by model id. */
   characterThumbs: Record<string, string> = {};
   /** Who the camera tracks instead of the manager (the inspect panel's Follow), or nobody. */
@@ -119,6 +122,7 @@ export class WorldRenderer {
     await this.store.init();
     this.productThumbs = renderProductThumbs(this.renderer, this.assets, PRODUCTS.map((p) => p.id));
     this.characterThumbs = renderCharacterThumbs(this.renderer, this.assets, PEOPLE_MODELS.filter((id) => this.assets.hasCharacter(id)));
+    this.fixtureThumbs = renderGeometryThumbs(this.renderer, this.assets, (Object.keys(FIXTURES) as FixtureType[]).map((t) => ({ id: t, geometry: this.store.pictureGeometry(t) })));
     this.cars.init();
     this.scene.add(this.marker.group);
     this.life = new LifeView(this.assets.palette, this.assets.plainMaterial);

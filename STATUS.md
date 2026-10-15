@@ -3,7 +3,7 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Round: a brighter town, night fixes, the business profile and its reviews (latest)
+## Round: a brighter town, night fixes, reviews and a business profile, more to build (latest)
 
 - [x] **Brighter, happier.** More light (exposure and sky fill up), a cheerful grade after tone
   mapping (vibrance on the duller colours, a touch of warmth, open mid-tones, only a faint vignette),
@@ -35,6 +35,21 @@ an empty repository in this session.
   shopfront from across the pavement or the road, the aisles from just inside the door (ceiling
   lights on), a selfie outside holding what they bought, and their shopping on the worktop at home
   next to the shop's bag, with the background out of focus.
+
+- [x] **Night card, plainly.** The money list starts with the day's Profit (or Loss) in large type,
+  then sales and each cost below it, then cash. Wordy hints, card notes and card subtitles were cut
+  down across the game.
+- [x] **More to build, better organised.** The Build card has tabs (Tills, Shelves, Furniture, Decor,
+  Walls, Lights, Floors, Shop) with a picture of every piece. New: cushioned benches, café tables,
+  a help desk, a trolley bay, litter bins (they keep the floor cleaner), a music speaker, a promo
+  screen, a magazine shelf, flower tables, rugs and a doormat (walked over), walls, walls with a
+  window, doorways, railings and gates inside the shop, floor lamps, hanging lights, wall lights and
+  a neon sign (on an outer wall). Floors: polished concrete, black and white tiles, tiles in your
+  colours, wooden boards or white stone. Windows can be put into the side and back walls. Lamps glow
+  and pool light on the floor after dark, the neon all the time; interior walls drop to a ledge
+  while you are inside, like the shop's own. Everything counts toward how the shop looks, and so
+  toward its reviews. Placing never cuts the shop in two: everything must be reachable from the
+  front door without going round the outside to the back door.
 
 ## Round: day logs, windows, shoppers' hands, lawns, light, weather, town life, rain
 

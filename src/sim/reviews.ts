@@ -14,7 +14,7 @@ import type { GameState, Person, Look, CustomerType } from './types';
 import { withRng } from './state';
 import type { Rng } from './rng';
 import { productDef } from './products';
-import { FIXTURES, DAY_SECONDS, TICK } from './layout';
+import { FIXTURES, FLOORS, DAY_SECONDS, TICK } from './layout';
 import { priceIndex } from './customers';
 import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
@@ -93,7 +93,9 @@ export interface Looks {
 export function looksOf(state: GameState): Looks {
   const shop = state.shop;
   const count = (t: string) => shop.fixtures.filter((f) => f.type === t).length;
-  const decor = clamp(Math.min(count('plant'), 4) * 0.13 + Math.min(count('sign'), 3) * 0.1 + Math.min(count('bench'), 2) * 0.08 + Math.min(count('basketStack'), 1) * 0.1, 0, 1);
+  let decor = 0;
+  for (const [type, def] of Object.entries(FIXTURES)) if (def.looks) decor += Math.min(count(type), def.looksCap ?? 1) * def.looks;
+  decor = clamp(decor, 0, 1);
   const tidy = clamp((shop.cleanliness - 0.35) / 0.6 - shop.litter.length * 0.12, 0, 1);
   let slots = 0, full = 0;
   for (const f of shop.fixtures) for (const s of f.slots) { slots++; if (s.productId) full += Math.min(1, s.qty / Math.max(1, FIXTURES[f.type].capacity)); }
@@ -105,7 +107,9 @@ export function looksOf(state: GameState): Looks {
   const mess = (state.life?.litter ?? []).filter((l) => onFrontage(state, l)).length;
   const teens = (state.life?.hangouts ?? []).some((h) => h.mine);
   const outside = clamp(1 - mess * 0.18 - (teens ? 0.35 : 0), 0, 1);
-  const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.lotRows > 1 ? 0.15 : 0) + (count('produce') > 0 ? 0.25 : 0) + 0.1, 0, 1);
+  const floor = FLOORS.find((x) => x.id === (shop.floorStyle ?? 'lino'))?.looks ?? 0;
+  const windows = Object.values(shop.windows ?? {}).filter(Boolean).length * 0.08;
+  const extras = clamp((shop.signStyle === 'lit' ? 0.25 : 0) + (shop.sizeId === 'medium' ? 0.15 : shop.sizeId === 'large' ? 0.3 : 0) + (shop.lotRows > 1 ? 0.1 : 0) + (count('produce') > 0 ? 0.2 : 0) + floor + windows + 0.1, 0, 1);
   // Decor matters most: a clean, full shop with nothing on show is fine, not lovely.
   const score = 0.3 * decor + 0.16 * tidy + 0.18 * shelves + 0.1 * space + 0.14 * outside + 0.12 * extras;
   return { decor, tidy, shelves, space, outside, extras, score };

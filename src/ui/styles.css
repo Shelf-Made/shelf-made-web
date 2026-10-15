@@ -616,3 +616,21 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
   .card.biz { left: 8px; right: 8px; width: auto; top: auto; bottom: calc(var(--dock-h) + 4px); max-height: 72%; }
   .biz-you { display: none; }
 }
+
+/* The Build card: tabs of pieces, each a picture with its name and price. */
+.build-tools { gap: 8px; }
+.overlay-pick { gap: 6px; align-items: center; }
+.overlay-pick select { font: inherit; font-size: 0.9em; padding: 4px 6px; border-radius: 8px; border: 2px solid #e3e6ea; background: #fff; color: var(--slate); }
+.build-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.build-tabs button { padding: 6px 12px; border-radius: 999px; background: #eef1f4; color: var(--slate); font-weight: 700; font-size: 0.92em; }
+.build-tabs button.on { background: var(--slate); color: #fff; }
+.build-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.build-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px 8px; border-radius: 12px; background: #f6f7f9; color: var(--slate); box-shadow: inset 0 0 0 2px #eef1f4; text-align: center; }
+.build-tile:hover:not(:disabled) { box-shadow: inset 0 0 0 2px var(--green); }
+.build-tile.on { background: #e9f7f0; box-shadow: inset 0 0 0 2px var(--green); }
+.build-tile:disabled { opacity: 0.45; cursor: default; }
+.build-tile img, .build-tile .pic { width: 64px; height: 64px; display: block; }
+.build-tile b { font-size: 0.86em; line-height: 1.15; }
+.build-tile span { font-size: 0.8em; font-weight: 700; color: var(--green-dark); }
+.build-tile span small { color: #8a8f99; font-weight: 600; margin-left: 2px; }
+.swatch.big { width: 38px; height: 38px; border-radius: 8px; flex: none; margin-right: 10px; border: 2px solid rgba(0,0,0,0.12); }

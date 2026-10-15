@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld } from './layout';
+import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld, FIXTURES } from './layout';
 
 export const CELL = 0.5;
 
@@ -134,7 +134,7 @@ export function fixtureFacing(rot: number): Vec2 {
 }
 
 /** Grid in world coordinates: store-relative rects are carried into the world by the shop's frame. */
-export function buildGrid(shop: Shop, version: number): Grid {
+export function buildGrid(shop: Shop, version: number, backDoorShut = false): Grid {
   const L = lotLayout(shop);
   const bounds = rectToWorld(shop, { x0: L.plot.x0, z0: L.plot.z0, x1: L.plot.x1, z1: 3.5 });
   const { x0, z0, x1, z1 } = bounds;
@@ -170,11 +170,12 @@ export function buildGrid(shop: Shop, version: number): Grid {
   R({ x0: f.x1, z0: backZ - T, x1: f.x1 + T, z1: f.z1 + T }, 0);
   // The door openings are paved and walkable.
   R({ x0: shop.door.x - 0.5, z0: f.z1, x1: shop.door.x + 0.5, z1: f.z1 + T }, 1);
-  R({ x0: shop.backDoor.x - 0.5, z0: backZ - T, x1: shop.backDoor.x + 0.5, z1: backZ }, 1.1);
+  R({ x0: shop.backDoor.x - 0.5, z0: backZ - T, x1: shop.backDoor.x + 0.5, z1: backZ }, backDoorShut ? 0 : 1.1);
   // Delivered boxes stand here.
   if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.
   for (const fx of shop.fixtures) {
+    if (FIXTURES[fx.type].walkable) continue;
     R(fixtureFootprint(fx), 0);
   }
   return g;

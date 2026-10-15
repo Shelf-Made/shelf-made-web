@@ -15,7 +15,9 @@ import { box, merge, paint, place } from './geometry';
 import { recolor, cutDown, dropTriangles, paintStrips } from './recolor';
 import { FIXTURE_MODEL, MODEL_OFFSET, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOURS, FIXTURE_PAINT, LINO, WALL_BANDS, SKIRTING, RAIL, type SlotBox } from './storeArt';
 import { schemeById, type Scheme } from '@/sim/schemes';
-import { WINDOW_GLOW, SIGN_GLOW, SPILL, spillGeometry } from './glow';
+import type { FloorStyle } from '@/sim/types';
+import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
+import { fittingGeometry, glowGeometry, FITTING_MODELS, WALL_PIECES, LAMPS } from './fittings';
 import { BlobShadows } from './blobs';
 import { cornerProps, pylonSpot, cornerGarden } from './dressing';
 import { tuftMesh } from './StaticWorld';
@@ -24,7 +26,7 @@ import { PROP_MODELS, posterGeometry, buntingGeometry } from './props';
 const SLATE = '#38383D', CREAM = '#FFF3DC', YELLOW = '#FFC044';
 const LEDGE = 0.3;
 
-export const STORE_MODELS = [...new Set(Object.values(FIXTURE_MODEL))].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds(), ...PROP_MODELS]);
+export const STORE_MODELS = [...new Set([...Object.values(FIXTURE_MODEL).filter((id) => !id.startsWith('gen:')), ...FITTING_MODELS])].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds(), ...PROP_MODELS]);
 
 export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'delivery'; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
 
@@ -104,8 +106,20 @@ export class StoreView {
   }
 
   /** The shop's ceiling lights on for a photo inside (null: back to day or night as it was). */
-  setInteriorLight(intensity: number | null): void { this.nightLight.intensity = intensity ?? (this.night ? 2.2 : 0); }
-  setNight(on: boolean): void { this.night = on; this.nightLight.intensity = on ? 2.2 : 0; if (this.nightGlow) this.nightGlow.visible = on; }
+  setInteriorLight(intensity: number | null): void { this.nightLight.intensity = intensity ?? this.nightIntensity(); }
+  setNight(on: boolean): void { this.night = on; this.nightLight.intensity = this.nightIntensity(); if (this.nightGlow) this.nightGlow.visible = on; this.showLamps(); }
+  /** After dark the shop glows from inside, brighter for every lamp bought. */
+  private nightIntensity(): number { return this.night ? 2.2 + 0.2 * Math.min(8, this.lampCount) : 0; }
+  private lampCount = 0;
+  /** The lamps' bulbs and their pools of light are on after dark; the neon all the time. */
+  private showLamps(): void {
+    for (const [type, mesh] of this.glows) mesh.visible = type === 'neon' || this.night;
+    if (this.lampPools) this.lampPools.visible = this.night;
+  }
+  private readonly glows = new Map<FixtureType, InstancedMesh>();
+  private lampPools: InstancedMesh | null = null;
+  private wallCut: { full: InstancedMesh; cut: InstancedMesh }[] = [];
+  private readonly neonMat = new MeshBasicMaterial({ color: new Color(2.6, 0.9, 1.8) });
   private night = false;
   private bunting: Mesh | null = null;
   /** Lit windows, the strip light under the fascia and the pool of light on the apron, shown at night. */
@@ -167,10 +181,16 @@ export class StoreView {
     // ---- Floor: warm checker lino, a tile a square, with fine joints between; then the lot paving outside.
     const floorParts: BufferGeometry[] = [];
     const W = f.x1 - f.x0, D = f.z1 - backZ, cx0 = ox + (f.x0 + f.x1) / 2, cz0 = oz + (backZ + f.z1) / 2;
-    floorParts.push(box(pal, LINO.joint, W, 0.052, D, cx0, -0.04, cz0));
+    const fin = floorPaint(shop.floorStyle ?? 'lino', sc);
+    floorParts.push(box(pal, fin.joint, W, 0.052, D, cx0, -0.04, cz0));
     for (let x = f.x0; x < f.x1 - 0.01; x++) for (let z = backZ; z < f.z1 - 0.01; z++) {
-      const odd = (Math.round(x - f.x0) + Math.round(z - backZ)) % 2 === 1;
-      floorParts.push(box(pal, odd ? LINO.b : LINO.a, 0.975, 0.003, 0.975, ox + x + 0.5, 0.011, oz + z + 0.5));
+      const i = Math.round(x - f.x0), j = Math.round(z - backZ);
+      if (fin.boards) {
+        // Boards: four to a tile, each its own shade of honey.
+        for (let k = 0; k < 4; k++) floorParts.push(box(pal, fin.boards[(i * 7 + j * 3 + k * 5) % fin.boards.length]!, 0.985, 0.003, 0.235, ox + x + 0.5, 0.011, oz + z + 0.125 + k * 0.25));
+        continue;
+      }
+      floorParts.push(box(pal, (i + j) % 2 === 1 ? fin.b : fin.a, fin.gap, 0.003, fin.gap, ox + x + 0.5, 0.011, oz + z + 0.5));
     }
     // Door thresholds: steel strips across each opening.
     floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.door.x, -0.008, oz + f.z1 + WALL_T / 2));
@@ -264,9 +284,9 @@ export class StoreView {
     const xs: number[] = []; for (let x = f.x0 + 0.5; x < f.x1; x++) xs.push(x);
     const zs: number[] = []; for (let z = backZ + 0.5; z < f.z1; z++) zs.push(z);
     const front = side(xs, f.z1, 'x', 1, 0, shop.door.x, true);
-    side(xs, backZ, 'x', -1, Math.PI, shop.backDoor.x, false);
-    side(zs, f.x0, 'z', -1, -Math.PI / 2, null, false);
-    side(zs, f.x1, 'z', 1, Math.PI / 2, null, false);
+    side(xs, backZ, 'x', -1, Math.PI, shop.backDoor.x, !!shop.windows?.back);
+    side(zs, f.x0, 'z', -1, -Math.PI / 2, null, !!shop.windows?.left);
+    side(zs, f.x1, 'z', 1, Math.PI / 2, null, !!shop.windows?.right);
     // Corner posts: a half-width wall piece turned to close each corner.
     const corner = place(wallG.clone(), 0, 0, 0, 0, 0.5, 1, 1);
     const posts: BufferGeometry[] = [];
@@ -416,7 +436,7 @@ export class StoreView {
   private fixtureGeometry(model: string): BufferGeometry {
     let g = this.painted.get(model);
     if (!g) {
-      const src = model === 'chiller' ? this.chillerGeo! : this.assets.geometry(model);
+      const src = model === 'chiller' ? this.chillerGeo! : model.startsWith('gen:') ? fittingGeometry(this.assets, model, this.scheme) : this.assets.geometry(model);
       const map = FIXTURE_PAINT[model];
       g = map ? paintStrips(src, this.assets.palette, map) : src;
       this.painted.set(model, g);
@@ -434,6 +454,7 @@ export class StoreView {
       s.full.visible = !facing; s.ledge.visible = facing;
       for (const m of s.extraFull) m.visible = !facing;
     }
+    for (const w of this.wallCut) { w.full.visible = cameraYaw === null; w.cut.visible = cameraYaw !== null; }
     if (this.bunting) this.bunting.visible = (state.day === 1 || state.marketing.openingEventDay === state.day) && state.phase !== 'night' && state.phase !== 'picking';
     if (shop.layoutVersion !== this.layoutVersion) { this.rebuildFixtures(shop); this.layoutVersion = shop.layoutVersion; this.stockKey = ''; }
     const key = stockKey(shop);
@@ -457,6 +478,11 @@ export class StoreView {
   private rebuildFixtures(shop: Shop): void {
     for (const { mesh } of this.fixtureMeshes.values()) { this.root.remove(mesh); mesh.dispose(); }
     this.fixtureMeshes.clear();
+    for (const { cut } of this.wallCut) { this.root.remove(cut); cut.dispose(); }
+    this.wallCut = [];
+    for (const g of this.glows.values()) { this.root.remove(g); g.dispose(); }
+    this.glows.clear();
+    if (this.lampPools) { this.root.remove(this.lampPools); this.lampPools.dispose(); this.lampPools = null; }
     const byModel = new Map<string, Fixture[]>();
     for (const f of shop.fixtures) { const id = f.type === 'fridge' ? 'chiller' : FIXTURE_MODEL[f.type]; const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
     const m = new Matrix4();
@@ -469,6 +495,17 @@ export class StoreView {
       mesh.userData.fixtureIds = ids;
       this.root.add(mesh);
       this.fixtureMeshes.set(model, { mesh, ids });
+      if (WALL_PIECES.has(model)) {
+        // Cut down to a ledge while the manager is inside, like the shop's own walls.
+        let low = this.painted.get(`${model}:cut`);
+        if (!low) { low = cutDown(this.fixtureGeometry(model), LEDGE); this.painted.set(`${model}:cut`, low); }
+        const cut = new InstancedMesh(low, this.assets.material, list.length);
+        list.forEach((f, i) => cut.setMatrixAt(i, this.fixtureMatrix(shop, f, m, 0, true)));
+        cut.castShadow = true; cut.receiveShadow = true; cut.visible = false;
+        cut.userData.fixtureIds = ids;
+        this.root.add(cut);
+        this.wallCut.push({ full: mesh, cut });
+      }
       const glass = model === 'chiller' ? null : this.assets.glassGeometry(model);
       if (glass) {
         const gm = new InstancedMesh(glass, this.assets.glass, list.length);
@@ -479,8 +516,30 @@ export class StoreView {
     }
     this.fixtureBlobs ??= new BlobShadows(this.root, 64, 0.32, 0.02);
     this.fixtureBlobs.begin();
-    for (const f of shop.fixtures) { const along = f.rot % 2 === 0; this.fixtureBlobs.add(f.x + 0.5, f.z + 0.5, along ? 1.15 : 0.95, along ? 0.95 : 1.15); }
+    for (const f of shop.fixtures) { if (FIXTURES[f.type].walkable) continue; const along = f.rot % 2 === 0; this.fixtureBlobs.add(f.x + 0.5, f.z + 0.5, along ? 1.15 : 0.95, along ? 0.95 : 1.15); }
     this.fixtureBlobs.end();
+    // Lights: the glowing part of each lamp and neon, and a warm pool on the floor under each lamp.
+    const pal = this.assets.palette;
+    const lit = shop.fixtures.filter((f) => glowGeometry(f.type, pal) !== null);
+    this.lampCount = lit.filter((f) => LAMPS.has(f.type)).length;
+    for (const type of new Set(lit.map((f) => f.type))) {
+      const list = lit.filter((f) => f.type === type);
+      let geo = this.painted.get(`glow:${type}`);
+      if (!geo) { geo = glowGeometry(type, pal)!; this.painted.set(`glow:${type}`, geo); }
+      const gm = new InstancedMesh(geo, type === 'neon' ? this.neonMat : LAMP_GLOW, list.length);
+      list.forEach((f, i) => gm.setMatrixAt(i, this.fixtureMatrix(shop, f, m, 0, true)));
+      this.root.add(gm);
+      this.glows.set(type, gm);
+    }
+    const lamps = lit.filter((f) => LAMPS.has(f.type));
+    if (lamps.length) {
+      this.lampPools = new InstancedMesh(spillGeometry(0.95, 0.95, 0, 0.02, 0, 0.5), SPILL, lamps.length);
+      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); this.lampPools!.setMatrixAt(i, m); });
+      this.lampPools.renderOrder = 1;
+      this.root.add(this.lampPools);
+    }
+    this.nightLight.intensity = this.nightIntensity();
+    this.showLamps();
     let wi = 0;
     for (const f of shop.fixtures) if (f.type === 'fridge') { this.wells.setMatrixAt(wi++, this.fixtureMatrix(shop, f, m, 0, true)); }
     this.wells.count = wi; this.wells.instanceMatrix.needsUpdate = true;
@@ -568,10 +627,17 @@ export class StoreView {
     this.boxes.count = n; this.boxes.instanceMatrix.needsUpdate = true;
   }
 
+  /** A piece as the Build card pictures it: its model, and a lamp's bulb. */
+  pictureGeometry(type: FixtureType): BufferGeometry {
+    const g = this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : FIXTURE_MODEL[type]);
+    const glow = glowGeometry(type, this.assets.palette);
+    return glow ? merge([g.clone(), glow]) : g.clone();
+  }
+
   /** Build-mode ghost: green when it can go there, red when it cannot. */
   setGhost(type: FixtureType | null, shop: Shop, x: number, z: number, rot: Rot, valid: boolean): void {
     if (!type) { if (this.ghost) this.ghost.visible = false; return; }
-    const geo = type === 'fridge' && this.chillerGeo ? this.chillerGeo : this.assets.geometry(FIXTURE_MODEL[type]);
+    const geo = this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : FIXTURE_MODEL[type]);
     if (!this.ghost) { this.ghost = new Mesh(geo, this.ghostMat); this.root.add(this.ghost); }
     this.ghost.geometry = geo;
     this.ghost.visible = true;
@@ -611,7 +677,19 @@ function stockKey(shop: Shop): string {
 
 export { mergeGeometries, paint };
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${JSON.stringify(shop.windows ?? {})}`; }
+
+/** The floor's colours for a finish (every one a colour in the baked palette). */
+function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; gap: number; boards?: string[] } {
+  switch (style) {
+    case 'concrete': return { a: '#C4C0B8', b: '#BBB6AD', joint: '#A39E95', gap: 0.99 };
+    case 'checker': return { a: '#FFFFFF', b: '#38383D', joint: '#D8D8DC', gap: 0.985 };
+    case 'colour': return { a: '#FFFFFF', b: sc.light, joint: '#D8D8DC', gap: 0.975 };
+    case 'stone': return { a: '#F4F7FA', b: '#FFFFFF', joint: '#C9CBD1', gap: 0.97 };
+    case 'wood': return { a: '#D9A066', b: '#C99A62', joint: '#A87B45', gap: 1, boards: ['#D9A066', '#C99A62', '#C8925A', '#D9A066', '#B8824C'] };
+    default: return { a: LINO.a, b: LINO.b, joint: LINO.joint, gap: 0.975 };
+  }
+}
 
 /** A window piece's frame, set back inside the wall's thickness (the layer of it nearest the wall faces): its extent on the wall. */
 function recessOf(g: BufferGeometry): { x0: number; x1: number; y0: number; y1: number } | null {

@@ -5,7 +5,7 @@
  * the same layout turned half round (their doors face north), so shop-relative coordinates mean
  * the same thing on every corner and only the frame (origin + flip) changes.
  */
-import type { Plot, Vec2, FixtureDef, FixtureType, CornerId } from './types';
+import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle } from './types';
 
 export const TICK = 0.05;
 /** 12 game hours of 60 real seconds each. */
@@ -207,19 +207,57 @@ export function storeFrame(plotId: string): Frame {
 }
 
 export const FIXTURES: Record<FixtureType, FixtureDef> = {
-  register: { type: 'register', name: 'Checkout counter', price: 180, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
-  shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 4, capacity: 8, chilled: false, upkeep: 0 },
-  fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, slots: 4, capacity: 6, chilled: true, upkeep: 6 },
-  freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'] },
-  produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'] },
-  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0 },
-  kiosk: { type: 'kiosk', name: 'Self-checkout', price: 650, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3 },
-  rack: { type: 'rack', name: 'Checkout rack', price: 45, w: 1, d: 1, slots: 2, capacity: 8, chilled: false, upkeep: 0 },
-  sign: { type: 'sign', name: 'Aisle sign', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
-  plant: { type: 'plant', name: 'Plant', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
-  bench: { type: 'bench', name: 'Bench', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
-  basketStack: { type: 'basketStack', name: 'Baskets', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0 },
+  // Checkout.
+  register: { type: 'register', name: 'Checkout counter', price: 180, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'checkout' },
+  kiosk: { type: 'kiosk', name: 'Self-checkout', price: 650, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3, category: 'checkout' },
+  rack: { type: 'rack', name: 'Checkout rack', price: 45, w: 1, d: 1, slots: 2, capacity: 8, chilled: false, upkeep: 0, category: 'checkout' },
+  // Shelves and fridges.
+  shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 4, capacity: 8, chilled: false, upkeep: 0, category: 'shelves' },
+  endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0, category: 'shelves' },
+  produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'], category: 'shelves' },
+  fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, slots: 4, capacity: 6, chilled: true, upkeep: 6, category: 'shelves' },
+  freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'], category: 'shelves' },
+  // Furniture.
+  bench: { type: 'bench', name: 'Bench', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.08, looksCap: 2 },
+  sofa: { type: 'sofa', name: 'Cushioned bench', price: 70, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.09, looksCap: 2 },
+  cafe: { type: 'cafe', name: 'Café table', price: 120, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.12, looksCap: 2 },
+  desk: { type: 'desk', name: 'Help desk', price: 150, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'furniture', looks: 0.05, looksCap: 1 },
+  basketStack: { type: 'basketStack', name: 'Baskets', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.1, looksCap: 1 },
+  trolleys: { type: 'trolleys', name: 'Trolley bay', price: 90, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.05, looksCap: 1 },
+  bin: { type: 'bin', name: 'Litter bin', price: 20, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.04, looksCap: 2 },
+  speaker: { type: 'speaker', name: 'Music speaker', price: 60, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'furniture', looks: 0.05, looksCap: 1 },
+  screen: { type: 'screen', name: 'Promo screen', price: 140, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'furniture', looks: 0.07, looksCap: 2 },
+  bookcase: { type: 'bookcase', name: 'Magazine shelf', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'furniture', looks: 0.06, looksCap: 2 },
+  // Decor.
+  plant: { type: 'plant', name: 'Plant', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.13, looksCap: 4 },
+  flowers: { type: 'flowers', name: 'Flower table', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.1, looksCap: 3 },
+  sign: { type: 'sign', name: 'Aisle sign', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.1, looksCap: 3 },
+  rug: { type: 'rug', name: 'Rug', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', walkable: true, looks: 0.08, looksCap: 3 },
+  doormat: { type: 'doormat', name: 'Doormat', price: 12, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', walkable: true, looks: 0.06, looksCap: 1 },
+  // Walls and doors inside the shop.
+  wall: { type: 'wall', name: 'Wall', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
+  wallWindow: { type: 'wallWindow', name: 'Wall with window', price: 70, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', looks: 0.04, looksCap: 4 },
+  doorway: { type: 'doorway', name: 'Doorway', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
+  railing: { type: 'railing', name: 'Railing', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
+  gate: { type: 'gate', name: 'Gate', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
+  // Lights.
+  floorLamp: { type: 'floorLamp', name: 'Floor lamp', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', looks: 0.07, looksCap: 4 },
+  wallLight: { type: 'wallLight', name: 'Wall light', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.06, looksCap: 4 },
+  pendant: { type: 'pendant', name: 'Hanging light', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, looks: 0.06, looksCap: 6 },
+  neon: { type: 'neon', name: 'Neon sign', price: 80, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.1, looksCap: 2 },
 };
+
+/** Floor finishes: the price per tile, and what each adds to how the shop looks. */
+export const FLOORS: { id: FloorStyle; name: string; perTile: number; looks: number }[] = [
+  { id: 'lino', name: 'Checker lino', perTile: 0, looks: 0 },
+  { id: 'concrete', name: 'Polished concrete', perTile: 3, looks: 0.06 },
+  { id: 'checker', name: 'Black and white tiles', perTile: 5, looks: 0.14 },
+  { id: 'colour', name: 'Tiles in your colours', perTile: 5, looks: 0.14 },
+  { id: 'wood', name: 'Wooden boards', perTile: 7, looks: 0.2 },
+  { id: 'stone', name: 'White stone', perTile: 9, looks: 0.22 },
+];
+/** Windows for one side or back wall, per tile of wall. */
+export const WINDOW_PER_TILE = 25;
 
 export const DIFFICULTY = {
   relaxed: { cash: 1200, rentMul: 0.8, demandMul: 1.2, patienceMul: 1.3 },

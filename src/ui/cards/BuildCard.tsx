@@ -1,38 +1,55 @@
+import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS } from '@/sim/layout';
-import type { FixtureType } from '@/sim/types';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS, FLOORS } from '@/sim/layout';
+import type { BuildCategory, FixtureType, WindowSide } from '@/sim/types';
+import { floorCost, windowCost } from '@/sim/build';
+import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
 import { StoresSection } from './StoresSection';
 import { forSale, CORNER_PRICE } from '@/sim/rivals';
 import { managerCandidates } from '@/sim/franchise';
 
-const CATALOG: { type: FixtureType; blurb: string }[] = [
-  { type: 'register', blurb: 'Where shoppers pay. You need one to open; a second takes a second cashier.' },
-  { type: 'shelf', blurb: '4 slots of dry goods and drinks, both sides.' },
-  { type: 'fridge', blurb: '4 chilled slots for milk, cheese and cold drinks; costs power.' },
-  { type: 'freezer', blurb: 'Tall glass fridge: 2 big slots of dairy and meat.' },
-  { type: 'produce', blurb: 'Fruit and veg crates; looks fresh by the door.' },
-  { type: 'endcap', blurb: 'Aisle end: impulse buys sell here.' },
-  { type: 'rack', blurb: 'Checkout rack for snacks and sweets.' },
-  { type: 'kiosk', blurb: 'Self-checkout: no cashier, slower shoppers.' },
-  { type: 'sign', blurb: 'Aisle sign: shoppers find things faster.' },
-  { type: 'plant', blurb: 'A plant. Shoppers like plants.' },
-  { type: 'bench', blurb: 'A bench by the door for tired shoppers.' },
-  { type: 'basketStack', blurb: 'More baskets so nobody juggles milk.' },
+type Tab = BuildCategory | 'floors' | 'shop';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'checkout', label: 'Tills' }, { id: 'shelves', label: 'Shelves' }, { id: 'furniture', label: 'Furniture' }, { id: 'decor', label: 'Decor' },
+  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'shop', label: 'Shop' },
 ];
+/** A word on what each piece is for (the tile's tooltip). */
+const NOTES: Partial<Record<FixtureType, string>> = {
+  register: 'Where shoppers pay. You need one to open', kiosk: 'Shoppers scan their own: no cashier', rack: 'Snacks and sweets by the till',
+  shelf: '4 slots, both sides', endcap: 'Impulse buys sell here', produce: 'Fruit and veg', fridge: '4 chilled slots', freezer: '2 big slots of dairy and meat',
+  bench: 'A seat by the door', sofa: 'A comfier seat', cafe: 'A table and two chairs', desk: 'Questions answered here', basketStack: 'Baskets by the door',
+  trolleys: 'Trolleys for big shops', bin: 'Keeps the floor cleaner', speaker: 'Music in the aisles', screen: 'Shows your offers', bookcase: 'Magazines and papers',
+  plant: 'Shoppers like plants', flowers: 'Pots of herbs and flowers', sign: 'Shoppers find things faster', rug: 'Walk on it', doormat: 'Just inside the door',
+  wall: 'Divide the floor', wallWindow: 'A wall you can see through', doorway: 'A wall you can walk through', railing: 'A low divider', gate: 'A railing you can walk through',
+  floorLamp: 'Warm light after dark', wallLight: 'On an outside wall', pendant: 'Hangs over the aisle', neon: 'On an outside wall, always lit',
+};
+const SIDES: { id: WindowSide; label: string }[] = [{ id: 'left', label: 'Left wall' }, { id: 'right', label: 'Right wall' }, { id: 'back', label: 'Back wall' }];
+
+/** The swatch for a floor finish: two tiles of its colours. */
+function floorSwatch(id: string, light: string): string {
+  const c: Record<string, [string, string]> = { lino: ['#FFF3DC', '#F3DEC0'], concrete: ['#C4C0B8', '#BBB6AD'], checker: ['#FFFFFF', '#38383D'], colour: ['#FFFFFF', light], stone: ['#F4F7FA', '#E4E6EA'], wood: ['#D9A066', '#B8824C'] };
+  const [a, b] = c[id] ?? ['#ddd', '#ccc'];
+  return id === 'wood' ? `repeating-linear-gradient(0deg, ${a} 0 8px, ${b} 8px 9px, #C99A62 9px 17px, ${b} 17px 18px)` : `conic-gradient(${a} 0 25%, ${b} 0 50%, ${a} 0 75%, ${b} 0)`;
+}
 
 export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
   const b = snap.build;
   const selected = b.selectedId !== null ? s.shop.fixtures.find((f) => f.id === b.selectedId) : null;
   const current = SHOP_SIZES.findIndex((z) => z.id === s.shop.sizeId);
+  const [tab, setTabState] = useState<Tab>(() => (runtime.buildTab as Tab | null) ?? (b.placing ? FIXTURES[b.placing].category : s.shop.fixtures.some((f) => f.type === 'register') ? 'shelves' : 'checkout'));
+  const setTab = (t: Tab) => { runtime.rememberBuildTab(t); setTabState(t); };
+  const thumbs = runtime.renderer?.fixtureThumbs ?? {};
+  const items = (Object.keys(FIXTURES) as FixtureType[]).filter((t) => FIXTURES[t].category === tab);
+  const floor = s.shop.floorStyle ?? 'lino';
   return (
     <>
       {(b.placing || selected) ? (
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
-            <div className="name">{b.placing ? `Placing ${FIXTURES[b.placing].name}` : `Moving ${FIXTURES[selected!.type].name}`}</div>
-            <div className="sub">{b.reason || 'Point at a floor tile'}{b.price ? ` · ${money(b.price)}` : ''} · R turns it · right-click cancels</div>
+            <div className="name">{b.placing ? FIXTURES[b.placing].name : `Moving ${FIXTURES[selected!.type].name}`}</div>
+            <div className="sub">{b.reason || 'Point at a floor tile'}{b.price ? ` · ${money(b.price)}` : ''} · R turns</div>
           </div>
           <div className="row">
             <button className="btn small ghost" onClick={() => runtime.rotateGhost()}>Rotate</button>
@@ -41,40 +58,78 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <button className="btn small ghost" onClick={() => { runtime.stopPlacing(); runtime.closeCard(); }}>Done</button>
           </div>
         </div>
-      ) : <p className="muted">Pick, then click a tile to place. Click a fixture to move it.</p>}
-      <div className="row between">
-        <span className="muted">Undo and redo: Ctrl+Z / Ctrl+Y</span>
-        <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()}>Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()}>Redo</button></span>
+      ) : null}
+      <div className="row between build-tools">
+        <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()} title="Ctrl+Z">Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()} title="Ctrl+Y">Redo</button></span>
+        <label className="row overlay-pick"><span className="muted">View</span>
+          <select value={b.overlay} onChange={(e) => runtime.setOverlay(e.target.value as typeof b.overlay)}>
+            <option value="none">Normal</option><option value="heat">Heat map</option><option value="exposure">Exposure</option><option value="paths">Paths</option>
+          </select>
+        </label>
       </div>
-      <div className="row" style={{ flexWrap: 'wrap' }}><span className="muted">Overlay:</span>{(['none', 'heat', 'exposure', 'paths'] as const).map((k) => <button key={k} className={`btn small${b.overlay === k ? '' : ' ghost'}`} onClick={() => runtime.setOverlay(k)}>{k === 'none' ? 'Off' : k === 'heat' ? 'Heat map' : k === 'exposure' ? 'Exposure' : 'Paths'}</button>)}</div>
-      <h3>Fixtures</h3>
-      <div className="list">
-        {CATALOG.map(({ type, blurb }) => (
-          <div className="item" key={type}>
-            <div><div className="name">{FIXTURES[type].name} <span className="tag">{money(FIXTURES[type].price)}</span>{FIXTURES[type].upkeep ? <span className="tag cold">{money(FIXTURES[type].upkeep)}/day power</span> : null}</div><div className="sub">{blurb}</div></div>
-            <button className={`btn small${b.placing === type ? '' : ' ghost'}`} disabled={s.cash < FIXTURES[type].price} onClick={() => runtime.startPlacing(type)}>Place</button>
-          </div>
-        ))}
-      </div>
-      <h3>Grow the shop</h3>
-      {SHOP_SIZES.map((z, i) => (
-        <div className="item" key={z.id}>
-          <div><div className="name">{z.name}{i === current ? ' (now)' : ''}</div><div className="sub">{i > current ? `${money(z.cost - SHOP_SIZES[current]!.cost)}, walls move right away` : i === current ? 'Your current size' : 'Smaller than now'}</div></div>
-          {i > current && <button className="btn small" disabled={s.cash < z.cost - SHOP_SIZES[current]!.cost} onClick={() => runtime.dispatch({ type: 'expandShop', sizeId: z.id })}>Extend</button>}
+      <nav className="build-tabs" role="tablist" aria-label="What to build">
+        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
+      </nav>
+      {items.length > 0 && (
+        <div className="build-grid">
+          {items.map((type) => {
+            const def = FIXTURES[type];
+            return (
+              <button key={type} className={`build-tile${b.placing === type ? ' on' : ''}`} disabled={s.cash < def.price} onClick={() => runtime.startPlacing(type)} title={NOTES[type]}>
+                {thumbs[type] ? <img src={thumbs[type]} alt="" /> : <span className="pic" />}
+                <b>{def.name}</b>
+                <span>{money(def.price)}{def.upkeep ? <small> +{money(def.upkeep)}/day</small> : null}</span>
+              </button>
+            );
+          })}
         </div>
-      ))}
-      <div className="item">
-        <div><div className="name">Bigger parking lot</div><div className="sub">{s.shop.lotRows > 1 ? `${s.shop.bays.length} bays already.` : `Doubles the bays for ${money(LOT_EXPANSION_COST)}. Full lots turn drivers away.`}</div></div>
-        {s.shop.lotRows === 1 && <button className="btn small" disabled={s.cash < LOT_EXPANSION_COST} onClick={() => runtime.dispatch({ type: 'expandLot' })}>Expand</button>}
-      </div>
-      <CornerForSale runtime={runtime} />
-      <h3>Sign letters</h3>
-      <div className="item">
-        <div><div className="name">{s.shop.signStyle === 'lit' ? 'Lit letters' : 'Painted letters'}</div><div className="sub">{s.goals.unlocked.includes('signLit') || s.sandbox ? 'Lit letters glow on the fascia and the pylon after dark.' : 'Lit letters unlock with the Regulars goal.'}</div></div>
-        {(s.goals.unlocked.includes('signLit') || s.sandbox) && <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'signStyle', style: s.shop.signStyle === 'lit' ? 'classic' : 'lit' })}>{s.shop.signStyle === 'lit' ? 'Paint' : 'Light up'}</button>}
-      </div>
-      <StoresSection runtime={runtime} snap={snap} />
-      <p className="muted">Short aisles, end caps by the door, no crowded corners.</p>
+      )}
+      {tab === 'floors' && (
+        <div className="list">
+          {FLOORS.map((fl) => {
+            const cost = floorCost(s, fl.id), now = fl.id === floor;
+            return (
+              <div className="item" key={fl.id}>
+                <span className="swatch big" style={{ background: floorSwatch(fl.id, schemeById(s.shop.scheme).light) }} aria-hidden="true" />
+                <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{now ? 'Down now' : cost ? money(cost) : 'Free'}</div></div>
+                {!now && <button className="btn small" disabled={s.cash < cost} onClick={() => runtime.dispatch({ type: 'setFloor', style: fl.id })}>Lay</button>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {tab === 'shop' && (
+        <>
+          <h3>Size</h3>
+          {SHOP_SIZES.map((z, i) => (
+            <div className="item" key={z.id}>
+              <div><div className="name">{z.name}{i === current ? ' (now)' : ''}</div>{i > current && <div className="sub">{money(z.cost - SHOP_SIZES[current]!.cost)}</div>}</div>
+              {i > current && <button className="btn small" disabled={s.cash < z.cost - SHOP_SIZES[current]!.cost} onClick={() => runtime.dispatch({ type: 'expandShop', sizeId: z.id })}>Extend</button>}
+            </div>
+          ))}
+          <div className="item">
+            <div><div className="name">Bigger car park</div><div className="sub">{s.shop.lotRows > 1 ? `${s.shop.bays.length} bays` : `Twice the bays · ${money(LOT_EXPANSION_COST)}`}</div></div>
+            {s.shop.lotRows === 1 && <button className="btn small" disabled={s.cash < LOT_EXPANSION_COST} onClick={() => runtime.dispatch({ type: 'expandLot' })}>Expand</button>}
+          </div>
+          <h3>Windows</h3>
+          {SIDES.map(({ id, label }) => {
+            const has = !!s.shop.windows?.[id], cost = windowCost(s, id);
+            return (
+              <div className="item" key={id}>
+                <div><div className="name">{label}</div><div className="sub">{has ? 'Windows in' : money(cost)}</div></div>
+                {!has && <button className="btn small" disabled={s.cash < cost} onClick={() => runtime.dispatch({ type: 'addWindows', side: id })}>Add windows</button>}
+              </div>
+            );
+          })}
+          <h3>Sign letters</h3>
+          <div className="item">
+            <div><div className="name">{s.shop.signStyle === 'lit' ? 'Lit letters' : 'Painted letters'}</div><div className="sub">{s.goals.unlocked.includes('signLit') || s.sandbox ? 'Lit letters glow after dark' : 'Unlocks with the Regulars goal'}</div></div>
+            {(s.goals.unlocked.includes('signLit') || s.sandbox) && <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'signStyle', style: s.shop.signStyle === 'lit' ? 'classic' : 'lit' })}>{s.shop.signStyle === 'lit' ? 'Paint' : 'Light up'}</button>}
+          </div>
+          <CornerForSale runtime={runtime} />
+          <StoresSection runtime={runtime} snap={snap} />
+        </>
+      )}
     </>
   );
 }

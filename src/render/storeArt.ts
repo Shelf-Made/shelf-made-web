@@ -7,11 +7,13 @@ import type { FixtureType } from '@/sim/types';
 import { productDef } from '@/sim/products';
 import type { AssetLibrary } from './assets';
 import { recolor, nearestStrip, stripCounts } from './recolor';
+import { FITTING_MODEL } from './fittings';
 
-export const FIXTURE_MODEL: Record<FixtureType, string> = {
+export const FIXTURE_MODEL = {
   register: 'market/cash-register', shelf: 'market/shelf-boxes', fridge: 'market/freezer', freezer: 'market/freezers-standing', produce: 'market/display-bread',
   endcap: 'market/shelf-end', kiosk: 'market/bottle-return', rack: 'market/shelf-bags', sign: 'market/column', plant: 'furniture/potted-plant', bench: 'furniture/bench', basketStack: 'market/shopping-basket',
-};
+  ...FITTING_MODEL,
+} as Record<FixtureType, string>;
 
 /** Local z offset so models whose pivot sits on their front or back face are centred in the tile. */
 export const MODEL_OFFSET: Partial<Record<FixtureType, number>> = { freezer: 0.25, endcap: 0.2 };

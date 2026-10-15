@@ -513,6 +513,39 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('54-profile-performance') });
   });
 
+  test('fitting out: the Build card, furniture, walls and lights, a wooden floor, windows, lamps after dark', async ({ page }) => {
+    test.setTimeout(240_000);
+    await ready(page);
+    await hooks(page, 'newGame', 5, 'main', 'Corner Fresh', { tutorial: false });
+    await hooks(page, 'setSpeed', 0);
+    await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 50000; });
+    await hooks(page, 'dispatch', { type: 'expandShop', sizeId: 'medium' });
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setTime', 300);
+    const put: [string, number, number, number][] = [
+      ['cafe', -3.5, -2, 0], ['sofa', -3.5, -3, 1], ['desk', 2.5, -2, 3], ['trolleys', -1.5, -1, 0], ['bin', 1.5, -1, 0], ['speaker', -3.5, -4, 1], ['screen', -3.5, -5, 1], ['bookcase', 2.5, -6, 2],
+      ['flowers', 2.5, -3, 0], ['rug', -1.5, -3, 0], ['doormat', -0.5, -1, 0], ['plant', -3.5, -1, 0],
+      ['wall', 0.5, -5, 1], ['wallWindow', 0.5, -4, 1], ['doorway', 0.5, -3, 1], ['railing', -1.5, -5, 0], ['gate', -0.5, -5, 0],
+      ['floorLamp', 2.5, -4, 0], ['wallLight', -3.5, -6, 1], ['pendant', -1.5, -4, 0], ['neon', 2.5, -5, 3],
+    ];
+    for (const [fixtureType, x, z, rot] of put) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType, x, z, rot });
+    await hooks(page, 'dispatch', { type: 'setFloor', style: 'wood' });
+    await hooks(page, 'dispatch', { type: 'addWindows', side: 'left' });
+    await follow(page, 0, -3.5, 10, 0, 2000);
+    await page.keyboard.press('KeyB');
+    await page.locator('.card.t-build').getByRole('tab', { name: 'Furniture' }).click();
+    await settle(page, 1500);
+    await page.screenshot({ path: out('55-build-card') });
+    await page.keyboard.press('Escape');
+    await hooks(page, 'viewWorld', 0, -3, 0, 13, 1.1);
+    await hooks(page, 'focusStore');
+    await settle(page, 2500);
+    await page.screenshot({ path: out('56-fitted-out') });
+    await hooks(page, 'setTime', 712);
+    await follow(page, 0, -3.5, 10, 0, 2500);
+    await page.screenshot({ path: out('57-lamps-after-dark') });
+  });
+
   test('design your manager in the lobby', async ({ page }) => {
     await ready(page);
     await page.getByRole('button', { name: /your manager/i }).click();

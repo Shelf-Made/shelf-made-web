@@ -55,14 +55,17 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   await expect(page.locator('.card')).toBeVisible();
   await settle(page, 500);
   // (The card scrolls; a dispatched click is what a tap on the button does.)
-  await page.locator('.card .item', { hasText: 'Checkout counter' }).getByRole('button', { name: 'Place' }).dispatchEvent('click');
+  const build = page.locator('.card.t-build');
+  await build.getByRole('tab', { name: 'Tills' }).dispatchEvent('click');
+  await build.getByRole('button', { name: /^Checkout counter/ }).dispatchEvent('click');
   await page.keyboard.press('KeyR'); await page.keyboard.press('KeyR');
   await pointAt(page, 2.0, -2.5);
   await expect.poll(() => aimText(page)).toMatch(/place checkout counter/i);
   await clickAt(page, 2.0, -2.5);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'register').length).toBe(1);
   // A shelf against the west wall, facing east.
-  await page.locator('.card .item', { hasText: /^Shelf/ }).getByRole('button', { name: 'Place' }).dispatchEvent('click');
+  await build.getByRole('tab', { name: 'Shelves' }).dispatchEvent('click');
+  await build.getByRole('button', { name: /^Shelf\b/ }).dispatchEvent('click');
   await page.keyboard.press('KeyR');
   await pointAt(page, -2.0, -3.5);
   await expect.poll(() => aimText(page)).toMatch(/place shelf/i);
@@ -370,6 +373,41 @@ test('after a fast-forwarded day the manager walks at normal pace, and the shop 
   expect(placed).toBe(true);
   await expect.poll(async () => (await state(page)).shop.fixtures.length).toBe(before + 1);
   expect((await state(page)).phase).toBe('night');
+});
+
+test('the Build card: tabs of pictures, a café table placed, a floor laid, windows put in', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 5000; });
+  await hooks(page, 'fp', 0.5, -1.0);
+  await page.keyboard.press('KeyB');
+  const build = page.locator('.card.t-build');
+  await expect(build).toBeVisible();
+  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Floors', 'Shop']);
+  await build.getByRole('tab', { name: 'Furniture' }).click();
+  const cafe = build.getByRole('button', { name: /^Café table/ });
+  await expect(cafe.locator('img')).toHaveAttribute('src', /^data:image\/png/);
+  await cafe.dispatchEvent('click');
+  const before = (await state(page)).shop.fixtures.length;
+  const taken = new Set((await state(page)).shop.fixtures.map((f) => `${f.x},${f.z}`));
+  let placed = false;
+  for (const z of [-2, -3]) for (const x of [-1.5, -0.5, 0.5]) if (!placed && !taken.has(`${x},${z}`)) {
+    await pointAt(page, x + 0.5, z + 0.5);
+    if (/^place café table/i.test(await aimText(page))) { await clickAt(page, x + 0.5, z + 0.5); placed = true; }
+  }
+  expect(placed).toBe(true);
+  await expect.poll(async () => (await state(page)).shop.fixtures.length).toBe(before + 1);
+  await page.keyboard.press('Escape');
+  // Floors: wooden boards over the whole shop. Shop: windows in the left wall.
+  await build.getByRole('tab', { name: 'Floors' }).click();
+  await build.locator('.item', { hasText: 'Wooden boards' }).getByRole('button', { name: 'Lay' }).click();
+  await expect.poll(async () => (await hooks<{ shop: { floorStyle?: string } }>(page, 'state')).shop.floorStyle).toBe('wood');
+  await expect(build.locator('.item', { hasText: 'Wooden boards' })).toContainText('Down now');
+  await build.getByRole('tab', { name: 'Shop' }).click();
+  await build.locator('.item', { hasText: 'Left wall' }).getByRole('button', { name: 'Add windows' }).click();
+  await expect.poll(async () => (await hooks<{ shop: { windows?: { left?: boolean } } }>(page, 'state')).shop.windows?.left).toBe(true);
 });
 
 test("the shop's business profile: reviews come in, the badge counts them, photos develop, and the owner replies", async ({ page }) => {

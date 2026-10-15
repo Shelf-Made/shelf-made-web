@@ -315,7 +315,9 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   const fee = method === 'card' ? Math.round(total * CARD_FEE * 100) / 100 : 0;
   state.today.other += fee;
   state.cash += total - fee;
-  state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.004);
+  // Receipts and wrappers: a litter bin or two catches most of them.
+  const bins = Math.min(2, state.shop.fixtures.filter((f) => f.type === 'bin').length);
+  state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.004 * (1 - 0.3 * bins));
   state.today.revenue += total; state.today.cogs += cogs; state.today.itemsSold += units; state.today.served++;
   p.paid = true;
   const waited = p.maxPatience && p.patience !== undefined ? 1 - p.patience / p.maxPatience : 0;

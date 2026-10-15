@@ -8,7 +8,18 @@ export interface Vec2 { x: number; z: number }
 /** Rotation in quarter turns, 0 = facing +z (south, toward the camera). */
 export type Rot = 0 | 1 | 2 | 3;
 
-export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack';
+export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack'
+  | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
+  | 'flowers' | 'rug' | 'doormat'
+  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate'
+  | 'floorLamp' | 'wallLight' | 'pendant' | 'neon';
+
+/** The Build card's tabs. */
+export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights';
+/** The shop floor's finish (the warm checker lino it starts with, or one bought). */
+export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete';
+/** The shell walls that can have windows put in (the front always has them). */
+export type WindowSide = 'left' | 'right' | 'back';
 
 export interface FixtureDef {
   type: FixtureType;
@@ -24,6 +35,14 @@ export interface FixtureDef {
   upkeep: number;
   /** Which categories fit (undefined = any non-chilled). */
   accepts?: Category[];
+  /** Which tab of the Build card it is on. */
+  category: BuildCategory;
+  /** People walk over or under it (a rug, a doorway, a light on the wall): it never blocks a tile. */
+  walkable?: boolean;
+  /** Hangs on a wall: its back must be against the shop's outer wall. */
+  onWall?: boolean;
+  /** What it adds to how the shop looks (decor, 0..1 in all), for up to `looksCap` of them. */
+  looks?: number; looksCap?: number;
 }
 
 export interface Slot { productId: string | null; qty: number; }
@@ -245,6 +264,10 @@ export interface Shop {
   delivery: { x0: number; z0: number; x1: number; z1: number };
   /** The shop's colour scheme (an id from SHOP_SCHEMES). */
   scheme: string;
+  /** The floor's finish (older saves: the checker lino). */
+  floorStyle?: FloorStyle;
+  /** Windows bought for the side and back walls. */
+  windows?: Partial<Record<WindowSide, boolean>>;
 }
 
 /** What went wrong for shoppers today, counted as it happens (the night card's "why"). */
