@@ -237,6 +237,9 @@ html.colour-blind .goal-chip .g-bar i, html.colour-blind .shares .sbar i, html.c
 .item .name { font-weight: 600; }
 .item .sub { font-size: 0.85em; opacity: 0.7; }
 .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; vertical-align: -2px; border: 2px solid rgba(0,0,0,0.12); }
+/* A product's picture beside its name (its shelf model); a dot in its colour until the pictures are ready. */
+.product-pic { display: inline-block; width: 40px; height: 40px; margin: -6px 8px -6px 0; vertical-align: middle; object-fit: contain; }
+.product-pic.dot { width: 18px; height: 18px; margin: 0 10px 0 4px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.12); }
 .tag { display: inline-block; padding: 1px 7px; border-radius: 7px; font-size: 0.78em; font-weight: 700; background: #eef1f4; }
 .tag.good { background: #dff5ea; color: var(--green-dark); }
 .tag.bad { background: #fde3dd; color: #b8402e; }
@@ -292,8 +295,8 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 .plot small { display: block; line-height: 1.3; opacity: 0.8; margin-top: 3px; }
 /* Shop colours in the picker: one round swatch per scheme (primary, accent and trim in a wedge). */
 .schemes { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.12); padding: 0; }
-.swatch.selected { box-shadow: 0 0 0 3px var(--slate, #38383D); transform: scale(1.08); }
+.schemes .swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.12); padding: 0; margin: 0; vertical-align: middle; }
+.schemes .swatch.selected { box-shadow: 0 0 0 3px var(--slate, #38383D); transform: scale(1.08); }
 .scheme-name { margin-left: 4px; }
 
 /* Lobby: the shop front. Awning on top, the manager and the name on the left, the menu as shelf labels on the right, a ticker underneath. The live 3D shop shows through. */
@@ -412,3 +415,38 @@ html.colour-blind .inspect .meter.low i { background-image: repeating-linear-gra
 .who-where td { padding: 0 4px; }
 .who-where td.mine, .who-where th.mine { color: var(--green-dark); font-weight: 700; }
 .who-where td.top { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+/* The tutorial coach: one step at a time. A short title, one line, dots for progress, a quiet skip. */
+.tip.coach { left: 12px; top: calc(var(--hud-top) + 6px); width: min(300px, calc(100% - 24px)); padding: 10px 14px 8px; border-left: 6px solid var(--yellow); display: flex; flex-direction: column; gap: 3px; }
+.coach-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.coach-top .step { font-size: max(14px, 0.78em); font-weight: 700; color: var(--green-dark); }
+.coach-top .dots { display: flex; gap: 4px; }
+.coach-top .dots i { width: 8px; height: 8px; border-radius: 50%; background: #dfe3e8; }
+.coach-top .dots i.done { background: var(--green); }
+.coach-top .dots i.now { background: var(--yellow); box-shadow: 0 0 0 2px rgba(255,192,68,0.35); }
+.coach-title { font-size: 1.1em; animation: pop 0.25s ease; }
+.coach-text { line-height: 1.3; animation: pop 0.25s ease; }
+.coach-skip { align-self: flex-end; background: none; color: #7a828c; font-size: max(14px, 0.82em); font-weight: 600; padding: 4px 2px 0; }
+.coach-skip:hover { color: var(--green-dark); }
+/* The tool the coach means: a ring and a bouncing arrow. */
+.tile.nudge .face { box-shadow: 0 5px 0 var(--cd, var(--green-dark)), 0 0 0 4px var(--yellow), 0 8px 18px rgba(0,0,0,0.2); }
+.tile.nudge::before { content: '▼'; position: absolute; top: -26px; left: 50%; transform: translateX(-50%); color: var(--yellow); font-size: 20px; text-shadow: 0 2px 0 rgba(56,56,61,0.35); animation: nudge-bob 0.9s ease-in-out infinite; pointer-events: none; }
+@keyframes nudge-bob { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -6px); } }
+@media (max-width: 760px) { .tip.coach { top: 66px; width: auto; max-width: calc(100% - 190px); } }
+
+/* The manager designer (in the lobby): portraits of the characters, then rows of colour swatches. The
+   brand panel steps aside so the shopkeeper out front can be seen. */
+.lobby.designing .brand { visibility: hidden; }
+.lobby.designing .menu .open-sign { display: none; }
+.designer .designer-title { margin-top: 0; font-size: 1.25em; }
+.designer .gender { gap: 8px; margin: 8px 0 2px; }
+.designer .gender .btn { flex: 1; min-height: 44px; font-size: 1.05em; }
+.char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 6px; }
+.char-grid button { aspect-ratio: 1; padding: 0; border-radius: 12px; background: #f6f3ec; border: 3px solid transparent; display: grid; place-items: center; overflow: hidden; }
+.char-grid button img { width: 100%; height: 100%; object-fit: cover; }
+.char-grid button.selected { border-color: var(--green); background: #e9f7f0; }
+.look-swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.look-swatches button { width: 36px; height: 36px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.12); padding: 0; }
+.look-swatches button.own { width: auto; padding: 0 10px; border-radius: 18px; background: #eef1f4; color: var(--slate); font-weight: 700; font-size: max(14px, 0.85em); }
+.look-swatches button.selected { box-shadow: 0 0 0 3px var(--slate); transform: scale(1.08); }
+html.colour-blind .look-swatches button.selected::after { content: '✓'; color: #fff; text-shadow: 0 0 2px #000; font-weight: 700; }

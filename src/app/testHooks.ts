@@ -60,7 +60,8 @@ export function installTestHooks(rt: GameRuntime): void {
       r.follow.snap();
       rt.bump();
     },
-    cameraSettled: () => rt.renderer?.follow.settled ?? false,
+    // Read the panels on screen first: a card that has just opened has not slid the view aside yet.
+    cameraSettled: () => { rt.updateSideOffset(); return rt.renderer?.follow.settled ?? false; },
     /** Where a shop-relative world point lands on the page (for real mouse and touch input). */
     screenAt: (x: number, z: number, y = 0) => {
       const s = rt.state; const r = rt.renderer; if (!s || !r) return null;

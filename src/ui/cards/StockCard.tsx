@@ -3,14 +3,20 @@ import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/products';
 import { SUPPLIERS, unitCost } from '@/sim/economy';
 import { FIXTURES } from '@/sim/layout';
-import { money } from '../useRuntime';
+import { money, ProductPic } from '../useRuntime';
 
 export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
   void snap.stateVersion;
   const [supplierId, setSupplierId] = useState('local');
   const [qty, setQty] = useState<Record<string, number>>({});
-  const [cat, setCat] = useState<Category | 'all'>('all');
+  // Opened from a shelf: start at the products that go on it (a chiller's dairy, a stand's produce).
+  const [cat, setCat] = useState<Category | 'all'>(() => {
+    const t = runtime.takeStockFor();
+    if (!t) return 'all';
+    const def = FIXTURES[t];
+    return def.accepts?.[0] ?? (def.chilled ? 'dairy' : 'all');
+  });
   const sup = SUPPLIERS.find((x) => x.id === supplierId)!;
   const lines = Object.entries(qty).filter(([, q]) => q > 0).map(([productId, q]) => ({ productId, qty: q }));
   const total = lines.reduce((a, l) => a + l.qty * unitCost(l.productId, supplierId), 0);
@@ -47,8 +53,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           return (
             <div className="item" key={p.id}>
               <div>
-                <div className="name"><span className="swatch" style={{ background: p.color }} />{p.name} {p.chilled && <span className="tag cold">cold</span>}</div>
-                <div className="sub">{money(unitCost(p.id, supplierId))} each · sells {money(s.prices[p.id] ?? p.basePrice)} · {shelf ? `${shelf.qty}/${shelf.cap} on shelf` : 'not on a shelf'}{inStore(p.id) ? ` · ${inStore(p.id)} in back` : ''}</div>
+                <div className="name"><ProductPic runtime={runtime} id={p.id} color={p.color} />{p.name} {p.chilled && <span className="tag cold">cold</span>}</div>
+                <div className="sub">{money(unitCost(p.id, supplierId))} each · sells {money(s.prices[p.id] ?? p.basePrice)}{shelf ? ` · ${shelf.qty} on your shelves` : ''}{inStore(p.id) ? ` · ${inStore(p.id)} on the pallet` : ''}</div>
               </div>
               <div className="stepper">
                 <button onClick={() => setQty({ ...qty, [p.id]: Math.max(0, (qty[p.id] ?? 0) - 6) })} aria-label={`Fewer ${p.name}`}>−</button>

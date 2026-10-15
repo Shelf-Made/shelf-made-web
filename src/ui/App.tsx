@@ -39,7 +39,7 @@ export function App({ runtime }: { runtime: GameRuntime }) {
       <canvas ref={canvasRef} className="world" aria-label="Shelf Made world" />
       {snap.screen === 'lobby' && <Lobby runtime={runtime} snap={snap} />}
       {snap.screen === 'game' && (
-        <div className={`overlay${snap.goal && snap.phase !== 'picking' ? ' has-goal' : ''}`}>
+        <div className={`overlay${snap.goal && snap.phase !== 'picking' && !snap.jobs ? ' has-goal' : ''}`}>
           <TopBar runtime={runtime} snap={snap} />
           {snap.phase === 'picking' && <PlotPicker runtime={runtime} />}
           {snap.card && <Cards runtime={runtime} snap={snap} />}

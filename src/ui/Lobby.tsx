@@ -4,9 +4,12 @@ import { listSlots, deleteSave, loadGame, parse, serialize, type SlotInfo, type 
 import type { Difficulty } from '@/sim/types';
 import { money } from './useRuntime';
 import { SettingsBody } from './cards/SettingsCard';
+import { ManagerDesigner } from './ManagerDesigner';
 
 export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
-  const [view, setView] = useState<'main' | 'new' | 'saves' | 'settings'>('main');
+  const [view, setView] = useState<'main' | 'new' | 'saves' | 'settings' | 'manager'>('main');
+  // Designing: the shopkeeper steps out front and the camera comes in close.
+  useEffect(() => { runtime.setDesigning(view === 'manager'); return () => runtime.setDesigning(false); }, [runtime, view]);
   const [slots, setSlots] = useState<SlotInfo[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>('standard');
   const [tutorial, setTutorial] = useState(true);
@@ -34,7 +37,7 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
 
   const label = (main: string, side?: string) => (<><span>{main}</span>{side && <span className="price">{side}</span>}</>);
   return (
-    <div className={`lobby${snap.loaded ? ' live' : ''}`}>
+    <div className={`lobby${snap.loaded ? ' live' : ''}${view === 'manager' ? ' designing' : ''}`}>
       <div className="awning" aria-hidden="true" />
       <div className="brand">
         {/* The logo is the shop front with the name on its fascia, so it is the title. */}
@@ -55,6 +58,7 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
             <button className="tagbtn primary" disabled={!snap.loaded || !latest} onClick={() => latest && void runtime.load(latest.slot as Slot)}>{label('Continue', latest ? `${latest.name} · day ${latest.day}` : undefined)}</button>
             <button className="tagbtn yellow" disabled={!snap.loaded} onClick={() => setView('new')}>{label('New shop', 'from scratch')}</button>
             <button className="tagbtn" disabled={!snap.loaded} onClick={() => runtime.startNew({ sandbox: true, plotId: 'main', name: 'Sandbox', tutorial: false })}>{label('Sandbox', 'no rent')}</button>
+            <button className="tagbtn" disabled={!snap.loaded} onClick={() => setView('manager')}>{label('Your manager', 'design')}</button>
             <button className="tagbtn" disabled={!snap.loaded} onClick={() => setView('saves')}>{label('Save slots')}</button>
             <button className="tagbtn" onClick={() => setView('settings')}>{label('Settings')}</button>
             {auto && <div className="muted small">Autosave: {auto.name}, day {auto.day}, {money(auto.cash)}</div>}
@@ -89,6 +93,11 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
             <button className="btn ghost" onClick={() => fileRef.current?.click()}>Import a save file</button>
             <button className="btn ghost" onClick={() => setView('main')}>Back</button>
           </>
+        )}
+        {view === 'manager' && (
+          <div className="settings-scroll">
+            <ManagerDesigner runtime={runtime} snap={snap} onDone={() => setView('main')} />
+          </div>
         )}
         {view === 'settings' && (
           <div className="settings-scroll">

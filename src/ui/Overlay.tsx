@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { keyLabel } from '@/save/settings';
 import { toWorld } from '@/sim/layout';
@@ -101,16 +101,14 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
 
   const fp = snap.playing && !snap.night && !snap.gameOver;
   const keys = snap.settings.keys;
-  const showLookHint = fp && !snap.card && !(typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
+  // The controls card waits until the tutorial is over: one thing on screen at a time.
+  const showLookHint = fp && !snap.card && !snap.jobs && !(typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
   return (
     <>
       <div ref={root} className="overlay popups" aria-hidden="true" />
       {fp && <div ref={promptRef} className="aim-prompt" aria-hidden="true" />}
       {fp && <div ref={markerRef} className="marker" aria-hidden="true" style={{ display: 'none' }}><span /></div>}
-      {snap.jobs && tip && tip.anchor !== 'night' && <Jobs runtime={runtime} jobs={snap.jobs} tip={tip.text} current={tip.id} />}
-      {!snap.jobs && tip && tip.anchor !== 'night' && (
-        <div className="tip docked objective" key={tip.id} role="note"><div className="label">Next up</div>{tip.text}</div>
-      )}
+      {snap.jobs && tip && tip.anchor !== 'night' && <Coach runtime={runtime} jobs={snap.jobs} tip={tip} />}
       {tip && tip.anchor === 'night' && (
         <div className="tip docked" key={tip.id} role="note" style={{ left: '50%', top: '30%', transform: 'translateX(-50%)' }}>{tip.text}</div>
       )}
@@ -123,40 +121,30 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
       {showLookHint && (
         <div className="look-hint" aria-label="Controls">
           <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.forward)}</kbd><kbd>{keyLabel(keys.left)}</kbd><kbd>{keyLabel(keys.back)}</kbd><kbd>{keyLabel(keys.right)}</kbd></span>Walk</span>
-          <span className="ctl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v6" /></svg>Click to walk or use</span>
+          <span className="ctl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v6" /></svg>Click to walk or use · drag to look around</span>
           <span className="ctl"><kbd>{keyLabel(keys.interact)}</kbd>Use</span>
-          <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.turnLeft)}</kbd><kbd>{keyLabel(keys.turnRight)}</kbd></span>Turn · wheel zooms</span>
+          <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.turnLeft)}</kbd><kbd>{keyLabel(keys.turnRight)}</kbd></span>Turn · scroll to zoom</span>
         </div>
       )}
     </>
   );
 }
 
-const JOB_ICONS: Record<string, string> = { counter: 'build', shelf: 'build', order: 'stock', stock: 'stock', open: 'open', ringUp: 'scan', price: 'prices', openTomorrow: 'open' };
-
-/** The first day as a checklist: done jobs ticked, the current one open with its how-to. */
-function Jobs({ runtime, jobs, tip, current }: { runtime: GameRuntime; jobs: NonNullable<Snapshot['jobs']>; tip: string; current: string }) {
-  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth > 760);
-  const done = jobs.filter((j) => j.done).length;
+/**
+ * The tutorial as a coach: one step at a time, a short title and one line, with how far along you are
+ * as dots. The button it means pulses on the tool shelf.
+ */
+function Coach({ runtime, jobs, tip }: { runtime: GameRuntime; jobs: NonNullable<Snapshot['jobs']>; tip: NonNullable<Snapshot['tip']> }) {
+  const i = Math.max(0, jobs.findIndex((j) => j.id === tip.id));
   return (
-    <div className={`tip jobs${open ? '' : ' folded'}`} role="note" aria-label="Today's jobs">
-      <button className="jobs-head" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className="label">Today&apos;s jobs</span>
-        <span className="count">{done}/{jobs.length}</span>
-        <span className="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
-      </button>
-      <div className="jobs-bar" aria-hidden="true"><div style={{ width: `${(done / jobs.length) * 100}%` }} /></div>
-      {open && (
-        <ol>
-          {jobs.map((j) => (
-            <li key={j.id} className={`${j.done ? 'done' : ''}${j.id === current ? ' now' : ''} j-${JOB_ICONS[j.id] ?? 'build'}`}>
-              <span className="check" aria-hidden="true">{j.done ? '✓' : ''}</span>
-              <span className="t">{j.title}{j.id === current && <small key={tip}>{tip}</small>}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-      {open && <div className="skip"><button onClick={() => runtime.dispatch({ type: 'skipTutorial' })}>I know what I&apos;m doing, hide this</button></div>}
+    <div className="tip coach" role="note" aria-label="What to do next">
+      <div className="coach-top">
+        <span className="step">Step {i + 1} of {jobs.length}</span>
+        <span className="dots" aria-hidden="true">{jobs.map((j) => <i key={j.id} className={j.done ? 'done' : j.id === tip.id ? 'now' : ''} />)}</span>
+      </div>
+      <b className="coach-title" key={`t-${tip.id}`}>{jobs[i]?.title}</b>
+      <div className="coach-text" key={tip.text}>{tip.text}</div>
+      <button className="coach-skip" onClick={() => runtime.dispatch({ type: 'skipTutorial' })}>Skip tutorial</button>
     </div>
   );
 }

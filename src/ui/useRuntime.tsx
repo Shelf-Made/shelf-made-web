@@ -10,3 +10,9 @@ export function useSnapshot(rt: GameRuntime): Snapshot {
 export function money(n: number, sign = false): string {
   return formatMoney(n, { sign });
 }
+
+/** A product's picture (its shelf model, rendered at load), or a dot in its colour until the pictures exist. */
+export function ProductPic({ runtime, id, color }: { runtime: GameRuntime; id: string; color: string }) {
+  const src = runtime.renderer?.productThumbs[id];
+  return src ? <img className="product-pic" src={src} alt="" aria-hidden="true" /> : <span className="product-pic dot" style={{ background: color }} aria-hidden="true" />;
+}

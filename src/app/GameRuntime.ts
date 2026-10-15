@@ -2,6 +2,7 @@ import { type GameState, type Command, type CommandResult, newGame, tick, applyC
 import type { Difficulty, FixtureType, Rot, CustomerType } from '@/sim/types';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace } from '@/sim/build';
+import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
 import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame, rectToWorld, type Rect } from '@/sim/layout';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
@@ -15,7 +16,7 @@ import { keyLabel } from '@/save/settings';
 import { AudioEngine, type Cue } from '@/audio/AudioEngine';
 import { defaultBackend, type StorageBackend } from '@/save/storage';
 import { saveGame, loadGame, type Slot } from '@/save/saves';
-import { loadSettings, saveSettings, type Settings } from '@/save/settings';
+import { loadSettings, saveSettings, type Settings, type ManagerLook } from '@/save/settings';
 import { analytics } from './analytics';
 import { dollars } from '@/sim/money';
 import { activeGoal, goalDef, goalProgress, GOALS } from '@/sim/goals';
@@ -80,22 +81,25 @@ export interface Snapshot {
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
 
-/** Short checklist titles for the tutorial steps. */
+/** Short titles for the tutorial steps (the coach card shows one at a time). */
 const JOB_TITLES: Record<string, string> = {
   counter: 'Place a checkout counter', shelf: 'Place a shelf', order: 'Order stock', stock: 'Stock a shelf',
-  open: 'Open the shop', ringUp: 'Ring up a customer', price: 'Check your prices', openTomorrow: 'Start day 2',
+  open: 'Open the shop', ringUp: 'Serve a customer', price: 'Check your prices', openTomorrow: 'Start day 2',
 };
 
-/** One tip per tutorial step, in order (the sim's TUTORIAL_STEPS). {B} style tokens become key labels. */
+/**
+ * One line per tutorial step, in order (the sim's TUTORIAL_STEPS): what to do next and nothing more.
+ * {interact} and {scan} become key labels.
+ */
 const TIPS: TipInfo[] = [
-  { id: 'counter', text: 'Your shop is an empty shell. Press B for Build and place a checkout counter: shoppers pay there.', anchor: 'button:build' },
-  { id: 'shelf', text: 'Now a shelf. Point at a floor tile, R turns it, click to place. Chillers hold the cold things.', anchor: 'button:build' },
-  { id: 'order', text: 'Order stock on the Stock card (Tab). A truck leaves the boxes on the pallet by the back door.', anchor: 'button:stock' },
-  { id: 'stock', text: 'Walk to the pallet by the back door (or click it) and press {interact} to pick up a box. Then walk to a shelf and press {interact} to stock it.', anchor: 'delivery' },
-  { id: 'open', text: 'Ready? Press Open shop to let the town in.', anchor: 'button:open' },
-  { id: 'ringUp', text: 'A customer is waiting! Stand behind the counter and press {scan} to scan each item.', anchor: 'register' },
-  { id: 'price', text: 'Set your prices. A little above the town average still sells; too high and bargain hunters walk.', anchor: 'button:prices' },
-  { id: 'openTomorrow', text: 'That is a day! Rent comes out tonight. Open tomorrow to keep going.', anchor: 'night' },
+  { id: 'counter', text: 'Open Build, pick the counter, click the floor.', anchor: 'button:build' },
+  { id: 'shelf', text: 'Now pick a shelf. R turns it.', anchor: 'button:build' },
+  { id: 'order', text: 'Open Stock and order a few boxes.', anchor: 'button:stock' },
+  { id: 'stock', text: 'Click the pallet by the back door to grab a box.', anchor: 'delivery' },
+  { id: 'open', text: 'Press Open shop to let the town in.', anchor: 'button:open' },
+  { id: 'ringUp', text: 'Stand behind the counter, press {scan}.', anchor: 'register' },
+  { id: 'price', text: 'Open Prices: a little above average still sells.', anchor: 'button:prices' },
+  { id: 'openTomorrow', text: 'Rent is paid. Open tomorrow to keep going.', anchor: 'night' },
 ];
 
 export class GameRuntime {
@@ -264,9 +268,10 @@ export class GameRuntime {
       if (owner?.carrying) {
         const def = productDef(owner.carrying.productId);
         const shelf = s.shop.fixtures.find((f) => FIXTURES[f.type].slots > 0 && FIXTURES[f.type].chilled === def.chilled && (!FIXTURES[f.type].accepts || FIXTURES[f.type].accepts!.includes(def.category)));
-        return { ...tip, text: `You are carrying ${def.name}. Walk to a ${def.chilled ? 'chiller' : 'shelf'} (or click it) and press ${keyLabel(keys.interact)} to stock it.${shelf ? '' : ' Build one first!'}`, anchor: 'shelf', fixtureId: shelf?.id };
+        const where = def.chilled ? 'chiller' : 'shelf';
+        return { ...tip, text: shelf ? `Click a ${where} to put the ${def.name.toLowerCase()} on it.` : `Build a ${where} for the ${def.name.toLowerCase()} first.`, anchor: 'shelf', fixtureId: shelf?.id };
       }
-      if (s.shop.storage.length === 0) return { ...tip, text: 'The truck is on its way with your boxes. Arrange the floor while you wait.' };
+      if (s.shop.storage.length === 0) return { ...tip, text: 'The truck is on its way. Hang on!' };
       return tip;
     }
     if (tip.id === 'open') return s.phase === 'setup' ? tip : null;
@@ -293,6 +298,23 @@ export class GameRuntime {
     this.lastTime = performance.now();
     const loop = (now: number) => { this.raf = requestAnimationFrame(loop); this.frame(Math.min(0.1, (now - this.lastTime) / 1000)); this.lastTime = now; };
     this.raf = requestAnimationFrame(loop);
+    // Closing the tab, switching away or the phone locking: save where you are, so Continue picks it up.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.autosaveNow(); });
+      window.addEventListener('pagehide', () => this.autosaveNow());
+    }
+  }
+
+  // ---- Autosave: every night, every half minute of play, after picking a plot, and when the page is hidden.
+  private autosaveClock = 0;
+  static readonly AUTOSAVE_SECONDS = 30;
+  /** A game worth saving: past the plot picker and not over. */
+  private get saveable(): boolean { const s = this.state; return this.screen === 'game' && !!s && s.phase !== 'picking' && !s.gameOver; }
+  autosaveNow(): void { if (this.saveable && !this.saving) { this.autosaveClock = 0; void this.save('auto'); } }
+  private tickAutosave(dt: number): void {
+    if (!this.saveable) { this.autosaveClock = 0; return; }
+    this.autosaveClock += dt;
+    if (this.autosaveClock >= GameRuntime.AUTOSAVE_SECONDS) this.autosaveNow();
   }
 
   detach(): void { cancelAnimationFrame(this.raf); this.renderer?.dispose(); this.renderer = null; }
@@ -301,6 +323,7 @@ export class GameRuntime {
     const seed = opts.seed ?? (Math.floor(Math.random() * 0x7fffffff) >>> 0);
     resetGridCache();
     this.state = newGame({ seed, difficulty: opts.difficulty, sandbox: opts.sandbox, plotId: opts.plotId, name: opts.name, tutorial: opts.tutorial, scheme: opts.scheme });
+    this.wearManagerLook(this.state);
     this.lastPhase = null;
     this.enterGame();
   }
@@ -308,6 +331,7 @@ export class GameRuntime {
   loadState(state: GameState): void {
     resetGridCache();
     this.state = state;
+    this.wearManagerLook(state);
     this.lastPhase = state.phase;
     this.noticesSeen = state.notices.length;
     this.enterGame();
@@ -346,6 +370,7 @@ export class GameRuntime {
       // All four corners trading: the rivals are open across the crossroads.
       for (const rv of s.rivals) rv.open = true;
       s.time = DAY_SECONDS * 0.7;
+      this.wearManagerLook(s);
       this.lobbyState = s;
       r.setTown(s.seed, s.shop.plotId);
       r.setShop(s);
@@ -391,7 +416,12 @@ export class GameRuntime {
         // Drift back and forth over the crossroads at golden hour, the rivals' corners behind the shop.
         this.lobbyT += dt;
         this.lobbyYaw = 1.18 + 0.28 * Math.sin(this.lobbyT * 0.06);
-        r.camera.focus(L.shop.originX + 0.5, L.shop.originZ - 2.6, 20, this.lobbyYaw, 0.24);
+        const shopkeeper = this.designing ? L.people.find((p) => p.kind === 'owner') : undefined;
+        if (shopkeeper) {
+          // Designing: close on the shopkeeper from the front, standing left of the menu.
+          r.camera.lookY = 0.55; r.camera.sideOffset = 0.32;
+          r.camera.focus(shopkeeper.x, shopkeeper.z, 4.6, shopkeeper.yaw + 0.25, 0.3);
+        } else r.camera.focus(L.shop.originX + 0.5, L.shop.originZ - 2.6, 20, this.lobbyYaw, 0.24);
         r.mode = 'cinematic';
         r.render(L, Math.min(1, this.lobbyAcc / TICK), dt);
       }
@@ -416,6 +446,7 @@ export class GameRuntime {
         this.noticesSeen = s.notices.length;
       }
       this.checkSelection(s);
+      this.tickAutosave(dt);
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
@@ -476,7 +507,7 @@ export class GameRuntime {
     const res = applyCommand(this.state, cmd);
     if (!res.ok && res.message) { this.showToast(res.message); this.audio.play('bad'); }
     if (cmd.type === 'placeFixture' || cmd.type === 'removeFixture' || cmd.type === 'choosePlot') { this.stateVersion++; }
-    if (cmd.type === 'choosePlot' && res.ok) { this.renderer?.setTown(this.state.seed, this.state.shop.plotId); this.renderer?.setShop(this.state); this.faceShop(); applyCommand(this.state, { type: 'setTimeScale', scale: this.speed || 1 }); }
+    if (cmd.type === 'choosePlot' && res.ok) { this.renderer?.setTown(this.state.seed, this.state.shop.plotId); this.renderer?.setShop(this.state); this.faceShop(); applyCommand(this.state, { type: 'setTimeScale', scale: this.speed || 1 }); this.autosaveNow(); }
     if ((cmd.type === 'expandShop' || cmd.type === 'expandLot') && res.ok) this.renderer?.setShop(this.state);
     this.stateVersion++;
     this.maybeEmit();
@@ -507,6 +538,43 @@ export class GameRuntime {
     this.emit();
   }
   closeCard(): void { if (this.build.placing || this.build.selectedId !== null) { this.stopPlacing(); this.emit(); return; } if (this.card) { this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); } }
+  // ---- Your manager, designed in the lobby: kept with your settings, worn in every game you play.
+  /** The look you designed, or the default shop worker. */
+  get managerLook(): ManagerLook { return this.settings.managerLook ?? { model: MANAGER_DEFAULT_MODEL, height: 1.04 }; }
+  /** Change your manager (from the lobby): saved straight away, and shown on the lobby's shopkeeper. */
+  designManager(look: Extract<Command, { type: 'designManager' }>['look']): void {
+    const next: ManagerLook = { ...this.managerLook };
+    if (look.model !== undefined) next.model = look.model;
+    if (look.height !== undefined) next.height = look.height;
+    for (const k of ['skin', 'hair', 'top', 'bottom'] as const) { const v = look[k]; if (v === null) delete next[k]; else if (v !== undefined) next[k] = v; }
+    this.updateSettings({ managerLook: next });
+    for (const s of [this.lobbyState, this.state]) if (s) this.wearManagerLook(s);
+    this.audio.play('click');
+  }
+  /** Dress a game's manager in your design (new games, loaded saves, the lobby's demo shop). */
+  private wearManagerLook(s: GameState): void {
+    // Always a guy or a girl: the default look until you design one (older saves had the shop worker).
+    const l = this.managerLook;
+    applyCommand(s, { type: 'designManager', look: { model: l.model, height: l.height, skin: l.skin ?? null, hair: l.hair ?? null, top: l.top ?? null, bottom: l.bottom ?? null } });
+  }
+  /** The lobby's designer is open: the shopkeeper steps out in front of the shop and the camera comes in close. */
+  designing = false;
+  setDesigning(on: boolean): void {
+    this.designing = on;
+    const L = this.lobbyState, r = this.renderer;
+    if (!L || !r) return;
+    if (on) {
+      const o = L.people.find((p) => p.kind === 'owner');
+      if (o) {
+        // On the apron, just out of the door, facing the street.
+        const at = toWorld(L.shop, L.shop.door.x - 0.9, L.shop.floor.z1 + 1.15);
+        o.x = o.px = at.x; o.z = o.pz = at.z; o.path = []; o.moveDir = null; o.state = 'idle'; o.anim = 'idle'; o.carrying = null;
+        o.yaw = L.shop.flip ? Math.PI : 0;
+      }
+    } else { r.camera.lookY = 2.2; r.camera.sideOffset = 0; }
+    this.emit();
+  }
+
   /** Opening Build pulls the camera back (once the card is on screen) until the whole floor fits beside it. */
   private fitBuild = false;
   private fitBuildView(free: number): void {
@@ -527,8 +595,8 @@ export class GameRuntime {
     const z = this.buildZoom, f = this.renderer?.follow; this.buildZoom = null;
     if (z && f && f.following && Math.abs(f.goalDistance - z.to) < 0.01) f.zoom(z.from / f.goalDistance);
   }
-  /** Docked cards sit on the right third, so the world slides left while one is open. */
-  private updateSideOffset(): void {
+  /** Docked cards sit on the right third, so the world slides left while one is open. (Public for the test hooks.) */
+  updateSideOffset(): void {
     const r = this.renderer; if (!r) return;
     const open = this.card !== null || this.state?.phase === 'night';
     const w = window.innerWidth, h = window.innerHeight;
@@ -625,14 +693,29 @@ export class GameRuntime {
     const k = this.settings.lookSpeed;
     r.follow.drag(dx * k, (this.settings.invertY ? -dy : dy) * k);
   }
-  /** One finger dragging on a phone: turn the camera, or pan it when zoomed right out. */
-  touchDrag(dx: number, dy: number): void {
-    const r = this.renderer; if (!r || !this.inPlay) return;
-    if (r.follow.following) this.turnCamera(dx * 1.4, dy * 0.8);
-    else r.follow.pan(-dx * r.follow.distance * 0.0025, dy * r.follow.distance * 0.0025);
-  }
+  /** Two fingers twisting on a phone: turn the camera with them. */
+  twistCamera(radians: number): void { const r = this.renderer; if (!r || !this.inPlay) return; r.follow.drag(-radians / 0.006, 0); }
   turnStep(dir: 1 | -1): void { this.renderer?.follow.rotateStep(dir); this.audio.play('tick'); }
   zoom(factor: number): void { this.renderer?.follow.zoom(factor); }
+  /** The wheel or a trackpad: zoom in proportion to how far it scrolled, so a flick of the trackpad is a nudge, not a leap. */
+  wheelZoom(deltaY: number, deltaMode: number): void {
+    const px = deltaMode === 1 ? deltaY * 33 : deltaMode === 2 ? deltaY * 400 : deltaY;
+    this.zoom(Math.exp(Math.max(-120, Math.min(120, px)) * 0.0011));
+  }
+  /** Click (or touch) and drag: grab the ground and pull the view along. */
+  dragPan(x0: number, y0: number, x1: number, y1: number): void {
+    const r = this.renderer; if (!r || !this.inPlay) return;
+    const a = r.groundAt(x0, y0), b = r.groundAt(x1, y1);
+    if (!a || !b) return;
+    if (this.followingPerson) this.stopFollowQuietly();
+    r.follow.panWorld(a.x - b.x, a.z - b.z);
+  }
+  /** Walking again after looking around: the camera comes back to the manager (unless zoomed right out). */
+  refollow(): void {
+    const r = this.renderer; if (!r || r.follow.following || this.followingPerson) return;
+    if (r.follow.goalDistance <= FollowCamera.FOLLOW_MAX) r.follow.following = true;
+  }
+  private stopFollowQuietly(): void { this.followingPerson = false; if (this.renderer) this.renderer.followId = null; this.emit(); }
   /** Back to the manager (the focus key). */
   focusCamera(): void {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
@@ -686,6 +769,7 @@ export class GameRuntime {
     if (g) {
       const res = applyCommand(s, { type: 'walkTo', x: g.x, z: g.z });
       if (!res.ok) this.showToast(res.message ?? "You can't get there.", 1400);
+      else this.refollow();
       this.pendingUse = null;
       this.renderer?.marker.set({ x0: g.x - 0.2, z0: g.z - 0.2, x1: g.x + 0.2, z1: g.z + 0.2 }, false);
     }
@@ -770,10 +854,20 @@ export class GameRuntime {
     }
     if (def.slots > 0) {
       if (owner.carrying) return { text: `Stock ${productDef(owner.carrying.productId).name} ×${owner.carrying.qty}`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'stockFixture', fixtureId: f.id }); } };
+      // Empty-handed: a shelf opens the Stock card, at the products that go on it.
       const stocked = f.slots.filter((sl) => sl.productId && sl.qty > 0);
-      return { text: `${def.name}: ${stocked.length ? stocked.map((sl) => `${productDef(sl.productId!).name} ${sl.qty}`).join(' · ') : 'empty'}`, ok: false, key: null, run: null };
+      return { text: `${def.name}: ${stocked.length ? stocked.map((sl) => `${productDef(sl.productId!).name} ${sl.qty}`).join(' · ') : 'empty'} · order stock`, ok: true, key: 'use', run: () => this.openStockFor(f.type) };
     }
     return { text: def.name, ok: false, key: null, run: null };
+  }
+
+  /** The Stock card, opened from a shelf: it starts at the kind of products that go on that shelf. */
+  private stockFor: FixtureType | null = null;
+  /** The shelf the Stock card was opened from, once (the card reads it when it opens). */
+  takeStockFor(): FixtureType | null { const t = this.stockFor; this.stockFor = null; return t; }
+  openStockFor(type: FixtureType): void {
+    this.stockFor = type;
+    if (this.card !== 'stock') this.openCard('stock'); else this.emit();
   }
 
   /** Walk over to a thing, then use it when you get there. */
@@ -786,12 +880,15 @@ export class GameRuntime {
     let to: { x: number; z: number };
     if (t.kind === 'fixture') {
       const f = s.shop.fixtures.find((x) => x.id === t.id)!;
+      // Empty-handed, a shelf only opens the Stock card: no need to walk over first.
+      if (FIXTURES[f.type].slots > 0 && !o.carrying) { this.openStockFor(f.type); return; }
       to = f.type === 'register' ? fixtureBackWorld(s.shop, f) : fixtureAccessWorld(s.shop, f, o);
       if (Math.hypot(to.x - o.x, to.z - o.z) < 0.3) { this.actionFor(s, t, true).run?.(); return; }
     } else if (t.kind === 'delivery') to = storeroomPoint(s);
     else to = { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 + 0.4 };
     const res = applyCommand(s, { type: 'walkTo', x: to.x, z: to.z });
     if (!res.ok) { this.showToast("You can't get there.", 1400); return; }
+    this.refollow();
     this.pendingUse = t;
   }
 

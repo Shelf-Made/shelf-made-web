@@ -10,10 +10,15 @@ export interface Settings {
   edgePan: boolean;
   keys: KeyBindings;
   analyticsOptIn: boolean;
+  /** Your manager, as designed in the lobby (null: the shop worker as the game picks). Every game you play uses it. */
+  managerLook: ManagerLook | null;
 }
 
+/** A designed manager: which character and height, and the colours chosen (each left out for the character's own). */
+export interface ManagerLook { model: number; height: number; skin?: string; hair?: string; top?: string; bottom?: string }
+
 export const DEFAULT_KEYS: KeyBindings = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', interact: 'KeyF', scan: 'Space', rotate: 'KeyR', turnLeft: 'KeyQ', turnRight: 'KeyE', focus: 'KeyC', zoomIn: 'Equal', zoomOut: 'Minus', pause: 'KeyP', speed1: 'Digit1', speed2: 'Digit2', speed4: 'Digit3' };
-export const DEFAULT_SETTINGS: Settings = { master: 0.8, music: 0.6, sfx: 0.9, quality: 'high', largeUI: false, colorBlind: false, lookSpeed: 1, invertY: false, edgePan: false, keys: { ...DEFAULT_KEYS }, analyticsOptIn: false };
+export const DEFAULT_SETTINGS: Settings = { master: 0.8, music: 0.6, sfx: 0.9, quality: 'high', largeUI: false, colorBlind: false, lookSpeed: 1, invertY: false, edgePan: false, keys: { ...DEFAULT_KEYS }, analyticsOptIn: false, managerLook: null };
 
 const KEY = 'shelf-made:settings';
 

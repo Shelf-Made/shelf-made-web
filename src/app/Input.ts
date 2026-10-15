@@ -1,21 +1,24 @@
 import type { GameRuntime } from './GameRuntime';
+import { FollowCamera } from '@/render/FollowCamera';
 
 /**
  * Controls for the follow camera. WASD walks the manager relative to the camera (or pans the
  * camera once it is zoomed out past following); F (or the Use button) uses the thing in front of
  * the manager; Space scans at the till. The mouse: move over things to see what they are, left
- * click to walk there and use them (or place in build mode), right-drag to turn the camera (a plain right click cancels in Build),
- * the wheel to zoom. Q/E turn the camera in 45° steps, C brings it back to you, + and − zoom.
- * Touch: tap to walk or use, drag to turn, pinch to zoom.
+ * click to walk there and use them (or place in build mode), left-drag to pan, right-drag to turn
+ * the camera (a plain right click cancels in Build), the wheel to zoom (in proportion to the scroll).
+ * Q/E turn the camera in 45° steps, C brings it back to you, + and − zoom. Walking again brings the
+ * camera back to the manager. Touch: tap to walk or use, drag to pan, pinch to zoom, twist to turn.
  */
 export class InputController {
   private keys = new Set<string>();
   private rightDrag: { x: number; y: number; moved: number } | null = null;
-  private leftDown: { x: number; y: number; moved: boolean } | null = null;
+  private leftDown: { x: number; y: number; moved: boolean; lx: number; ly: number } | null = null;
   private lastDir = { x: 0, z: 0 };
   private scanHeld = false; private scanTimer = 0;
   private touches = new Map<number, { x: number; y: number; x0: number; y0: number }>();
   private pinch = 0;
+  private twist: number | null = null;
   private touchMoved = false;
   private mouse: { x: number; y: number } | null = null;
   private detachFns: (() => void)[] = [];
@@ -33,7 +36,7 @@ export class InputController {
       if (e.pointerType === 'touch') { this.touchDown(e); return; }
       c.setPointerCapture(e.pointerId);
       if (e.button === 2) { this.rightDrag = { x: e.clientX, y: e.clientY, moved: 0 }; return; }
-      if (e.button === 0) this.leftDown = { x: e.clientX, y: e.clientY, moved: false };
+      if (e.button === 0) this.leftDown = { x: e.clientX, y: e.clientY, moved: false, lx: e.clientX, ly: e.clientY };
     });
     on(c, 'pointermove', (e: PointerEvent) => {
       if (e.pointerType === 'touch') { this.touchMove(e); return; }
@@ -46,7 +49,12 @@ export class InputController {
         this.rt.turnCamera(dx, dy);
         return;
       }
-      if (this.leftDown && Math.hypot(e.clientX - this.leftDown.x, e.clientY - this.leftDown.y) > 6) this.leftDown.moved = true;
+      // Left-drag pans: grab the ground and pull. A press that hardly moves is still a click.
+      const ld = this.leftDown;
+      if (ld) {
+        if (!ld.moved && Math.hypot(e.clientX - ld.x, e.clientY - ld.y) > 6) ld.moved = true;
+        if (ld.moved) { this.rt.dragPan(ld.lx, ld.ly, e.clientX, e.clientY); ld.lx = e.clientX; ld.ly = e.clientY; }
+      }
     });
     on(c, 'pointerleave', () => { this.mouse = null; this.rt.setMouse(null, null); });
     on(c, 'pointerup', (e: PointerEvent) => {
@@ -59,7 +67,7 @@ export class InputController {
     });
     on(c, 'pointercancel', (e: PointerEvent) => { if (e.pointerType === 'touch') this.touchUp(e, true); this.rightDrag = null; this.leftDown = null; });
     on(c, 'contextmenu', (e: Event) => e.preventDefault());
-    on(c, 'wheel', (e: WheelEvent) => { e.preventDefault(); if (this.rt.inPlay) this.rt.zoom(e.deltaY > 0 ? 1.18 : 1 / 1.18); }, { passive: false });
+    on(c, 'wheel', (e: WheelEvent) => { e.preventDefault(); if (this.rt.inPlay) this.rt.wheelZoom(e.deltaY, e.deltaMode); }, { passive: false });
     on(window, 'keydown', (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -106,7 +114,7 @@ export class InputController {
       if (this.keys.has(k.left) || this.keys.has('ArrowLeft')) s -= 1;
     }
     const cam = r.follow;
-    if (!cam.following) {
+    if (cam.goalDistance > FollowCamera.FOLLOW_MAX) {
       // Zoomed out past following: the keys (and the screen edges) move the camera instead.
       let pf = f, ps = s;
       if (this.rt.settings.edgePan && this.mouse) {
@@ -119,6 +127,8 @@ export class InputController {
     }
     let x = 0, z = 0;
     if (f || s) {
+      // Walking after looking round: the camera comes back to the manager.
+      if (!cam.following) this.rt.refollow();
       const b = cam.basis();
       x = b.fx * f + b.rx * s; z = b.fz * f + b.rz * s;
       const l = Math.hypot(x, z); x /= l; z /= l;
@@ -131,28 +141,31 @@ export class InputController {
   private touchDown(e: PointerEvent): void {
     this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
     if (this.touches.size === 1) this.touchMoved = false;
-    if (this.touches.size === 2) { const [a, b] = [...this.touches.values()]; this.pinch = Math.hypot(a!.x - b!.x, a!.y - b!.y); this.touchMoved = true; }
+    if (this.touches.size === 2) { const [a, b] = [...this.touches.values()]; this.pinch = Math.hypot(a!.x - b!.x, a!.y - b!.y); this.twist = Math.atan2(b!.y - a!.y, b!.x - a!.x); this.touchMoved = true; }
   }
   private touchMove(e: PointerEvent): void {
     const t = this.touches.get(e.pointerId); if (!t) return;
-    const dx = e.clientX - t.x, dy = e.clientY - t.y;
+    const px = t.x, py = t.y;
     t.x = e.clientX; t.y = e.clientY;
     if (this.touches.size >= 2) {
-      // Pinch to zoom.
+      // Pinch to zoom, twist to turn.
       const [a, b] = [...this.touches.values()];
       const d = Math.hypot(a!.x - b!.x, a!.y - b!.y);
       if (this.pinch > 0 && d > 0) this.rt.zoom(this.pinch / d);
       this.pinch = d;
+      const ang = Math.atan2(b!.y - a!.y, b!.x - a!.x);
+      if (this.twist !== null) { let da = ang - this.twist; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI; this.rt.twistCamera(da); }
+      this.twist = ang;
       return;
     }
     if (Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > 10) this.touchMoved = true;
-    // One finger dragging: turn the camera (or pan it, when zoomed right out).
-    if (this.touchMoved) this.rt.touchDrag(dx, dy);
+    // One finger dragging: pan, the ground following the finger.
+    if (this.touchMoved) this.rt.dragPan(px, py, e.clientX, e.clientY);
   }
   private touchUp(e: PointerEvent, cancel = false): void {
     const t = this.touches.get(e.pointerId);
     this.touches.delete(e.pointerId);
-    if (this.touches.size < 2) this.pinch = 0;
+    if (this.touches.size < 2) { this.pinch = 0; this.twist = null; }
     // A tap: walk there, use what is there, or place in build mode.
     if (t && !cancel && !this.touchMoved && this.touches.size === 0) this.rt.clickAt(e.clientX, e.clientY);
   }

@@ -92,7 +92,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
         {status !== 'setup' && <div className={`pill sign ${status}`} aria-label={`Shop is ${status}`}>{status === 'open' ? 'OPEN' : 'CLOSED'}</div>}
       </div>
 
-      {snap.phase !== 'picking' && <GoalChip runtime={runtime} snap={snap} />}
+      {snap.phase !== 'picking' && !snap.jobs && <GoalChip runtime={runtime} snap={snap} />}
 
       {snap.phase === 'setup' && (
         <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>
@@ -115,7 +115,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
           {DOCK.map((c) => {
             const open = unlocked(c);
             return (
-              <button key={c} className={`tile t-${c}${snap.card === c ? ' active' : ''}${open ? '' : ' locked'}`} onClick={() => open ? runtime.openCard(c) : runtime.showToast(`${LABELS[c]} opens on day ${UNLOCK_DAYS[c] ?? 2}.`)} aria-pressed={snap.card === c} data-card={c} title={open ? BLURBS[c] : `${LABELS[c]}: opens on day ${UNLOCK_DAYS[c] ?? 2}`}>
+              <button key={c} className={`tile t-${c}${snap.card === c ? ' active' : ''}${open ? '' : ' locked'}${snap.tip?.anchor === `button:${c}` && snap.card !== c ? ' nudge' : ''}`} onClick={() => open ? runtime.openCard(c) : runtime.showToast(`${LABELS[c]} opens on day ${UNLOCK_DAYS[c] ?? 2}.`)} aria-pressed={snap.card === c} data-card={c} title={open ? BLURBS[c] : `${LABELS[c]}: opens on day ${UNLOCK_DAYS[c] ?? 2}`}>
                 <span className="face">{ICONS[c]}{!open && <svg className="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 018 0v2.5" /></svg>}</span>
                 <span className="label">{LABELS[c]}</span>
                 {open && KEYS[c] && <kbd className="key-chip">{KEYS[c]}</kbd>}

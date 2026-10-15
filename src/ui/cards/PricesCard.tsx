@@ -1,6 +1,6 @@
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS } from '@/sim/products';
-import { money } from '../useRuntime';
+import { money, ProductPic } from '../useRuntime';
 
 export function PricesCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
@@ -21,7 +21,7 @@ export function PricesCard({ runtime, snap }: { runtime: GameRuntime; snap: Snap
           return (
             <div className="item" key={p.id}>
               <div>
-                <div className="name"><span className="swatch" style={{ background: p.color }} />{p.name} {tag}</div>
+                <div className="name"><ProductPic runtime={runtime} id={p.id} color={p.color} />{p.name} {tag}</div>
                 <div className="sub">avg {money(p.basePrice)} · cost {money(p.cost)} · margin {Math.round(((price - p.cost) / price) * 100)}%</div>
               </div>
               <div className="stepper">
