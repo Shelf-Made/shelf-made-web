@@ -6,7 +6,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The e2e step alone takes 22 minutes on a fast runner and nearly 40 on a slow one.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

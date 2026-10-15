@@ -14,7 +14,7 @@ async function follow(page: Page, x: number, z: number, dist = 12, yaw = 0, ms =
 
 test.describe('screenshots', () => {
   test('lobby, picker, the bare shell, building, stocking, trading, the zooms, the crossroads, night', async ({ page }) => {
-    // Some thirty views: the longest test by far (about 1.5 minutes here, over 2 on CI runners).
+    // Fourteen views (about three minutes on a fast CI runner, five on a slow one).
     test.setTimeout(420_000);
     await ready(page);
     await settle(page, 2500);
@@ -119,6 +119,22 @@ test.describe('screenshots', () => {
     await hooks(page, 'advanceScan', 60, 3);
     await follow(page, -1.4, -1.0, 10, 0.4, 1200);
     await page.screenshot({ path: out('14-staff-on-floor') });
+  });
+
+  test('a market hall, a full lot, a franchise sign, reactions, a rival sale\'s bags, dusk and the night card', async ({ page }) => {
+    // Split from the views above: together they ran past seven minutes on a slow CI runner.
+    test.setTimeout(420_000);
+    await ready(page);
+    await hooks(page, 'newGame', 3, 'main', 'Corner Fresh', { tutorial: false });
+    await hooks(page, 'setSpeed', 0);
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'openRivals');
+    await hooks(page, 'dispatch', { type: 'cheat', cash: 20000 });
+    await page.evaluate(() => {
+      const h = (window as unknown as { __shelf: { state: () => { staffPool: { id: number; role: string }[] }; dispatch: (c: unknown) => unknown } }).__shelf;
+      for (const role of ['cashier', 'stocker', 'cleaner']) { const c = h.state().staffPool.find((x) => x.role === role); if (c) h.dispatch({ type: 'hire', candidateId: c.id }); }
+    });
+    await hooks(page, 'advanceScan', 60, 3);
 
     // A market hall with a doubled lot.
     await hooks(page, 'dispatch', { type: 'expandShop', sizeId: 'large' });
@@ -450,8 +466,8 @@ test.describe('screenshots', () => {
     await hooks(page, 'setTime', 335);
     type Life = { hangouts: { x: number; z: number }[]; bumps: { x: number; z: number }[] };
     let life: Life | null = null;
-    // Run the afternoon until a group is hanging about and two cars have bumped (each comes round every few minutes).
-    for (let i = 0; i < 400 && !(life?.hangouts.length && life.bumps.length); i++) {
+    // Run the afternoon until a group is hanging about (a bump is staged below if none has come round).
+    for (let i = 0; i < 400 && !life?.hangouts.length; i++) {
       await hooks(page, 'advanceNoScan', 5);
       life = await page.evaluate(() => { const s = (window as unknown as { __shelf: { state: () => { time: number; life?: Life & { nextTeens: number; nextBump: number } } } }).__shelf.state(); if (s.time > 620) { s.time = 335; if (s.life) { s.life.nextTeens = 0; s.life.nextBump = 0; } } return s.life ?? null; });
     }

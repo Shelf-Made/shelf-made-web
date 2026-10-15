@@ -118,8 +118,10 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   await hooks(page, 'setSpeed', 1);
   await clickAt(page, reg.x + 0.5, reg.z + 0.5, 0.8);
   await page.getByRole('menuitem', { name: /serve here/i }).click();
-  await expect.poll(() => aimText(page), { timeout: 20_000 }).toMatch(/scan item|nobody waiting/i);
+  // The walk round runs on the sim, not the clock: a slow runner draws few frames a second.
   await hooks(page, 'setSpeed', 0);
+  for (let i = 0; i < 40 && !/scan item|nobody waiting/i.test(await aimText(page)); i++) await hooks(page, 'advanceNoScan', 0.5);
+  await expect.poll(() => aimText(page)).toMatch(/scan item|nobody waiting/i);
   let waiting = false;
   for (let i = 0; i < 30 && !waiting; i++) {
     await hooks(page, 'advanceNoScan', 6);
