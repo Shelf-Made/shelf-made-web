@@ -22,6 +22,28 @@ export function bagGeometry(pal: PaletteMap, hex: string): BufferGeometry {
   ]);
 }
 
+/**
+ * A red shop basket hanging from a hand at the origin, as shoppers carry it round before the till:
+ * the body with a dark rim, a handle to the hand, and what they have picked so far poking out of the
+ * top (one to three goods). The same height as a bag, so it hangs from the hand the same way.
+ */
+const GOODS = ['#FFC044', '#4F8FE0', '#F4F7FA', '#3FA87A', '#E8573F', '#C88A4A'];
+export function basketGeometry(pal: PaletteMap, n: number, seed = 0): BufferGeometry {
+  const parts = [
+    box(pal, '#D8453A', 0.16, 0.07, 0.1, 0, -0.125, 0),
+    box(pal, '#A8322B', 0.164, 0.012, 0.104, 0, -0.058, 0),
+    box(pal, '#A8322B', 0.009, 0.05, 0.009, -0.05, -0.05, 0),
+    box(pal, '#A8322B', 0.009, 0.05, 0.009, 0.05, -0.05, 0),
+    box(pal, '#38383D', 0.11, 0.01, 0.012, 0, -0.004, 0),
+  ];
+  for (let i = 0; i < n; i++) {
+    const hex = GOODS[(seed + i * 2) % GOODS.length]!;
+    const tall = i === 1 ? 0.05 : 0.035;
+    parts.push(box(pal, hex, i === 1 ? 0.03 : 0.045, tall, 0.04, (i - (n - 1) / 2) * 0.045, -0.07, (i % 2 ? 0.015 : -0.015)));
+  }
+  return merge(parts);
+}
+
 /** One, two or three bags in one hand, fanned out a little. */
 export function bagsGeometry(pal: PaletteMap, hex: string, n: number): BufferGeometry {
   const parts: BufferGeometry[] = [];

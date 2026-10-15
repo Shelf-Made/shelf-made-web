@@ -1,12 +1,12 @@
 import type { AnimationAction, BufferGeometry, Vector3, Frustum } from 'three';
-import { Group, Mesh, AnimationMixer, AnimationClip, LoopRepeat, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color, SkinnedMesh, MeshBasicMaterial, BackSide, ConeGeometry } from 'three';
+import { Group, Mesh, AnimationMixer, AnimationClip, LoopRepeat, LoopOnce, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color, SkinnedMesh, MeshBasicMaterial, BackSide, ConeGeometry } from 'three';
 import { BlobShadows } from './blobs';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim as SimAnim, CustomerType } from '@/sim/types';
 import { box, merge } from './geometry';
-import { bagsGeometry, BAG_HEIGHT } from './props';
+import { bagsGeometry, basketGeometry, BAG_HEIGHT } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
 
@@ -31,9 +31,19 @@ const customKey = (c: Custom) => c ? `${c.skin ?? ''}${c.hair ?? ''}${c.top ?? '
 
 export const PEOPLE_MODELS = ['people/female-a', 'people/male-a', 'people/female-b', 'people/male-b', 'people/female-c', 'people/male-c', 'people/female-d', 'people/male-d', 'people/female-e', 'people/male-e', 'people/female-f', 'people/male-f', 'market/character-employee'];
 
-/** The sim's animations, plus two the renderer adds: a wave, and walking with a box (the walk's legs, the carry's arms). */
-type Anim = SimAnim | 'greet' | 'carryWalk';
-const CLIP_FOR: Record<Exclude<Anim, 'carryWalk'>, string> = { idle: 'idle', walk: 'walk', browse: 'pick-up', carry: 'holding-both', pay: 'interact-right', sit: 'sit', greet: 'emote-yes' };
+/**
+ * The poses a figure plays. The sim says what someone is doing ("browse" at a shelf, "pay" at a till);
+ * the renderer turns that into what their hands do: a look and then one reach for each item taken,
+ * steady placing while stocking, one bend for a box or a bit of litter, one reach to put things down
+ * at the till (and one per item at a self-checkout). Plus a wave, and walking with a box (the walk's
+ * legs, the carry's arms).
+ */
+type Anim = Exclude<SimAnim, 'browse' | 'pay'> | 'greet' | 'carryWalk' | 'reach' | 'stock' | 'bend';
+const CLIP_FOR: Record<Exclude<Anim, 'carryWalk' | 'stock'>, string> = { idle: 'idle', walk: 'walk', carry: 'holding-both', sit: 'sit', greet: 'emote-yes', reach: 'interact-left', bend: 'pick-up' };
+/** Gestures played once and held, then back to standing: never looped (a looped reach read as a twitch). */
+const ONCE: ReadonlySet<Anim> = new Set<Anim>(['reach', 'bend']);
+/** A shopper starts reaching for an item this long (game seconds) before it is in their hand. */
+const REACH_LEAD = 0.6;
 
 /** A shopper type's colour and the look it gets (no new meshes: recolours and a prop in the free hand). */
 export const TYPE_COLOURS: Record<CustomerType, string> = { bargain: '#FFC044', convenience: '#4F8FE0', loyalist: '#E8573F', impulse: '#7E57C2' };
@@ -54,6 +64,8 @@ interface Instance {
   mixer: AnimationMixer;
   actions: Partial<Record<Anim, AnimationAction>>;
   current: Anim | null;
+  /** The one-off gesture last started (which item reached for, which scan), so each plays once. */
+  gestureKey: string;
   dog: Mesh | null;
   seen: number;
   /** What they hold: a box in both arms, or shopping bags in one hand. */
@@ -273,11 +285,15 @@ export class PeopleView {
     const actions: Partial<Record<Anim, AnimationAction>> = {};
     for (const [anim, clipName] of Object.entries(CLIP_FOR) as [Anim, string][]) {
       const clip = asset.clips.find((c) => c.name === clipName) ?? asset.clips.find((c) => c.name === 'idle');
-      if (clip) { const a = mixer.clipAction(clip); a.setLoop(LoopRepeat, Infinity); actions[anim] = a; }
+      if (!clip) continue;
+      const a = mixer.clipAction(clip);
+      if (ONCE.has(anim)) { a.setLoop(LoopOnce, 1); a.clampWhenFinished = true; } else a.setLoop(LoopRepeat, Infinity);
+      actions[anim] = a;
     }
-    const cw = this.carryWalkClip(asset.clips);
-    if (cw) { const a = mixer.clipAction(cw); a.setLoop(LoopRepeat, Infinity); actions.carryWalk = a; }
-    const inst: Instance = { lookKey: p.kind === 'owner' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
+    const derived = this.derivedClips(asset.clips);
+    if (derived.carryWalk) { const a = mixer.clipAction(derived.carryWalk); a.setLoop(LoopRepeat, Infinity); actions.carryWalk = a; }
+    if (derived.stock) { const a = mixer.clipAction(derived.stock); a.setLoop(LoopRepeat, Infinity); actions.stock = a; }
+    const inst: Instance = { lookKey: p.kind === 'owner' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, gestureKey: '', dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
     const pg = this.propFor(p);
     if (pg) { inst.prop = pg; root.add(pg); }
     if (p.kind === 'owner') root.add(this.badge());
@@ -288,22 +304,57 @@ export class PeopleView {
     return inst;
   }
 
-  /** Walking with a box in both arms: the walk clip's legs, body and head, the carry clip's arms (one per clip set). */
-  private carryWalkClips = new Map<AnimationClip[], AnimationClip | null>();
-  private carryWalkClip(clips: AnimationClip[]): AnimationClip | null {
-    let c = this.carryWalkClips.get(clips);
-    if (c === undefined) {
-      const walk = clips.find((x) => x.name === 'walk'), hold = clips.find((x) => x.name === 'holding-both');
-      c = walk && hold ? new AnimationClip('carry-walk', walk.duration, [...walk.tracks.filter((t) => !t.name.startsWith('arm-')), ...hold.tracks.filter((t) => t.name.startsWith('arm-'))]) : null;
-      this.carryWalkClips.set(clips, c);
+  /**
+   * Clips made from Kenney's (one set per clip set): walking with a box in both arms (the walk clip's
+   * legs, body and head, the carry clip's arms), and stocking (the reach, looped: its own clip so the
+   * one-off reach keeps playing once).
+   */
+  private derived = new Map<AnimationClip[], { carryWalk: AnimationClip | null; stock: AnimationClip | null }>();
+  private derivedClips(clips: AnimationClip[]): { carryWalk: AnimationClip | null; stock: AnimationClip | null } {
+    let c = this.derived.get(clips);
+    if (!c) {
+      const walk = clips.find((x) => x.name === 'walk'), hold = clips.find((x) => x.name === 'holding-both'), reach = clips.find((x) => x.name === 'interact-right');
+      c = {
+        carryWalk: walk && hold ? new AnimationClip('carry-walk', walk.duration, [...walk.tracks.filter((t) => !t.name.startsWith('arm-')), ...hold.tracks.filter((t) => t.name.startsWith('arm-'))]) : null,
+        stock: reach ? new AnimationClip('stock', reach.duration, reach.tracks) : null,
+      };
+      this.derived.set(clips, c);
     }
     return c;
+  }
+
+  /**
+   * What someone standing at something does with their hands. A shopper looks the shelf over and
+   * reaches for the item as they take it (timed to the sim, at any game speed); staff place stock
+   * steadily, and bend once for a box or a bit of litter; at the till a shopper reaches once to put
+   * their things down (and once per item at a self-checkout), then stands; loading the car is one reach.
+   */
+  private hands(state: GameState, p: Person, inst: Instance): { anim: Anim; rate: number } {
+    const sim = Math.max(1, state.timeScale || 1);
+    let once: { anim: Anim; key: string; rate: number } | null = null;
+    if (p.anim === 'browse') {
+      if (p.kind !== 'customer' && p.task && p.state === 'stocking') return { anim: 'stock', rate: 0.8 * sim };
+      if (p.kind !== 'customer') once = { anim: 'bend', key: `bend:${p.state}:${p.task?.fixtureId ?? -1}:${Math.round(p.x * 10)},${Math.round(p.z * 10)}`, rate: 0.6 * sim };
+      else if (p.timer > 0 && p.timer <= REACH_LEAD) once = { anim: 'reach', key: `reach:${p.targetFixture}:${p.listIdx}`, rate: ((inst.actions.reach?.getClip().duration ?? REACH_LEAD) / REACH_LEAD) * sim };
+    } else if (p.anim === 'pay') {
+      if (p.state === 'loading') once = { anim: 'reach', key: `load:${p.id}`, rate: sim };
+      else {
+        const reg = state.shop.fixtures.find((f) => f.serving === p.id);
+        once = { anim: 'reach', key: `till:${reg?.id ?? -1}:${reg?.type === 'kiosk' ? reg.scanned ?? 0 : 0}`, rate: sim };
+      }
+    }
+    if (!once) return { anim: 'idle', rate: 1 };
+    if (once.key !== inst.gestureKey) { inst.gestureKey = once.key; if (inst.current === once.anim) inst.current = null; return once; }
+    // Played through: back to standing.
+    const a = inst.actions[once.anim];
+    if (a && inst.current === once.anim && a.time >= a.getClip().duration - 1e-3) return { anim: 'idle', rate: 1 };
+    return once;
   }
 
   private play(inst: Instance, anim: Anim, speed: number): void {
     const action = inst.actions[anim] ?? inst.actions.idle;
     if (!action) return;
-    action.timeScale = anim === 'walk' || anim === 'carryWalk' ? speed : 1;
+    action.timeScale = anim === 'walk' || anim === 'carryWalk' || anim === 'stock' || ONCE.has(anim) ? speed : 1;
     if (inst.current === anim) return;
     const prev = inst.current ? inst.actions[inst.current] : undefined;
     action.reset().setEffectiveWeight(1).play();
@@ -429,6 +480,14 @@ export class PeopleView {
     return new Mesh(g, this.assets.plainMaterial);
   }
 
+  /** The shop basket in one hand, with one to three goods showing (shared per count and mix). */
+  private basketMesh(n: number, id: number): Mesh {
+    const k = `basket:${n}:${id % 3}`;
+    let g = this.bagGeo.get(k);
+    if (!g) { g = basketGeometry(this.assets.palette, n, id % 3); this.bagGeo.set(k, g); }
+    return new Mesh(g, this.assets.plainMaterial);
+  }
+
   /** far: people beyond this distance from the focus are not drawn; nor is anyone outside the camera's view. */
   update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0, far = 48, view: Frustum | null = null, eye: Vector3 | null = null): void {
     this.frame++;
@@ -464,28 +523,37 @@ export class PeopleView {
       const carryBox = !!p.carrying;
       if (carryBox && !inst.box) { inst.box = this.boxMesh(); inst.root.add(inst.box); }
       if (inst.box) inst.box.visible = carryBox;
-      const bags = shoppingBags(p);
+      // In the right hand: bags once paid for, or the shop's basket with what they have picked so far
+      // (reaches are made with the left hand).
+      const bagged = shoppingBags(p);
+      const picked = !bagged && p.kind === 'customer' && !p.paid ? (p.basket ?? []).reduce((a, b) => a + b.qty, 0) : 0;
+      const bags = bagged ?? (picked > 0 ? { store: 'basket', n: Math.min(3, picked) } : null);
       const bk = bags ? `${bags.store}:${bags.n}` : '';
       if (bk !== inst.bagKey) {
         if (inst.bags) { inst.bags.removeFromParent(); inst.bags = null; }
         if (bags) {
           // Hung from the right hand (placed each frame below), upright whatever the arm is doing.
           inst.bags = new Group();
-          inst.bags.add(this.bagMesh(storeScheme(state, bags.store).primary, bags.n));
+          inst.bags.add(bags.store === 'basket' ? this.basketMesh(bags.n, p.id) : this.bagMesh(storeScheme(state, bags.store).primary, bags.n));
           inst.root.add(inst.bags);
         }
         inst.bagKey = bk;
       }
       const moving = Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
       // Shopping bags swing from one hand: walk normally. Only a box needs both arms.
-      let anim: Anim = moving ? (carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk') : carryBox ? 'carry' : p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
+      let rate = Math.max(0.6, p.speed / 1.6);
+      let anim: Anim;
+      if (moving) anim = carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk';
+      else if (carryBox) anim = 'carry';
+      else if (p.anim === 'browse' || p.anim === 'pay') ({ anim, rate } = this.hands(state, p, inst));
+      else anim = p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
       // Regulars greet the staff: a wave the first time they pass someone at work.
       if (p.ctype === 'loyalist' && p.kind === 'customer' && (p.state === 'shopping' || p.state === 'browsing' || p.state === 'toQueue') && this.frame % 10 === 0) {
         const near = state.people.find((o) => (o.kind === 'staff' || o.kind === 'owner') && Math.abs(o.x - p.x) < 1.3 && Math.abs(o.z - p.z) < 1.3);
         if (near && near.id !== inst.greeted) { inst.greeted = near.id; inst.greetUntil = this.frame + 70; }
       }
       if (inst.greetUntil > this.frame && inst.actions.greet) anim = 'greet';
-      this.play(inst, anim, Math.max(0.6, p.speed / 1.6));
+      this.play(inst, anim, rate);
       if (d < 30 && !PeopleView.freeze) inst.mixer.update(dt);
       if (inst.bags) this.hangBags(inst);
       if (inst.prop) this.holdProp(inst);
