@@ -116,7 +116,10 @@ export function onwardDestination(state: GameState, fromWest: boolean, passX: nu
 /** Send a car to a destination; returns null when it simply drives on out of town. */
 export function carTo(state: GameState, dest: Destination, fromWest: boolean, model: number, ownerId: number, state0: Car['state'] = 'arriving'): Car | null {
   if (dest.kind === 'away') {
-    const car = makeCar(state, model, passByPath(fromWest), 'turnedAway', CAR_ROAD_SPEED);
+    // Only for show (the customer is lost either way): not into a queue that already reaches the edge of town.
+    const path = passByPath(fromWest);
+    if (entryJammed(state, path[0]!)) return null;
+    const car = makeCar(state, model, path, 'turnedAway', CAR_ROAD_SPEED);
     car.ownerId = ownerId;
     return null;
   }
@@ -193,12 +196,27 @@ export function trafficRoutes(): Vec2[][] {
   ];
 }
 
+/**
+ * Is the road into town from this end backed up right out to the edge of the map? Then through
+ * traffic (and a turned-away car, which is only for show) takes another way: a jam on the busiest
+ * day drains instead of feeding itself.
+ */
+function entryJammed(state: GameState, from: Vec2): boolean {
+  let n = 0;
+  for (const c of state.cars) {
+    if (c.state === 'parked' || Math.abs(c.x - from.x) > 24 || Math.abs(c.z - from.z) > 24) continue;
+    if ((c.v ?? CAR_ROAD_SPEED) < 1 && ++n >= 3) return true;
+  }
+  return false;
+}
+
 export function spawnTraffic(state: GameState): void {
   withRng(state, 'traffic', (r) => {
     const model = r.pick(CUSTOMER_CAR_MODELS.concat([8, 9, 11]));
     const routes = trafficRoutes();
     // Main Road carries most of it.
     const pts = routes[r.chance(0.72) ? r.int(0, 1) : r.int(2, 3)]!;
+    if (entryJammed(state, pts[0]!)) return;
     makeCar(state, model, roundPath(pts.map((p) => ({ ...p })), 1.4), 'passing', CAR_ROAD_SPEED * r.range(0.85, 1.05));
   });
 }
@@ -285,8 +303,10 @@ function headroom(state: GameState, car: Car): number {
   }
   car.gap = gap;
   if (gap === Infinity) return 1;
+  // Square-root, not linear: from road speed that is a steady braking a car can actually follow, so it
+  // rolls up behind the queue instead of snapping to a stop at the last moment.
   const stop = 2.0, free = 3.8;
-  return Math.max(0, Math.min(1, (gap - stop) / (free - stop)));
+  return Math.sqrt(Math.max(0, Math.min(1, (gap - stop) / (free - stop))));
 }
 
 /**
@@ -295,25 +315,32 @@ function headroom(state: GameState, car: Car): number {
  */
 export function lightHold(state: GameState, car: Car): number { return light(state, car).k; }
 
-/** k: speed factor from the light; red: the car is queued for a red light somewhere ahead. */
-function light(state: GameState, car: Car): { k: number; red: boolean } {
+/**
+ * k: speed factor from the light; red: the car is queued for a red light somewhere ahead; room: how
+ * far it may still go before its stop line (Infinity when nothing holds it).
+ */
+function light(state: GameState, car: Car): { k: number; red: boolean; room: number } {
+  const free = { k: 1, red: false, room: Infinity };
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
   let road: 'main' | 'side', before: number;
   if (fx > 0.7 && Math.abs(car.z - LANE_EAST_Z) < 0.4) { road = 'main'; before = STOP_LINE.eastbound - car.x; }
   else if (fx < -0.7 && Math.abs(car.z - LANE_WEST_Z) < 0.4) { road = 'main'; before = car.x - STOP_LINE.westbound; }
   else if (fz > 0.7 && Math.abs(car.x - LANE_SOUTH_X) < 0.4) { road = 'side'; before = STOP_LINE.southbound - car.z; }
   else if (fz < -0.7 && Math.abs(car.x - LANE_NORTH_X) < 0.4) { road = 'side'; before = car.z - STOP_LINE.northbound; }
-  else return { k: 1, red: false };
-  if (before < -0.05 || before > 40) return { k: 1, red: false };
+  else return free;
+  if (before < -0.05 || before > 40) return free;
   // Only cars that will actually cross the line wait (one turning into a lot short of it does not).
   const crosses = car.path.slice(car.pathIdx).some((p) => {
     if (road === 'main') return fx > 0 ? p.x > STOP_LINE.eastbound : p.x < STOP_LINE.westbound;
     return fz > 0 ? p.z > STOP_LINE.southbound : p.z < STOP_LINE.northbound;
   });
-  if (!crosses) return { k: 1, red: false };
+  if (!crosses) return free;
   const g = greenFor(road, state.tick);
-  if (g === 'go' || (g === 'amber' && before < 1.0)) return { k: 1, red: false };
-  return { k: before > 7 ? 1 : Math.max(0, Math.min(1, (before - 0.05) / 2.2)), red: true };
+  // On amber a car too close to stop, even braking hard, carries on through.
+  const v = car.v ?? car.speed;
+  if (g === 'go' || (g === 'amber' && before < Math.max(1.0, (v * v) / (2 * CAR_BRAKE) + 0.1))) return free;
+  // Steady braking to the line (about 6 units/s² from road speed), well within what the brakes can do.
+  return { k: before > 7 ? 1 : Math.sqrt(Math.max(0, Math.min(1, (before - 0.05) / 3))), red: true, room: Math.max(0, before - 0.05) };
 }
 
 /**
@@ -356,6 +383,7 @@ function drive(state: GameState, car: Car, speed: number, turnRate: number): boo
   const l = light(state, car);
   const k = car.yielding ? 0 : Math.min(headroom(state, car), l.k);
   if (k <= 0.01) {
+    car.v = 0;
     // Waiting in a queue for a red light is normal; only other hold-ups count toward the jam breaker.
     car.waited = l.red ? 0 : (car.waited ?? 0) + TICK;
     // Backing out waits its turn, but not for ever: in a busy two-row lot the cars it waits for can be waiting on it.
@@ -376,7 +404,49 @@ function drive(state: GameState, car: Car, speed: number, turnRate: number): boo
   }
   // Held up a while: creep on when there is room. Held up for good (a ring of cars each waiting on the next): squeeze through.
   const inch = (car.waited ?? 0) >= JAM_GIVE_UP ? 0.3 : (car.waited ?? 0) >= 8 && (car.gap ?? Infinity) > 1.4 ? 0.15 : 0;
-  return followPath(car, speed * Math.max(k, inch), TICK, turnRate);
+  // Only a car turning off the road (into a lot, a bay, the service lane) brakes ahead of its turn.
+  const turning = car.state === 'arriving' || car.state === 'delivering';
+  const want = (turning ? Math.min(speed, turnSpeed(car, speed)) : speed) * Math.max(k, inch);
+  // Ease toward it: pull away gently, brake firmly (the gap rules above still decide when to stop).
+  const v = car.v ?? want;
+  car.v = want > v ? Math.min(want, v + CAR_ACCEL * TICK) : Math.max(want, v - CAR_BRAKE * TICK);
+  // Whatever the easing, never past a stop line that holds us.
+  car.v = Math.min(car.v, l.room / TICK);
+  return followPath(car, car.v, TICK, turnRate);
+}
+
+/**
+ * Pulling away and braking, units per second per second. Brisk enough (road speed in about a second)
+ * that a queue clears the lights about as fast as before cars eased at all: a gentler pull-away
+ * passes fewer cars per green, and on the busiest days the queue then outgrows the town.
+ */
+const CAR_ACCEL = 5, CAR_BRAKE = 12;
+
+/**
+ * Slow down before a turn, not in it: the sharper the bend coming up and the nearer it is, the closer
+ * to lot speed. So a car turning into a lot eases off on the road and rolls in, instead of snapping
+ * from road speed to lot speed at the kerb.
+ */
+function turnSpeed(car: Car, speed: number): number {
+  if (speed <= CAR_LOT_SPEED) return speed;
+  let x = car.x, z = car.z, dist = 0, best = speed;
+  const yaw0 = car.yaw;
+  for (let i = car.pathIdx; i < car.path.length && dist < 7; i++) {
+    const t = car.path[i]!;
+    const dx = t.x - x, dz = t.z - z, d = Math.hypot(dx, dz);
+    if (d < 1e-3) continue;
+    let turn = Math.atan2(dx, dz) - yaw0;
+    while (turn > Math.PI) turn -= Math.PI * 2;
+    while (turn < -Math.PI) turn += Math.PI * 2;
+    if (Math.abs(turn) > 0.5) {
+      // A bend this sharp wants lot speed by the time we reach it; further off, a blend.
+      const f = Math.max(0, Math.min(1, (dist - 1) / 5));
+      best = Math.min(best, CAR_LOT_SPEED + (speed - CAR_LOT_SPEED) * f);
+      break;
+    }
+    dist += d; x = t.x; z = t.z;
+  }
+  return best;
 }
 
 /** Slow to lot speed off the carriageway and for the last few metres into a bay. */

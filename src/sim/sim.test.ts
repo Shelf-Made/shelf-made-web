@@ -3,6 +3,7 @@ import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
 import { cellOf, isBlocked, fixtureAccessWorld } from './grid';
+import { spawnCustomer } from './people';
 import { canPlace } from './build';
 import { toWorld, toLocal } from './layout';
 
@@ -175,6 +176,47 @@ describe('simulation', () => {
     expect(p.x).toBeGreaterThan(s.shop.floor.x0);
     expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeCloseTo(1, 5);
   });
+  it('never sends anyone to stand in a pocket sealed off behind a fixture', () => {
+    const s = newGame({ seed: 10, plotId: 'bus', name: 'Pocket' });
+    const fl = s.shop.floor, x = fl.x1 - 1, z = fl.z0;
+    // In the back corner: a shelf against the back wall and a fridge in front of the corner tile seal it off
+    // (the side wall and the back wall do the rest; the back door is further along).
+    s.shop.fixtures.push({ id: 9001, type: 'shelf', x: x - 1, z, rot: 0, slots: [] }, { id: 9003, type: 'fridge', x, z: z + 1, rot: 0, slots: [] });
+    s.shop.layoutVersion++;
+    const fridge = s.shop.fixtures.find((f) => f.id === 9003)!;
+    // Coming from the corner the sealed tile is the nearest side, and it used to be chosen.
+    const pocket = toWorld(s.shop, x + 0.5, z + 0.5);
+    expect(Math.abs(x + 0.5 - s.shop.backDoor.x)).toBeGreaterThan(1.5);
+    const w = fixtureAccessWorld(s.shop, fridge, pocket), p = toLocal(s.shop, w.x, w.z);
+    expect(Math.hypot(p.x - (x + 0.5), p.z - (z + 0.5))).toBeGreaterThan(0.5);
+    const door = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 - 0.5);
+    expect(findPath(gridFor(s), door, w)).toBeTruthy();
+  });
+  it('a shelf pushed against the wall is shopped from inside, never through the wall', () => {
+    const s = openGame({ seed: 17, plotId: 'main', name: 'Wallside' });
+    s.cash = 5000;
+    const fl = s.shop.floor;
+    // Against the east wall, facing it: its front tile is outside the building.
+    const spot = [-5, -4, -3, -2].map((z) => ({ x: fl.x1 - 1, z })).find((t) => canPlace(s, 'shelf', t.x, t.z, 1).ok)!;
+    expect(spot).toBeTruthy();
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: spot.x, z: spot.z, rot: 1 }).ok).toBe(true);
+    const shelf = s.shop.fixtures.find((f) => f.x === spot.x && f.z === spot.z)!;
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId === 'chocolate') sl.productId = null;
+    shelf.slots[0] = { productId: 'chocolate', qty: 8 };
+    const shoppers = Array.from({ length: 4 }, () => spawnCustomer(s, true)!).filter(Boolean);
+    for (const p of shoppers) { p.list = [{ productId: 'chocolate', qty: 1 }]; p.listIdx = 0; }
+    const at: { x: number; z: number }[] = [];
+    for (let i = 0; i < 240 / TICK; i++) {
+      tick(s);
+      for (const p of shoppers) if (p.state === 'browsing' && p.targetFixture === shelf.id && p.timer > 0) at.push(toLocal(s.shop, p.x, p.z));
+      if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+    }
+    expect(at.length).toBeGreaterThan(0);
+    for (const q of at) { expect(q.x).toBeLessThan(fl.x1); expect(q.x).toBeGreaterThan(fl.x0); expect(q.z).toBeLessThan(fl.z1); }
+    // A counter facing the wall is refused: its line would form outside.
+    expect(canPlace(s, 'register', fl.x0, -1, 3).reason).toMatch(/face into the shop|reach|block|standing|already/i);
+  });
+
   it('a till line never waits on someone who has left the world', () => {
     const s = openGame({ seed: 16, plotId: 'main', name: 'Ghost' });
     const reg = s.shop.fixtures.find((f) => f.type === 'register')!;
@@ -185,5 +227,25 @@ describe('simulation', () => {
     expect(reg.queue.includes(987654)).toBe(false);
     served = s.today.served - served;
     expect(served).toBeGreaterThan(0);
+  });
+});
+
+describe('designing the manager', () => {
+  it('sets character, height and colours, puts colours back, refuses nonsense, and keeps the look in a save', async () => {
+    const s = newGame({ seed: 21, plotId: 'main', name: 'Looks' });
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    expect(applyCommand(s, { type: 'designManager', look: { model: 3, height: 1.1, skin: '#c8925a', hair: '#E9C46A', top: '#3570BC', bottom: '#38383D' } }).ok).toBe(true);
+    expect(o.look).toMatchObject({ model: 3, height: 1.1, skin: '#C8925A', hair: '#E9C46A', top: '#3570BC', bottom: '#38383D' });
+    expect(applyCommand(s, { type: 'designManager', look: { hair: null } }).ok).toBe(true);
+    expect(o.look.hair).toBeUndefined();
+    expect(applyCommand(s, { type: 'designManager', look: { model: 40 } }).ok).toBe(false);
+    // A guy or a girl: the shop worker (12) is not one of the choices.
+    expect(applyCommand(s, { type: 'designManager', look: { model: 12 } }).ok).toBe(false);
+    expect(applyCommand(s, { type: 'designManager', look: { top: 'red' } }).ok).toBe(false);
+    expect(applyCommand(s, { type: 'designManager', look: { height: 3 } }).ok).toBe(true);
+    expect(o.look.height).toBeLessThanOrEqual(1.12);
+    const { serialize, parse } = await import('../save/saves');
+    const back = parse(serialize(s)).state.people.find((p) => p.kind === 'owner')!;
+    expect(back.look).toEqual(o.look);
   });
 });

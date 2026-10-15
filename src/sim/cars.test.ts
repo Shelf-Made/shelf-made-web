@@ -32,10 +32,14 @@ describe('traffic', () => {
 
   it('parked cars sit nose-in, square to their bay', () => {
     const s = openGame({ seed: 5, plotId: 'bus', name: 'Bays' });
-    for (let i = 0; i < 300 / TICK; i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
-    const parked = s.cars.filter((c) => c.state === 'parked');
-    expect(parked.length).toBeGreaterThan(0);
-    for (const c of parked) {
+    // Every car seen parked over five minutes (not just the ones parked at the end).
+    const parked = new Map<number, { yaw: number }>();
+    for (let i = 0; i < 300 / TICK; i++) {
+      tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+      for (const c of s.cars) if (c.state === 'parked') parked.set(c.id, { yaw: c.yaw });
+    }
+    expect(parked.size).toBeGreaterThan(0);
+    for (const c of parked.values()) {
       const q = c.yaw / (Math.PI / 2);
       expect(Math.abs(q - Math.round(q))).toBeLessThan(1e-6);
       // First-row bays face the shop wall: the car drove in forwards. (South corners are turned half round.)

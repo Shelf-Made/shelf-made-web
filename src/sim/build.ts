@@ -5,7 +5,7 @@
  */
 import type { GameState, FixtureType, Rot, Fixture } from './types';
 import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld } from './layout';
-import { buildGrid, fixtureFrontWorld, fixtureBackWorld } from './grid';
+import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
@@ -45,9 +45,14 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the back door', price };
   // The pallet where deliveries land: whoever stocks the shelves must be able to reach it.
   if (!findPath(grid, from, storeroomPoint(state))) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
+  const trialShop = { ...shop, fixtures };
   for (const fx of fixtures) {
     if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
-    if (!findPath(grid, from, fixtureFrontWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'Nobody could reach its front' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
+    // Shoppers queue at a till's front: it has to face into the room. Shelves are used from whichever side is free inside.
+    const till = fx.type === 'register' || fx.type === 'kiosk';
+    if (till && !frontInside(shop, fx)) return { ok: false, reason: fx === trial ? 'Turn it to face into the shop' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
+    const stand = till ? fixtureFrontWorld(shop, fx) : fixtureStandWorld(trialShop, fx, undefined, grid);
+    if (!stand || !findPath(grid, from, stand)) return { ok: false, reason: fx === trial ? 'Nobody could reach it from inside' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
     if (fx.type === 'register' && !findPath(grid, from, fixtureBackWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'You could not get behind it' : 'Would block the way behind the counter', price };
   }
   return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : def.name, price };

@@ -38,6 +38,8 @@ export type Command =
   | { type: 'placeOrder'; supplierId: string; lines: { productId: string; qty: number }[] }
   | { type: 'openTomorrow' }
   | { type: 'skipTutorial' }
+  /** Design the manager: character, height and colours (null puts a colour back to the character's own). */
+  | { type: 'designManager'; look: { model?: number; height?: number; skin?: string | null; hair?: string | null; top?: string | null; bottom?: string | null } }
   | { type: 'placeFixture'; fixtureType: FixtureType; x: number; z: number; rot: Rot }
   | { type: 'removeFixture'; fixtureId: number }
   | { type: 'moveFixture'; fixtureId: number; x: number; z: number; rot: Rot }
@@ -74,6 +76,11 @@ const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
   outsideSign: 'build', signStyle: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
   setShift: 'tick', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
 };
+
+/** Characters the manager can be: the twelve townsfolk, six women (even) and six men (odd). */
+export const MANAGER_MODELS = 12;
+/** Who you are until you design your own: the first of the women. */
+export const MANAGER_DEFAULT_MODEL = 0;
 
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
   const before = state.sounds.length;
@@ -189,6 +196,22 @@ function apply(state: GameState, cmd: Command): CommandResult {
     }
     case 'skipTutorial': {
       state.tutorial.enabled = false; state.tutorial.done = true;
+      return { ok: true };
+    }
+    case 'designManager': {
+      const o = state.people.find((p) => p.kind === 'owner');
+      if (!o) return { ok: false, message: 'No manager.' };
+      const l = cmd.look, look = { ...o.look };
+      if (l.model !== undefined) { if (!Number.isInteger(l.model) || l.model < 0 || l.model > MANAGER_MODELS - 1) return { ok: false, message: 'No such character.' }; look.model = l.model; }
+      if (l.height !== undefined) look.height = Math.max(0.92, Math.min(1.12, l.height));
+      for (const k of ['skin', 'hair', 'top', 'bottom'] as const) {
+        const v = l[k];
+        if (v === undefined) continue;
+        if (v === null) delete look[k];
+        else if (/^#[0-9a-f]{6}$/i.test(v)) look[k] = v.toUpperCase();
+        else return { ok: false, message: 'Not a colour.' };
+      }
+      o.look = look;
       return { ok: true };
     }
     case 'placeFixture': {

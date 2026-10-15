@@ -50,11 +50,17 @@ export type PersonState =
 
 export type Anim = 'idle' | 'walk' | 'browse' | 'carry' | 'pay' | 'sit';
 
+/**
+ * How someone looks: which character, its outfit variant and height. The manager can also be designed:
+ * skin, hair, top and trousers colours (hex), each left out for the character's own.
+ */
+export interface Look { model: number; variant: number; height: number; dog?: boolean; skin?: string; hair?: string; top?: string; bottom?: string }
+
 export interface Person {
   id: number;
   kind: 'customer' | 'staff' | 'walker' | 'owner';
   /** Which mesh and recolour variant the renderer uses. */
-  look: { model: number; variant: number; height: number; dog?: boolean };
+  look: Look;
   x: number; z: number; yaw: number;
   px: number; pz: number;
   state: PersonState;
@@ -126,6 +132,8 @@ export interface Car {
   path: Vec2[];
   pathIdx: number;
   speed: number;
+  /** How fast it is actually going: eases toward the speed it wants (gentle off the mark, firmer on the brakes). */
+  v?: number;
   state: CarState;
   bay: number | null;
   /** Whose lot the bay is in: undefined = the player's, a rival id, or 'street' for Elm Street's shared bays. */

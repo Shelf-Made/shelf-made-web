@@ -54,24 +54,78 @@ export function fixtureFront(f: Fixture): Vec2 {
 }
 
 /**
- * Where to stand to stock or look at a fixture, coming from `from` (world): the free floor tile beside it
- * nearest to you, the front first. A shelf against a wall is still reached from the room.
+ * Where someone stands to use a fixture: its front tile if that is free shop floor, otherwise its back
+ * or a side (a shelf pushed against the wall is used from the room side). Always on the shop floor,
+ * never outside the walls, and only a tile someone coming in at the door can walk to (by `grid`, the
+ * shop's walking grid); the nearest to `from` wins, the front by half a tile. Null when no side will do.
  */
-export function fixtureAccessWorld(shop: Shop, f: Fixture, from: Vec2): Vec2 {
-  const cx = f.x + 0.5, cz = f.z + 0.5, fl = shop.floor, d = shop.delivery;
+export function fixtureStandWorld(shop: Shop, f: Fixture, from?: Vec2, grid: Grid = shopGrid(shop)): Vec2 | null {
+  const cx = f.x + 0.5, cz = f.z + 0.5, fl = shop.floor;
   const front = fixtureFront(f);
   const tiles = [front, { x: 2 * cx - front.x, z: 2 * cz - front.z }, { x: cx + (front.z - cz), z: cz + (front.x - cx) }, { x: cx - (front.z - cz), z: cz - (front.x - cx) }];
-  const free = (t: Vec2) => t.x > fl.x0 && t.x < fl.x1 && t.z > fl.z0 && t.z < fl.z1
-    && !(d && t.x > d.x0 && t.x < d.x1 && t.z > d.z0 && t.z < d.z1)
-    && !shop.fixtures.some((o) => o.id !== f.id && t.x > o.x && t.x < o.x + 1 && t.z > o.z && t.z < o.z + 1);
+  // Reachable cells are already off the walls, the pallet and every fixture; the floor keeps it indoors.
+  const reach = reachableCells(shop, grid);
   let best: Vec2 | null = null, bestD = Infinity;
   tiles.forEach((t, i) => {
-    if (!free(t)) return;
+    if (!(t.x > fl.x0 && t.x < fl.x1 && t.z > fl.z0 && t.z < fl.z1)) return;
     const w = toWorld(shop, t.x, t.z);
-    const dd = Math.hypot(w.x - from.x, w.z - from.z) + (i === 0 ? -0.5 : 0);
+    const [gx, gz] = cellOf(grid, w);
+    if (!inBounds(grid, gx, gz) || !reach[cellIndex(grid, gx, gz)]) return;
+    const dd = (from ? Math.hypot(w.x - from.x, w.z - from.z) : i) + (i === 0 ? -0.5 : 0);
     if (dd < bestD) { bestD = dd; best = w; }
   });
-  return best ?? fixtureFrontWorld(shop, f);
+  return best;
+}
+
+const reachCache = new WeakMap<Grid, Uint8Array>();
+const shopGrids = new WeakMap<Shop, { sig: string; grid: Grid }>();
+
+/** The walking grid for a shop layout, built once per layout (for callers that do not have it to hand). */
+function shopGrid(shop: Shop): Grid {
+  const sig = `${shop.layoutVersion}|${shop.fixtures.length}`;
+  const hit = shopGrids.get(shop);
+  if (hit && hit.sig === sig) return hit.grid;
+  const grid = buildGrid(shop, shop.layoutVersion);
+  shopGrids.set(shop, { sig, grid });
+  return grid;
+}
+
+/**
+ * Cells someone coming in at the front door can walk to, by the grid's own steps (walls, the pallet
+ * and fixtures block). A tile can be free floor and still sealed off (behind a fridge against the back
+ * wall, say): nobody is sent to stand there.
+ */
+function reachableCells(shop: Shop, g: Grid): Uint8Array {
+  const hit = reachCache.get(g);
+  if (hit) return hit;
+  const r = new Uint8Array(g.w * g.h);
+  const [sx, sz] = cellOf(g, toWorld(shop, shop.door.x, shop.floor.z1 - 0.25));
+  if (!isBlocked(g, sx, sz)) {
+    r[cellIndex(g, sx, sz)] = 1;
+    const todo = [sx, sz];
+    while (todo.length) {
+      const z = todo.pop()!, x = todo.pop()!;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = x + dx, nz = z + dz;
+        if (!inBounds(g, nx, nz) || r[cellIndex(g, nx, nz)] || !canStep(g, x, z, nx, nz)) continue;
+        r[cellIndex(g, nx, nz)] = 1;
+        todo.push(nx, nz);
+      }
+    }
+  }
+  reachCache.set(g, r);
+  return r;
+}
+
+/** As `fixtureStandWorld`, falling back to the front when nothing is free (placement keeps that from happening). */
+export function fixtureAccessWorld(shop: Shop, f: Fixture, from: Vec2, grid?: Grid): Vec2 {
+  return fixtureStandWorld(shop, f, from, grid) ?? fixtureFrontWorld(shop, f);
+}
+
+/** Is a fixture's front tile on the shop floor (not through a wall)? */
+export function frontInside(shop: Shop, f: Fixture): boolean {
+  const t = fixtureFront(f), fl = shop.floor;
+  return t.x > fl.x0 && t.x < fl.x1 && t.z > fl.z0 && t.z < fl.z1;
 }
 
 /** Direction the fixture faces, unit vector. */

@@ -1,7 +1,7 @@
 import type { GameState, Person, Fixture, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
+import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, dist, react, complain } from './state';
@@ -416,7 +416,8 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if (!f) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; complain(state, 'outOfStock', item.productId); p.listIdx!++; react(state, p.id, 'outOfStock'); break; }
       p.targetFixture = f.id;
       p.state = 'browsing'; p.anim = 'walk'; p.timer = -1;
-      setPath(state, p, fixtureFrontWorld(state.shop, f), dyn);
+      // From the room side: a shelf pushed against a wall is never browsed through it.
+      setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn);
       break;
     }
     case 'browsing': {
@@ -761,7 +762,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
       if (p.task && p.carrying) {
         // Already holding stock: take it straight to the shelf.
         const f = state.shop.fixtures.find((x) => x.id === p.task!.fixtureId);
-        if (f) { p.state = 'carrying'; p.anim = 'carry'; setPath(state, p, fixtureFrontWorld(state.shop, f), dyn); }
+        if (f) { p.state = 'carrying'; p.anim = 'carry'; setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn); }
         else p.task = null;
       } else if (p.task) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
       else if (dist(p, home) > 0.35) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }
@@ -802,7 +803,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         if (entry.qty <= 0) state.shop.storage.splice(state.shop.storage.indexOf(entry), 1);
         p.carrying = { productId: task.productId, qty };
         p.state = 'carrying'; p.anim = 'carry';
-        setPath(state, p, fixtureFrontWorld(state.shop, f), dyn);
+        setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn);
       }
       break;
     }
