@@ -102,7 +102,7 @@ function shopGrid(shop: Shop): Grid {
  * and fixtures block). A tile can be free floor and still sealed off (behind a fridge against the back
  * wall, say): nobody is sent to stand there.
  */
-function reachableCells(shop: Shop, g: Grid): Uint8Array {
+export function reachableCells(shop: Shop, g: Grid): Uint8Array {
   const hit = reachCache.get(g);
   if (hit) return hit;
   const r = new Uint8Array(g.w * g.h);
@@ -221,6 +221,8 @@ function addPortals(shop: Shop, g: Grid): void {
     const [ax, az] = cellOf(g, a), [bx, bz] = cellOf(g, b);
     if (isBlocked(g, ax, az) || isBlocked(g, bx, bz)) continue;
     const ia = cellIndex(g, ax, az), ib = cellIndex(g, bx, bz);
+    // Floor to floor only: a foot out through a wall (its tile sold, say) is no way up.
+    if (!g.inside[ia] || !g.inside[ib]) continue;
     const fw = fixtureFacingWorld(shop, f.rot);
     const into = Math.atan2(-fw.x, -fw.z), out = Math.atan2(fw.x, fw.z);
     add(ia, { to: ib, cost: r.cost, ride: r.secs, via: f.id, yaw: into, from: a, at: b });

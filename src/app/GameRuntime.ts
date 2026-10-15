@@ -895,7 +895,8 @@ export class GameRuntime {
     // Windows and lights turn to face into the room from whichever wall they are pointed at.
     if (FIXTURES[type].onWall) { const rot = facingOffWall(s, type, this.build.hover.x, this.build.hover.z, this.build.rot); if (rot !== null) this.build.rot = rot; }
     const check = canPlace(s, type, this.build.hover.x, this.build.hover.z, this.build.rot, this.build.selectedId ?? undefined);
-    this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = this.build.selectedId !== null ? 0 : check.price;
+    // A move is free, but for a ceiling over a floor it opens.
+    this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = this.build.selectedId !== null ? check.ceiling ?? 0 : check.price;
     r.setGhost(type, s, this.build.hover.x, this.build.hover.z, this.build.rot, check.ok);
     this.maybeEmit();
   }

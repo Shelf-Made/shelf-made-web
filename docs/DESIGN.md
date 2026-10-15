@@ -191,8 +191,11 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   the sign, corners).
 - **Building up** (Upstairs tab): every tile comes with a ceiling panel, which is also the floor of
   the storey above. Stairs, an escalator (faster up: shoppers take it gladly) or a lift on a floor
-  open the one above it, which comes with its own ceiling; five floors at most. Anything that goes on
-  the ground floor goes on any open floor. Taking a panel down (60% back) leaves a double-height
+  open the one above it, which gets its own ceiling (at the panel price, unless panels went up there
+  before); five floors at most. Each is stepped onto from the floor in front of it, inside. Anything
+  that goes on the ground floor goes on any open floor. Nothing built, moved or sold may cut off a
+  floor above, anything on it or anyone up there (or on the way) from the front door, nor stop a way
+  up that works from working. Taking a panel down (60% back) leaves a double-height
   space: the building stands a storey taller there, a hanging light hangs from the high ceiling, and
   a Tall wall (Walls tab) fits it. In the sim each floor up is walked in a region of its own,
   LEVEL_DZ further back (shop-relative), joined to the floor below by the rides on the walking

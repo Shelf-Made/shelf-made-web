@@ -151,7 +151,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               </div>
             );
           })()}
-          <p className="muted">Stairs, an escalator or a lift open the floor above: shoppers go up for what is on the shelves there. Pick a floor above to build on it.</p>
+          <p className="muted">Stairs, an escalator or a lift open the floor above: shoppers go up for what is on the shelves there. A floor they open gets a ceiling ({money(PANEL_PRICE)} a tile) unless it has panels. Pick a floor above to build on it.</p>
         </>
       )}
       {tab === 'walls' && (

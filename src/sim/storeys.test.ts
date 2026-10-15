@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, groundZ } from './layout';
+import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR } from './layout';
 import { fixtureFacingWorld } from './grid';
 import { canPlace, canSellTile, floorCost } from './build';
 import { spawnCustomer, setPath } from './people';
@@ -293,14 +293,16 @@ describe('building up: nothing cut off, nothing for free', () => {
       for (let m = 1; m <= floorTileCount(s.shop); m++) w += Math.round(RESALE * tilePriceAt(m - 1));
       return w;
     };
-    for (const seed of [81, 82]) {
+    // Floors opened along the way, and the most open at once, over every run: it has to be tried, not just pass.
+    let done = 0, top = 0, opened = 0;
+    for (const seed of [81, 82, 83, 84]) {
       const s = shop(seed); aside(s);
       const r = new Rng(seed);
       const ups = () => s.shop.fixtures.filter((f) => VERTICAL.has(f.type));
       // Somewhere on an open floor a piece will go (or the last place tried), a panel there is, a tile of the plot.
       const spot = (type: FixtureType, id?: number) => {
         let at = { x: 0, z: 0, rot: 0 as 0 | 1 | 2 | 3 };
-        for (let k = 0; k < 12; k++) {
+        for (let k = 0; k < 30; k++) {
           const t = r.pick(levelTileList(s.shop, r.int(0, storeysOf(s.shop).top)));
           at = { ...t, rot: r.int(0, 3) as 0 | 1 | 2 | 3 };
           if (canPlace(s, type, at.x, at.z, at.rot, id).ok) break;
@@ -309,7 +311,7 @@ describe('building up: nothing cut off, nothing for free', () => {
       };
       const panels = (L: number) => ensureCeilings(s.shop)[L]!.map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z: zOnLevel(z, L) }; });
       const plot = () => ({ x: MAX_FLOOR.x0 + r.int(0, 8), z: MAX_FLOOR.z0 + r.int(0, 7) });
-      let was = worth(s), done = 0, top = 0, opened = 0;
+      let was = worth(s);
       for (let i = 0; i < 160; i++) {
         const a = r.int(0, 9), f = ups().length ? r.pick(ups()) : null, type = r.pick(['stairs', 'stairs', 'escalator', 'elevator'] as const);
         const before = storeysOf(s.shop).top;
@@ -330,10 +332,10 @@ describe('building up: nothing cut off, nothing for free', () => {
         expect(now, `seed ${seed}, step ${i}, action ${a}`).toBeLessThanOrEqual(was);
         was = now;
       }
-      expect(done).toBeGreaterThan(50);
-      expect(top).toBeGreaterThanOrEqual(2);
-      expect(opened).toBeGreaterThanOrEqual(3);
     }
+    expect(done).toBeGreaterThan(120);
+    expect(top).toBeGreaterThanOrEqual(3);
+    expect(opened).toBeGreaterThanOrEqual(8);
   });
 
   it('counts the finish upstairs toward how the shop looks, and prices it in a whole-shop floor', () => {
