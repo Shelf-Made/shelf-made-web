@@ -18,7 +18,7 @@ import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './l
 import { noteVisit } from './reviews';
 import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './shoplifting';
 import { freeStand, standPoint, freeStands } from './lot';
-import { rideAt, startRide } from './storeys';
+import { rideAt, rideStep, startRide } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
 import { RACK_STANDS } from './layout';
 
@@ -1250,7 +1250,7 @@ export function tickPeople(state: GameState): void {
   for (const p of state.people) {
     p.px = p.x; p.pz = p.z;
     if (p.kind === 'customer' && (p.state === 'shopping' || p.state === 'browsing')) p.walked = (p.walked ?? 0) + Math.hypot(p.x - p.px, p.z - p.pz);
-    switch (p.kind) {
+    if (!rideStep(p)) switch (p.kind) {
       case 'customer': tickCustomer(state, p, dyn); break;
       case 'walker': tickWalker(state, p); break;
       case 'owner': tickWorker(state, p, dyn); break;

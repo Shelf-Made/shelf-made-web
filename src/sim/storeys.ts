@@ -4,9 +4,10 @@
  * are open, their shapes, how upstairs is walked) live with the rest of the floor in layout.ts.
  */
 import type { GameState, FixtureType, Person, Rot, Vec2, Waypoint, Shop } from './types';
-import { FIXTURES, MAX_LEVELS, MAX_FLOOR, VERTICAL, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect } from './layout';
+import { FIXTURES, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect } from './layout';
 import { buildGrid, fixtureStandWorld, fixtureFrontWorld } from './grid';
 import { findPath } from './pathfinding';
+import { followPath } from './movement';
 import { doorInside } from './people';
 import { gridFor } from './state';
 import { dollars } from './money';
@@ -201,6 +202,18 @@ export function rideOn(state: GameState, p: Vec2, fixtureId: number, within = 1.
     if (d < bd) { bd = d; best = { x: pt.at.x, z: pt.at.z, ride: pt.ride, via: pt.via, yaw: pt.yaw }; }
   }
   return best;
+}
+
+/**
+ * Partway up (or down) a ride: it carries on to the other end whatever happens meanwhile (the keys let go, a
+ * card opened, a change of plan), and nothing else is done till then. False when not on one.
+ */
+export function rideStep(p: Person): boolean {
+  if (p.climb === undefined) return false;
+  // The path went from under them before they were carried anywhere: still at the foot.
+  if (p.path[p.pathIdx]?.ride === undefined) { p.climb = undefined; return false; }
+  followPath(p, p.speed, TICK);
+  return true;
 }
 
 /** Start the manager riding (they step onto its foot first). */
