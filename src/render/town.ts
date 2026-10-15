@@ -30,7 +30,7 @@ export interface AnimalHome { kind: AnimalKind; x: number; z: number; range: num
 export interface TownPlan {
   /** Merged into the static mesh. */
   placements: Placement[];
-  /** Grass, flowers and pebbles: instanced, swaying in the wind. */
+  /** Grass, flowers and pebbles, merged into one still mesh. */
   scatter: Scatter[];
   animals: AnimalHome[];
   /** Flat painted areas: colour + rect + height. */

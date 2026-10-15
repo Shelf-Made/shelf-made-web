@@ -78,6 +78,8 @@ export class RivalsView {
   }
 
   setNight(on: boolean): void { this.night = on; }
+  /** What stands on each corner (lot, half-built or open, and whose): the lawn's grass follows it. */
+  layoutKey(): string { return this.sites.map((s) => `${s.key}${+s.lot.visible}${+s.build.visible}${+s.open.visible}`).join('|'); }
 
   /** What stands on a corner now: a rival, a challenger in its own colours, or the player's branch in theirs. */
   private want(state: GameState, r: GameState['rivals'][number]): { name: string; scheme: Scheme; key: string } {

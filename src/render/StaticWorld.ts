@@ -8,24 +8,10 @@ import { box, paint } from './geometry';
 import { terrainGeometry, structuresGeometry, grassTexture } from './terrain';
 import { LAMP_GLOW, SPILL, spillGeometry } from './glow';
 
-/** Wind: grass, flowers and leaves sway with height above their base. One clock for all of them. */
-export const wind = { value: 0 };
-export function swaying(base: MeshStandardMaterial, amp: number, double = false): MeshStandardMaterial {
+/** Grass tufts and flowers: the shared material, seen from both sides, standing still (no wind). */
+export function stillGrass(base: MeshStandardMaterial): MeshStandardMaterial {
   const m = base.clone();
-  if (double) m.side = DoubleSide;
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uWind = wind;
-    sh.vertexShader = 'uniform float uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      #ifdef USE_INSTANCING
-        vec4 wp = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-      #else
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-      #endif
-      float hh = max(position.y, 0.0);
-      transformed.x += sin(uWind * 1.7 + wp.x * 0.7 + wp.z * 0.45) * hh * ${amp.toFixed(3)};
-      transformed.z += cos(uWind * 1.3 + wp.x * 0.35 + wp.z * 0.6) * hh * ${(amp * 0.7).toFixed(3)};`);
-  };
-  m.customProgramCacheKey = () => `sway${amp}${double}`;
+  m.side = DoubleSide;
   return m;
 }
 
@@ -59,7 +45,7 @@ export function scatterGeometry(pal: PaletteMap, kind: ScatterKind): BufferGeome
   return g;
 }
 
-/** Grass tufts and wild flowers on a corner's lawn, merged into one swaying mesh (null when there are none). */
+/** Grass tufts and wild flowers on a corner's lawn, merged into one mesh (null when there are none). */
 let tuftMat: MeshStandardMaterial | null = null;
 export function tuftMesh(assets: AssetLibrary, tufts: { kind: ScatterKind; x: number; z: number; yaw: number; scale: number }[]): Mesh | null {
   if (!tufts.length) return null;
@@ -76,7 +62,7 @@ export function tuftMesh(assets: AssetLibrary, tufts: { kind: ScatterKind; x: nu
   for (const g of parts) g.dispose();
   for (const g of geos.values()) g.dispose();
   if (!merged) return null;
-  tuftMat ??= swaying(assets.material, 0.22, true);
+  tuftMat ??= stillGrass(assets.material);
   const m = new Mesh(merged, tuftMat); m.name = 'lawn-grass'; m.receiveShadow = true;
   return m;
 }
@@ -96,9 +82,6 @@ export class StaticWorld {
   private grassMat: Material | null = null;
   constructor(private readonly assets: AssetLibrary) {}
 
-  /** Advance the wind. */
-  update(time: number): void { wind.value = time; }
-
   static modelsNeeded(plan: TownPlan): string[] {
     return [...new Set(plan.placements.map((p) => p.model).concat(TOWN_MODEL_IDS, CAR_MODEL_IDS))];
   }
@@ -115,7 +98,7 @@ export class StaticWorld {
       const st = structuresGeometry(pal);
       const lit = new Mesh(st.lit, this.assets.material); lit.castShadow = true; lit.receiveShadow = true; lit.name = 'structures';
       this.group.add(lit, new Mesh(st.dark, this.assets.unlit), new Mesh(st.glow, this.assets.unlit));
-      this.grassMat = swaying(this.assets.material, 0.22, true);
+      this.grassMat = stillGrass(this.assets.material);
     }
     const add = (m: Mesh, cast = true) => { m.castShadow = cast; m.receiveShadow = true; this.group.add(m); this.meshes.push(m); };
 
@@ -158,7 +141,7 @@ export class StaticWorld {
       if (g) { const mesh = new Mesh(g, this.assets.glass); this.group.add(mesh); this.meshes.push(mesh); }
     }
 
-    // The verges: grass tufts, flowers and pebbles by the thousand, merged into one swaying mesh (one draw).
+    // The verges: grass tufts, flowers and pebbles by the thousand, merged into one mesh (one draw).
     if (plan.scatter.length) {
       const geos = new Map<ScatterKind, BufferGeometry>();
       const d = new Object3D();

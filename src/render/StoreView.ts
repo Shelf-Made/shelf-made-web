@@ -46,6 +46,8 @@ export class StoreView {
   private layoutVersion = -1;
   private stockKey = '';
   private shellKey = '';
+  /** Changes whenever the shell is rebuilt (a new size, plot or layout of the lot): the lawn's grass follows it. */
+  get layoutKey(): string { return this.shellKey; }
   private readonly dummy = new Object3D();
   private readonly tmpM = new Matrix4();
   private readonly color = new Color();
@@ -362,7 +364,7 @@ export class StoreView {
     for (const pr of props) parts.push(this.placed(pr.model, pr.x, pr.z, pr.yaw, pr.scale ?? 1));
     const garden = cornerGarden(shop, props, 1);
     for (const it of garden.items) parts.push(this.placed(it.model, it.x, it.z, it.yaw, it.scale));
-    // Grass tufts and wild flowers all over the lawn: one swaying mesh.
+    // Grass tufts and wild flowers all over the lawn: one mesh.
     const tuft = tuftMesh(this.assets, garden.tufts);
     if (tuft) this.shell.add(tuft);
   }

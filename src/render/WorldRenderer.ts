@@ -14,6 +14,7 @@ import { RivalsView, RIVAL_MODELS } from './RivalsView';
 import { StreetView } from './StreetView';
 import { AmbientView } from './Ambient';
 import { Overlays, type OverlayKind } from './Overlays';
+import { GrassField, GRASS_RING } from './grass';
 import { buildTown, type TownPlan } from './town';
 import { renderProductThumbs, renderCharacterThumbs } from './thumbnails';
 import { PRODUCTS } from '@/sim/products';
@@ -49,6 +50,8 @@ export class WorldRenderer {
   private rivals: RivalsView;
   private street: StreetView;
   private ambient: AmbientView;
+  /** Short blades all over the lawn round the camera's focus. */
+  private readonly grass = new GrassField();
   private clock = 0;
   readonly overlays = new Overlays();
   private plan: TownPlan | null = null;
@@ -84,7 +87,7 @@ export class WorldRenderer {
     this.rivals = new RivalsView(this.assets, (t, sz, d, face, side, bevel) => this.store.letters(t, sz, d, face, side, bevel));
     this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
-    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group);
+    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group, this.grass.mesh);
     // Post passes render several times a frame: count the whole frame, not just the last pass.
     this.renderer.info.autoReset = false;
     this.post = new PostFX(this.renderer, this.scene, this.follow.camera);
@@ -178,7 +181,13 @@ export class WorldRenderer {
     this.overlays.sample(state);
     this.overlays.update(state);
     this.clock += Math.min(dt, 0.1);
-    this.statics.update(this.clock);
+    // The lawn: grass grows wherever nothing is built, in a ring round the focus (wider as the camera pulls back).
+    const dist = fp ? this.follow.distance : this.camera.goalDistance;
+    this.grass.mesh.visible = this.quality !== 'low';
+    if (this.grass.mesh.visible) {
+      this.grass.refreshMask(this.renderer, this.scene, [this.statics.group, this.store.group, this.rivals.group, this.street.group], WorldRenderer.notGround, `${this.townKey}|${this.store.layoutKey}|${this.rivals.layoutKey()}`);
+      this.grass.update(focus.x, focus.z, Math.min(GRASS_RING / 2, 9 + dist * 0.8));
+    }
     this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky);
     this.renderer.info.reset();
     // Tilt-shift fades in only as the camera pulls right out over the town.
@@ -186,6 +195,13 @@ export class WorldRenderer {
     this.post.render(this.scene, this.activeCamera, Math.max(0, Math.min(1, (far - 34) / 26)));
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
+  }
+
+  /** What the grass mask leaves out: the land itself, other grass, light pools and glows, anything see-through. */
+  private static notGround(o: Object3D): boolean {
+    if (['terrain', 'verges', 'lawn-grass', 'lampPools', 'lampGlow'].includes(o.name)) return true;
+    const m = (o as Mesh).material;
+    return !!m && !Array.isArray(m) && (m as { transparent?: boolean }).transparent === true;
   }
 
   /** Pick the shop's fixtures, boxes or floor under canvas pixel coordinates. */
