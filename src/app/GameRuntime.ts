@@ -891,6 +891,8 @@ export class GameRuntime {
   move(x: number, z: number): void {
     const s = this.state; if (!s || !this.inPlay) return;
     if (x || z) this.pendingUse = null;
+    // Walking yourself while the camera follows someone: it comes back to you.
+    if ((x || z) && this.followingPerson) this.stopFollow();
     applyCommand(s, { type: 'moveDir', x, z });
   }
 
@@ -927,8 +929,8 @@ export class GameRuntime {
     // People first: a click on someone opens their panel (and walks nobody anywhere).
     const who = r.personAt(px, py, s);
     if (who !== null) { this.selectPerson(who); return; }
-    // Anywhere else lets go of them, unless the camera is following them.
-    if (this.selectedPerson !== null && !this.followingPerson) this.selectPerson(null);
+    // Anywhere else lets go of them (following them too: the camera comes back to the manager).
+    if (this.selectedPerson !== null) this.selectPerson(null);
     const t = this.thingAt(px, py);
     // A click anywhere closes a furniture menu (and does what it does there).
     const hadMenu = this.fixtureMenu;

@@ -45,8 +45,8 @@ export class ReactionsView {
   }
 }
 
-/** A white speech bubble with a small tail and one bold symbol. Drawn once per kind. */
-function icon(kind: ReactionKind): CanvasTexture {
+/** A white speech bubble with a small tail and one bold symbol. Drawn once per kind (and a spill's marker). */
+export function icon(kind: ReactionKind | 'spill'): CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
@@ -81,6 +81,11 @@ function icon(kind: ReactionKind): CanvasTexture {
       g.fillStyle = '#E8573F'; g.beginPath(); g.arc(cx, cy, 32, 0, Math.PI * 2); g.fill();
       g.fillStyle = '#FFFFFF'; g.beginPath(); g.roundRect(cx - 6, cy - 22, 12, 30, 5); g.fill();
       g.beginPath(); g.arc(cx, cy + 18, 6.5, 0, Math.PI * 2); g.fill(); break;
+    }
+    case 'spill': { // A blue drop over a puddle: something to mop up.
+      g.fillStyle = '#7FC4F0'; g.beginPath(); g.ellipse(cx, cy + 24, 30, 8, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#3F8DBF'; g.beginPath(); g.moveTo(cx, cy - 30); g.bezierCurveTo(cx + 6, cy - 16, cx + 22, cy - 2, cx + 22, cy + 8); g.arc(cx, cy + 8, 22, 0, Math.PI); g.bezierCurveTo(cx - 22, cy - 2, cx - 6, cy - 16, cx, cy - 30); g.fill();
+      g.fillStyle = '#FFFFFF'; g.beginPath(); g.ellipse(cx - 8, cy + 4, 4, 7, -0.4, 0, Math.PI * 2); g.fill(); break;
     }
     case 'love': { // A red heart.
       g.fillStyle = '#E8573F'; g.beginPath(); g.moveTo(cx, 84);

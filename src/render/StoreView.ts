@@ -1,4 +1,5 @@
-import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, CircleGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Box3, PointLight, type BufferGeometry, type Raycaster } from 'three';
+import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, CircleGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Box3, PointLight, Sprite, SpriteMaterial, type BufferGeometry, type Raycaster } from 'three';
+import { icon } from './Reactions';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BufferGeometry as BoxGeometryEmpty, Float32BufferAttribute } from 'three';
 import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -47,6 +48,8 @@ export class StoreView {
   private productMeshes = new Map<string, { mesh: InstancedMesh; w: number; h: number; d: number; minY: number }>();
   private boxes!: InstancedMesh;
   private spills!: InstancedMesh;
+  /** A bubble with a drop in it, bobbing over each spill so it is easy to find. */
+  private spillMarks: Sprite[] = [];
   private wells!: InstancedMesh;
   private stickers!: InstancedMesh;
   private layoutVersion = -1;
@@ -469,6 +472,18 @@ export class StoreView {
     const n = Math.min(8, shop.litter.length);
     for (let i = 0; i < n; i++) { const l = shop.litter[i]!; const lp = toLocal(shop, l.x, l.z); this.dummy.position.set(lp.x, 0.032, lp.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1 + (l.id % 3) * 0.2, 1, 1); this.dummy.updateMatrix(); this.spills.setMatrixAt(i, this.dummy.matrix); }
     this.spills.count = n; this.spills.instanceMatrix.needsUpdate = true;
+    if (n && !this.spillMarks.length && typeof document !== 'undefined') {
+      const mat = new SpriteMaterial({ map: icon('spill'), depthTest: false, transparent: true });
+      for (let i = 0; i < 8; i++) { const sp = new Sprite(mat); sp.renderOrder = 5; sp.scale.set(0.3, 0.3, 1); sp.visible = false; this.spillMarks.push(sp); this.root.add(sp); }
+    }
+    const bob = performance.now() / 1000;
+    this.spillMarks.forEach((sp, i) => {
+      const l = shop.litter[i];
+      sp.visible = i < n && !!l;
+      if (!l) return;
+      const lp = toLocal(shop, l.x, l.z);
+      sp.position.set(lp.x, 0.5 + 0.05 * Math.sin(bob * 3 + i), lp.z);
+    });
   }
 
   private fixtureMatrix(shop: Shop, f: Fixture, out: Matrix4, yOffset = 0, modelOffset = false): Matrix4 {
