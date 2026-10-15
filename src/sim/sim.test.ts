@@ -176,6 +176,33 @@ describe('simulation', () => {
     expect(p.x).toBeGreaterThan(s.shop.floor.x0);
     expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeCloseTo(1, 5);
   });
+  it('a box goes on a shelf with room even when its own slot is full', () => {
+    const s = newGame({ seed: 11, plotId: 'main', name: 'Room' });
+    s.cash = 5000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: -0.5, z: -3, rot: 0 }).ok).toBe(true);
+    const f = s.shop.fixtures.find((x) => x.type === 'shelf')!;
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    const c = toWorld(s.shop, f.x + 0.5, f.z + 1.2);
+    o.x = o.px = c.x; o.z = o.pz = c.z;
+    const stock = (productId: string, qty: number) => { o.carrying = { productId, qty }; return applyCommand(s, { type: 'stockFixture', fixtureId: f.id }); };
+    // Soup's slot is full and the other three are empty: the box takes an empty one.
+    f.slots = [{ productId: 'soup', qty: 8 }, { productId: null, qty: 0 }, { productId: null, qty: 0 }, { productId: null, qty: 0 }];
+    expect(stock('soup', 8).ok).toBe(true);
+    expect(o.carrying).toBeNull();
+    expect(f.slots.filter((sl) => sl.productId === 'soup').map((sl) => sl.qty)).toEqual([8, 8]);
+    // A box bigger than the room in its slot tops it up and spills into a free one.
+    f.slots = [{ productId: 'beans', qty: 6 }, { productId: null, qty: 0 }, { productId: 'bread', qty: 3 }, { productId: 'pasta', qty: 3 }];
+    expect(stock('beans', 8).ok).toBe(true);
+    expect(f.slots.filter((sl) => sl.productId === 'beans').map((sl) => sl.qty)).toEqual([8, 6]);
+    // Room on the shelf, but all of it in other products' slots: it says so, and you keep the box.
+    f.slots = [{ productId: 'bread', qty: 2 }, { productId: 'pasta', qty: 2 }, { productId: 'beans', qty: 2 }, { productId: 'chips', qty: 2 }];
+    expect(stock('soup', 8).message).toMatch(/no room for .*every spot holds something else/i);
+    expect(o.carrying).toEqual({ productId: 'soup', qty: 8 });
+    // Really full.
+    f.slots = ['bread', 'pasta', 'beans', 'chips'].map((productId) => ({ productId, qty: 8 }));
+    expect(stock('bread', 8).message).toBe('That one is full.');
+  });
+
   it('never sends anyone to stand in a pocket sealed off behind a fixture', () => {
     const s = newGame({ seed: 10, plotId: 'bus', name: 'Pocket' });
     const fl = s.shop.floor, x = fl.x1 - 1, z = fl.z0;

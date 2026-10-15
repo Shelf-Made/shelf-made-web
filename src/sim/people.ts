@@ -1,4 +1,4 @@
-import type { GameState, Person, Fixture, CustomerType, Vec2 } from './types';
+import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal } from './layout';
 import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
@@ -676,7 +676,11 @@ export function ownerStock(state: GameState, fixtureId: number): string | null {
   if (!def.chilled && fdef.chilled) return `${def.name} does not go in the chiller.`;
   if (fdef.accepts && !fdef.accepts.includes(def.category)) return `${def.name} does not fit there.`;
   const left = placeOnFixture(state, f, o.carrying.productId, o.carrying.qty);
-  if (left === o.carrying.qty) return 'That one is full.';
+  if (left === o.carrying.qty) {
+    // Nothing went on: either every slot is full, or the room left is all in slots of other products.
+    const full = f.slots.every((sl) => sl.productId && sl.qty >= fdef.capacity);
+    return full ? 'That one is full.' : `No room for ${def.name} there: every spot holds something else.`;
+  }
   o.carrying = left > 0 ? { productId: o.carrying.productId, qty: left } : null;
   o.anim = o.carrying ? 'carry' : 'idle';
   cue(state, 'stock');
@@ -837,15 +841,39 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
 }
 
 /** Put units on a fixture, filling the matching slot or an empty one. Returns units that did not fit. */
+/**
+ * The slots a product can go into, in the order they are filled: the ones already holding it that
+ * have room, then empty ones, then ones sold out of something else.
+ */
+function slotsFor(f: Fixture, productId: string): Slot[] {
+  const cap = FIXTURES[f.type].capacity;
+  return [
+    ...f.slots.filter((sl) => sl.productId === productId && sl.qty < cap),
+    ...f.slots.filter((sl) => !sl.productId),
+    ...f.slots.filter((sl) => sl.productId && sl.productId !== productId && sl.qty === 0),
+  ];
+}
+
+/** How many of a product would fit on this fixture right now. */
+export function roomOnFixture(f: Fixture, productId: string): number {
+  const cap = FIXTURES[f.type].capacity;
+  return slotsFor(f, productId).reduce((a, sl) => a + cap - (sl.productId === productId ? sl.qty : 0), 0);
+}
+
+/**
+ * Put stock on a fixture, topping up its slots of that product and then taking free ones, until the
+ * box is empty or nothing more fits. A full slot of the product no longer turns the box away while
+ * the shelf beside it is empty. Returns how many are left over.
+ */
 export function placeOnFixture(state: GameState, f: Fixture, productId: string, qty: number): number {
-  const def = FIXTURES[f.type];
+  const cap = FIXTURES[f.type].capacity;
   let left = qty;
-  const slot = f.slots.find((s) => s.productId === productId) ?? f.slots.find((s) => s.productId === null || s.qty === 0);
-  if (!slot) return left;
-  slot.productId = productId;
-  const room = def.capacity - slot.qty;
-  const put = Math.min(room, left);
-  slot.qty += put; left -= put;
+  for (const slot of slotsFor(f, productId)) {
+    if (left <= 0) break;
+    if (slot.productId !== productId) { slot.productId = productId; slot.qty = 0; }
+    const put = Math.min(cap - slot.qty, left);
+    slot.qty += put; left -= put;
+  }
   return left;
 }
 

@@ -7,7 +7,7 @@ import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame, rectToWorld, type Rect }
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
-import { ownerAt, neediestInStorage, storeroomPoint } from '@/sim/people';
+import { ownerAt, neediestInStorage, storeroomPoint, roomOnFixture } from '@/sim/people';
 import { MathUtils } from 'three';
 import { WorldRenderer } from '@/render/WorldRenderer';
 import { FollowCamera } from '@/render/FollowCamera';
@@ -853,7 +853,12 @@ export class GameRuntime {
       return { text: waiting ? 'Scan item' : 'Nobody waiting yet', ok: waiting, key: 'scan', run: waiting ? () => this.scanHere() : null };
     }
     if (def.slots > 0) {
-      if (owner.carrying) return { text: `Stock ${productDef(owner.carrying.productId).name} ×${owner.carrying.qty}`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'stockFixture', fixtureId: f.id }); } };
+      if (owner.carrying) {
+        // Say how many will actually go on (the rest stays in your hands), or that none will.
+        const c = owner.carrying, name = productDef(c.productId).name, fit = Math.min(c.qty, roomOnFixture(f, c.productId));
+        if (fit === 0) return { text: `No room for ${name} here`, ok: false, key: null, run: null };
+        return { text: `Stock ${name} ×${fit}`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'stockFixture', fixtureId: f.id }); } };
+      }
       // Empty-handed: a shelf opens the Stock card, at the products that go on it.
       const stocked = f.slots.filter((sl) => sl.productId && sl.qty > 0);
       return { text: `${def.name}: ${stocked.length ? stocked.map((sl) => `${productDef(sl.productId!).name} ${sl.qty}`).join(' · ') : 'empty'} · order stock`, ok: true, key: 'use', run: () => this.openStockFor(f.type) };
