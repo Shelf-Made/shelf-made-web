@@ -6,6 +6,7 @@ import { cellOf, isBlocked, fixtureAccessWorld } from './grid';
 import { spawnCustomer } from './people';
 import { canPlace } from './build';
 import { toWorld, toLocal } from './layout';
+import { deliveryStatus } from './economy';
 
 function runDay(state: GameState, autoScan = true): void {
   const ticks = Math.ceil((DAY_SECONDS + 130) / TICK);
@@ -53,7 +54,16 @@ describe('simulation', () => {
     const before = s.shop.storage.reduce((a, e) => a + e.qty, 0);
     const res = applyCommand(s, { type: 'placeOrder', supplierId: 'express', lines: [{ productId: 'milk', qty: 10 }, { productId: 'rice', qty: 5 }] });
     expect(res.ok).toBe(true);
-    for (let i = 0; i < (60 / TICK) * 2.5; i++) tick(s);
+    // The Stock card follows it: packing, then the truck on the road, at the back door only once it has pulled up.
+    const o = s.orders[0]!;
+    const seen: string[] = [];
+    for (let i = 0; i < (60 / TICK) * 2.5; i++) {
+      tick(s);
+      const st = deliveryStatus(s, o).text.replace(/^\d+ (min|h)$/, 'packing');
+      if (seen[seen.length - 1] !== st) seen.push(st);
+      if (st === 'At the back door') expect(s.cars.find((c) => c.orderId === o.id)?.state).toBe('unloading');
+    }
+    expect(seen.slice(0, 3)).toEqual(['packing', 'On the road', 'At the back door']);
     const after = s.shop.storage.reduce((a, e) => a + e.qty, 0);
     expect(after - before).toBe(15);
     expect(s.orders[0]!.state).toBe('delivered');

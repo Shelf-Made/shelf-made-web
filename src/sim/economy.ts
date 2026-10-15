@@ -60,6 +60,21 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   return order;
 }
 
+/**
+ * Where a wholesale order is, for the Stock card: still being packed (how long until the truck sets
+ * off), the truck on the road (it has left the depot and is driving round), or at the back door
+ * (the truck has pulled up and is unloading onto the pallet).
+ */
+export function deliveryStatus(state: GameState, order: Order): { text: string; here: boolean } {
+  if (order.state === 'delivered') return { text: 'Delivered', here: true };
+  if (order.state === 'pending') {
+    const m = Math.max(0, order.eta);
+    return { text: m <= 60 ? `${Math.max(5, Math.ceil(m / 5) * 5)} min` : `${Math.ceil(m / 60)} h`, here: false };
+  }
+  const truck = state.cars.find((c) => c.orderId === order.id);
+  return truck?.state === 'unloading' ? { text: 'At the back door', here: true } : { text: 'On the road', here: false };
+}
+
 export function tickOrders(state: GameState, dt: number): void {
   for (const o of state.orders) {
     if (o.state !== 'pending') continue;

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/products';
-import { SUPPLIERS, unitCost } from '@/sim/economy';
+import { SUPPLIERS, unitCost, deliveryStatus } from '@/sim/economy';
 import { FIXTURES } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
 
@@ -36,7 +36,7 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <p className="muted">Boxes wait on the pallet by the back door. Walk over (or click it) and press F to pick one up, then walk to a shelf and press F to stock it.</p>
       {pending.length > 0 && (
         <div className="list">
-          {pending.map((o) => <div className="item" key={o.id}><div><div className="name">Truck from {SUPPLIERS.find((x) => x.id === o.supplierId)?.name}</div><div className="sub">{o.lines.reduce((a, l) => a + l.qty, 0)} units · {money(o.total)}</div></div><span className="tag good">{o.state === 'arriving' ? 'At the back door' : `${Math.ceil(o.eta / 60)} h`}</span></div>)}
+          {pending.map((o) => <div className="item" key={o.id}><div><div className="name">Truck from {SUPPLIERS.find((x) => x.id === o.supplierId)?.name}</div><div className="sub">{o.lines.reduce((a, l) => a + l.qty, 0)} units · {money(o.total)}</div></div>{(() => { const st = deliveryStatus(s, o); return <span className={`tag${st.here ? ' good' : ''}`}>{st.text}</span>; })()}</div>)}
         </div>
       )}
       <div className="row between"><h3>Order stock</h3>
