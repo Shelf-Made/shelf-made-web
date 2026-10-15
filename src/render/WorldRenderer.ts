@@ -82,7 +82,7 @@ export class WorldRenderer {
     this.renderer.outputColorSpace = SRGBColorSpace;
     // Highlights roll off instead of clipping; mid-tones (the toy colours) are left as they are.
     this.renderer.toneMapping = NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.16;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));

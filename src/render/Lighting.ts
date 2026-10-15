@@ -48,9 +48,9 @@ export class Lighting {
   private readonly skyDay = new Color('#C4E4FF');
   private readonly skyEve = new Color('#F7B57E');
   private readonly skyNight = new Color('#2D3250');
-  private readonly skyOvercast = new Color('#C3C9CF');
+  private readonly skyOvercast = new Color('#CDD5DD');
   private readonly skyStorm = new Color('#626C78');
-  private readonly groundDay = new Color('#7E9E6A');
+  private readonly groundDay = new Color('#8FB070');
   private readonly groundNight = new Color('#2A3328');
   private readonly flashColour = new Color('#E6EEFF');
   private readonly fog: Fog;
@@ -65,8 +65,8 @@ export class Lighting {
     this.sun.shadow.radius = 2.5;
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 120;
-    this.hemi = new HemisphereLight(this.skyDay, this.groundDay, 1.15);
-    this.ambient = new AmbientLight(0xffffff, 0.16);
+    this.hemi = new HemisphereLight(this.skyDay, this.groundDay, 1.3);
+    this.ambient = new AmbientLight(0xffffff, 0.2);
     scene.add(this.sun, this.sun.target, this.hemi, this.ambient);
     scene.background = this.sky;
     this.fog = new Fog(this.sky, 55, 210);
@@ -113,8 +113,8 @@ export class Lighting {
       // The fill: the sky's own colour from above, sunlit grass bouncing up from below. Under cloud the
       // fill takes over from the sun, so it brightens a little as the sun goes.
       this.hemi.color.copy(this.sky); this.hemi.groundColor.copy(this.groundDay);
-      this.hemi.intensity = (1.15 + 0.45 * dull) * (1 - 0.6 * storm) * (1 - 0.15 * w.rain);
-      this.ambient.color.set('#FFFFFF'); this.ambient.intensity = 0.16 + 0.1 * dull;
+      this.hemi.intensity = (1.3 + 0.45 * dull) * (1 - 0.6 * storm) * (1 - 0.15 * w.rain);
+      this.ambient.color.set('#FFF6E8'); this.ambient.intensity = 0.2 + 0.1 * dull;
       this.sunVisible = 1 - dull;
     }
     // Shadows fade as the cloud thickens: none at all under a full overcast.

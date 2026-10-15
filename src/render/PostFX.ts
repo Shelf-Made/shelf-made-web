@@ -11,7 +11,7 @@ import { VerticalTiltShiftShader } from 'three/examples/jsm/shaders/VerticalTilt
  * The miniature look, kept mild: a soft bloom on things that glow (windows, signs and street lamps at
  * night are pushed brighter than any lit surface gets, so only they cross the threshold), and a
  * tilt-shift blur at the top and bottom of the screen that fades in only at the far overview zoom.
- * Tone mapping (in the output pass) and a soft vignette finish the frame.
+ * Tone mapping (in the output pass) and a cheerful grade (vibrance, warmth, a faint vignette) finish the frame.
  * Off on Low quality; Medium renders the bloom at a quarter of the pixels.
  */
 export class PostFX {
@@ -44,11 +44,25 @@ export class PostFX {
     this.composer.addPass(this.tiltH);
     this.composer.addPass(this.tiltV);
     this.composer.addPass(new OutputPass());
-    // A lens's gentle fall-off to the corners, after tone mapping (so it darkens, never tints).
+    // The grade, after tone mapping: a sunny, cheerful finish. Vibrance (the duller colours get the
+    // most, so the grass and the paint pop and skin and the already bright colours are left alone), a
+    // touch of warmth, the mid-tones opened up a little, and only a whisper of a vignette at the corners.
     this.composer.addPass(new ShaderPass({
       uniforms: { tDiffuse: { value: null } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 d = vUv - 0.5; float v = 1.0 - 0.22 * smoothstep(0.25, 0.75, dot(d, d) * 2.2); gl_FragColor = vec4(c.rgb * v, c.a); }',
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        void main() {
+          vec4 c = texture2D(tDiffuse, vUv);
+          vec3 x = c.rgb;
+          float l = dot(x, vec3(0.299, 0.587, 0.114));
+          float sat = max(x.r, max(x.g, x.b)) - min(x.r, min(x.g, x.b));
+          x = mix(vec3(l), x, 1.0 + 0.32 * (1.0 - sat));
+          x *= vec3(1.025, 1.0, 0.965);
+          x = pow(max(x, 0.0), vec3(0.93));
+          vec2 d = vUv - 0.5;
+          x *= 1.0 - 0.1 * smoothstep(0.3, 0.8, dot(d, d) * 2.2);
+          gl_FragColor = vec4(clamp(x, 0.0, 1.0), c.a);
+        }`,
     }));
   }
 

@@ -90,6 +90,8 @@ export const SKIRTING = '#C48A52', RAIL = '#FFF3DC';
 /** Wall recolour: Kenney's slate walls become white with the brand-green stripe, charcoal trim kept. */
 export const WALL_COLOURS = (from: { row: number; strip: number }) => {
   if (from.row !== 3) return null;
+  // The charcoal (wall tops, frames) a soft slate: from above the shop reads light and clean, not outlined in black.
+  if (from.strip === 0) return { row: 3, strip: 1 };
   if (from.strip === 1 || from.strip === 3) return { row: 3, strip: 4 };
   if (from.strip === 2) return { row: 3, strip: 3 };
   return null;

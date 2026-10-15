@@ -24,11 +24,15 @@ export const DRIZZLE_TEXT = 'Grey, cold and drizzly: soup weather.';
 
 /**
  * The day's sky from its forecast. A forecast of heavy rain is a thunderstorm about half the time;
- * grey days often drizzle; a day with nothing forecast is fair, cloudy, or has a passing shower.
+ * grey days often drizzle; a day with nothing forecast is mostly fair or clear, sometimes cloudy, now and
+ * then with a passing shower (and the first two days are always bright).
  */
 export function skyFor(forecast: string | null, seed: number, day: number): Sky {
   const h = weatherHash(seed, day, 3);
-  if (!forecast) return h < 0.16 ? 'showers' : h < 0.42 ? 'cloudy' : 'fair';
+  // The first two days are always bright: a new shop opens in the sunshine.
+  if (!forecast && day <= 2) return h < 0.5 ? 'clear' : 'fair';
+  // Mostly fine: the odd shower or cloudy day, never a run of gloom with nothing forecast.
+  if (!forecast) return h < 0.1 ? 'showers' : h < 0.26 ? 'cloudy' : h < 0.72 ? 'fair' : 'clear';
   if (SUNNY.test(forecast)) return 'clear';
   if (HEAT.test(forecast)) return 'heat';
   if (RAIN.test(forecast)) return h < 0.5 ? 'storm' : 'rain';
@@ -63,8 +67,8 @@ export function weatherAt(sky: Sky, seed: number, day: number, t: number): Weath
   switch (sky) {
     case 'clear': return { cloud: 0.04 + 0.08 * drift, rain: 0, storm: 0, fog: 0, wind };
     case 'heat': return { cloud: 0.02 + 0.04 * drift, rain: 0, storm: 0, fog: 0.18, wind: wind * 0.5 };
-    case 'fair': return { cloud: 0.2 + 0.18 * drift, rain: 0, storm: 0, fog: 0, wind };
-    case 'cloudy': return { cloud: 0.5 + 0.25 * drift, rain: 0, storm: 0, fog: 0.05, wind: wind + 0.1 };
+    case 'fair': return { cloud: 0.14 + 0.16 * drift, rain: 0, storm: 0, fog: 0, wind };
+    case 'cloudy': return { cloud: 0.45 + 0.2 * drift, rain: 0, storm: 0, fog: 0.04, wind: wind + 0.1 };
     case 'showers': {
       // One or two showers pass over, each an hour or so: the sky darkens, it pours, it brightens again.
       const a = 0.12 + 0.3 * weatherHash(seed, day, 7), b = 0.55 + 0.3 * weatherHash(seed, day, 8);

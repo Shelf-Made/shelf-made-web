@@ -13,7 +13,8 @@ describe('weather', () => {
       expect(skyFor('Heatwave: drinks and ice cream fly.', 5, day)).toBe('heat');
       expect(['rain', 'storm']).toContain(skyFor('Heavy rain: fewer walkers, more drivers.', 5, day));
       expect(['grey', 'drizzle']).toContain(skyFor('Grey and cold: soup weather.', 5, day));
-      expect(['fair', 'cloudy', 'showers']).toContain(skyFor(null, 5, day));
+      expect(['clear', 'fair', 'cloudy', 'showers']).toContain(skyFor(null, 5, day));
+      if (day <= 2) expect(['clear', 'fair']).toContain(skyFor(null, 5, day));
       for (const f of [null, 'Heavy rain: fewer walkers, more drivers.', 'Grey and cold: soup weather.']) seen.add(skyFor(f, 5, day));
     }
     // Every variant turns up.

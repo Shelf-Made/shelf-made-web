@@ -86,7 +86,8 @@ export function addSurfaceDetail(mat: MeshStandardMaterial, tex: CanvasTexture |
           float flatness = smoothstep(0.75, 0.95, an.y) * grey;
           // Asphalt (dark grey, flat): light and dark grains of aggregate.
           float asphalt = flatness * (1.0 - smoothstep(0.12, 0.22, lum));
-          c *= 1.0 + asphalt * (smoothstep(0.8, 0.92, speck) * 0.4 - smoothstep(0.22, 0.08, speck) * 0.2);
+          // Lifted a little: a sunny toy town's roads are a friendly mid grey, not a black slab.
+          c *= (1.0 + asphalt * 0.45) * (1.0 + asphalt * (smoothstep(0.8, 0.92, speck) * 0.4 - smoothstep(0.22, 0.08, speck) * 0.2));
           // Concrete (light grey, flat): slab joints a tile apart, antialiased.
           float concrete = flatness * smoothstep(0.3, 0.42, lum);
           vec2 g = abs(fract(vDetailPos.xz + 0.5) - 0.5);
