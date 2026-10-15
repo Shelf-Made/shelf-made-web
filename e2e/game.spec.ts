@@ -372,6 +372,44 @@ test('after a fast-forwarded day the manager walks at normal pace, and the shop 
   expect((await state(page)).phase).toBe('night');
 });
 
+test("the shop's business profile: reviews come in, the badge counts them, photos develop, and the owner replies", async ({ page }) => {
+  test.setTimeout(240_000);
+  await ready(page);
+  await hooks(page, 'newGame', 12, 'main', 'Review Mart', { tutorial: false });
+  await hooks(page, 'quickSetup', true);
+  await hooks(page, 'setSpeed', 0);
+  const button = page.locator('.hud-time [data-card="reviews"]');
+  await expect(button.locator('.badge')).toHaveText('0');
+  // Two days of trade: shoppers go home and write about it.
+  await hooks(page, 'playDays', 2);
+  const listing = await hooks<{ count: number; stars: number[]; photos: number }>(page, 'listing');
+  expect(listing.count).toBeGreaterThan(3);
+  await expect(button.locator('.badge')).toHaveText(String(listing.count));
+  await expect(button).toHaveAttribute('aria-label', new RegExp(`${listing.count} reviews, rated \\d\\.\\d`));
+  // The profile: the listing, the stars, the reviews; the photos are taken in the town as it stands.
+  await page.keyboard.press('Escape');
+  await button.click();
+  const card = page.getByRole('dialog', { name: 'Business Profile' });
+  await expect(card).toBeVisible();
+  await expect(card.locator('.biz-title h2')).toHaveText('Review Mart');
+  await expect(card.locator('.biz-hero img').first()).toHaveAttribute('src', /^data:image\/jpeg/, { timeout: 60_000 });
+  await card.getByRole('tab', { name: 'Reviews' }).click();
+  const items = card.getByRole('list', { name: 'Reviews' }).locator('.biz-review');
+  await expect(items).toHaveCount(Math.min(40, listing.count));
+  if (listing.photos > 0) await expect(card.locator('.biz-review .shots img').first()).toHaveAttribute('src', /^data:image\/jpeg/, { timeout: 90_000 });
+  // Reply to the first review: it shows under the review as the owner's response.
+  const first = items.first();
+  await first.getByRole('button', { name: 'Reply' }).click();
+  await first.getByRole('textbox', { name: 'Your reply' }).fill('Thanks for coming in!');
+  await first.getByRole('button', { name: 'Post reply' }).click();
+  await expect(first.locator('.owner-reply')).toContainText('Thanks for coming in!');
+  // What shoppers notice: the looks behind the stars.
+  await card.getByRole('tab', { name: 'Performance' }).click();
+  await expect(card.locator('.biz-perf .looks li')).toHaveCount(6);
+  await page.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

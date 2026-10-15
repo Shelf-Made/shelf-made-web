@@ -122,6 +122,23 @@ export function installTestHooks(rt: GameRuntime): void {
     state: () => rt.state,
     freezeAnim: (b: boolean) => { PeopleView.freeze = b; },
     /** Fill every slot to capacity (screenshots). */
+    /** Play whole days (scanning, shelves kept full) and open the next: reviews pile up as they would. */
+    playDays: (n: number) => {
+      const s = rt.state; if (!s) return;
+      for (let d = 0; d < n; d++) {
+        if (s.phase === 'night') { s.tomorrow = null; applyCommand(s, { type: 'openTomorrow' }); }
+        for (let i = 0; i < 20000 && s.phase !== 'night'; i++) {
+          tick(s);
+          if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+          if (i % 1200 === 0) for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = FIXTURES[f.type].capacity;
+        }
+      }
+      s.sounds.length = 0; rt.bump();
+    },
+    /** The listing in brief. */
+    listing: () => { const s = rt.state; const l = s?.listing; return l ? { count: l.count, stars: l.stars, photos: l.reviews.reduce((a, r) => a + r.photos.length, 0), developed: l.reviews.flatMap((r) => r.photos).filter((p) => rt.photoUrl(p.id)).length } : null; },
+    /** Take one photo now (a data URL), of a kind, for tests. */
+    photo: (kind: 'outside' | 'aisle' | 'haul' | 'selfie', seed = 3) => { const s = rt.state; const r = rt.renderer; if (!s || !r) return null; const owner = s.people.find((p) => p.kind === 'owner'); return r.takePhoto(s, { id: `test-${kind}`, kind, seed, t: 0.4, products: ['apples', 'milk', 'bread'] }, owner ? { look: { ...owner.look, model: 2 }, ctype: 'impulse' } : null); },
     restock: () => { const s = rt.state; if (!s) return; for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = FIXTURES[f.type].capacity; rt.bump(); },
     /** Spawn n customers at once (busy-shop screenshots and queue tests). */
     crowd: (n: number, onFoot = true) => { const s = rt.state; if (!s) return; for (let i = 0; i < n; i++) spawnCustomer(s, onFoot); rt.bump(); },

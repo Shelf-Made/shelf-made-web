@@ -6,7 +6,8 @@ import { SettingsCard } from './SettingsCard';
 import { StaffCard } from './StaffCard';
 import { BuildCard } from './BuildCard';
 import { MarketingCard } from './MarketingCard';
-import { ICONS, BLURBS } from '../TopBar';
+import { BusinessCard } from './BusinessCard';
+import { ICONS } from '../TopBar';
 
 export function Card({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const id = title.toLowerCase() as keyof typeof ICONS;
@@ -14,7 +15,7 @@ export function Card({ title, onClose, children }: { title: string; onClose: () 
     <div className={`card t-${id}`} role="dialog" aria-label={title}>
       <header>
         <span className="head-icon" aria-hidden="true">{ICONS[id]}</span>
-        <span className="head-text">{title}<small>{BLURBS[id]}</small></span>
+        <span className="head-text">{title}</span>
         <button className="close" onClick={onClose} aria-label="Close">✕</button>
       </header>
       <div className="body">{children}</div>
@@ -32,6 +33,7 @@ export function Cards({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
     case 'build': return <Card title="Build" onClose={close}><BuildCard runtime={runtime} snap={snap} /></Card>;
     case 'staff': return <Card title="Staff" onClose={close}><StaffCard runtime={runtime} snap={snap} /></Card>;
     case 'marketing': return <Card title="Marketing" onClose={close}><MarketingCard runtime={runtime} snap={snap} /></Card>;
+    case 'reviews': return <BusinessCard runtime={runtime} snap={snap} />;
     default: return null;
   }
 }

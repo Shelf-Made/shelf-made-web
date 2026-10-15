@@ -15,6 +15,7 @@ import { cashierMistake, onShift } from './staff';
 import { CARD_FEE } from './money';
 import { formatMoney, dollars } from './money';
 import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './life';
+import { noteVisit } from './reviews';
 
 export const CUSTOMER_MODELS = 12;
 
@@ -267,7 +268,14 @@ function registerOf(state: GameState, p: Person): Fixture | undefined {
   return state.shop.fixtures.find((f) => f.id === p.registerId);
 }
 
+/** Remember a product a shopper noticed (the first few). */
+function noteId(p: Person, key: 'missedIds' | 'priceyIds', id: string): void {
+  const a = (p[key] ??= []);
+  if (a.length < 3 && !a.includes(id)) a.push(id);
+}
+
 export function startLeaving(state: GameState, p: Person, happy: boolean): void {
+  noteVisit(state, p, happy);
   const reg = registerOf(state, p);
   if (reg?.queue) { const i = reg.queue.indexOf(p.id); if (i >= 0) reg.queue.splice(i, 1); }
   if (reg && reg.serving === p.id) { reg.serving = null; reg.scanned = 0; }
@@ -300,6 +308,8 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   total = Math.round(total * 100) / 100;
   const cashier = state.people.find((x) => x.id === reg.staffId && x.kind === 'staff');
   if (cashier) total = Math.max(0, total - cashierMistake(state, cashier, total));
+  p.servedBy = reg.type === 'kiosk' ? 'kiosk' : cashier ? 'staff' : 'owner';
+  if (cashier) p.servedSkill = cashier.skill;
   // How they pay: card carries a fee, mobile is free and quick, cash is cash.
   const method = withRng(state, 'customers', (r) => { const x = r.next(); return x < 0.55 ? 'card' : x < 0.75 ? 'mobile' : 'cash'; });
   const fee = method === 'card' ? Math.round(total * CARD_FEE * 100) / 100 : 0;
@@ -394,7 +404,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         if (state.phase !== 'open') { startLeaving(state, p, false); break; }
         p.state = 'shopping';
         // A messy floor is the first thing they see.
-        if (state.shop.cleanliness < 0.6 || state.shop.litter.length >= 2) complain(state, 'dirty');
+        if (state.shop.cleanliness < 0.6 || state.shop.litter.length >= 2) { complain(state, 'dirty'); p.sawMess = true; }
         if (p.ctype === 'impulse') {
           const tempt = state.shop.fixtures.filter((f) => (f.type === 'endcap' || f.type === 'rack') && f.slots.some((sl) => sl.productId && sl.qty > 0));
           if (tempt.length && withRng(state, 'customers', (r) => r.chance(0.6))) {
@@ -415,7 +425,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if ((p.listIdx ?? 0) >= list.length) { finishShopping(state, p); break; }
       const item = list[p.listIdx!]!;
       const f = findFixtureWith(state, item.productId);
-      if (!f) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; complain(state, 'outOfStock', item.productId); p.listIdx!++; react(state, p.id, 'outOfStock'); break; }
+      if (!f) { p.missed = (p.missed ?? 0) + 1; noteId(p, 'missedIds', item.productId); state.today.missedItems++; complain(state, 'outOfStock', item.productId); p.listIdx!++; react(state, p.id, 'outOfStock'); break; }
       p.targetFixture = f.id;
       p.state = 'browsing'; p.anim = 'walk'; p.timer = -1;
       // From the room side: a shelf pushed against a wall is never browsed through it.
@@ -441,7 +451,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         const price = effectivePrice(state, item.productId);
         const spent = (p.basket ?? []).reduce((a, b) => a + b.price * b.qty, 0);
         const fair = !slot || willBuy(state, p.ctype ?? 'convenience', item.productId);
-        if (slot && !fair) { complain(state, 'pricey', item.productId); react(state, p.id, 'pricey'); }
+        if (slot && !fair) { complain(state, 'pricey', item.productId); react(state, p.id, 'pricey'); noteId(p, 'priceyIds', item.productId); }
         if (slot && fair && spent + price <= (p.budget ?? 999)) {
           if (price < productDef(item.productId).basePrice * 0.92) react(state, p.id, 'deal');
           const promo = state.marketing.promotion;
@@ -450,7 +460,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
           slot.qty -= take;
           p.basket!.push({ productId: item.productId, qty: take, price });
           cue(state, 'pick');
-        } else if (!slot) { p.missed = (p.missed ?? 0) + 1; state.today.missedItems++; complain(state, 'outOfStock', item.productId); react(state, p.id, 'outOfStock'); }
+        } else if (!slot) { p.missed = (p.missed ?? 0) + 1; noteId(p, 'missedIds', item.productId); state.today.missedItems++; complain(state, 'outOfStock', item.productId); react(state, p.id, 'outOfStock'); }
         p.listIdx = (p.listIdx ?? 0) + 1;
         p.state = 'shopping'; p.anim = p.basket!.length ? 'carry' : 'walk';
       }

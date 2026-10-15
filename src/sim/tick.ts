@@ -1,4 +1,5 @@
 import { tickLife } from './life';
+import { tickReviews } from './reviews';
 import type { GameState } from './types';
 import { TICK, DAY_SECONDS, DIFFICULTY } from './layout';
 import { tickCars, spawnTraffic } from './cars';
@@ -66,6 +67,7 @@ export function tick(state: GameState): void {
   tickCars(state);
   tickPeople(state);
   tickLife(state);
+  tickReviews(state);
   if (state.phase === 'closing') {
     const customersLeft = state.people.some((p) => p.kind === 'customer');
     if (!customersLeft || state.time > DAY_SECONDS + 120) {

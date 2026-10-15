@@ -8,7 +8,7 @@ import { productDef } from './products';
 import { activeGoal, goalProgress } from './goals';
 import { storeScheme, shopScheme } from './schemes';
 
-export interface Complaint { text: string; count: number; card: Exclude<CardId, null | 'settings'> }
+export interface Complaint { text: string; count: number; card: Exclude<CardId, null | 'settings' | 'reviews'> }
 export interface ShareBar { id: string; name: string; colour: string; share: number; change: number | null; closed: boolean; mine: boolean }
 
 export interface NightReport {

@@ -103,6 +103,8 @@ export class StoreView {
     try { this.font = await new FontLoader().loadAsync('/fonts/fredoka-bold.typeface.json'); } catch { this.font = null; }
   }
 
+  /** The shop's ceiling lights on for a photo inside (null: back to day or night as it was). */
+  setInteriorLight(intensity: number | null): void { this.nightLight.intensity = intensity ?? (this.night ? 2.2 : 0); }
   setNight(on: boolean): void { this.night = on; this.nightLight.intensity = on ? 2.2 : 0; if (this.nightGlow) this.nightGlow.visible = on; }
   private night = false;
   private bunting: Mesh | null = null;

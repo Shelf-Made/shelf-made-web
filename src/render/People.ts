@@ -4,7 +4,7 @@ import { BlobShadows } from './blobs';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AssetLibrary } from './assets';
-import type { GameState, Person, Anim as SimAnim, CustomerType } from '@/sim/types';
+import type { GameState, Person, Anim as SimAnim, CustomerType, Look } from '@/sim/types';
 import { box, merge, paint } from './geometry';
 import { rectToWorld } from '@/sim/layout';
 import { bagsGeometry, basketGeometry, BAG_HEIGHT } from './props';
@@ -258,6 +258,29 @@ export class PeopleView {
       ]);
     }
     return new Mesh(this.dogGeo, this.assets.plainMaterial);
+  }
+
+  /**
+   * A shopper on their own, posed, for the photos customers post with their reviews: their look (the
+   * same recolours as on the street), standing with their arms out holding their shopping, or waving.
+   * The geometry is shared with the crowd's caches: drop the figure, never dispose it.
+   */
+  figure(look: Look, ctype: CustomerType | undefined, pose: 'carry' | 'idle' | 'greet' = 'carry'): Group {
+    const p = { id: -1, kind: 'customer', look, ctype, state: 'idle' } as unknown as Person;
+    const model = PEOPLE_MODELS[Math.min(look.model, PEOPLE_MODELS.length - 2)]!;
+    const asset = this.assets.character(model);
+    const root = skeletonClone(asset.scene) as Group;
+    root.traverse((o) => {
+      const m = o as SkinnedMesh;
+      if (m.isSkinnedMesh) { m.geometry = this.variantGeometry(model, look.variant, m.geometry, m.name, styleOf(p), null); m.material = this.assets.plainMaterial; m.frustumCulled = false; m.castShadow = true; }
+      else if ((o as Mesh).isMesh) (o as Mesh).material = this.assets.plainMaterial;
+    });
+    root.scale.setScalar(look.height);
+    const clip = asset.clips.find((c) => c.name === CLIP_FOR[pose]) ?? asset.clips.find((c) => c.name === 'idle');
+    if (clip) { const mx = new AnimationMixer(root); mx.clipAction(clip).play(); mx.update(0.45); }
+    if (pose !== 'carry') { const pg = this.propFor(p); if (pg) root.add(pg); }
+    root.updateMatrixWorld(true);
+    return root;
   }
 
   private spawn(state: GameState, p: Person): Instance {

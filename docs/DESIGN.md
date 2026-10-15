@@ -183,6 +183,16 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - Stats card, "Who shops where": today's shoppers so far by type at each store (yours counted as
   they set out, the rivals' modelled day scaled by the hour). A row marks every shopper of that
   type in town for ten seconds.
+- **Business profile** (the storefront button by the speed controls, badge = review count, red
+  while some are unread; the rating under it). The shop's listing on a made-up map app, Pinpoint,
+  in that app's own look (white, Roboto/Arial, teal accents, yellow stars), docked like a card:
+  photos, the title block, tabs Overview / Reviews / Photos / Performance, a photo lightbox.
+  Owners reply to reviews from suggested answers or their own words. No real company's name or
+  marks anywhere.
+- **Customer photos** are rendered from the live scene by the renderer between frames (one a frame
+  while the profile is open, otherwise one every few seconds), finished in 2D like a phone photo
+  and kept as JPEG data URLs in memory, never in saves: a loaded game retakes them from the town as
+  it is. The profile's own two pictures are retaken each day and after a refit.
 - Font: Fredoka (OFL), bundled.
 
 ### 2.4 Save
@@ -293,6 +303,24 @@ availability, layout, wait, parking, awareness). The inspect panel turns them in
 home" on foot), "Saw their ads everywhere". Each type has a look as well as an icon: bargain
 hunters carry a reusable bag, impulse buyers a snack and are a little shorter, convenience
 shoppers walk 12% faster in work clothes, loyalists' hair is silver.
+
+### 3.5 Reviews
+
+A shopper leaving (served, walked out, or gave up) is judged on their own stream (`reviews`), each
+topic -1..1: wait at the till, stock (found the list), price (price index, more for bargain
+hunters), clean floor, looks, the frontage, who served them, parking (drivers), fresh produce, the
+range. Overall = 0.54 + 0.16 wait + 0.15 stock + 0.15 looks + 0.09 price + 0.07 clean + 0.06
+outside + 0.04 staff + 0.04 range + 0.03 parking + 0.03 fresh + noise (sd 0.07); stars at 0.8 /
+0.67 / 0.53 / 0.38. Chance to write: 4.5% served (+5% at five stars, +8% at two or fewer), 10% if
+they left unhappy. Posted 20–200 game minutes later (the rest at night).
+
+Looks (0..1) = 0.3 decor (plants, signs, benches, baskets) + 0.16 tidy + 0.18 full shelves + 0.1
+room to move (a fifth to a half of the floor used) + 0.14 frontage + 0.12 extras (lit sign, bigger
+shop, bigger lot, produce stand). A full, clean shop with no decor rates about 3.8, a little decor
+4.1–4.3, a messy bare one under 3.
+
+With five or more reviews, the nightly reputation drift aims at 0.75 satisfaction + 0.25 rating
+(as 0..1). Replying to a review of three stars or fewer adds 0.004 reputation, once.
 
 ## 4. Art plan
 

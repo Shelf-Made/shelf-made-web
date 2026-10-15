@@ -10,6 +10,7 @@ import { computeScores, priceIndex, playerShare } from './customers';
 import { marketDay, inShortage } from './market';
 import { closingCharges, checkFailState, addBill, PAYROLL_TAX, formatMoney, dollars } from './money';
 import { staffNight, autoOrder, managerPrices, wageFor } from './staff';
+import { reviewsNight, ratingPull } from './reviews';
 import { applyUnlocks } from './progression';
 import { marketingDay, planEvents } from './marketing';
 import { trackGoals, checkGoals, goalsMorning } from './goals';
@@ -112,9 +113,13 @@ export function closeDay(state: GameState): void {
   checkFailState(state);
   t.endCash = state.cash;
   t.satisfaction = t.satisfactionN ? t.satisfaction / t.satisfactionN : 0.5;
-  // Reputation drifts toward today's satisfaction; awareness grows with served customers.
+  // The last reviews of the day go up. Reputation drifts toward today's satisfaction, and (once the
+  // listing has a few reviews) toward its star rating too: people read them. Awareness grows with served customers.
+  reviewsNight(state);
   const shop = state.shop;
-  shop.reputation += Math.max(-0.03, Math.min(0.03, (t.satisfaction - shop.reputation) * 0.3));
+  const pull = ratingPull(state);
+  const target = pull === null ? t.satisfaction : 0.75 * t.satisfaction + 0.25 * pull;
+  shop.reputation += Math.max(-0.03, Math.min(0.03, (target - shop.reputation) * 0.3));
   shop.awareness = Math.min(1, shop.awareness + 0.02 + t.served * 0.002);
   state.scores.last = computeScores(state);
   // What the rivals watch: your prices, your share of each kind of shopper, your reputation.

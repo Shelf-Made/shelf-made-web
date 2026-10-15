@@ -3,7 +3,40 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Round: day logs, windows, shoppers' hands, lawns, light, weather, town life, rain (latest)
+## Round: a brighter town, night fixes, the business profile and its reviews (latest)
+
+- [x] **Brighter, happier.** More light (exposure and sky fill up), a cheerful grade after tone
+  mapping (vibrance on the duller colours, a touch of warmth, open mid-tones, only a faint vignette),
+  lighter asphalt and wall tops (they read near-black from above), and kinder weather: a day with
+  nothing forecast is mostly fair or clear, and the first two days are always bright.
+- [x] **Normal pace after a fast day.** Ending a day at the fastest speed reset the clock to 1x but
+  left the sim's time scale at 4x, so the manager walked at a quarter pace all night (loading a game
+  had the same gap). Both now reset together.
+- [x] **Building at night.** Clicks and the aim were off at night altogether; the Build tools now work
+  before you open tomorrow (nothing else does, the shop is shut).
+- [x] **Delivery status.** A wholesale truck shows "On the road" until it has pulled up and is
+  unloading; only then "At the back door". Still packing shows minutes or hours.
+- [x] **Your business profile.** A storefront button by the speed controls carries a badge with how
+  many reviews the shop has (red while some are new) and the rating under it; a toast quotes each new
+  review. It opens the shop's listing on a made-up map app, Pinpoint, laid out like the real thing:
+  photos across the top, name, stars and count, Open or Closed, Overview (address, hours, website,
+  phone, popular times with a live note, the review summary), Reviews (the 5-to-1 histogram, what
+  reviews mention, sorting, every review with its author, Local Guide badge, stars, "2 days ago",
+  text and photos, likes, and your reply), Photos (filter by food, inside, outside, by owner) and
+  Performance (views, searches, directions, calls, and what shoppers notice about how the shop looks).
+- [x] **Reviews from the sim.** As shoppers leave, what they noticed is weighed: the wait at the
+  till, whether they found their list, prices, the floor, how the shop looks (decor, full shelves,
+  room to move, the frontage, extras like a lit sign), who served them, parking, fresh produce, the
+  range. A few go home and write about it (the delighted and the cross most), in their own words;
+  some attach photos. You can reply (a polite answer to an unhappy one wins a little goodwill), and
+  once there are a few reviews the rating pulls on the shop's reputation.
+- [x] **Customer photos.** Taken in the town as it stands, at the hour they visited, with a phone's
+  look (its own white balance, punchy colour, a vignette, sensor noise, not held level, JPEG): the
+  shopfront from across the pavement or the road, the aisles from just inside the door (ceiling
+  lights on), a selfie outside holding what they bought, and their shopping on the worktop at home
+  next to the shop's bag, with the background out of focus.
+
+## Round: day logs, windows, shoppers' hands, lawns, light, weather, town life, rain
 
 - [x] **Day logs.** The night card has a close button (and Esc); a bar at the top brings it back
   and keeps Open tomorrow to hand. A card opened at night takes the log's place instead of opening

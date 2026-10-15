@@ -1,6 +1,7 @@
 import { frontageLitter } from '@/sim/life';
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
-import type { Difficulty, FixtureType, Rot, CustomerType } from '@/sim/types';
+import type { Difficulty, FixtureType, Rot, CustomerType, Look } from '@/sim/types';
+import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
@@ -32,7 +33,7 @@ function goalInfo(s: GameState): Snapshot['goal'] {
 const goalKey = (s: GameState) => { const g = goalInfo(s); return `${s.goals.index}|${g ? `${g.frac}|${g.text}` : ''}|${s.goals.champion}|${s.goals.championSeen}`; };
 
 export type Speed = 0 | 1 | 2 | 4;
-export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | null;
+export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | 'reviews' | null;
 
 export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'delivery' | 'button:prices' | 'button:stock' | 'button:build' | 'button:open' | 'night'; fixtureId?: number }
 
@@ -82,6 +83,10 @@ export interface Snapshot {
   fixtureMenu: { id: number; name: string; use: string | null } | null;
   /** At night, whether the day's log is up (it can be closed, and comes back from the bar at the top). */
   nightLog: boolean;
+  /** The shop's listing on the map app: how many reviews, the rating, and how many came in since you last looked. */
+  reviews: { count: number; rating: number; unseen: number };
+  /** Bumped whenever a review photo has been developed (the listing shows it). */
+  photoVersion: number;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
@@ -188,7 +193,72 @@ export class GameRuntime {
       inspect: this.inspectInfo(),
       fixtureMenu: this.fixtureMenuInfo(),
       nightLog: !this.nightLogHidden,
+      reviews: { count: s?.listing?.count ?? 0, rating: s ? rating(s) : 0, unseen: Math.max(0, (s?.listing?.count ?? 0) - this.reviewsSeen) },
+      photoVersion: this.photoVersion,
     };
+  }
+
+  // ---- The map app's listing: reviews come in as shoppers get home; their photos are developed off screen.
+  /** Photos developed so far (JPEG data URLs), by photo id; the cover pictures by `cover-<kind>|<shop layout>`. */
+  private readonly photos = new Map<string, string>();
+  private photoVersion = 0;
+  private photoWait = 0;
+  /** How many reviews there were when the listing was last open (the rest are new). */
+  private reviewsSeen = 0;
+  private reviewsKnown = -1;
+  /** A developed photo, or null while it is still being taken. */
+  photoUrl(id: string): string | null { return this.photos.get(id) ?? null; }
+  /** The listing's own pictures (the owner's): the shopfront and the aisles as they look now (retaken each day and after a refit). */
+  coverUrl(kind: 'outside' | 'aisle'): string | null { return this.photos.get(this.coverKey(kind)) ?? this.photos.get(`cover-${kind}`) ?? null; }
+  private coverKey(kind: 'outside' | 'aisle'): string { const s = this.state; return `cover-${kind}|${s?.shop.layoutVersion ?? 0}|${s?.day ?? 0}|${this.renderer?.shopLayoutKey ?? ''}`; }
+
+  /** A new review: a toast (unless the listing is open, where it simply appears). */
+  private watchReviews(s: GameState): void {
+    const n = s.listing?.count ?? 0;
+    if (this.reviewsKnown < 0 || n < this.reviewsKnown) { this.reviewsKnown = n; this.reviewsSeen = n; return; }
+    if (n > this.reviewsKnown) {
+      const rv = s.listing!.reviews[0];
+      if (this.card === 'reviews') this.reviewsSeen = n;
+      else if (rv) this.showToast(`New review ${'★'.repeat(rv.stars)}${'☆'.repeat(5 - rv.stars)}${rv.text ? ` “${rv.text.length > 60 ? `${rv.text.slice(0, 57)}…` : rv.text}”` : ''}`, 4200);
+      this.reviewsKnown = n;
+    }
+  }
+
+  /**
+   * Take the next photo nobody has seen yet: one per frame while the listing is open (the covers first,
+   * then the newest reviews'), otherwise one every few seconds so new reviews have theirs ready.
+   */
+  private developPhotos(s: GameState, r: WorldRenderer, dt: number): void {
+    const open = this.card === 'reviews';
+    this.photoWait -= dt;
+    if (this.photoWait > 0 && !open) return;
+    let next: { key: string; ph: ReviewPhoto; who: { look: Look; ctype?: CustomerType } | null } | null = null;
+    if (open) for (const kind of ['outside', 'aisle'] as const) {
+      const key = this.coverKey(kind);
+      if (!next && !this.photos.has(key)) next = { key, ph: { id: key, kind, seed: kind === 'outside' ? 7 : 11, t: 0.38 }, who: null };
+    }
+    if (!next) for (const rv of (s.listing?.reviews ?? []).slice(0, open ? 60 : 8)) {
+      const ph = rv.photos.find((x) => !this.photos.has(x.id));
+      if (ph) { next = { key: ph.id, ph, who: { look: rv.look, ctype: rv.ctype } }; break; }
+    }
+    if (!next) return;
+    this.photoWait = 3;
+    const url = r.takePhoto(s, next.ph, next.who);
+    if (url) {
+      this.photos.set(next.key, url);
+      // The latest covers stand in until the new ones are taken.
+      if (next.key.startsWith('cover-')) {
+        const base = next.key.split('|')[0]!;
+        for (const k of [...this.photos.keys()]) if (k.startsWith(`${base}|`) && k !== next.key) this.photos.delete(k);
+        this.photos.set(base, url);
+      }
+      // Reviews that have dropped off the listing take their photos with them.
+      if (this.photos.size > 140) {
+        const live = new Set((s.listing?.reviews ?? []).flatMap((rv) => rv.photos.map((p) => p.id)));
+        for (const k of [...this.photos.keys()]) if (!k.startsWith('cover-') && !live.has(k)) this.photos.delete(k);
+      }
+      this.photoVersion++;
+    }
   }
 
   // ---- The day's log at night: up when the day closes; × or Esc puts it away, the night bar brings it back.
@@ -502,6 +572,8 @@ export class GameRuntime {
       }
       this.checkSelection(s);
       this.tickAutosave(dt);
+      this.watchReviews(s);
+      if (this.screen === 'game') this.developPhotos(s, r, dt);
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
@@ -523,7 +595,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -596,6 +668,7 @@ export class GameRuntime {
   openCard(card: CardId): void {
     this.fixtureMenu = null;
     this.card = this.card === card ? null : card;
+    if (this.card === 'reviews') this.reviewsSeen = this.state?.listing?.count ?? 0;
     if (this.card) this.move(0, 0);
     if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); }
     this.fitBuild = this.card === 'build';

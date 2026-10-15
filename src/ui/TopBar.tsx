@@ -16,20 +16,21 @@ export const ICONS: Record<Card | 'help', JSX.Element> = {
   marketing: <svg viewBox="0 0 24 24"><path className="fill" d="M3 9.5v5h3.5l8.5 5V4.5l-8.5 5z" /><path d="M3 9.5v5h3.5l8.5 5V4.5l-8.5 5zM18.5 8.5a4.5 4.5 0 010 7M7 14.5l1.5 5h3" /></svg>,
   stats: <svg viewBox="0 0 24 24"><path className="fill" d="M4 20v-7h4v7zM10 20V5h4v15zM16 20v-10h4v10z" /><path d="M4 20v-7h4v7zM10 20V5h4v15zM16 20v-10h4v10zM2 20.5h20" /></svg>,
   settings: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 000 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.3 1 2-3.4-2-1.5c.1-.4.2-.8.2-1.3z" /></svg>,
+  reviews: <svg viewBox="0 0 24 24"><path d="M4 10.5V20h16v-9.5M3 10l1.6-5.5h14.8L21 10a3 3 0 01-6 0 3 3 0 01-6 0 3 3 0 01-6 0z" /><path className="fill" d="M12 11.6l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z" /><path d="M12 11.6l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z" /></svg>,
   help: <svg viewBox="0 0 24 24"><path className="fill" d="M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0012 3z" /><path d="M9 18.5h6M10 21.5h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.3 1 2.1h5c0-.8.4-1.6 1-2.1A6 6 0 0012 3z" /></svg>,
 };
 
-const LABELS: Record<Card | 'help', string> = { stock: 'Stock', prices: 'Prices', build: 'Build', staff: 'Staff', marketing: 'Marketing', stats: 'Stats', settings: 'Settings', help: 'Help' };
+const LABELS: Record<Card | 'help', string> = { stock: 'Stock', prices: 'Prices', build: 'Build', staff: 'Staff', marketing: 'Marketing', stats: 'Stats', settings: 'Settings', reviews: 'Reviews', help: 'Help' };
 export const BLURBS: Record<Card | 'help', string> = {
   build: 'Place counters, shelves and fridges', stock: 'Order boxes from suppliers', prices: 'Set what things cost',
   staff: 'Hire cashiers and stockers', marketing: 'Flyers, deals and signs', stats: 'Money, sales and customers',
-  settings: 'Sound, controls, saves', help: 'What should I do next?',
+  settings: 'Sound, controls, saves', reviews: 'Your Business Profile: reviews and photos', help: 'What should I do next?',
 };
 const DOCK: Card[] = ['build', 'stock', 'prices', 'staff', 'marketing', 'stats'];
 const KEYS: Partial<Record<Card, string>> = { build: 'B', stock: 'Tab' };
 export const UNLOCK_DAYS: Partial<Record<Card, number>> = { staff: 3, marketing: 5 };
 /** Whether a card can be opened yet (Build opens on day 2, Staff on day 3, Marketing on day 5). */
-export function cardUnlocked(snap: Snapshot, c: Card): boolean { return c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || !!snap.unlocks[c as keyof Snapshot['unlocks']]; }
+export function cardUnlocked(snap: Snapshot, c: Card): boolean { return c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || c === 'reviews' || !!snap.unlocks[c as keyof Snapshot['unlocks']]; }
 /** Open a card, or say which day it opens on. */
 export function openOrSayWhen(runtime: GameRuntime, snap: Snapshot, c: Card): void {
   if (cardUnlocked(snap, c)) runtime.openCard(c); else runtime.showToast(`${LABELS[c]} opens on day ${UNLOCK_DAYS[c] ?? 2}.`);
@@ -113,6 +114,14 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
             <button key={s} className={snap.speed === s ? 'active' : ''} onClick={() => runtime.setSpeed(s)} aria-pressed={snap.speed === s} aria-label={s === 0 ? 'Pause' : `${s}x speed`} title={`${SPEED_NAMES[s]}${s === 0 ? ` (${keyLabel(snap.settings.keys.pause)})` : ''}`}>{SPEED_ICONS[s]}</button>
           ))}
         </div>
+        {snap.phase !== 'picking' && (
+          <button className={`roundbtn biz-hud${snap.card === 'reviews' ? ' active' : ''}${snap.reviews.unseen > 0 ? ' fresh' : ''}`} onClick={() => runtime.openCard('reviews')} aria-pressed={snap.card === 'reviews'} data-card="reviews" title={BLURBS.reviews}
+            aria-label={`Business Profile: ${snap.reviews.count} review${snap.reviews.count === 1 ? '' : 's'}${snap.reviews.count ? `, rated ${snap.reviews.rating.toFixed(1)}` : ''}${snap.reviews.unseen ? `, ${snap.reviews.unseen} new` : ''}`}>
+            {ICONS.reviews}
+            <span className="badge" aria-hidden="true">{snap.reviews.count > 999 ? '999+' : snap.reviews.count}</span>
+            {snap.reviews.count > 0 && <span className="rating" aria-hidden="true">{snap.reviews.rating.toFixed(1)}★</span>}
+          </button>
+        )}
         <button className={`roundbtn${snap.card === 'settings' ? ' active' : ''}`} onClick={() => runtime.openCard('settings')} aria-pressed={snap.card === 'settings'} data-card="settings" title={BLURBS.settings} aria-label="Settings">{ICONS.settings}</button>
       </div>
 

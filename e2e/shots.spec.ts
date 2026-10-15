@@ -473,6 +473,46 @@ test.describe('screenshots', () => {
     }
   });
 
+  test('the business profile: the listing, reviews with the photos shoppers took, what shoppers notice', async ({ page }) => {
+    test.setTimeout(300_000);
+    await ready(page);
+    await hooks(page, 'newGame', 12, 'main', 'Corner Fresh', { tutorial: false });
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'setSpeed', 0);
+    // Dressed up a little: plants by the door and along the aisle, an aisle sign, baskets.
+    for (const [t, x, z] of [['plant', -2.5, -1], ['plant', 1.5, -6], ['sign', -2.5, -4], ['basketStack', -2.5, -2], ['plant', -0.5, -6]] as const) {
+      await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType: t, x, z, rot: 0 });
+    }
+    await hooks(page, 'playDays', 3);
+    await hooks(page, 'dispatch', { type: 'openTomorrow' });
+    await hooks(page, 'setTime', 260);
+    await hooks(page, 'restock');
+    await hooks(page, 'crowd', 4);
+    await hooks(page, 'advanceScan', 20, 6);
+    await follow(page, 0.5, 2.6, 13, Math.PI, 1500);
+    await page.locator('.hud-time [data-card="reviews"]').click();
+    const card = page.getByRole('dialog', { name: 'Business Profile' });
+    // Develop the photos: the covers, then the reviews' (a frame each).
+    await expect.poll(async () => {
+      const l = await hooks<{ photos: number; developed: number }>(page, 'listing');
+      return l.developed >= Math.min(l.photos, 14);
+    }, { timeout: 200_000, intervals: [1500] }).toBe(true);
+    await settle(page, 1200);
+    await page.screenshot({ path: out('50-business-profile') });
+    await card.getByRole('tab', { name: 'Reviews' }).click();
+    await card.locator('.biz-scroll').evaluate((e) => { e.scrollTop = 330; });
+    await settle(page, 1000);
+    await page.screenshot({ path: out('51-reviews') });
+    await card.getByRole('tab', { name: 'Photos' }).click();
+    await settle(page, 1000);
+    await page.screenshot({ path: out('52-customer-photos') });
+    const selfie = card.locator('.biz-grid button[aria-label^="A selfie"]').first();
+    if (await selfie.count()) { await selfie.click(); await settle(page, 800); await page.screenshot({ path: out('53-photo-selfie') }); await page.locator('.biz-lightbox').click(); }
+    await card.getByRole('tab', { name: 'Performance' }).click();
+    await settle(page, 800);
+    await page.screenshot({ path: out('54-profile-performance') });
+  });
+
   test('design your manager in the lobby', async ({ page }) => {
     await ready(page);
     await page.getByRole('button', { name: /your manager/i }).click();

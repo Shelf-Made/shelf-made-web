@@ -1,5 +1,6 @@
 import type { Sky } from './weather';
 import type { TownLife } from './life';
+import type { Listing } from './reviews';
 import type { Category } from './products';
 
 export interface Vec2 { x: number; z: number }
@@ -129,10 +130,19 @@ export interface Person {
   /** Dog walkers: seconds of walking before the dog needs to stop, and the seconds left of the stop. */
   poopIn?: number;
   dogStop?: number;
+  // What a shopper noticed on the visit (for the review they may write).
+  /** Products they wanted and could not find, and ones they put back as too dear. */
+  missedIds?: string[];
+  priceyIds?: string[];
+  /** Walked in to a messy floor. */
+  sawMess?: boolean;
+  /** Who rang them up: a cashier (and how good), the owner, or a self-checkout kiosk. */
+  servedBy?: 'staff' | 'owner' | 'kiosk';
+  servedSkill?: number;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
-export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | null;
+export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | 'reviews' | null;
 
 export interface Candidate { id: number; name: string; role: StaffRole; skill: number; speed: number; wage: number; look: { model: number; variant: number; height: number } }
 export interface ManagerRules { reorderPoint: number; spendCap: number; priceMin: number; priceMax: number; wageCap: number; adBudget: number }
@@ -478,4 +488,6 @@ export interface GameState {
   sky?: Sky;
   /** Town life: litter in the streets, teenagers hanging about, bumps on Main Road (made when first needed). */
   life?: TownLife;
+  /** The shop's listing on the map app: reviews, stars, photos (older saves have none). */
+  listing?: Listing;
 }

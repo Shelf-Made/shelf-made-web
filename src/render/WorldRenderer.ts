@@ -1,4 +1,4 @@
-import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NeutralToneMapping, type PerspectiveCamera, type Fog, type Mesh, type Object3D, Frustum, Matrix4, Sphere } from 'three';
+import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NeutralToneMapping, PerspectiveCamera, Mesh, MeshBasicMaterial, Color, Group as GroupObj, type BufferGeometry, type Fog, type Object3D, type Group, Frustum, Matrix4, Sphere } from 'three';
 import { FollowCamera } from './FollowCamera';
 import { TargetMarker } from './TargetMarker';
 import { AssetLibrary } from './assets';
@@ -21,8 +21,12 @@ import { weatherAt } from '@/sim/weather';
 import { buildTown, type TownPlan } from './town';
 import { renderProductThumbs, renderCharacterThumbs } from './thumbnails';
 import { PRODUCTS } from '@/sim/products';
-import type { GameState, CustomerType } from '@/sim/types';
-import { DAY_SECONDS, toLocal, rectToWorld } from '@/sim/layout';
+import type { GameState, CustomerType, Look } from '@/sim/types';
+import type { ReviewPhoto } from '@/sim/reviews';
+import { box, merge } from './geometry';
+import { PhotoBooth, PHOTO_W, PHOTO_H, haulScene, photoRng, photoProduct } from './photos';
+import { shopScheme } from '@/sim/schemes';
+import { DAY_SECONDS, toLocal, toWorld, rectToWorld } from '@/sim/layout';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -136,6 +140,9 @@ export class WorldRenderer {
 
   get town(): TownPlan | null { return this.plan; }
 
+  /** Changes whenever the shop's shell or fittings change (its cover photos are retaken). */
+  get shopLayoutKey(): string { return this.store.layoutKey; }
+
   setShop(state: GameState): void { this.store.buildShell(state.shop); this.store.setNight(this.night); }
 
   /** Render one frame. alpha interpolates between the previous and current sim tick. */
@@ -217,6 +224,112 @@ export class WorldRenderer {
     this.post.render(this.scene, this.activeCamera, Math.max(0, Math.min(1, (far - 34) / 26)));
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
+  }
+
+  private booth: PhotoBooth | null = null;
+  private readonly photoCam = new PerspectiveCamera(55, PHOTO_W / PHOTO_H, 0.05, 400);
+
+  /**
+   * A shopper's photo for their review (a JPEG data URL): taken in the town as it stands, at the time
+   * of day they were there, from where a shopper would hold their phone. The shopfront from across the
+   * pavement or the road; down the aisles from just inside the door (the ceiling on, its lights lit);
+   * a selfie outside the door holding what they bought; or their shopping at home on the kitchen worktop.
+   * Call between frames: the next frame puts back everything a photo moves.
+   */
+  takePhoto(state: GameState, ph: ReviewPhoto, who: { look: Look; ctype?: CustomerType } | null): string | null {
+    this.booth ??= new PhotoBooth(this.renderer);
+    const booth = this.booth;
+    if (ph.kind === 'haul') {
+      const { scene, camera, dispose } = haulScene(this.assets, ph.products ?? [], shopScheme(state).primary, ph.seed);
+      const img = booth.shoot(scene, camera);
+      dispose();
+      return img ? booth.finish(img, ph.seed, 0.85) : null;
+    }
+    const rand = photoRng(ph.seed);
+    const shop = state.shop, f = shop.floor;
+    const at = (x: number, y: number, z: number) => { const w = toWorld(shop, x, z); return new Vector3(w.x, y, w.z); };
+    let eye: Vector3, target: Vector3, fov = 55;
+    let fig: Group | null = null;
+    if (ph.kind === 'outside') {
+      // Across the pavement, or from over the road.
+      const sx = (rand() - 0.5) * 4.5, ez = 3.0 + rand() * 2.6;
+      eye = at(sx, 0.46 + rand() * 0.1, ez); target = at(sx * 0.3 + (rand() - 0.5) * 0.8, 0.5, -0.5);
+    } else if (ph.kind === 'aisle') {
+      const sx = f.x0 + 0.7 + rand() * Math.max(0, f.x1 - f.x0 - 1.4);
+      eye = at(sx, 0.5 + rand() * 0.06, f.z1 - 0.5); target = at(sx * 0.4 + (rand() - 0.5) * 1.4, 0.3, f.z0 + 0.8); fov = 60;
+    } else {
+      // A selfie on the pavement outside the door, the shop behind them, holding up what they bought.
+      const h = who?.look.height ?? 1, sx = (rand() - 0.5) * 1.6, pz = 1.2 + rand() * 0.4;
+      const pos = at(sx, 0, pz);
+      eye = at(sx + (rand() - 0.5) * 0.2, 0.6 * h, pz + 1.0 + rand() * 0.15); target = at(sx, 0.42 * h, pz - 1.2); fov = 56;
+      if (who) {
+        fig = this.people.figure(who.look, who.ctype, 'carry');
+        fig.position.copy(pos);
+        fig.rotation.y = Math.atan2(eye.x - pos.x, eye.z - pos.z);
+        const items = (ph.products ?? []).slice(0, 2);
+        items.forEach((id, i) => {
+          const g = photoProduct(this.assets, id);
+          const bb = g.boundingBox!, size = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, 0.02);
+          const m = new Mesh(g, this.assets.plainMaterial);
+          m.scale.setScalar(0.11 / size);
+          m.position.set((i - (items.length - 1) / 2) * 0.11, 0.2, 0.2); m.rotation.y = (rand() - 0.5) * 0.6;
+          fig!.add(m);
+        });
+        fig.updateMatrixWorld(true);
+      }
+    }
+    const cam = this.photoCam;
+    cam.fov = fov; cam.near = ph.kind === 'selfie' ? 0.02 : 0.05; cam.updateProjectionMatrix();
+    cam.position.copy(eye); cam.lookAt(target); cam.updateMatrixWorld();
+    // The town as the photo sees it: whole walls, no markers or bubbles, the light of that hour.
+    const off = [this.reactions.group, this.marker.group, this.overlays.group].filter((g) => g.visible);
+    for (const g of off) g.visible = false;
+    const t = Math.max(0, Math.min(1, ph.t));
+    const lights = t > 0.86;
+    if (lights !== this.night) { this.statics.setNight(lights); this.store.setNight(lights); this.rivals.setNight(lights); }
+    this.store.update(state, null);
+    this.store.setRoof(ph.kind === 'aisle');
+    if (ph.kind === 'aisle') this.store.setInteriorLight(3.4);
+    const panels = ph.kind === 'aisle' ? this.ceilingPanels(state) : null;
+    if (panels) this.scene.add(panels);
+    this.rivals.occlude(null, 0, 0);
+    const wx = weatherAt(state.sky ?? 'fair', state.seed, state.day, t);
+    this.lighting.setTime(t, false, target, 14, { cloud: wx.cloud, rain: wx.rain, storm: wx.storm, fog: wx.fog, flash: 0 });
+    // Indoors the light bounces off a white ceiling and pale floor, not the grass.
+    if (ph.kind === 'aisle') { this.lighting.hemi.groundColor.set('#F2ECE2'); this.lighting.hemi.color.set('#FFF8EE'); this.lighting.hemi.intensity = 1.9; }
+    const fog = this.scene.fog as Fog | null;
+    if (fog) { fog.near = 60 * this.lighting.fogScale; fog.far = 200 * (0.4 + 0.6 * this.lighting.fogScale); }
+    this.viewFrustum.setFromProjectionMatrix(this.viewMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    this.people.update(state, this.lastAlpha, 0, target, -1, 0, 30, this.viewFrustum, cam.position);
+    this.grass.update(target.x, target.z, 12);
+    this.ambient.update(this.clock, 0, cam, this.lighting.skyTop, this.lighting.sky, this.lighting);
+    if (fig) this.scene.add(fig);
+    let img: ImageData | null;
+    try { img = booth.shoot(this.scene, cam); } finally {
+      if (fig) this.scene.remove(fig);
+      if (panels) { this.scene.remove(panels); for (const c of panels.children) (c as Mesh).geometry.dispose(); }
+      for (const g of off) g.visible = true;
+      if (ph.kind === 'aisle') this.store.setInteriorLight(null);
+      if (lights !== this.night) { this.statics.setNight(this.night); this.store.setNight(this.night); this.rivals.setNight(this.night); }
+    }
+    return img ? booth.finish(img, ph.seed) : null;
+  }
+
+  private panelMat: MeshBasicMaterial | null = null;
+  /** The shop's ceiling for a photo inside: white tiles under the roof deck, rows of bright light panels. */
+  private ceilingPanels(state: GameState): GroupObj {
+    const pal = this.assets.palette, f = state.shop.floor;
+    const lights: BufferGeometry[] = [];
+    for (let x = f.x0 + 1; x < f.x1 - 0.5; x += 2) for (let z = f.z0 + 0.8; z < f.z1 - 0.3; z += 1.6) lights.push(box(pal, '#FFFFFF', 0.5, 0.01, 0.16, x, 0.948, z));
+    const g = new GroupObj();
+    g.add(new Mesh(box(pal, '#F4F7FA', f.x1 - f.x0 + 0.2, 0.012, f.z1 - f.z0 + 0.2, (f.x0 + f.x1) / 2, 0.955, (f.z0 + f.z1) / 2), this.assets.plainMaterial));
+    // The panels glow: unlit, pushed past white.
+    this.panelMat ??= new MeshBasicMaterial({ color: new Color(1.7, 1.68, 1.6) });
+    if (lights.length) g.add(new Mesh(merge(lights), this.panelMat));
+    const o = toWorld(state.shop, 0, 0);
+    g.position.set(o.x, 0, o.z);
+    if (state.shop.flip) g.rotation.y = Math.PI;
+    return g;
   }
 
   /** What the grass mask leaves out: the land itself, other grass, light pools and glows, anything see-through. */
