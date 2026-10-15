@@ -537,9 +537,7 @@ test.describe('screenshots', () => {
     await settle(page, 1500);
     await page.screenshot({ path: out('55-build-card') });
     await page.keyboard.press('Escape');
-    await hooks(page, 'viewWorld', 0, -3, 0, 13, 1.1);
-    await hooks(page, 'focusStore');
-    await settle(page, 2500);
+    await follow(page, 0, -3.5, 15, 0.35, 2500);
     await page.screenshot({ path: out('56-fitted-out') });
     await hooks(page, 'setTime', 712);
     await follow(page, 0, -3.5, 10, 0, 2500);

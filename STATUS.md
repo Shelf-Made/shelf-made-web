@@ -51,6 +51,17 @@ an empty repository in this session.
   toward its reviews. Placing never cuts the shop in two: everything must be reachable from the
   front door without going round the outside to the back door.
 
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 116 passed; new: reviews (looks, ratings for a dressed-up clean shop against a bare messy one, posting later, replies), building (tabs, walkable pieces, wall-hung lights, a wall cannot cut the shop in two, floors and windows, looks caps), the delivery status, the forecast's bright first days |
+| `npm run e2e` | 24 passed; new: normal pace after a fast day and building at night, the Build card (tabs, a café table placed, a floor laid, windows), the business profile (badge, photos, a reply) |
+| Perf (`npm run perf`) | default zoom 107 draw calls / 329k triangles; busy 127 / 350k; selected 139 / 381k; mid 136 / 374k; overview 174 / 469k (budget 250 / 900k) |
+| `npm run balance -- --check` | passed in 347 s: nobody bust or stuck; guided about $95/day in week one. A first run failed (one guided seed bust) after the looks score's extras were re-weighted; the old weights are back |
+| Review photos (software GL test browser) | about 1.1–2 s each (one a frame while the profile is open, otherwise one every three seconds) |
+
+New screenshots: `50-business-profile` to `57-lamps-after-dark`.
+
 ## Round: day logs, windows, shoppers' hands, lawns, light, weather, town life, rain
 
 - [x] **Day logs.** The night card has a close button (and Esc); a bar at the top brings it back
