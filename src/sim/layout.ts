@@ -415,7 +415,9 @@ export interface Storeys {
   /** Openings in each floor (keys): where the stairs, an escalator or a lift come up through it. */
   holes: Set<string>[];
 }
-const storeyCache = new WeakMap<object, { sig: string; st: Storeys }>();
+// Keyed on the fixtures, checked against the very gaps and ceiling rows it was worked out from (both are only
+// ever replaced, never edited): a trial shop with the same counts but other tiles must not be handed another's.
+const storeyCache = new WeakMap<object, { sig: string; gaps?: string[]; rows?: string[][]; st: Storeys }>();
 /** The panels over floor `level` (keys); an old save has them over the whole ground floor. */
 export function panelsOver(shop: FloorShape, level: number): Set<string> {
   const row = shop.ceilings?.[level];
@@ -435,7 +437,7 @@ export function storeysOf(shop: FloorShape): Storeys {
   for (const f of fixtures) if (VERTICAL.has(f.type)) sig += `${f.type}${f.x},${f.z},${f.rot};`;
   const key = (shop.fixtures ?? shop) as object;
   const hit = storeyCache.get(key);
-  if (hit && hit.sig === sig) return hit.st;
+  if (hit && hit.sig === sig && hit.gaps === shop.gaps && (hit.rows ?? []).every((r, i) => r === shop.ceilings?.[i])) return hit.st;
   const ground = new Set(groundTiles(shop).map((t) => tileKey(t.x, t.z)));
   const st: Storeys = { built: [true], top: 0, floors: [ground], inside: [ground], holes: [new Set()] };
   for (let L = 1; L < MAX_LEVELS; L++) {
@@ -459,7 +461,7 @@ export function storeysOf(shop: FloorShape): Storeys {
     st.inside.push(inside);
     if (built) st.top = L;
   }
-  storeyCache.set(key, { sig, st });
+  storeyCache.set(key, { sig, gaps: shop.gaps, rows: shop.ceilings && [...shop.ceilings], st });
   return st;
 }
 /** The floor area people can shop on: the ground floor and every open floor above it. */
