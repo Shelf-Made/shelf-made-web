@@ -27,7 +27,11 @@ const HAIR_STRIP: Record<string, string> = {
 };
 /** The manager's own colours, if designed (null when it is the character's own look). */
 type Custom = { skin?: string; hair?: string; top?: string; bottom?: string } | null;
-const customOf = (p: Person): Custom => (p.kind === 'owner' && (p.look.skin || p.look.hair || p.look.top || p.look.bottom)) ? { skin: p.look.skin, hair: p.look.hair, top: p.look.top, bottom: p.look.bottom } : null;
+const customOf = (p: Person, shirt?: string): Custom => {
+  // Staff: their own skin, hair and trousers, in a shirt of the shop's colour.
+  if (p.kind === 'staff' && p.look.model < 12) return { skin: p.look.skin, hair: p.look.hair, top: shirt ?? p.look.top, bottom: p.look.bottom };
+  return (p.kind === 'owner' && (p.look.skin || p.look.hair || p.look.top || p.look.bottom)) ? { skin: p.look.skin, hair: p.look.hair, top: p.look.top, bottom: p.look.bottom } : null;
+};
 const customKey = (c: Custom) => c ? `${c.skin ?? ''}${c.hair ?? ''}${c.top ?? ''}${c.bottom ?? ''}` : '';
 
 export const PEOPLE_MODELS = ['people/female-a', 'people/male-a', 'people/female-b', 'people/male-b', 'people/female-c', 'people/male-c', 'people/female-d', 'people/male-d', 'people/female-e', 'people/male-e', 'people/female-f', 'people/male-f', 'market/character-employee'];
@@ -288,11 +292,12 @@ export class PeopleView {
     const asset = this.assets.character(model);
     const root = skeletonClone(asset.scene) as Group;
     const skinned: SkinnedMesh[] = [];
+    const shirt = p.kind === 'staff' ? shopScheme(state).primary : undefined;
     root.traverse((o) => {
       const m = o as SkinnedMesh;
       if (m.isSkinnedMesh) {
         skinned.push(m);
-        m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name, styleOf(p), customOf(p));
+        m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name, styleOf(p), customOf(p, shirt));
         // The shop's staff (and you) wear its colour: Kenney's green apron, repainted.
         if ((p.kind === 'staff' || p.kind === 'owner') && model === UNIFORM_MODEL) m.geometry = this.uniform(m.geometry, `${model}|${p.look.variant}|${m.name}`, shopScheme(state).primary);
         m.material = this.assets.plainMaterial;
@@ -302,7 +307,7 @@ export class PeopleView {
     const first = skinned[0];
     if (first && skinned.length > 1 && skinned.every((m) => m.skeleton.bones.every((b, i) => b === first.skeleton.bones[i]))) {
       const uniformed = (p.kind === 'staff' || p.kind === 'owner') && model === UNIFORM_MODEL;
-      const merged = this.mergedGeometry(`${model}|${p.look.variant}|${uniformed ? shopScheme(state).primary : ''}|${styleOf(p)}|${customKey(customOf(p))}`, skinned);
+      const merged = this.mergedGeometry(`${model}|${p.look.variant}|${uniformed ? shopScheme(state).primary : ''}|${styleOf(p)}|${customKey(customOf(p, shirt))}`, skinned);
       if (merged) { first.geometry = merged; for (const m of skinned.slice(1)) m.removeFromParent(); }
     }
     const scale = p.look.height;
@@ -323,6 +328,7 @@ export class PeopleView {
     const pg = this.propFor(p);
     if (pg) { inst.prop = pg; root.add(pg); }
     if (p.kind === 'owner') root.add(this.badge());
+    else if (p.kind === 'staff') root.add(this.nameBadge());
     if (p.look.dog) { inst.dog = this.makeDog(); this.group.add(inst.dog); }
     // Randomise the phase so a crowd does not march in step.
     mixer.setTime((p.id % 13) * 0.17);
@@ -432,6 +438,16 @@ export class PeopleView {
     g.add(badge, board);
     g.name = 'badge';
     return g;
+  }
+
+  /** Staff wear a white name badge on the chest (the manager's is gold, with a clipboard). */
+  private nameBadgeGeo: BufferGeometry | null = null;
+  private nameBadge(): Mesh {
+    const pal = this.assets.palette;
+    this.nameBadgeGeo ??= merge([box(pal, '#FFFFFF', 0.075, 0.045, 0.012, 0.07, 0.42, 0.1), box(pal, '#38383D', 0.05, 0.008, 0.014, 0.07, 0.437, 0.1), box(pal, '#9AA0A8', 0.04, 0.006, 0.014, 0.07, 0.427, 0.1)]);
+    const m = new Mesh(this.nameBadgeGeo, this.assets.plainMaterial);
+    m.name = 'badge';
+    return m;
   }
 
   private boxMesh(): Mesh {

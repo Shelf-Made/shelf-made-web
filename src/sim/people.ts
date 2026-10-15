@@ -16,6 +16,7 @@ import { CARD_FEE } from './money';
 import { formatMoney, dollars } from './money';
 import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './life';
 import { noteVisit } from './reviews';
+import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './shoplifting';
 
 export const CUSTOMER_MODELS = 12;
 
@@ -43,7 +44,7 @@ export function dynamicBlockers(state: GameState): Set<number> {
   return set;
 }
 
-function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): boolean {
+export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): boolean {
   const path = findPath(gridFor(state), { x: p.x, z: p.z }, to, dyn);
   if (!path) { p.path = [to]; p.pathIdx = 0; return false; }
   p.path = path; p.pathIdx = 0;
@@ -137,6 +138,7 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
   // Why they came: the two scores that most drove their choice of this store, kept for the inspect panel.
   p.store = 'player'; p.why = explainChoice(ctype, computeScores(state));
   typeLook(p);
+  maybeThief(state, p);
   if (byCar) {
     const { car, onward } = spawnCustomerCar(state, p.id, fromWest);
     if (!car || onward?.kind === 'rival') {
@@ -244,6 +246,7 @@ function chooseRegister(state: GameState, ctype?: CustomerType): Fixture | null 
 
 function finishShopping(state: GameState, p: Person): void {
   if (!p.basket || p.basket.length === 0) { startLeaving(state, p, false); return; }
+  if (p.thief) { bolt(state, p); return; }
   const reg = chooseRegister(state, p.ctype);
   if (!reg) { startLeaving(state, p, false); return; }
   reg.queue ??= [];
@@ -282,24 +285,36 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
   p.registerId = null;
   if (!happy && (p.basket?.length ?? 0) > 0) {
     // An angry walkout knocks something over: a small spill on the floor until someone mops it.
-    // Spills only ever land on open floor inside the shop (never under a fixture or outside).
-    const g = gridFor(state);
-    const [cx, cz] = cellOf(g, { x: p.x, z: p.z });
-    if (g.inside[cellIndex(g, cx, cz)] && !isBlocked(g, cx, cz) && state.shop.litter.length < 6) { state.shop.litter.push({ id: nextId(state), x: p.x, z: p.z }); cue(state, 'spill'); }
+    addSpill(state, p.x, p.z);
     state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.06);
   }
   if (!happy) {
     cue(state, 'grumble');
-    // Put unpaid items back where they came from.
-    for (const b of p.basket ?? []) {
-      const f = findFixtureWith(state, b.productId) ?? state.shop.fixtures.find((fx) => fx.slots.some((s) => s.productId === b.productId));
-      const slot = f?.slots.find((s) => s.productId === b.productId);
-      if (slot) slot.qty += b.qty;
-    }
-    p.basket = [];
+    returnToShelves(state, p);
   }
   p.state = 'leaving'; p.anim = happy && p.basket && p.basket.length ? 'carry' : 'walk';
   setPath(state, p, doorInside(state, p.id));
+}
+
+/** A spill on the floor until someone mops it: only ever on open floor inside the shop (never under a fixture or outside). */
+export function addSpill(state: GameState, x: number, z: number): boolean {
+  const g = gridFor(state);
+  const [cx, cz] = cellOf(g, { x, z });
+  if (!g.inside[cellIndex(g, cx, cz)] || isBlocked(g, cx, cz) || state.shop.litter.length >= 6) return false;
+  state.shop.litter.push({ id: nextId(state), x, z });
+  cue(state, 'spill');
+  return true;
+}
+
+/** Unpaid items go back where they came from (a walkout's basket, a caught shoplifter's haul). */
+export function returnToShelves(state: GameState, p: Person): void {
+  for (const b of p.basket ?? []) {
+    const f = findFixtureWith(state, b.productId) ?? state.shop.fixtures.find((fx) => fx.slots.some((s) => s.productId === b.productId));
+    const slot = f?.slots.find((s) => s.productId === b.productId);
+    if (slot) slot.qty += b.qty;
+    else state.shop.storage.push({ productId: b.productId, qty: b.qty, day: state.day });
+  }
+  p.basket = [];
 }
 
 function completeSale(state: GameState, p: Person, reg: Fixture): void {
@@ -569,6 +584,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       }
       break;
     }
+    case 'fleeing': fleeStep(state, p, dyn); break;
     case 'toCar': {
       if (walkStreet(p, p.speed, state.tick)) {
         const car = state.cars.find((c) => c.id === p.carId);
@@ -747,6 +763,27 @@ export function ownerWalkTo(state: GameState, to: Vec2): boolean {
   return true;
 }
 
+/** A cashier's till has nobody at it or waiting. */
+export function tillIdle(state: GameState, p: Person): boolean {
+  const reg = state.shop.fixtures.find((f) => f.staffId === p.id);
+  return !reg || (!reg.serving && !(reg.queue?.length));
+}
+
+/**
+ * The spill this worker should mop: the nearest one nobody else is on their way to. A cleaner goes
+ * anywhere in the shop for one; a cashier only steps a few metres from the till.
+ */
+function spillFor(state: GameState, p: Person): { id: number; x: number; z: number } | null {
+  const reach = p.role === 'cleaner' ? Infinity : p.role === 'cashier' ? 4 : 9;
+  let best: { id: number; x: number; z: number } | null = null, bestD = reach;
+  for (const l of state.shop.litter) {
+    if (state.people.some((o) => o !== p && o.state === 'toStock' && o.timer === -2 && o.targetFixture === l.id)) continue;
+    const d = dist(p, l);
+    if (d < bestD) { best = l; bestD = d; }
+  }
+  return best;
+}
+
 /** Where a worker stands when idle. */
 function homeOf(state: GameState, p: Person): Vec2 {
   const reg = state.shop.fixtures.find((f) => f.type === 'register');
@@ -777,8 +814,14 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     else { p.state = 'idle'; p.anim = 'idle'; }
     return;
   }
+  // A shoplifter making a run for it: whoever has nothing on goes after them.
+  if (p.kind === 'staff') {
+    if (p.chase !== undefined && p.chase !== null) { chaseStep(state, p, dyn); return; }
+    const thief = isFree(state, p) ? fleeingThief(state, p) : null;
+    if (thief) { p.chase = thief.id; p.state = 'chasing'; chaseStep(state, p, dyn); return; }
+  }
   const home = homeOf(state, p);
-  // Stockers and the free owner look for shelves to fill; cleaners look for litter.
+  // Stockers look for shelves to fill; anyone with nothing on mops up a spill (cleaners go furthest for one).
   if ((p.state === 'idle' || p.state === 'toRegister') && !p.task) {
     const stocks = p.kind === 'staff' ? p.role === 'stocker' : !state.shop.fixtures.some((f) => f.type === 'register' && f.staffId);
     if (stocks && p.kind === 'staff') {
@@ -791,8 +834,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
       }
       if (best) { const t = pickCarryTask(state, best.f)!; p.task = { type: 'carry', fixtureId: best.f.id, productId: t.productId, qty: t.qty }; }
     }
-    if (p.kind === 'staff' && p.role === 'cleaner' && state.shop.litter.length && p.state === 'idle') {
-      const l = state.shop.litter[0]!;
+    const l = p.state === 'idle' && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null;
+    if (l) {
       p.state = 'toStock'; p.anim = 'walk'; p.timer = -2; // -2 marks a cleaning trip
       p.targetFixture = l.id;
       setPath(state, p, { x: l.x, z: l.z }, dyn);
@@ -822,6 +865,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
       break;
     }
     case 'toStock': {
+      // A cashier off mopping goes straight back when someone comes to pay.
+      if (p.timer === -2 && ((p.role === 'cashier' && !tillIdle(state, p)) || !state.shop.litter.some((x) => x.id === p.targetFixture))) { p.state = 'idle'; p.timer = 0; p.targetFixture = null; p.path = []; p.pathIdx = 0; break; }
       if (followPath(p, p.speed, dt, 12, 0.22)) {
         if (p.timer === -2) {
           // Cleaning trip: pick up the litter.
@@ -864,7 +909,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         if (f && p.carrying) {
           // A clumsy stocker drops a unit now and then.
           const drop = p.kind === 'staff' && withRng(state, 'staff', (r) => r.chance(Math.max(0, 0.08 - (p.skill ?? 0.5) * 0.08))) ? 1 : 0;
-          if (drop) popup(state, { x: p.x, z: p.z }, 'Dropped one', 'bad', 1.1);
+          if (drop) { popup(state, { x: p.x, z: p.z }, 'Dropped one', 'bad', 1.1); addSpill(state, p.x, p.z); }
           const left = placeOnFixture(state, f, p.carrying.productId, Math.max(0, p.carrying.qty - drop));
           if (left > 0) state.shop.storage.push({ productId: p.carrying.productId, qty: left, day: state.day });
           cue(state, 'stock');

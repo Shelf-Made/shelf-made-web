@@ -141,6 +141,8 @@ export function installTestHooks(rt: GameRuntime): void {
     photo: (kind: 'outside' | 'aisle' | 'haul' | 'selfie', seed = 3) => { const s = rt.state; const r = rt.renderer; if (!s || !r) return null; const owner = s.people.find((p) => p.kind === 'owner'); return r.takePhoto(s, { id: `test-${kind}`, kind, seed, t: 0.4, products: ['apples', 'milk', 'bread'] }, owner ? { look: { ...owner.look, model: 2 }, ctype: 'impulse' } : null); },
     restock: () => { const s = rt.state; if (!s) return; for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = FIXTURES[f.type].capacity; rt.bump(); },
     /** Spawn n customers at once (busy-shop screenshots and queue tests). */
+    /** A shopper with something in their basket turns shoplifter: they run for the door on the next tick. */
+    thief: () => { const s = rt.state; if (!s) return false; const p = s.people.find((x) => x.kind === 'customer' && (x.state === 'shopping' || x.state === 'browsing') && x.basket?.length); if (!p) return false; p.thief = true; p.listIdx = p.list?.length ?? 0; p.state = 'shopping'; p.anim = 'carry'; rt.bump(); return p.id; },
     crowd: (n: number, onFoot = true) => { const s = rt.state; if (!s) return; for (let i = 0; i < n; i++) spawnCustomer(s, onFoot); rt.bump(); },
     debugPeople: () => rt.renderer?.debugPeople(),
     /** Force a rival sale for screenshots. */

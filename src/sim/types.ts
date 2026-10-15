@@ -68,7 +68,9 @@ export type CustomerType = 'bargain' | 'convenience' | 'loyalist' | 'impulse';
 
 export type PersonState =
   | 'driving' | 'toDoor' | 'entering' | 'shopping' | 'browsing' | 'toQueue' | 'queued' | 'paying' | 'leaving' | 'toCar' | 'walking' | 'gone'
-  | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working' | 'inRival' | 'loading';
+  | 'idle' | 'toStock' | 'pickBox' | 'carrying' | 'stocking' | 'toRegister' | 'working' | 'inRival' | 'loading'
+  /** A shoplifter making a run for the door, and the staff member after them. */
+  | 'fleeing' | 'chasing';
 
 export type Anim = 'idle' | 'walk' | 'browse' | 'carry' | 'pay' | 'sit';
 
@@ -158,6 +160,11 @@ export interface Person {
   /** Who rang them up: a cashier (and how good), the owner, or a self-checkout kiosk. */
   servedBy?: 'staff' | 'owner' | 'kiosk';
   servedSkill?: number;
+  /** A shoplifter: shops like anyone else, then runs for the door instead of the till. Caught: `busted`. */
+  thief?: boolean;
+  busted?: boolean;
+  /** Staff: the shoplifter they are after. */
+  chase?: number | null;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -294,7 +301,11 @@ export interface DayStats {
   other: number;
   loans: number;
   bills: number;
+  /** What shoplifters got away with today, at cost (the shop paid for it, nobody paid it back). */
   theft: number;
+  /** Shoplifters caught today, and the ones who got away. */
+  caught?: number;
+  escaped?: number;
   tax: number;
   customers: number;
   served: number;
@@ -389,7 +400,7 @@ export interface Franchise {
 }
 
 /** "Too pricey", "Out of stock", "Long queue", "Great deal", "Love this place". */
-export type ReactionKind = 'pricey' | 'outOfStock' | 'queue' | 'deal' | 'love' | 'ew';
+export type ReactionKind = 'pricey' | 'outOfStock' | 'queue' | 'deal' | 'love' | 'ew' | 'thief';
 export interface Reaction { id: number; personId: number; kind: ReactionKind; tick: number }
 
 export interface Notice { day: number; text: string; kind: 'rival' | 'event' | 'money' | 'staff' | 'info' }

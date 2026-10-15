@@ -4,7 +4,7 @@
  * has birdsong by day and crickets at night, each call a few short tones.
  */
 export type Cue = 'beep' | 'cash' | 'chime' | 'click' | 'pick' | 'stock' | 'truck' | 'boxes' | 'reward' | 'night' | 'open' | 'order' | 'build' | 'bad' | 'engine'
-  | 'step' | 'place' | 'sell' | 'tick' | 'hire' | 'thud' | 'paper' | 'coin' | 'hover' | 'tap' | 'cardOpen' | 'cardClose' | 'whoosh' | 'spill' | 'grumble' | 'quack' | 'rotate' | 'speed';
+  | 'step' | 'place' | 'sell' | 'tick' | 'hire' | 'thud' | 'paper' | 'coin' | 'hover' | 'tap' | 'cardOpen' | 'cardClose' | 'whoosh' | 'spill' | 'grumble' | 'alarm' | 'caught' | 'quack' | 'rotate' | 'speed';
 
 /** Per-play tweaks: loudness 0..1 and stereo position -1..1. */
 export interface CueOpts { gain?: number; pan?: number }
@@ -135,6 +135,9 @@ export class AudioEngine {
       case 'cardClose': this.noise(0.14, 0.08, 0, 3000, 'bandpass', 450); this.tone(800, 0.08, 'sine', 0.06, 0.02, this.sfxGain, 520); break;
       case 'whoosh': this.noise(0.9, 0.22, 0, 300, 'bandpass', 1400); this.tone(110, 0.8, 'sawtooth', 0.025, 0, this.sfxGain, 80); break;
       case 'spill': this.noise(0.25, 0.14, 0, 1800, 'lowpass', 300); this.tone(300, 0.12, 'sine', 0.08, 0.02, this.sfxGain, 150); break;
+      // A shoplifter bolts: a shop alarm's two-tone whoop. Caught: three rising notes.
+      case 'alarm': for (let i = 0; i < 4; i++) this.tone(i % 2 ? 660 : 880, 0.13, 'square', 0.07, i * 0.14); break;
+      case 'caught': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.12, i * 0.07)); break;
       case 'grumble': this.tone(180, 0.16, 'sawtooth', 0.05, 0, this.sfxGain, 140); this.tone(150, 0.22, 'sawtooth', 0.05, 0.15, this.sfxGain, 110); break;
       case 'quack': for (let i = 0; i < 2; i++) { this.tone(520, 0.11, 'square', 0.03, i * 0.17, this.ambienceGain, 380); this.tone(1040, 0.08, 'sawtooth', 0.012, i * 0.17, this.ambienceGain, 760); } break;
     }

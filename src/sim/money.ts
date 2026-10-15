@@ -3,8 +3,7 @@
  * fail state. Everything here is applied at closing time.
  */
 import type { GameState, Bill, Loan } from './types';
-import { withRng, popup, cue } from './state';
-import { doorOutside } from './people';
+import { cue } from './state';
 
 /**
  * Every money string in the game goes through here: the sign before the dollar ("-$140", never
@@ -75,12 +74,9 @@ export function closingCharges(state: GameState): { loans: number; bills: number
   const due = state.bills.filter((b) => b.dueDay <= state.day);
   for (const b of due) bills += b.amount;
   state.bills = state.bills.filter((b) => b.dueDay > state.day);
-  // Theft: a little shrink every day, less with staff on the floor.
-  const staffOnFloor = state.people.filter((p) => p.kind === 'staff').length;
-  const shrink = withRng(state, 'theft', (r) => (r.chance(0.35 - staffOnFloor * 0.08) ? r.range(0.004, 0.012) * Math.max(0, state.today.revenue) : 0));
-  const theft = Math.round(shrink * 100) / 100;
-  if (theft > 0) popup(state, doorOutside(state), `${formatMoney(-theft)} shoplifted`, 'bad', 1.5);
-  state.cash -= loans + bills + theft;
+  // Theft: what shoplifters got away with today (see shoplifting.ts). Stock, not cash: it was paid for when ordered.
+  const theft = Math.round(state.today.theft * 100) / 100;
+  state.cash -= loans + bills;
   return { loans: Math.round(loans * 100) / 100, bills: Math.round(bills * 100) / 100, theft };
 }
 

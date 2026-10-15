@@ -77,6 +77,11 @@ function icon(kind: ReactionKind): CanvasTexture {
       g.fillStyle = '#38383D'; g.beginPath(); g.arc(cx - 11, cy - 7, 4.5, 0, Math.PI * 2); g.arc(cx + 11, cy - 7, 4.5, 0, Math.PI * 2); g.fill();
       g.strokeStyle = '#38383D'; g.lineWidth = 5; g.beginPath(); g.moveTo(cx - 14, cy + 14); g.quadraticCurveTo(cx - 7, cy + 7, cx, cy + 14); g.quadraticCurveTo(cx + 7, cy + 21, cx + 14, cy + 14); g.stroke(); break;
     }
+    case 'thief': { // A red alarm: a bold exclamation mark in a red circle.
+      g.fillStyle = '#E8573F'; g.beginPath(); g.arc(cx, cy, 32, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#FFFFFF'; g.beginPath(); g.roundRect(cx - 6, cy - 22, 12, 30, 5); g.fill();
+      g.beginPath(); g.arc(cx, cy + 18, 6.5, 0, Math.PI * 2); g.fill(); break;
+    }
     case 'love': { // A red heart.
       g.fillStyle = '#E8573F'; g.beginPath(); g.moveTo(cx, 84);
       g.bezierCurveTo(22, 56, 30, 22, cx, 40); g.bezierCurveTo(98, 22, 106, 56, cx, 84); g.fill(); break;

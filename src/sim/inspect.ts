@@ -72,6 +72,8 @@ function doing(state: GameState, p: Person): string {
     case 'leaving': return p.paid || p.bags ? 'Heading home with the shopping' : 'Leaving';
     case 'toCar': return 'Walking to the car';
     case 'loading': return 'Loading the boot';
+    case 'fleeing': return p.busted ? 'Caught shoplifting' : 'Making a run for it with the goods';
+    case 'chasing': return 'Chasing a shoplifter';
     case 'inRival': return 'Inside';
     case 'walking': return p.rivalId ? `On the way to ${state.rivals.find((r) => r.id === p.rivalId)?.name ?? 'the shops'}` : p.look.dog ? 'Walking the dog' : 'Out for a walk';
     default: return p.kind === 'staff' ? 'At work' : 'Standing about';

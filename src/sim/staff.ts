@@ -2,7 +2,7 @@
  * Staff: a hiring pool, wages, skill, speed and morale, visible mistakes, quitting, and
  * managers who follow the rules you set. Behaviour on the floor lives in people.ts.
  */
-import type { GameState, Person, StaffRole, Candidate, ManagerRules } from './types';
+import type { GameState, Person, StaffRole, Candidate, ManagerRules, Look } from './types';
 import { withRng, popup, cue } from './state';
 import { doorOutside } from './people';
 import { FIXTURES } from './layout';
@@ -12,6 +12,19 @@ import { formatMoney, dollars } from './money';
 
 const FIRST = ['Ada', 'Ben', 'Cleo', 'Dev', 'Ellis', 'Fay', 'Gus', 'Hana', 'Ivo', 'June', 'Kai', 'Lena', 'Milo', 'Nia', 'Oz', 'Pia', 'Quinn', 'Rae', 'Sam', 'Tess', 'Uma', 'Val', 'Wren', 'Yuki', 'Zed'];
 const LAST = ['Park', 'Okafor', 'Silva', 'Novak', 'Reyes', 'Brennan', 'Chen', 'Haddad', 'Kowalski', 'Mensah', 'Dubois', 'Ito', 'Larsen', 'Moreno', 'Singh'];
+
+/**
+ * How a member of staff looks: their own face and build (one of the twelve characters), skin, hair
+ * and trousers, picked from their id so they never change; the renderer dresses every one of them in
+ * the shop's colour with a name badge, so staff read as staff and no two look alike.
+ */
+const STAFF_SKINS = ['#FFD7B0', '#F3CCA8', '#DBAB8E', '#C8925A', '#A87B45', '#6E4630'];
+const STAFF_HAIRS = ['#222226', '#6E4630', '#9C6B47', '#C9541C', '#E9C46A', '#38383D', '#D8D8DC'];
+const STAFF_BOTTOMS = ['#38383D', '#285795', '#5A5A62', '#7A4E2E', '#24603D', '#C4C0B8'];
+export function staffLook(id: number, base: { model: number; variant: number; height: number }): Look {
+  const h = (k: number) => { let x = Math.imul((id + 1) ^ (k * 0x9e3779b9), 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); return ((x ^ (x >>> 16)) >>> 0); };
+  return { model: base.model % 12, variant: base.variant, height: base.height, skin: STAFF_SKINS[h(1) % STAFF_SKINS.length], hair: STAFF_HAIRS[h(2) % STAFF_HAIRS.length], bottom: STAFF_BOTTOMS[h(3) % STAFF_BOTTOMS.length] };
+}
 
 export const ROLE_NAMES: Record<StaffRole, string> = { cashier: 'Cashier', stocker: 'Stocker', cleaner: 'Cleaner', orderer: 'Orderer', manager: 'Manager' };
 export const ROLE_BLURB: Record<StaffRole, string> = {
@@ -69,7 +82,7 @@ export function hire(state: GameState, candidateId: number): string | null {
   state.staffPool = state.staffPool.filter((x) => x.id !== c.id);
   const d = doorOutside(state);
   const p: Person = {
-    id: c.id, kind: 'staff', look: { model: 12, variant: c.look.variant, height: c.look.height }, x: d.x, z: d.z + 1.5, yaw: Math.PI, px: d.x, pz: d.z + 1.5,
+    id: c.id, kind: 'staff', look: staffLook(c.id, c.look), x: d.x, z: d.z + 1.5, yaw: Math.PI, px: d.x, pz: d.z + 1.5,
     state: 'idle', anim: 'walk', path: [], pathIdx: 0, speed: 1.6 * c.speed, timer: 0,
     role: c.role, wage: c.wage, skill: c.skill, morale: 0.85, name: c.name, task: null, carrying: null, stuckTicks: 0, hiredDay: state.day, shift: 'full',
   };

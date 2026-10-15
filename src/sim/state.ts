@@ -24,7 +24,8 @@ export function popup(state: GameState, at: Vec2, text: string, kind: Popup['kin
  */
 export function react(state: GameState, personId: number, kind: ReactionKind): void {
   const recent = (s: number) => state.tick - s * 20;
-  if (state.reactions.some((r) => r.personId === personId && r.tick > recent(6))) return;
+  // One bubble at a time each; a shoplifter's alarm keeps showing while they run.
+  if (kind !== 'thief' && state.reactions.some((r) => r.personId === personId && r.tick > recent(6))) return;
   if ((kind === 'deal' || kind === 'love') && state.reactions.some((r) => r.kind === kind && r.tick > recent(5))) return;
   state.reactions.push({ id: nextId(state), personId, kind, tick: state.tick });
   if (state.reactions.length > 16) state.reactions.splice(0, state.reactions.length - 16);
