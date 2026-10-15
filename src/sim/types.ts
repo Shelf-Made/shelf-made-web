@@ -144,6 +144,8 @@ export interface Car {
   orderId?: number;
   /** Backing out of a bay: the car moves along its path facing the other way. */
   reversing?: boolean;
+  /** Backing out: the heading at each point of the path (the back-out arc, worked out on the rear axle). */
+  yaws?: number[];
   /** The path to follow once the car has backed out. */
   next?: Vec2[];
   /** Seconds spent held up behind another car (breaks rare deadlocks). */

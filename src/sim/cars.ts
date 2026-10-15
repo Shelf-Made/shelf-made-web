@@ -156,6 +156,42 @@ export function spawnCustomerCar(state: GameState, ownerId: number, fromWest: bo
   return { car, onward: null };
 }
 
+/** Backing out: the rear axle sits this far behind a car's centre, and runs on an arc this tight. */
+const REAR_AXLE = 0.45, BACK_RADIUS = 1.35;
+/** Straight back this far before steering, so the nose clears the cars either side (bays are 1.1 apart). */
+const BACK_STRAIGHT = 0.8;
+/** Reversing: top speed, and how gently it pulls away and comes to a stop (units/s, units/s²). */
+const BACK_SPEED = 1.1, BACK_ACCEL = 2.2, BACK_BRAKE = 1.8;
+
+type Pose = { x: number; z: number; hx: number; hz: number };
+
+/**
+ * Backing out of a nose-in bay the way a driver does it (lot-relative). Straight back until the nose is
+ * nearly clear of the neighbours, then steering so the rear swings away from the exit and the car comes
+ * round to face it. The rear axle runs on the arc, so the heading turns only as the car rolls and nothing
+ * slides sideways. It stops once it is across the aisle (at `stopX`), facing the exit, or near the aisle's
+ * end; the drive out finishes the turn. `side` is which way the nose points along x.
+ */
+export function backOutPoses(L: LotLayout, c: Vec2, side: 1 | -1, stopX: number): Pose[] {
+  const D = Math.abs(stopX - c.x);
+  const straight = Math.max(BACK_STRAIGHT, D - REAR_AXLE - BACK_RADIUS);
+  let rx = c.x - side * REAR_AXLE, rz = c.z, th = 0, s = 0;
+  const pose = (): Pose => { const hx = side * Math.cos(th), hz = Math.sin(th); return { x: rx + REAR_AXLE * hx, z: rz + REAR_AXLE * hz, hx, hz }; };
+  const out: Pose[] = [pose()];
+  const ds = 0.04;
+  for (let k = 1; k < 400; k++) {
+    rx -= ds * side * Math.cos(th); rz -= ds * Math.sin(th); s += ds;
+    if (s > straight) th = Math.min(Math.PI / 2, th + ds / BACK_RADIUS);
+    const p = pose();
+    // The rear corner that swings deepest into the lot.
+    const rearZ = p.z - 0.76 * p.hz - 0.42 * Math.abs(p.hx);
+    const done = Math.abs(p.x - c.x) >= D || th >= Math.PI / 2 || rearZ < L.aisle.z0 + 0.1;
+    if (done || k % 2 === 0) out.push(p);
+    if (done) break;
+  }
+  return out;
+}
+
 /** Back out of a bay and drive away, out of whichever lot the car is in. */
 export function leaveLot(state: GameState, car: Car): void {
   if (car.lot === 'street') { leaveStreetBay(state, car); return; }
@@ -163,10 +199,16 @@ export function leaveLot(state: GameState, car: Car): void {
   const f = site.frame, L = site.L, dx = dwX(L);
   const plus = withRng(state, 'traffic', (r) => r.chance(0.5));
   const c = toLocal(f, car.x, car.z);
-  // Back out into the aisle first (the car keeps facing the bay), then drive out on the exit lane.
-  const back = { x: dx + OUT + (c.x < dx ? 0 : 0.9), z: c.z };
-  car.path = [{ x: car.x, z: car.z }, toWorld(f, back.x, back.z)]; car.pathIdx = 1; car.reversing = true;
-  const local: Vec2[] = [back, { x: dx + OUT, z: c.z + 0.9 }, { x: dx + OUT, z: Math.max(L.driveway.z1, KERB_L - 0.3) }];
+  // Which way the nose points in the lot (bays run along x, either side of the aisle).
+  const nose = toLocal(f, car.x + Math.sin(car.yaw), car.z + Math.cos(car.yaw));
+  const side: 1 | -1 = nose.x - c.x >= 0 ? 1 : -1;
+  // Back out round an arc to just past the middle of the aisle, then drive out on the exit lane.
+  const poses = backOutPoses(L, c, side, dx - side * 0.1);
+  car.path = poses.map((p) => toWorld(f, p.x, p.z));
+  car.yaws = poses.map((p) => { const a = toWorld(f, p.x, p.z), b = toWorld(f, p.x + p.hx, p.z + p.hz); return Math.atan2(b.x - a.x, b.z - a.z); });
+  car.pathIdx = 1; car.reversing = true; car.v = 0;
+  const e = poses[poses.length - 1]!;
+  const local: Vec2[] = [{ x: e.x, z: e.z }, { x: dx + OUT, z: e.z + 1.2 }, { x: dx + OUT, z: Math.max(L.driveway.z1, KERB_L - 0.3) }];
   if (plus) local.push({ x: dx + OUT + 0.4, z: NEAR_L + 0.2 }, { x: dx + OUT + 1.8, z: FAR_L });
   else local.push({ x: dx + OUT - 1.0, z: NEAR_L });
   car.next = roundPath([...W(f, local), farEnd(f, plus ? 1 : -1, plus ? FAR_L : NEAR_L)], 0.9);
@@ -251,6 +293,8 @@ function headroom(state: GameState, car: Car): number {
     // Backing out: wait until the aisle behind is clear, and never reverse into a car.
     const t = car.path[car.pathIdx];
     if (!t) return 1;
+    // Where it is backing to (the end of the arc, out in the aisle) and which way it is moving now.
+    const end = car.path[car.path.length - 1]!;
     const mx = t.x - car.x, mz = t.z - car.z, ml = Math.hypot(mx, mz) || 1;
     const starting = Math.hypot(car.x - car.path[0]!.x, car.z - car.path[0]!.z) < 0.05;
     for (const o of state.cars) {
@@ -259,7 +303,7 @@ function headroom(state: GameState, car: Car): number {
       if (o.reversing && Math.hypot(o.x - o.path[0]!.x, o.z - o.path[0]!.z) < 0.05 && o.id > car.id) continue;
       const dx = o.x - car.x, dz = o.z - car.z;
       // Before pulling out, wait for anything near the spot or about to drive past it.
-      if (starting && (Math.hypot(o.x - t.x, o.z - t.z) < 4.5 || o.path.slice(o.pathIdx, o.pathIdx + 8).some((p) => Math.hypot(p.x - t.x, p.z - t.z) < 1.8) && Math.hypot(o.x - t.x, o.z - t.z) < 9)) return 0;
+      if (starting && (Math.hypot(o.x - end.x, o.z - end.z) < 4.5 || o.path.slice(o.pathIdx, o.pathIdx + 8).some((p) => Math.hypot(p.x - end.x, p.z - end.z) < 1.8) && Math.hypot(o.x - end.x, o.z - end.z) < 9)) return 0;
       const along = (dx * mx + dz * mz) / ml, side = Math.abs(dx * mz - dz * mx) / ml;
       // Once out of the bay, a car already waiting for us lets us finish.
       if (!starting && (o.waited ?? 0) > 1) continue;
@@ -352,9 +396,10 @@ function mustYield(state: GameState, car: Car): boolean {
   if (!ahead.length) return false;
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
   const N = ROAD_Z - 1.0, S = ROAD_Z + 1.0;
-  // Still straight, before the turn: once a car has begun its turn it is committed.
-  const crossN = fx > 0.9 && Math.abs(car.z - LANE_EAST_Z) < 0.3 && ahead.some((p) => p.z < LANE_WEST_Z + 0.1);
-  const crossS = fx < -0.9 && Math.abs(car.z - LANE_WEST_Z) < 0.3 && ahead.some((p) => p.z > LANE_EAST_Z - 0.1);
+  // Turning across the oncoming lane: it waits for a gap until its nose is in that lane, then it is committed.
+  const noseZ = car.z + 0.75 * fz;
+  const crossN = fx > 0.25 && car.z > LANE_WEST_Z + 0.3 && car.z < LANE_EAST_Z + 0.3 && noseZ > LANE_WEST_Z + 0.45 && ahead.some((p) => p.z < LANE_WEST_Z + 0.1);
+  const crossS = fx < -0.25 && car.z < LANE_EAST_Z - 0.3 && car.z > LANE_WEST_Z - 0.3 && noseZ < LANE_EAST_Z - 0.45 && ahead.some((p) => p.z > LANE_EAST_Z - 0.1);
   const fromNorth = fz > 0.9 && Math.abs(car.x) > SIDE_HALF + 0.2 && car.z < N - 0.5 && car.z > N - 2.4 && ahead.some((p) => p.z > N + 0.2);
   const fromSouth = fz < -0.9 && Math.abs(car.x) > SIDE_HALF + 0.2 && car.z > S + 0.5 && car.z < S + 2.4 && ahead.some((p) => p.z < S - 0.2);
   const fromBay = car.x > SIDE_HALF + 0.2 && car.x < SIDE_HALF + 1.2 && fz < -0.5 && ahead.some((p) => p.x < SIDE_HALF);
@@ -369,8 +414,9 @@ function mustYield(state: GameState, car: Car): boolean {
     }
     const west = Math.sin(o.yaw) < -0.8 && Math.abs(o.z - LANE_WEST_Z) < 0.45;
     const east = Math.sin(o.yaw) > 0.8 && Math.abs(o.z - LANE_EAST_Z) < 0.45;
-    if ((crossN || fromNorth || fromSouth) && west && dx > -1.8 && dx < 10) return true;
-    if ((crossS || fromNorth || fromSouth) && east && dx < 1.8 && dx > -10) return true;
+    // A gap of about two and a half seconds at road speed: a turning car slows for its bend and takes that long to clear the lane.
+    if ((crossN || fromNorth || fromSouth) && west && dx > -1.8 && dx < 14) return true;
+    if ((crossS || fromNorth || fromSouth) && east && dx < 1.8 && dx > -14) return true;
   }
   return false;
 }
@@ -394,13 +440,16 @@ function drive(state: GameState, car: Car, speed: number, turnRate: number): boo
   if (car.reversing) {
     const t = car.path[car.pathIdx];
     if (!t) return true;
-    const dx = t.x - car.x, dz = t.z - car.z, d = Math.hypot(dx, dz);
-    const step = speed * 0.5 * TICK;
-    // Backing out: the nose swings round toward the exit while the car rolls backwards.
-    car.yaw = turnToward(car.yaw, Math.atan2(-dx, -dz) + (car.next ? 0.6 * Math.sign(dx || 1) : 0), 1.6 * TICK);
-    if (d <= step) { car.x = t.x; car.z = t.z; car.pathIdx++; return true; }
-    car.x += (dx / d) * step; car.z += (dz / d) * step;
-    return false;
+    if (!car.yaws || car.yaws.length !== car.path.length) {
+      // A save from before the back-out arc: straight back, the nose swinging round toward the exit.
+      const dx = t.x - car.x, dz = t.z - car.z, d = Math.hypot(dx, dz);
+      const step = speed * 0.5 * TICK;
+      car.yaw = turnToward(car.yaw, Math.atan2(-dx, -dz) + (car.next ? 0.6 * Math.sign(dx || 1) : 0), 1.6 * TICK);
+      if (d <= step) { car.x = t.x; car.z = t.z; car.pathIdx++; return true; }
+      car.x += (dx / d) * step; car.z += (dz / d) * step;
+      return false;
+    }
+    return backAlong(car);
   }
   // Held up a while: creep on when there is room. Held up for good (a ring of cars each waiting on the next): squeeze through.
   const inch = (car.waited ?? 0) >= JAM_GIVE_UP ? 0.3 : (car.waited ?? 0) >= 8 && (car.gap ?? Infinity) > 1.4 ? 0.15 : 0;
@@ -413,6 +462,36 @@ function drive(state: GameState, car: Car, speed: number, turnRate: number): boo
   // Whatever the easing, never past a stop line that holds us.
   car.v = Math.min(car.v, l.room / TICK);
   return followPath(car, car.v, TICK, turnRate);
+}
+
+/**
+ * Roll back along the back-out arc: off the mark gently, slowing to a stop at its end. Position and
+ * heading both come from the arc (worked out on the rear axle), so the car turns only as it rolls.
+ */
+function backAlong(car: Car): boolean {
+  const yaws = car.yaws!;
+  let left = 0, px = car.x, pz = car.z;
+  for (let i = car.pathIdx; i < car.path.length; i++) { const p = car.path[i]!; left += Math.hypot(p.x - px, p.z - pz); px = p.x; pz = p.z; }
+  const want = Math.max(0.12, Math.min(BACK_SPEED, Math.sqrt(2 * BACK_BRAKE * left)));
+  const v = car.v ?? 0;
+  car.v = want > v ? Math.min(want, v + BACK_ACCEL * TICK) : want;
+  let budget = car.v * TICK;
+  while (budget > 0 && car.pathIdx < car.path.length) {
+    const t = car.path[car.pathIdx]!;
+    const dx = t.x - car.x, dz = t.z - car.z, d = Math.hypot(dx, dz);
+    if (d <= budget) { car.x = t.x; car.z = t.z; budget -= d; car.pathIdx++; }
+    else { car.x += (dx / d) * budget; car.z += (dz / d) * budget; budget = 0; }
+  }
+  const i = car.pathIdx;
+  if (i >= car.path.length) { car.yaw = yaws[yaws.length - 1]!; return true; }
+  const a = car.path[i - 1]!, b = car.path[i]!;
+  const seg = Math.hypot(b.x - a.x, b.z - a.z);
+  const f = seg > 1e-6 ? Math.max(0, Math.min(1, 1 - Math.hypot(b.x - car.x, b.z - car.z) / seg)) : 1;
+  let dy = yaws[i]! - yaws[i - 1]!;
+  while (dy > Math.PI) dy -= Math.PI * 2;
+  while (dy < -Math.PI) dy += Math.PI * 2;
+  car.yaw = yaws[i - 1]! + dy * f;
+  return false;
 }
 
 /**
@@ -471,9 +550,15 @@ export function tickCars(state: GameState): void {
       case 'turnedAway':
       case 'leaving': {
         if (car.reversing) {
-          if (drive(state, car, CAR_LOT_SPEED, 5)) { car.reversing = false; car.path = car.next ?? []; car.next = undefined; car.pathIdx = 1; freeCarBay(state, car); }
+          if (drive(state, car, CAR_LOT_SPEED, 5)) {
+            // Stopped at the end of the arc: a moment to change gear, then off from rest.
+            car.reversing = false; car.path = car.next ?? []; car.next = undefined; car.pathIdx = 1; car.yaws = undefined;
+            car.v = 0; car.timer = 0.25;
+            freeCarBay(state, car);
+          }
           break;
         }
+        if (car.timer > 0) { car.timer -= TICK; break; }
         if (car.state === 'leaving') car.speed = onRoad(car.x, car.z) ? CAR_ROAD_SPEED : CAR_LOT_SPEED;
         if (drive(state, car, car.speed, 6)) car.state = 'gone';
         break;

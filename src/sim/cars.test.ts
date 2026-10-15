@@ -1,7 +1,77 @@
 import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
 import { tick, applyCommand, TICK } from './index';
-import { spawnTraffic } from './cars';
+import { spawnTraffic, tickCars, leaveLot } from './cars';
+import { lotLayout, toLocal, toWorld } from './layout';
+import type { Car, GameState } from './types';
+
+/** Do two cars' bodies (1.5 × 0.82, centred) overlap? Separating-axis test on the two rectangles. */
+function bodiesOverlap(a: Car, b: Car, margin = 0.02): boolean {
+  const hl = 0.75 - margin, hw = 0.41 - margin;
+  const axes = (c: Car) => [[Math.sin(c.yaw), Math.cos(c.yaw)], [Math.cos(c.yaw), -Math.sin(c.yaw)]] as const;
+  const corners = (c: Car) => { const [f, r] = axes(c); return [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([i, j]) => [c.x + f[0] * hl * i! + r[0] * hw * j!, c.z + f[1] * hl * i! + r[1] * hw * j!]); };
+  const ca = corners(a), cb = corners(b);
+  for (const [ax, az] of [...axes(a), ...axes(b)]) {
+    const pa = ca.map(([x, z]) => x! * ax + z! * az), pb = cb.map(([x, z]) => x! * ax + z! * az);
+    if (Math.max(...pa) < Math.min(...pb) || Math.max(...pb) < Math.min(...pa)) return false;
+  }
+  return true;
+}
+
+/** A parked car nose-in at the player's bay i (no driver, so it stays put). */
+function parkAt(s: GameState, i: number, id: number): Car {
+  const b = s.shop.bays[i]!, L = lotLayout(s.shop), dx = (L.driveway.x0 + L.driveway.x1) / 2;
+  const l = toLocal(s.shop, b.x, b.z), side = l.x < dx ? -1 : 1;
+  const n = toWorld(s.shop, l.x + side, l.z);
+  const car: Car = { id, model: 0, x: b.x, z: b.z, yaw: Math.atan2(n.x - b.x, n.z - b.z), px: b.x, pz: b.z, pyaw: 0, path: [], pathIdx: 0, speed: 0, state: 'parked', bay: i, ownerId: null, timer: 0 };
+  car.pyaw = car.yaw; b.carId = id;
+  s.cars.push(car);
+  return car;
+}
+
+describe('backing out of a bay', () => {
+  it('rolls back round an arc (the rear axle never slides sideways), clears the cars either side, then drives off', () => {
+    for (const plotId of ['main', 'elm', 'bus']) for (const rows of [1, 2]) {
+      const s = openGame({ seed: 4, plotId, name: 'Reverse' });
+      s.cars = []; s.people = s.people.filter((p) => p.kind === 'owner');
+      s.shop.lotRows = rows;
+      const L = lotLayout(s.shop);
+      s.shop.bays = L.bays.map((bb) => ({ ...toWorld(s.shop, bb.x, bb.z), yaw: 0, carId: null }));
+      const perRow = rows > 1 ? s.shop.bays.length / 2 : s.shop.bays.length;
+      for (let i = 0; i < s.shop.bays.length; i++) {
+        s.cars = []; for (const bb of s.shop.bays) bb.carId = null;
+        // Neighbours either side in the same row.
+        const row = Math.floor(i / perRow), k = i % perRow;
+        const others = [k - 1, k + 1].filter((j) => j >= 0 && j < perRow).map((j, n) => parkAt(s, row * perRow + j, 900 + n));
+        const car = parkAt(s, i, 800);
+        leaveLot(s, car);
+        let worstSlip = 0, worstTurn = 0, overlaps = 0, reversed = 0;
+        for (let t = 0; t < 40 / TICK && s.cars.includes(car); t++) {
+          const was = { x: car.x - 0.45 * Math.sin(car.yaw), z: car.z - 0.45 * Math.cos(car.yaw), yaw: car.yaw, rev: !!car.reversing };
+          tickCars(s);
+          // Never into the cars either side, backing out or pulling away.
+          for (const o of others) if (bodiesOverlap(car, o)) overlaps++;
+          if (!was.rev) continue;
+          reversed++;
+          const r = { x: car.x - 0.45 * Math.sin(car.yaw), z: car.z - 0.45 * Math.cos(car.yaw) };
+          const mx = r.x - was.x, mz = r.z - was.z, m = Math.hypot(mx, mz);
+          const hx = Math.sin(was.yaw), hz = Math.cos(was.yaw);
+          // Sideways movement of the rear axle, and turning faster than the arc allows.
+          worstSlip = Math.max(worstSlip, Math.abs(mx * hz - mz * hx) - 0.03 * m);
+          let dy = car.yaw - was.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
+          worstTurn = Math.max(worstTurn, Math.abs(dy) - m / 1.3 - 1e-6);
+        }
+        const where = `${plotId} rows ${rows} bay ${i}`;
+        expect(reversed, where).toBeGreaterThan(10);
+        expect(worstSlip, where).toBeLessThan(0.002);
+        expect(worstTurn, where).toBeLessThan(0.002);
+        expect(overlaps, where).toBe(0);
+        // And it got away: out of the lot and gone.
+        expect(s.cars.includes(car), where).toBe(false);
+      }
+    }
+  });
+});
 
 describe('traffic', () => {
   it('cars queue behind each other instead of driving through', () => {
