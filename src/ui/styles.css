@@ -403,6 +403,18 @@ html.colour-blind .tile.active .label { outline: 3px solid var(--yellow); }
 html.colour-blind .inspect .meter i { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
 html.colour-blind .inspect .meter.low i { background-image: repeating-linear-gradient(-45deg, rgba(255,255,255,0.55) 0 3px, transparent 3px 6px); }
 
+/* The menu over a piece of furniture clicked with empty hands: its use, Move, Turn. Pinned above it. */
+.fixture-menu { position: absolute; left: -9999px; top: 0; z-index: 6; transform: translate(-50%, -100%); background: var(--white); color: var(--slate); border-radius: var(--radius); box-shadow: 0 4px 0 rgba(56,56,61,0.22), var(--shadow); padding: 8px; display: flex; flex-direction: column; gap: 6px; animation: pop 0.16s ease; pointer-events: auto; }
+.fixture-menu::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 14px; height: 14px; background: var(--white); transform: translateX(-50%) rotate(45deg); border-radius: 0 0 3px 0; }
+.fm-name { font-weight: 700; font-size: max(13px, 0.85em); opacity: 0.7; text-align: center; padding: 0 4px; }
+.fm-actions { display: flex; gap: 6px; }
+.fm-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 64px; min-height: 56px; padding: 6px 8px; border-radius: 12px; background: #eef1f4; color: var(--slate); font-weight: 700; font-size: max(13px, 0.85em); position: relative; z-index: 1; }
+.fm-btn:hover, .fm-btn:focus-visible { background: #e2e7ec; }
+.fm-btn.primary { background: var(--green); color: #fff; box-shadow: 0 3px 0 var(--green-dark); }
+.fm-btn.primary:hover { filter: brightness(1.06); }
+.fm-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.fm-btn svg .fill { fill: currentColor; opacity: 0.25; stroke: none; }
+
 /* "Who shops where": shopper types down the side, stores across; a row lights those shoppers up for 10 s. */
 .who-where { width: 100%; border-collapse: collapse; font-size: max(14px, 0.92em); font-variant-numeric: tabular-nums; }
 .who-where th, .who-where td { padding: 0; text-align: right; }

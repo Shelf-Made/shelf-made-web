@@ -82,8 +82,9 @@ export class InputController {
       if (e.code === k.zoomIn || e.code === 'NumpadAdd') { this.rt.zoom(1 / 1.3); return; }
       if (e.code === k.zoomOut || e.code === 'NumpadSubtract') { this.rt.zoom(1.3); return; }
       if (e.code === 'Escape') { this.rt.escape(); return; }
+      // R turns whatever is being placed or moved (a piece picked up from its menu too).
+      if ((this.rt.card === 'build' || this.rt.build.placing || this.rt.build.selectedId !== null) && e.code === k.rotate) { e.preventDefault(); this.rt.rotateGhost(); return; }
       if (this.rt.card === 'build' || this.rt.build.placing) {
-        if (e.code === k.rotate) { e.preventDefault(); this.rt.rotateGhost(); return; }
         if (e.code === 'Delete' || e.code === 'Backspace') { this.rt.sellSelected(); return; }
         if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) this.rt.redo(); else this.rt.undo(); return; }
         if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); this.rt.redo(); return; }

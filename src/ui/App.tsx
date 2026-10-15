@@ -11,6 +11,7 @@ import { Overlay } from './Overlay';
 import { GameOverCard } from './GameOverCard';
 import { Celebration, ChampionCard } from './Goals';
 import { InspectPanel } from './Inspect';
+import { FixtureMenu } from './FixtureMenu';
 
 export function App({ runtime }: { runtime: GameRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,6 +50,7 @@ export function App({ runtime }: { runtime: GameRuntime }) {
           <Celebration snap={snap} />
           <Overlay runtime={runtime} snap={snap} />
           {snap.inspect && !snap.night && <InspectPanel runtime={runtime} snap={snap} />}
+          {snap.fixtureMenu && !snap.night && <FixtureMenu runtime={runtime} menu={snap.fixtureMenu} />}
           {snap.toast && <div className="toast" key={snap.toast.id} role="status">{snap.toast.text}</div>}
         </div>
       )}

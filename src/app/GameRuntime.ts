@@ -77,6 +77,8 @@ export interface Snapshot {
   champion: boolean;
   /** The person clicked on, for the inspect panel (null when nobody is selected), and whether the camera follows them. */
   inspect: (InspectInfo & { following: boolean }) | null;
+  /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
+  fixtureMenu: { id: number; name: string; use: string | null } | null;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
@@ -181,7 +183,42 @@ export class GameRuntime {
       celebrate: this.celebration,
       champion: !!s && s.goals.champion && !s.goals.championSeen,
       inspect: this.inspectInfo(),
+      fixtureMenu: this.fixtureMenuInfo(),
     };
+  }
+
+  // ---- Furniture: clicked with empty hands, a piece opens a small menu at it: its use, Move and Turn.
+  /** The fixture whose menu is open. */
+  fixtureMenu: number | null = null;
+  openFixtureMenu(id: number | null): void { if (this.fixtureMenu === id) return; this.fixtureMenu = id; this.emit(); }
+  private fixtureMenuInfo(id = this.fixtureMenu): Snapshot['fixtureMenu'] {
+    const s = this.state;
+    if (!s || id === null || !this.inPlay || s.phase === 'night' || this.card === 'build') return null;
+    const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
+    const def = FIXTURES[f.type];
+    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : null };
+  }
+  /** A choice from the menu: its use (Stock, serve at the till), pick it up to Move it, or Turn it where it stands. */
+  fixtureMenuAction(action: 'use' | 'move' | 'turn'): void {
+    const s = this.state, id = this.fixtureMenu;
+    this.fixtureMenu = null;
+    const f = s?.shop.fixtures.find((x) => x.id === id);
+    if (!s || !f) { this.emit(); return; }
+    this.audio.start();
+    if (action === 'use') this.walkAndUse({ kind: 'fixture', id: f.id });
+    else if (action === 'move') {
+      // Picked up: the ghost follows the pointer; a click puts it down, R turns it, Esc puts it back.
+      this.build.rot = f.rot; this.build.hover = null;
+      this.selectFixture(f.id);
+    } else {
+      // Turned a quarter where it stands (or as far round as it will go).
+      this.snapshotForUndo();
+      let res: CommandResult = { ok: false };
+      for (let k = 1; k < 4 && !res.ok; k++) res = this.dispatch({ type: 'moveFixture', fixtureId: f.id, x: f.x, z: f.z, rot: ((f.rot + k) % 4) as Rot });
+      if (!res.ok) { this.undoStack.pop(); this.showToast(res.message ?? "It won't turn here.", 1800); }
+      else this.audio.play('rotate');
+    }
+    this.emit();
   }
 
   // ---- Inspecting people: click someone to see who they are and why they came; Follow keeps the camera on them.
@@ -195,6 +232,7 @@ export class GameRuntime {
     return info ? { ...info, following: this.followingPerson } : null;
   }
   selectPerson(id: number | null): void {
+    if (id !== null) this.fixtureMenu = null;
     if (id === this.selectedPerson) return;
     if (this.followingPerson) this.stopFollow();
     this.selectedPerson = id;
@@ -221,6 +259,7 @@ export class GameRuntime {
   }
   /** Esc: stop placing, then let go of the person you were looking at, then close the open card. */
   escape(): void {
+    if (this.fixtureMenu !== null) { this.openFixtureMenu(null); return; }
     if (this.build.placing || this.build.selectedId !== null) { this.closeCard(); return; }
     if (this.selectedPerson !== null) { this.selectPerson(null); return; }
     this.closeCard();
@@ -527,6 +566,7 @@ export class GameRuntime {
   }
   togglePause(): void { if (this.speed === 0) this.setSpeed(this.prevSpeed || 1); else { this.prevSpeed = this.speed; this.setSpeed(0); } }
   openCard(card: CardId): void {
+    this.fixtureMenu = null;
     this.card = this.card === card ? null : card;
     if (this.card) this.move(0, 0);
     if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); }
@@ -764,7 +804,15 @@ export class GameRuntime {
     // Anywhere else lets go of them, unless the camera is following them.
     if (this.selectedPerson !== null && !this.followingPerson) this.selectPerson(null);
     const t = this.thingAt(px, py);
-    if (t) { this.walkAndUse(t); return; }
+    // A click anywhere closes a furniture menu (and does what it does there).
+    const hadMenu = this.fixtureMenu;
+    if (hadMenu !== null) this.openFixtureMenu(null);
+    if (t) {
+      // Empty-handed, furniture opens its menu (use it, move it, turn it); carrying a box, a click stocks the shelf.
+      const carrying = !!s.people.find((p) => p.kind === 'owner')?.carrying;
+      if (t.kind === 'fixture' && !carrying) { if (hadMenu !== t.id) this.openFixtureMenu(t.id); return; }
+      this.walkAndUse(t); return;
+    }
     const g = r.groundAt(px, py);
     if (g) {
       const res = applyCommand(s, { type: 'walkTo', x: g.x, z: g.z });
@@ -927,7 +975,9 @@ export class GameRuntime {
       const at = toWorld(s.shop, h.x + 0.5, h.z + 0.5);
       r.marker.set(null);
       return {
-        info: { key: 'Click', text: this.build.valid ? `${this.build.placing ? 'Place' : 'Move'} ${name}${this.build.price ? ` · ${dollars(this.build.price)}` : ''}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 1.1, z: at.z } },
+        info: { key: 'Click', text: (this.build.valid ? `${this.build.placing ? 'Place' : 'Move'} ${name}${this.build.price ? ` · ${dollars(this.build.price)}` : ''}` : this.build.reason)
+          // Picked up from its menu (no Build card to say so): how to turn it and how to put it back.
+          + (this.card !== 'build' && this.build.selectedId !== null ? ` · ${keyLabel(keys.rotate)} turns · Esc puts it back` : ''), ok: this.build.valid, at: { x: at.x, y: 1.1, z: at.z } },
         run: this.build.valid ? () => this.clickBuild(null) : null,
       };
     }
@@ -946,6 +996,12 @@ export class GameRuntime {
       return { info: { key: near ? useKey : 'Click', text: `Move ${FIXTURES[f.type].name}`, ok: true, at }, run: () => this.clickBuild({ kind: 'fixture', id: f.id, type: f.type, dist: 0 }) };
     }
     if (near) return { info: { key: a.ok ? (a.key === 'scan' ? scanKey : useKey) : null, text: a.text, ok: a.ok, at }, run: a.ok ? a.run : null };
+    // Furniture across the room, hands empty: a click opens its menu.
+    if (show.kind === 'fixture' && !owner.carrying) {
+      const m = this.fixtureMenuInfo(show.id);
+      const what = m ? [m.use, 'Move', 'Turn'].filter(Boolean).join(', ').replace(/, (?=[^,]*$)/, ' or ') : 'Move or Turn';
+      return { info: { key: 'Click', text: `${m?.name ?? 'Furniture'}: ${what}`, ok: true, at }, run: () => this.openFixtureMenu(show.id) };
+    }
     // Across the room: a click walks over and does it.
     return { info: { key: a.ok ? 'Click' : null, text: a.text, ok: a.ok, at }, run: a.ok ? () => this.walkAndUse(show) : null };
   }

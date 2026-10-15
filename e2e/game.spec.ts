@@ -107,11 +107,12 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   await page.getByRole('button', { name: /open shop/i }).click();
   await expect.poll(async () => (await state(page)).phase).toBe('open');
 
-  // Click the counter: the manager walks round behind it. Space scans when somebody is waiting.
+  // Click the counter: its menu offers Serve here; the manager walks round behind it. Space scans when somebody is waiting.
   await hooks(page, 'setSpeed', 0);
   const reg = (await state(page)).shop.fixtures.find((f) => f.type === 'register')!;
   await hooks(page, 'setSpeed', 1);
   await clickAt(page, reg.x + 0.5, reg.z + 0.5, 0.8);
+  await page.getByRole('menuitem', { name: /serve here/i }).click();
   await expect.poll(() => aimText(page), { timeout: 20_000 }).toMatch(/scan item|nobody waiting/i);
   await hooks(page, 'setSpeed', 0);
   let waiting = false;
@@ -260,10 +261,50 @@ test('design your manager in the lobby: the shopkeeper out front changes as you 
   expect((await look()).model).toBe(3);
 });
 
+test('click a piece of furniture with empty hands to move it or turn it', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 6, 'main', 'Movers', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await hooks(page, 'fp', 0.5, -1.0);
+  const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
+  const stock = JSON.stringify(shelf.slots);
+  // A click opens its menu: Stock, Move, Turn.
+  await clickAt(page, shelf.x + 0.5, shelf.z + 0.5, 0.6);
+  const menu = page.getByRole('menu', { name: 'Shelf' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem')).toHaveText(['Stock', 'Move', 'Turn']);
+  // Move: it follows the pointer and a click puts it down somewhere free (its stock goes with it).
+  await menu.getByRole('menuitem', { name: 'Move' }).click();
+  await expect(menu).toHaveCount(0);
+  const taken = new Set((await state(page)).shop.fixtures.map((f) => `${f.x},${f.z}`));
+  let to: { x: number; z: number } | null = null;
+  for (const z of [-2, -3, -4]) for (const x of [-1.5, -0.5, 0.5, 1.5]) if (!to && !taken.has(`${x},${z}`) && Math.abs(x - shelf.x) + Math.abs(z - shelf.z) > 1) {
+    await pointAt(page, x + 0.5, z + 0.5);
+    if (/^move shelf/i.test(await aimText(page))) to = { x, z };
+  }
+  expect(to).not.toBeNull();
+  await clickAt(page, to!.x + 0.5, to!.z + 0.5);
+  await expect.poll(async () => { const f = (await state(page)).shop.fixtures.find((x) => x.id === shelf.id)!; return `${f.x},${f.z}`; }).toBe(`${to!.x},${to!.z}`);
+  expect(JSON.stringify((await state(page)).shop.fixtures.find((x) => x.id === shelf.id)!.slots)).toBe(stock);
+  // Turn: a quarter round where it stands.
+  const rot = ((await state(page)).shop.fixtures.find((x) => x.id === shelf.id) as unknown as { rot: number }).rot;
+  await clickAt(page, to!.x + 0.5, to!.z + 0.5, 0.6);
+  await page.getByRole('menuitem', { name: 'Turn' }).click();
+  await expect.poll(async () => ((await state(page)).shop.fixtures.find((x) => x.id === shelf.id) as unknown as { rot: number }).rot).not.toBe(rot);
+  // Esc closes the menu; picking a piece up and pressing Esc puts it back where it was.
+  await clickAt(page, to!.x + 0.5, to!.z + 0.5, 0.6);
+  await page.getByRole('menuitem', { name: 'Move' }).click();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => aimText(page)).not.toMatch(/move shelf/i);
+  const f = (await state(page)).shop.fixtures.find((x) => x.id === shelf.id)!;
+  expect(`${f.x},${f.z}`).toBe(`${to!.x},${to!.z}`);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('tap the floor to walk there, tap a shelf to see its stock', async ({ page }) => {
+  test('tap the floor to walk there, tap a shelf for its menu and its stock', async ({ page }) => {
     await ready(page);
     await hooks(page, 'newGame', 8, 'main', 'Pocket Mart', { tutorial: false });
     await hooks(page, 'quickSetup', false);
@@ -274,12 +315,13 @@ test.describe('on a phone', () => {
     const p = await screenAt(page, to.x, to.z);
     await page.touchscreen.tap(p.x, p.y);
     await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - to.x, o.z - to.z); }, { timeout: 20_000 }).toBeLessThan(0.6);
-    // Tapping a shelf empty-handed opens the Stock card at what goes on it, with the products' pictures;
-    // the manager stays put.
+    // Tapping a shelf empty-handed opens its menu; Stock opens the Stock card at what goes on it, with
+    // the products' pictures; the manager stays put.
     const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
     const before = await owner(page);
     const q = await screenAt(page, shelf.x + 0.5, shelf.z + 0.5, 0.6);
     await page.touchscreen.tap(q.x, q.y);
+    await page.getByRole('menuitem', { name: 'Stock' }).tap();
     await expect(page.locator('.card img.product-pic').first()).toBeVisible();
     const after = await owner(page);
     expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(0.3);
