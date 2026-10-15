@@ -9,6 +9,9 @@ import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, toLocal, rectToWorld } from '@/sim/layout';
 
+/** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window']);
+
 /** Delivery boxes drawn at most (about four units each). */
 const BOX_MAX = 220;
 
@@ -17,7 +20,7 @@ const NORTH_Z = -1.6;
 import { MAIN_N, PAVEMENT } from './town';
 import { box, merge, paint, place } from './geometry';
 import { recolor, cutDown, dropTriangles, paintStrips } from './recolor';
-import { FIXTURE_MODEL, MODEL_OFFSET, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOURS, FIXTURE_PAINT, LINO, WALL_BANDS, SKIRTING, RAIL, type SlotBox } from './storeArt';
+import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOURS, FIXTURE_PAINT, LINO, WALL_BANDS, SKIRTING, RAIL, type SlotBox } from './storeArt';
 import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
@@ -486,9 +489,25 @@ export class StoreView {
     });
   }
 
+  /**
+   * How far a piece sits forward of its tile's centre: its back flush with the back edge of the tile
+   * (so a row stands tight against a wall or against the row behind), measured from its model. Pieces
+   * with no back to put against anything stay in the middle, and lights and windows hang where drawn.
+   */
+  private offsets = new Map<FixtureType, number>();
+  private offsetOf(type: FixtureType): number {
+    let d = this.offsets.get(type);
+    if (d === undefined) {
+      if (CENTRED.has(type)) d = 0;
+      else { const g = this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : FIXTURE_MODEL[type]); g.computeBoundingBox(); d = -0.49 - g.boundingBox!.min.z; }
+      this.offsets.set(type, d);
+    }
+    return d;
+  }
+
   private fixtureMatrix(shop: Shop, f: Fixture, out: Matrix4, yOffset = 0, modelOffset = false): Matrix4 {
     const yaw = f.rot * Math.PI / 2;
-    const dz = modelOffset ? (MODEL_OFFSET[f.type] ?? 0) : 0;
+    const dz = modelOffset ? this.offsetOf(f.type) : 0;
     this.dummy.position.set(f.x + 0.5 + Math.sin(yaw) * dz, yOffset, f.z + 0.5 + Math.cos(yaw) * dz);
     this.dummy.rotation.set(0, yaw, 0);
     this.dummy.scale.set(1, 1, 1);
@@ -687,7 +706,7 @@ export class StoreView {
     this.ghost.geometry = geo;
     this.ghost.visible = true;
     this.ghostMat.color.set(valid ? '#3FA87A' : '#E8573F');
-    const yaw = rot * Math.PI / 2; const dz = MODEL_OFFSET[type] ?? 0;
+    const yaw = rot * Math.PI / 2; const dz = type === 'window' ? 0 : this.offsetOf(type);
     this.ghost.position.set(x + 0.5 + Math.sin(yaw) * dz, 0.02, z + 0.5 + Math.cos(yaw) * dz);
     this.ghost.rotation.set(0, yaw, 0);
   }

@@ -993,6 +993,9 @@ export class GameRuntime {
     // The pallet's own tiles count even when it is empty.
     const lp = toLocal(s.shop, hit.x, hit.z), d = s.shop.delivery;
     if (lp.x >= d.x0 && lp.x <= d.x1 && lp.z >= d.z0 && lp.z <= d.z1) return { kind: 'delivery', id: 0 };
+    // So does a piece's: pieces stand back against an edge of their tile, and a click on the floor in front still means them.
+    const f = s.shop.fixtures.find((x) => !FIXTURES[x.type].walkable && lp.x >= x.x && lp.x < x.x + 1 && lp.z >= x.z && lp.z < x.z + 1);
+    if (f) return { kind: 'fixture', id: f.id };
     return null;
   }
 

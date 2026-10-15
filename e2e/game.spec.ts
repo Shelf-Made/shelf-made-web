@@ -116,7 +116,7 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   await hooks(page, 'setSpeed', 0);
   const reg = (await state(page)).shop.fixtures.find((f) => f.type === 'register')!;
   await hooks(page, 'setSpeed', 1);
-  await clickAt(page, reg.x + 0.5, reg.z + 0.5, 0.8);
+  await clickAt(page, reg.x + 0.5, reg.z + 0.5, 0.4);
   await page.getByRole('menuitem', { name: /serve here/i }).click();
   // The walk round runs on the sim, not the clock: a slow runner draws few frames a second.
   await hooks(page, 'setSpeed', 0);

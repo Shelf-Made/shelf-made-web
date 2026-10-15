@@ -15,8 +15,6 @@ export const FIXTURE_MODEL = {
   ...FITTING_MODEL,
 } as Record<FixtureType, string>;
 
-/** Local z offset so models whose pivot sits on their front or back face are centred in the tile. */
-export const MODEL_OFFSET: Partial<Record<FixtureType, number>> = { freezer: 0.25, endcap: 0.2 };
 
 /** A box on a fixture, in fixture-local space (fixture faces +z), where one slot's stock stands. */
 export interface SlotBox { x0: number; x1: number; z0: number; z1: number; y: number; h: number; /** stock faces −z (back of a double-sided shelf) */ back?: boolean }
@@ -24,7 +22,7 @@ export interface SlotBox { x0: number; x1: number; z0: number; z1: number; y: nu
 const half = (y: number, h: number, back = false): SlotBox[] => [{ x0: -0.33, x1: 0.33, z0: back ? -0.24 : 0.02, z1: back ? -0.02 : 0.24, y, h, back }];
 
 /**
- * Measured from the models' boards (model space, before MODEL_OFFSET): shelf-boxes has boards at
+ * Measured from the models' boards (model space, before the piece is set back on its tile): shelf-boxes has boards at
  * y 0.18 and 0.55 spanning x ±0.35, z ±0.25, stocked from both sides; shelf-bags' boards top out at
  * y 0.21 and 0.58; shelf-end's are only 0.2 deep (z −0.30..−0.10, its pivot on the front face);
  * display-bread's crate floor is at y 0.27 within x ±0.25, z ±0.20.
