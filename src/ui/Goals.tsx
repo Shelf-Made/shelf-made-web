@@ -46,7 +46,7 @@ export function GoalsSection({ runtime }: { runtime: GameRuntime }) {
           );
         })}
       </ol>
-      {gs.index >= GOALS.length && <p className="muted">Every goal reached. The crossroads is yours: play on as long as you like.</p>}
+      {gs.index >= GOALS.length && <p className="muted">Every goal reached. Play on as long as you like.</p>}
     </>
   );
 }
@@ -78,7 +78,7 @@ export function ChampionCard({ runtime }: { runtime: GameRuntime }) {
       <svg className="trophy" viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v14a12 12 0 01-24 0z" fill="#FFC044" stroke="#38383D" strokeWidth="3" /><path d="M20 12h-8a8 8 0 008 10M44 12h8a8 8 0 01-8 10" fill="none" stroke="#38383D" strokeWidth="3" /><path d="M28 34h8v8h-8zM22 42h20v8H22z" fill="#D99A2B" stroke="#38383D" strokeWidth="3" /></svg>
       <h2>Crossroads Champion</h2>
       <p>Day {s.day}: {s.shop.name} trades from {corners} of the four corners. Your best day netted {money(best, true)}, and {s.goals.done.length} goals are behind you.</p>
-      <p className="muted">From here it is a sandbox: no more bank worries. Keep building, buy another corner, or open branches out of town.</p>
+      <p className="muted">No more bank worries. Keep building, buy a corner, or open branches.</p>
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn big yellow" onClick={() => runtime.dispatch({ type: 'ackChampion' })}>Keep playing</button>
       </div>

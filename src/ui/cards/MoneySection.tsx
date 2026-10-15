@@ -33,7 +33,7 @@ export function MoneySection({ runtime, snap }: { runtime: GameRuntime; snap: Sn
           <button className="btn small" disabled={s.loans.length >= 2} onClick={() => runtime.dispatch({ type: 'takeLoan', offerId: o.id })}>Take</button>
         </div>
       ))}
-      <p className="muted">Run out of cash with bills due two nights running and the bank closes you down.</p>
+      <p className="muted">Two nights unable to pay the bills and the bank closes you.</p>
     </>
   );
 }

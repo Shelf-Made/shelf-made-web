@@ -12,7 +12,7 @@ export function PricesCard({ runtime, snap }: { runtime: GameRuntime; snap: Snap
   const set = (id: string, price: number) => runtime.dispatch({ type: 'setPrice', productId: id, price });
   return (
     <>
-      <p className="muted">Town average in grey. Bargain hunters notice anything over it; everyone leaves when it is far over.</p>
+      <p className="muted">Grey: the town average. Go far over it and shoppers walk.</p>
       <div className="list">
         {list.map((p) => {
           const price = s.prices[p.id] ?? p.basePrice;

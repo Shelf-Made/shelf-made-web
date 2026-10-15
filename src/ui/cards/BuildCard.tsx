@@ -41,7 +41,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <button className="btn small ghost" onClick={() => { runtime.stopPlacing(); runtime.closeCard(); }}>Done</button>
           </div>
         </div>
-      ) : <p className="muted">Pick something below, then point at a floor tile and click to place it. With this card open, click a fixture to move, copy or sell it.</p>}
+      ) : <p className="muted">Pick, then click a tile to place. Click a fixture to move it.</p>}
       <div className="row between">
         <span className="muted">Undo and redo: Ctrl+Z / Ctrl+Y</span>
         <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()}>Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()}>Redo</button></span>
@@ -59,7 +59,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <h3>Grow the shop</h3>
       {SHOP_SIZES.map((z, i) => (
         <div className="item" key={z.id}>
-          <div><div className="name">{z.name}{i === current ? ' (now)' : ''}</div><div className="sub">{i > current ? `${money(z.cost - SHOP_SIZES[current]!.cost)}, built overnight-fast: walls move right away` : i === current ? 'Your current size' : 'Smaller than now'}</div></div>
+          <div><div className="name">{z.name}{i === current ? ' (now)' : ''}</div><div className="sub">{i > current ? `${money(z.cost - SHOP_SIZES[current]!.cost)}, walls move right away` : i === current ? 'Your current size' : 'Smaller than now'}</div></div>
           {i > current && <button className="btn small" disabled={s.cash < z.cost - SHOP_SIZES[current]!.cost} onClick={() => runtime.dispatch({ type: 'expandShop', sizeId: z.id })}>Extend</button>}
         </div>
       ))}
@@ -74,7 +74,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         {(s.goals.unlocked.includes('signLit') || s.sandbox) && <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'signStyle', style: s.shop.signStyle === 'lit' ? 'classic' : 'lit' })}>{s.shop.signStyle === 'lit' ? 'Paint' : 'Light up'}</button>}
       </div>
       <StoresSection runtime={runtime} snap={snap} />
-      <p className="muted">Layout matters: shoppers walk less with short aisles, end caps near the door sell impulse items, and crowded corners cost happiness.</p>
+      <p className="muted">Short aisles, end caps by the door, no crowded corners.</p>
     </>
   );
 }

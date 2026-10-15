@@ -20,7 +20,7 @@ export function NightCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <button className="night-close" onClick={() => runtime.showNightLog(false)} aria-label="Close the day's log" title="Close (Esc)">✕</button>
       <DayLog runtime={runtime} snap={snap} r={r} />
       <div className="row between night-foot">
-        <span className="muted">{snap.saving ? 'Saving…' : 'Autosaved. Every day\'s log is kept in Stats.'}</span>
+        <span className="muted">{snap.saving ? 'Saving…' : 'Autosaved'}</span>
         <button className="btn big yellow" onClick={() => runtime.dispatch({ type: 'openTomorrow' })}>Open tomorrow</button>
       </div>
     </div>
@@ -51,10 +51,11 @@ export function DayLog({ runtime, snap, r, compact = false }: { runtime: GameRun
       <div className="col">
         {compact
           ? <h4 className={good ? 'up' : 'down'}><span className="sym" aria-hidden="true">{good ? '▲' : '▼'}</span> Day {r.day}: {money(r.profit, true)}</h4>
-          : <h2><span className="sym" aria-hidden="true">{good ? '▲' : '▼'}</span> Day {r.day} done: {money(r.profit, true)}</h2>}
-        <p className="muted">{r.served} of {r.customers} customers served{r.walkedOut ? `, ${r.walkedOut} gave up waiting` : ''}{r.turnedAway ? `, ${r.turnedAway} found the lot full` : ''}.</p>
+          : <h2>Day {r.day} done</h2>}
+        <p className="muted">{r.served} of {r.customers} served{r.walkedOut ? ` · ${r.walkedOut} gave up` : ''}{r.turnedAway ? ` · ${r.turnedAway} found the lot full` : ''}</p>
 
         <section aria-label="Money">
+          {!compact && <div className={`stat result ${good ? 'up' : 'down'}`}><span>{good ? 'Profit' : 'Loss'}</span><b>{money(r.profit, true)}</b></div>}
           <div className="stat"><span>Sales</span><b>{money(r.revenue)}</b></div>
           {costs.map(([k, v]) => (
             <div className={`stat cost${k === biggest && v > 0 ? ' biggest' : ''}`} key={k}>
@@ -115,7 +116,7 @@ export function DayLog({ runtime, snap, r, compact = false }: { runtime: GameRun
           <section aria-label={r.latest ? 'Tomorrow' : 'The forecast for the next day'}>
             <h3>{r.latest ? 'Tomorrow' : 'Forecast for the next day'}</h3>
             <ul className="tomorrow">
-              <li className={`sky-${r.tomorrow.sky ?? 'fair'}`}>{r.tomorrow.weather ?? 'Fair weather, nothing special forecast.'}</li>
+              <li className={`sky-${r.tomorrow.sky ?? 'fair'}`}>{r.tomorrow.weather ?? 'Fair weather'}</li>
               {r.tomorrow.festival && <li>{r.tomorrow.festival}</li>}
               {r.tomorrow.rumours.map((t) => <li key={t} className="rumour">{t}</li>)}
             </ul>

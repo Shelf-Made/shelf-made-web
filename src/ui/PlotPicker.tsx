@@ -12,7 +12,7 @@ export function PlotPicker({ runtime }: { runtime: GameRuntime }) {
   return (
     <div className="centre" role="dialog" aria-label="Pick a plot">
       <h2>Pick your corner</h2>
-      <p className="muted">One crossroads, four corners. Your rivals take the other three. Each corner faces different traffic and pays different rent.</p>
+      <p className="muted">Pick a corner. Rivals take the other three. Each has its own traffic and rent.</p>
       <div className="plots" style={{ marginTop: 10 }}>
         {PLOTS.map((p) => (
           <button key={p.id} className={`plot${plot === p.id ? ' selected' : ''}`} onClick={() => pick(p.id)} onMouseEnter={() => runtime.previewPlot(p.id)} aria-pressed={plot === p.id}>

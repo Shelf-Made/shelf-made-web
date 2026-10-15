@@ -59,7 +59,7 @@ export function MarketingCard({ runtime, snap }: { runtime: GameRuntime; snap: S
           <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'promotion', promo: { kind: 'buyTwo', productId: promoProduct } })}>Buy two</button>
         </div>
       )}
-      <p className="muted">Weather, holidays and the Saturday rush show up in the News on the Stats card.</p>
+      <p className="muted">News is on the Stats card.</p>
     </>
   );
 }

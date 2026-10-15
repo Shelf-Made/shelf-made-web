@@ -38,7 +38,7 @@ export function ManagerDesigner({ runtime, snap, onDone }: { runtime: GameRuntim
   return (
     <div className="designer" role="group" aria-label="Your manager">
       <h3 className="designer-title">Your manager</h3>
-      <p className="muted">Try things on: the shopkeeper out front changes as you click. You wear this look in every shop you run.</p>
+      <p className="muted">Worn in every shop you run.</p>
       <div className="row gender" role="radiogroup" aria-label="Guy or girl">
         {(['girl', 'guy'] as const).map((g) => (
           <button key={g} role="radio" aria-checked={gender === g} className={`btn ${gender === g ? '' : 'ghost'}`} onClick={() => { if (gender !== g) runtime.designManager({ model: g === 'girl' ? 0 : 1 }); }}>{g === 'girl' ? 'Girl' : 'Guy'}</button>

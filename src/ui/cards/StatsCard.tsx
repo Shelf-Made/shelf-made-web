@@ -101,7 +101,7 @@ function WhoShopsWhere({ runtime }: { runtime: GameRuntime }) {
           })}
         </tbody>
       </table>
-      <p className="muted">Tap a row to mark those shoppers in town for 10 seconds.</p>
+      <p className="muted">Tap a row to spot them in town.</p>
     </>
   );
 }

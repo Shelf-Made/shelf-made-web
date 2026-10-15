@@ -12,7 +12,7 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   return (
     <>
       <h3>Your team ({team.length})</h3>
-      {team.length === 0 && <p className="muted">Nobody yet. You scan, carry and clean by hand until you hire.</p>}
+      {team.length === 0 && <p className="muted">Nobody yet: you do it all.</p>}
       <div className="list">
         {team.map((p) => (
           <div className="item" key={p.id}>
@@ -48,7 +48,7 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <label className="row between"><span>Daily spend cap</span><span className="row"><span className="key">{money(r.spendCap)}</span><button className="btn small ghost" onClick={() => set({ spendCap: Math.max(50, r.spendCap - 50) })}>−</button><button className="btn small ghost" onClick={() => set({ spendCap: r.spendCap + 50 })}>+</button></span></label>
       <label className="row between"><span>Price range (vs average)</span><span className="row"><span className="key">{pct(r.priceMin)}–{pct(r.priceMax)}</span><button className="btn small ghost" onClick={() => set({ priceMin: Math.max(0.7, r.priceMin - 0.05), priceMax: Math.max(0.8, r.priceMax - 0.05) })}>−</button><button className="btn small ghost" onClick={() => set({ priceMin: Math.min(1.3, r.priceMin + 0.05), priceMax: Math.min(1.6, r.priceMax + 0.05) })}>+</button></span></label>
       <label className="row between"><span>Wage cap for hires</span><span className="row"><span className="key">{money(r.wageCap)}</span><button className="btn small ghost" onClick={() => set({ wageCap: Math.max(30, r.wageCap - 5) })}>−</button><button className="btn small ghost" onClick={() => set({ wageCap: r.wageCap + 5 })}>+</button></span></label>
-      <p className="muted">Wages come out each night plus 12% payroll tax; half shifts pay 55%. Morale drops when the shop is slammed or pay is low.</p>
+      <p className="muted">Paid nightly, plus 12% tax. Half shifts pay 55%. Rushed days and low pay hurt morale.</p>
     </>
   );
 }

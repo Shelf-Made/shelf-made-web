@@ -36,7 +36,7 @@ export function StoresSection({ runtime, snap }: { runtime: GameRuntime; snap: S
         <div className="item">
           <div>
             <div className="name">Open a branch · {money(FRANCHISE_COST)}</div>
-            <div className="sub">A manager runs it by your rules. Good ones cost more and lose less. Shared reputation, central ordering.</div>
+            <div className="sub">Run by a manager on your rules. Good ones cost more and lose less.</div>
             <div className="row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
               <select value={plot} onChange={(e) => setPlot(e.target.value)} aria-label="Site">{free.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.km} km {p.dir})</option>)}</select>
               <select value={mgr} onChange={(e) => setMgr(Number(e.target.value))} aria-label="Manager">{managers.length ? managers.map((m) => <option key={m.id} value={m.id}>{m.name} · skill {Math.round(m.skill * 100)}% · {money(m.wage)}/day</option>) : <option value={0}>No manager in today's pool</option>}</select>
