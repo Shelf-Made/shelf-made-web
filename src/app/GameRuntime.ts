@@ -559,9 +559,12 @@ export class GameRuntime {
         this.lobbyYaw = 1.18 + 0.28 * Math.sin(this.lobbyT * 0.06);
         const shopkeeper = this.designing ? L.people.find((p) => p.kind === 'owner') : undefined;
         if (shopkeeper) {
-          // Designing: close on the shopkeeper from the front, standing left of the menu.
-          r.camera.lookY = 0.55; r.camera.sideOffset = 0.32;
-          r.camera.focus(shopkeeper.x, shopkeeper.z, 4.6, shopkeeper.yaw + 0.25, 0.3);
+          // Designing: the shopkeeper out on the walkway, facing us, the shop front behind them; a fixed
+          // shot from straight down the walkway (nothing stands on it), framed left of the menu.
+          const face = L.shop.flip ? Math.PI : 0;
+          shopkeeper.yaw = face; shopkeeper.state = 'idle'; shopkeeper.anim = 'idle'; shopkeeper.path = [];
+          r.camera.lookY = 0.5; r.camera.sideOffset = 0.3;
+          r.camera.focus(shopkeeper.x, shopkeeper.z, 4.2, face, 0.2);
         } else r.camera.focus(L.shop.originX + 0.5, L.shop.originZ - 2.6, 20, this.lobbyYaw, 0.24);
         r.mode = 'cinematic';
         r.render(L, Math.min(1, this.lobbyAcc / TICK), dt);
@@ -727,8 +730,8 @@ export class GameRuntime {
     if (on) {
       const o = L.people.find((p) => p.kind === 'owner');
       if (o) {
-        // On the apron, just out of the door, facing the street.
-        const at = toWorld(L.shop, L.shop.door.x - 0.9, L.shop.floor.z1 + 1.15);
+        // Out on the walkway in front of the door, clear of the awning, facing the street.
+        const at = toWorld(L.shop, L.shop.door.x, L.shop.floor.z1 + 1.9);
         o.x = o.px = at.x; o.z = o.pz = at.z; o.path = []; o.moveDir = null; o.state = 'idle'; o.anim = 'idle'; o.carrying = null;
         o.yaw = L.shop.flip ? Math.PI : 0;
       }
