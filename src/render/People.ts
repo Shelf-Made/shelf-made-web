@@ -10,6 +10,7 @@ import { rectToWorld } from '@/sim/layout';
 import { bagsGeometry, basketGeometry, BAG_HEIGHT, rideBikeGeometry } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
+import { poseOf } from './levels';
 
 /**
  * Where each character keeps its skin and its hair in the colour map (row:strip), measured from the
@@ -145,12 +146,12 @@ export class PeopleView {
     this.pawnBags = new InstancedMesh(bag, this.assets.plainMaterial, 192);
     for (const m of [this.pawnBody, this.pawnHead, this.pawnBags]) { m.count = 0; m.frustumCulled = false; this.group.add(m); }
   }
-  private pawn(state: GameState, p: Person, x: number, z: number, moving: boolean): void {
+  private pawn(state: GameState, p: Person, x: number, z: number, moving: boolean, y = 0): void {
     this.pawns();
     const b = this.pawnBody!, h = this.pawnHead!;
     if (this.pawnN >= b.instanceMatrix.count) return;
     const d = this.pd;
-    d.position.set(x, moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0, z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.5 * p.look.height); d.updateMatrix();
+    d.position.set(x, y + (moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0), z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.5 * p.look.height); d.updateMatrix();
     b.setMatrixAt(this.pawnN, d.matrix); h.setMatrixAt(this.pawnN, d.matrix);
     b.setColorAt(this.pawnN, this.tint.set(SHIRTS[(p.look.model * 3 + p.look.variant) % SHIRTS.length]!));
     h.setColorAt(this.pawnN, this.tint.set(SKINS[(p.look.model + p.look.variant * 2) % SKINS.length]!));
@@ -585,6 +586,9 @@ export class PeopleView {
     return new Mesh(g, this.assets.plainMaterial);
   }
 
+  /** The floor in view (people on the floors above it are hidden), or null for every floor (from outside). */
+  viewLevel: number | null = null;
+
   /** far: people beyond this distance from the focus are not drawn; nor is anyone outside the camera's view. */
   update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0, far = 48, view: Frustum | null = null, eye: Vector3 | null = null): void {
     this.frame++;
@@ -601,24 +605,26 @@ export class PeopleView {
       if (inst && p.kind === 'owner' && inst.lookKey !== lookKey(p)) { this.despawn(inst); this.live.delete(p.id); inst = undefined; }
       if (!inst) { inst = this.spawn(state, p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
-      const x = p.px + (p.x - p.px) * alpha, z = p.pz + (p.z - p.pz) * alpha;
-      const hidden = p.state === 'driving' || p.state === 'inRival' || p.id === hideId;
+      const pose = poseOf(state, p, alpha);
+      const x = pose.x, z = pose.z, y = pose.y;
+      // Upstairs above the floor in view is out of sight (the camera looks in under it).
+      const hidden = p.state === 'driving' || p.state === 'inRival' || p.id === hideId || (this.viewLevel !== null && pose.level > this.viewLevel);
       inst.root.visible = !hidden;
-      if (hidden) continue;
+      if (hidden) { if (inst.dog) inst.dog.visible = false; continue; }
       // Riding: sat up on the saddle, the bike under them.
       const riding = !!p.riding && p.kind === 'customer';
-      inst.root.position.set(x, riding ? RIDE_SEAT : 0, z);
+      inst.root.position.set(x, y + (riding ? RIDE_SEAT : 0), z);
       inst.root.rotation.y = p.yaw;
       if (riding && !inst.bike) { inst.bike = this.bikeMesh(p.id); inst.root.add(inst.bike); }
       if (inst.bike) { inst.bike.visible = riding; inst.bike.scale.setScalar(1 / p.look.height); inst.bike.position.set(0, -RIDE_SEAT / p.look.height, 0); }
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d > far || d < nearHide) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; }
-      if (view) { this.sphere.center.set(x, 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }
-      this.blobs.add(x, z, 0.62 * p.look.height);
-      if (hl && p.ctype === hl && (p.kind === 'customer' || p.rivalId)) this.mark(x, 0.95 * p.look.height + 0.16, z, TYPE_COLOURS[hl], eye);
-      if (eye && Math.hypot(x - eye.x, eye.y, z - eye.z) > PeopleView.FAR) {
+      if (view) { this.sphere.center.set(x, y + 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }
+      if (!y) this.blobs.add(x, z, 0.62 * p.look.height);
+      if (hl && p.ctype === hl && (p.kind === 'customer' || p.rivalId)) this.mark(x, y + 0.95 * p.look.height + 0.16, z, TYPE_COLOURS[hl], eye);
+      if (eye && Math.hypot(x - eye.x, eye.y - y, z - eye.z) > PeopleView.FAR) {
         inst.root.visible = false; if (inst.dog) inst.dog.visible = false;
-        this.pawn(state, p, x, z, Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4);
+        this.pawn(state, p, x, z, Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4, y);
         continue;
       }
       // In their arms: a box (the manager and stockers), or bags in the colour of the shop they came from.
@@ -641,7 +647,8 @@ export class PeopleView {
         }
         inst.bagKey = bk;
       }
-      const moving = Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
+      // On the stairs they climb; an escalator or a lift carries them standing.
+      const moving = pose.ride ? pose.ride === 'stairs' : Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
       // Shopping bags swing from one hand: walk normally. Only a box needs both arms.
       let rate = Math.max(0.6, p.speed / 1.6);
       let anim: Anim;
@@ -673,7 +680,7 @@ export class PeopleView {
         inst.dog.visible = true;
         // Stopped for the dog: it squats, back end down.
         const squat = p.dogStop !== undefined;
-        inst.dog.position.set(x + back.x, moving ? Math.abs(Math.sin(this.frame * 0.35)) * 0.03 : squat ? -0.025 : 0, z + back.z);
+        inst.dog.position.set(x + back.x, y + (moving ? Math.abs(Math.sin(this.frame * 0.35)) * 0.03 : squat ? -0.025 : 0), z + back.z);
         inst.dog.rotation.set(squat ? -0.28 : 0, p.yaw, 0, 'YXZ');
         this.blobs.add(x + back.x, z + back.z, 0.24, 0.36, p.yaw);
       }

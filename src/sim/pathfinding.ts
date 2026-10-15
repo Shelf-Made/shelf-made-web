@@ -1,5 +1,5 @@
-import { type Grid, cellOf, cellCentre, cellIndex, canStep, inBounds, isBlocked, lineClear, nearestWalkable } from './grid';
-import type { Vec2 } from './types';
+import { type Grid, type Portal, cellOf, cellCentre, cellIndex, canStep, inBounds, isBlocked, lineClear, nearestWalkable } from './grid';
+import type { Vec2, Waypoint } from './types';
 
 /** Binary heap keyed on f. */
 class Heap {
@@ -30,9 +30,9 @@ const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]
 /**
  * A* over the grid, returning a smoothed list of waypoints from `from` to `to` (both
  * continuous positions). Returns null when unreachable. Targets inside blocked cells are
- * snapped to the nearest walkable cell.
+ * snapped to the nearest walkable cell. Between floors the path rides the stairs (a waypoint with `ride`).
  */
-export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Vec2[] | null {
+export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Waypoint[] | null {
   const start = nearestWalkable(g, from, dyn);
   const goal = nearestWalkable(g, to, dyn);
   const [sx, sz] = cellOf(g, start);
@@ -46,7 +46,12 @@ export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Vec2
   const si = cellIndex(g, sx, sz), gi = cellIndex(g, gx, gz);
   gScore[si] = 0;
   const open = new Heap();
-  const h = (cx: number, cz: number) => { const dx = Math.abs(cx - gx), dz = Math.abs(cz - gz); return Math.max(dx, dz) + 0.4142 * Math.min(dx, dz); };
+  // Across floors, distances are taken as if each floor stood over the ground one, plus the least a ride costs.
+  const lv = g.rowLevel, shift = g.levelRows ?? 0, gl = lv ? lv[gz]! : 0;
+  const h = lv
+    ? (cx: number, cz: number) => { const l = lv[cz]!, dx = Math.abs(cx - gx), dz = Math.abs(cz - l * shift - (gz - gl * shift)); return Math.max(dx, dz) + 0.4142 * Math.min(dx, dz) + Math.abs(l - gl) * 7; }
+    : (cx: number, cz: number) => { const dx = Math.abs(cx - gx), dz = Math.abs(cz - gz); return Math.max(dx, dz) + 0.4142 * Math.min(dx, dz); };
+  const via = new Map<number, Portal>();
   open.push(si, h(sx, sz));
   let found = false;
   let expanded = 0;
@@ -66,8 +71,17 @@ export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Vec2
       const step = (dx !== 0 && dz !== 0 ? 1.4142 : 1) * g.cost[ni]!;
       const tentative = gScore[cur]! + step;
       if (tentative < gScore[ni]!) {
-        gScore[ni] = tentative; came[ni] = cur;
+        gScore[ni] = tentative; came[ni] = cur; via.delete(ni);
         open.push(ni, tentative + h(nx, nz));
+      }
+    }
+    // Up or down a floor.
+    for (const pt of g.portals?.get(cur) ?? []) {
+      if (closed[pt.to] || isBlocked(g, pt.to % g.w, (pt.to / g.w) | 0, dyn)) continue;
+      const tentative = gScore[cur]! + pt.cost;
+      if (tentative < gScore[pt.to]!) {
+        gScore[pt.to] = tentative; came[pt.to] = cur; via.set(pt.to, pt);
+        open.push(pt.to, tentative + h(pt.to % g.w, (pt.to / g.w) | 0));
       }
     }
   }
@@ -75,9 +89,28 @@ export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Vec2
   const cells: number[] = [];
   for (let c = gi; c !== -1; c = came[c]!) cells.push(c);
   cells.reverse();
-  const pts: Vec2[] = cells.map((c) => cellCentre(g, c % g.w, (c / g.w) | 0));
-  if (pts.length) pts[pts.length - 1] = goal;
-  return smooth(g, start, pts, dyn);
+  if (!via.size) {
+    const pts: Vec2[] = cells.map((c) => cellCentre(g, c % g.w, (c / g.w) | 0));
+    if (pts.length) pts[pts.length - 1] = goal;
+    return smooth(g, start, pts, dyn);
+  }
+  // Each floor's stretch smoothed on its own, joined by the rides: to the foot of the stairs, then up them.
+  const out: Waypoint[] = [];
+  let foot = start, seg: Vec2[] = [];
+  cells.forEach((c, k) => {
+    const pt = k > 0 ? via.get(c) : undefined;
+    if (pt && came[c] === cells[k - 1]) {
+      if (seg.length) seg[seg.length - 1] = pt.from; else seg.push(pt.from);
+      out.push(...smooth(g, foot, seg, dyn));
+      out.push({ x: pt.at.x, z: pt.at.z, ride: pt.ride, via: pt.via, yaw: pt.yaw });
+      foot = pt.at; seg = [];
+      return;
+    }
+    seg.push(cellCentre(g, c % g.w, (c / g.w) | 0));
+  });
+  if (seg.length) { seg[seg.length - 1] = goal; out.push(...smooth(g, foot, seg, dyn)); }
+  else if (Math.hypot(goal.x - foot.x, goal.z - foot.z) > 0.01) out.push(goal);
+  return out;
 }
 
 /** String-pulling: drop waypoints that can be skipped in a straight line. */

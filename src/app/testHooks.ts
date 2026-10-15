@@ -2,7 +2,7 @@ import type { GameRuntime } from './GameRuntime';
 import { tick, TICK, applyCommand, FIXTURES, quickSetup } from '@/sim/index';
 import { PeopleView } from '@/render/People';
 import { spawnCustomer } from '@/sim/people';
-import { toWorld, toLocal } from '@/sim/layout';
+import { toWorld, toLocal, liftWorld } from '@/sim/layout';
 import { closeRival, startRivalMove } from '@/sim/rivals';
 import type { RivalMove } from '@/sim/types';
 import { spawnRivalShopper } from '@/sim/rivalShoppers';
@@ -36,7 +36,8 @@ export function installTestHooks(rt: GameRuntime): void {
       const o = s.people.find((p) => p.kind === 'owner');
       if (o && x !== undefined && z !== undefined) { const w = toWorld(s.shop, x, z); o.x = o.px = w.x; o.z = o.pz = w.z; o.path = []; o.state = 'idle'; o.moveDir = null; }
       r.follow.following = true;
-      if (o) r.follow.set(o.x, o.z, yaw !== undefined ? yaw + (s.shop.flip ? Math.PI : 0) : undefined, dist, pitch);
+      // Upstairs, the camera looks at where they are drawn.
+      if (o) { const l = liftWorld(s.shop, o.x, o.z); r.follow.set(l.x, l.z, yaw !== undefined ? yaw + (s.shop.flip ? Math.PI : 0) : undefined, dist, pitch, l.y); }
       r.follow.snap();
       rt.bump();
     },
@@ -49,7 +50,8 @@ export function installTestHooks(rt: GameRuntime): void {
       o.x = o.px = w.x; o.z = o.pz = w.z; o.path = []; o.state = 'idle'; o.moveDir = null;
       o.yaw = Math.atan2(t.x - o.x, t.z - o.z);
       r.follow.following = true;
-      r.follow.set(o.x, o.z, Math.atan2(o.x - t.x, o.z - t.z), dist);
+      const l = liftWorld(s.shop, o.x, o.z);
+      r.follow.set(l.x, l.z, Math.atan2(o.x - t.x, o.z - t.z), dist, undefined, l.y);
       r.follow.snap();
       rt.bump();
     },
@@ -165,6 +167,8 @@ export function installTestHooks(rt: GameRuntime): void {
     rivalSale: (id: string) => { const s = rt.state; if (!s) return; const r = s.rivals.find((x) => x.id === id); if (r) { r.open = true; r.saleDaysLeft = 2; } rt.bump(); },
     startPlacing: (t: Parameters<GameRuntime['startPlacing']>[0]) => rt.startPlacing(t),
     hover: (x: number, z: number) => rt.hoverWorld(x, z),
+    /** Build on floor `level` (the Build card's floor picker). */
+    buildLevel: (level: number) => rt.setBuildLevel(level),
     debugFixtures: () => rt.renderer?.debugFixtures(),
     breakdown: () => rt.renderer?.breakdown(),
     /** A row of test people on the lawn, one per spec, each playing one animation. */

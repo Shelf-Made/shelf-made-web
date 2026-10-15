@@ -1,7 +1,7 @@
 import { skyFor } from './weather';
 import type { GameState, Difficulty, Shop, Fixture, Person, DayStats, Slot } from './types';
 import { DEFAULT_SCHEME, schemeById } from './schemes';
-import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeFrame, lotLayout, deliveryZone, toWorld, yawToWorld, STREET_BAYS } from './layout';
+import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeFrame, lotLayout, deliveryZone, toWorld, yawToWorld, STREET_BAYS, floorTileList, tileKey } from './layout';
 import { PRODUCTS } from './products';
 import { Rng } from './rng';
 import { makeRivals } from './rivals';
@@ -49,6 +49,8 @@ export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_
     // Plain plaster walls come with the shop; finishes go on a stretch at a time.
     wallStyle: 'plain',
     delivery: deliveryZone(STARTER.floor),
+    // A ceiling panel over every tile (the floor of a storey above, once stairs go up to it).
+    ceilings: [floorTileList({ floor: STARTER.floor }).map((t) => tileKey(t.x, t.z)), [], [], []],
   };
 }
 

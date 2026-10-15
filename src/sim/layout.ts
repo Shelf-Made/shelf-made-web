@@ -253,10 +253,19 @@ export const SURFACES: { id: LotSurface; name: string; perTile: number; curb: nu
   { id: 'paving', name: 'Sidewalk slabs', perTile: 8, curb: 0.006, walk: 1 },
   { id: 'brick', name: 'Brick paving', perTile: 12, curb: 0.01, walk: 1 },
 ];
-/** A piece's footprint: one tile, or two side by side (a billboard), turned with it. */
+/**
+ * A piece's footprint, turned with it: one tile, or two side by side (a billboard), and a deep piece (the
+ * stairs) runs back from its tile, away from the way it faces, so its front is always the tile at (x, z).
+ */
 export function footprintOf(type: FixtureType, x: number, z: number, rot: number): Rect {
-  const w = FIXTURES[type].w;
-  return rot % 2 === 0 ? { x0: x, z0: z, x1: x + w, z1: z + 1 } : { x0: x, z0: z, x1: x + 1, z1: z + w };
+  const { w, d } = FIXTURES[type];
+  const back = d - 1;
+  switch (rot & 3) {
+    case 0: return { x0: x, z0: z - back, x1: x + w, z1: z + 1 };
+    case 1: return { x0: x - back, z0: z, x1: x + 1, z1: z + w };
+    case 2: return { x0: x, z0: z, x1: x + w, z1: z + 1 + back };
+    default: return { x0: x, z0: z, x1: x + 1 + back, z1: z + w };
+  }
 }
 export function overlaps(a: Rect, b: Rect, m = 1e-6): boolean { return a.x0 < b.x1 - m && a.x1 > b.x0 + m && a.z0 < b.z1 - m && a.z1 > b.z0 + m; }
 /** Does this rectangle touch the building (the floor and the walls round it)? */
@@ -287,7 +296,7 @@ export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: numb
 
 /** The most floor a shop can have (the front wall never moves). */
 export const MAX_FLOOR: Rect = { x0: -4.5, z0: -8, x1: 4.5, z1: 0 };
-type FloorShape = { floor: Rect; gaps?: string[] };
+type FloorShape = { floor: Rect; gaps?: string[]; ceilings?: string[][]; fixtures?: readonly { type: FixtureType; x: number; z: number; rot: number }[]; layoutVersion?: number };
 export const tileKey = (x: number, z: number): string => `${x},${z}`;
 const gapSets = new WeakMap<string[], Set<string>>();
 function gapSet(shop: FloorShape): Set<string> | null {
@@ -296,8 +305,9 @@ function gapSet(shop: FloorShape): Set<string> | null {
   if (!g) { g = new Set(shop.gaps); gapSets.set(shop.gaps, g); }
   return g;
 }
-/** Is the tile with its corner at (x, z) shop floor? */
+/** Is the tile with its corner at (x, z) shop floor (on any floor of the building: see levelOfZ)? */
 export function isFloor(shop: FloorShape, x: number, z: number): boolean {
+  if (z < UPPER_Z) return upperFloor(shop, x, z);
   const f = shop.floor, e = 1e-6;
   if (x < f.x0 - e || x + 1 > f.x1 + e || z < f.z0 - e || z + 1 > f.z1 + e) return false;
   return !gapSet(shop)?.has(tileKey(x, z));
@@ -327,7 +337,7 @@ const SEG_DIRS = [
   { dir: 'front' as const, nx: 0, nz: 1, axis: 'x' as const }, { dir: 'back' as const, nx: 0, nz: -1, axis: 'x' as const },
   { dir: 'left' as const, nx: -1, nz: 0, axis: 'z' as const }, { dir: 'right' as const, nx: 1, nz: 0, axis: 'z' as const },
 ];
-/** Every stretch of outer wall round the floor. */
+/** Every stretch of outer wall round the floor, and round the building on each floor above (in that floor's region). */
 export function wallSegments(shop: FloorShape): WallSeg[] {
   const out: WallSeg[] = [];
   for (const t of floorTileList(shop)) for (const d of SEG_DIRS) {
@@ -335,6 +345,17 @@ export function wallSegments(shop: FloorShape): WallSeg[] {
     const line = d.axis === 'x' ? (d.nz > 0 ? t.z + 1 : t.z) : (d.nx > 0 ? t.x + 1 : t.x);
     const mid = d.axis === 'x' ? t.x + 0.5 : t.z + 0.5;
     out.push({ ...d, line, t: mid, key: wallKey(d.dir, line, mid) });
+  }
+  if (!shop.fixtures?.some((f) => VERTICAL.has(f.type)) && !shop.ceilings) return out;
+  const st = storeysOf(shop);
+  for (let L = 1; L < MAX_LEVELS; L++) for (const k of st.inside[L] ?? []) {
+    const [x, z] = k.split(',').map(Number) as [number, number];
+    for (const d of SEG_DIRS) {
+      if (st.inside[L]!.has(tileKey(x + d.nx, z + d.nz))) continue;
+      const line = d.axis === 'x' ? zOnLevel(d.nz > 0 ? z + 1 : z, L) : (d.nx > 0 ? x + 1 : x);
+      const mid = d.axis === 'x' ? x + 0.5 : zOnLevel(z + 0.5, L);
+      out.push({ ...d, line, t: mid, key: wallKey(d.dir, line, mid) });
+    }
   }
   return out;
 }
@@ -355,6 +376,145 @@ export function storeFrame(plotId: string): Frame {
   const c = CORNERS[cornerOfPlot(plotId)];
   return { originX: c.originX, originZ: c.originZ, flip: !!c.flip };
 }
+
+// ---- Upstairs. A ceiling panel over a tile is also the floor of the storey above (`ceilings`); stairs, an
+// escalator or a lift going up from a floor opens the one above it, and the building then stands a storey
+// taller all over. Upstairs is walked in a region of its own, LEVEL_DZ further back (shop-relative z) for
+// each floor up, past the plot and the floor below: so the sim stays flat (a piece or a person up there
+// just has its z shifted, distances between floors are long, and paths cross only by the stairs) and the
+// renderer lifts each floor back up over the ground one.
+
+/** Five floors at most: the ground floor and four above it. */
+export const MAX_LEVELS = 5;
+/** How much further back each floor up is walked (shop-relative z). */
+export const LEVEL_DZ = -16;
+/** One storey's height (the walls are a unit tall). */
+export const STOREY = 1;
+/** Shop-relative z beyond which a point is upstairs (the plot ends before it). */
+const UPPER_Z = -12;
+/** The pieces that go up to the next floor. */
+export const VERTICAL: ReadonlySet<FixtureType> = new Set<FixtureType>(['stairs', 'escalator', 'elevator']);
+/** Which floor a shop-relative z is on (0: the ground floor). */
+export function levelOfZ(z: number): number { return z >= UPPER_Z ? 0 : Math.min(MAX_LEVELS - 1, Math.round((-4 - z) / -LEVEL_DZ)); }
+/** A ground z carried up to floor `level`. */
+export const zOnLevel = (z: number, level: number): number => z + level * LEVEL_DZ;
+/** The ground z under a point on any floor. */
+export const groundZ = (z: number): number => z - levelOfZ(z) * LEVEL_DZ;
+/** Which floor a piece stands on. */
+export const levelOf = (f: { z: number }): number => levelOfZ(f.z + 0.5);
+
+export interface Storeys {
+  /** Which floors are open (reached by stairs, an escalator or a lift from the floor below): [0] always. */
+  built: boolean[];
+  /** The highest open floor. */
+  top: number;
+  /** Floor by floor, the tiles (ground keys "x,z") people can stand on: [0] the ground floor's. */
+  floors: Set<string>[];
+  /** Floor by floor, the building's footprint there (keys): a whole open floor, or over the floor below where no panel is (a double-height space). */
+  inside: Set<string>[];
+  /** Openings in each floor (keys): where the stairs, an escalator or a lift come up through it. */
+  holes: Set<string>[];
+}
+const storeyCache = new WeakMap<object, { sig: string; st: Storeys }>();
+/** The panels over floor `level` (keys); an old save has them over the whole ground floor. */
+export function panelsOver(shop: FloorShape, level: number): Set<string> {
+  const row = shop.ceilings?.[level];
+  if (row) return new Set(row);
+  return level === 0 && !shop.ceilings ? new Set(groundTiles(shop).map((t) => tileKey(t.x, t.z))) : new Set();
+}
+function groundTiles(shop: FloorShape): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  const f = shop.floor;
+  for (let z = f.z0; z < f.z1 - 1e-6; z++) for (let x = f.x0; x < f.x1 - 1e-6; x++) if (isFloor(shop, x, z)) out.push({ x, z });
+  return out;
+}
+/** Every floor of the building: which are open, where people stand on each, and the shape of each. */
+export function storeysOf(shop: FloorShape): Storeys {
+  const fixtures = shop.fixtures ?? [];
+  let sig = `${shop.layoutVersion ?? ''}|${JSON.stringify(shop.floor)}|${shop.gaps?.length ?? 0}|${shop.ceilings?.map((r) => r.length).join(',') ?? '-'}|`;
+  for (const f of fixtures) if (VERTICAL.has(f.type)) sig += `${f.type}${f.x},${f.z},${f.rot};`;
+  const key = (shop.fixtures ?? shop) as object;
+  const hit = storeyCache.get(key);
+  if (hit && hit.sig === sig) return hit.st;
+  const ground = new Set(groundTiles(shop).map((t) => tileKey(t.x, t.z)));
+  const st: Storeys = { built: [true], top: 0, floors: [ground], inside: [ground], holes: [new Set()] };
+  for (let L = 1; L < MAX_LEVELS; L++) {
+    const up = fixtures.filter((f) => VERTICAL.has(f.type) && levelOf(f) === L - 1);
+    const built = st.built[L - 1]! && up.length > 0;
+    st.built.push(built);
+    const holes = new Set<string>();
+    for (const f of up) {
+      const r = footprintOf(f.type, f.x, groundZ(f.z), f.rot);
+      for (let z = r.z0; z < r.z1 - 1e-6; z++) for (let x = r.x0; x < r.x1 - 1e-6; x++) holes.add(tileKey(x, z));
+    }
+    st.holes.push(holes);
+    const panels = panelsOver(shop, L - 1);
+    const floor = new Set<string>();
+    if (built) for (const k of panels) if (ground.has(k) && !holes.has(k)) floor.add(k);
+    st.floors.push(floor);
+    // The building there: all of it once the floor is open; else, over an open floor, just where no panel is.
+    const inside = new Set<string>();
+    if (built) for (const k of st.inside[L - 1]!) inside.add(k);
+    else if (st.built[L - 1]) for (const k of st.inside[L - 1]!) if (!panels.has(k)) inside.add(k);
+    st.inside.push(inside);
+    if (built) st.top = L;
+  }
+  storeyCache.set(key, { sig, st });
+  return st;
+}
+/** The floor area people can shop on: the ground floor and every open floor above it. */
+export function shopArea(shop: FloorShape): number {
+  const st = storeysOf(shop);
+  return st.floors.reduce((a, f, L) => a + (st.built[L] ? f.size : 0), 0);
+}
+/** Tiles under a double-height space (no panel over them, the building a storey taller there), on every open floor. */
+export function highCeilings(shop: FloorShape): number {
+  const st = storeysOf(shop);
+  let n = 0;
+  for (let L = 0; L < MAX_LEVELS - 1; L++) {
+    if (!st.built[L]) continue;
+    const panels = panelsOver(shop, L);
+    for (const k of st.floors[L]!) if (!panels.has(k) && st.inside[L + 1]!.has(k)) n++;
+  }
+  return n;
+}
+/** Upstairs: is the tile (its corner, shop-relative on that floor's region) floor people stand on? */
+function upperFloor(shop: FloorShape, x: number, z: number): boolean {
+  const L = levelOfZ(z + 0.5);
+  if (!L) return false;
+  return storeysOf(shop).floors[L]?.has(tileKey(x, zOnLevel(z, -L))) ?? false;
+}
+/** Every floor tile of floor `level` (corners in that floor's region). */
+export function levelTileList(shop: FloorShape, level: number): { x: number; z: number }[] {
+  if (level === 0) return floorTileList(shop);
+  return [...(storeysOf(shop).floors[level] ?? [])].map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z: zOnLevel(z, level) }; });
+}
+/** Is the tile (ground corner) inside the building on floor `level` (floor, an opening, or a double-height space)? */
+export function insideOn(shop: FloorShape, level: number, x: number, z: number): boolean { return storeysOf(shop).inside[level]?.has(tileKey(x, z)) ?? false; }
+/** Where you come off going up a piece (the tile beyond its top, on the floor above) and get on going down: tile centres, shop-relative. */
+export function rideEnds(f: { type: FixtureType; x: number; z: number; rot: number }): { bottom: Vec2; top: Vec2 } {
+  const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][f.rot & 3]!;
+  const bottom = { x: f.x + 0.5 + fc.x, z: f.z + 0.5 + fc.z };
+  // A lift comes out the way it went in, a floor up; stairs and an escalator carry on past their top step.
+  const d = f.type === 'elevator' ? -1 : FIXTURES[f.type].d;
+  return { bottom, top: { x: f.x + 0.5 - fc.x * d, z: zOnLevel(f.z + 0.5 - fc.z * d, 1) } };
+}
+/** A world point as it really stands: one upstairs (in its floor's region) back over the ground floor, `y` a storey up a floor. */
+export function liftWorld(f: Frame, x: number, z: number): { x: number; y: number; z: number; level: number } {
+  const l = toLocal(f, x, z);
+  const level = l.x > MAX_FLOOR.x0 - 1.5 && l.x < MAX_FLOOR.x1 + 1.5 ? levelOfZ(l.z) : 0;
+  if (!level) return { x, y: 0, z, level: 0 };
+  const w = toWorld(f, l.x, zOnLevel(l.z, -level));
+  return { x: w.x, y: level * STOREY, z: w.z, level };
+}
+/** A world point on floor `level` (over the ground) carried into that floor's region, where the sim walks it. */
+export function sinkWorld(f: Frame, x: number, z: number, level: number): Vec2 {
+  if (!level) return { x, z };
+  const l = toLocal(f, x, z);
+  return toWorld(f, l.x, zOnLevel(l.z, level));
+}
+/** How long a ride takes (seconds), and how far it counts for on a path (in half-tile steps). */
+export const RIDE: Partial<Record<FixtureType, { secs: number; cost: number }>> = { stairs: { secs: 2.4, cost: 12 }, escalator: { secs: 2.0, cost: 7 }, elevator: { secs: 3.2, cost: 9 } };
 
 export const FIXTURES: Record<FixtureType, FixtureDef> = {
   // Checkout.
@@ -394,6 +554,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   doorway: { type: 'doorway', name: 'Doorway', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
   railing: { type: 'railing', name: 'Railing', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
   gate: { type: 'gate', name: 'Gate', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
+  /** Twice as tall as a wall: for a double-height space, where the ceiling panel above has been sold. */
+  tallWall: { type: 'tallWall', name: 'Tall wall', price: 75, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
   // Lights.
   floorLamp: { type: 'floorLamp', name: 'Floor lamp', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', looks: 0.07, looksCap: 4 },
   wallLight: { type: 'wallLight', name: 'Wall light', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.06, looksCap: 4 },
@@ -408,6 +570,10 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   bikeRack: { type: 'bikeRack', name: 'Bike rack', price: 50, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.02, looksCap: 2 },
   /** Your own board on your own lot: no rent, and drivers on Main Road see it every day. */
   billboard: { type: 'billboard', name: 'Billboard', price: 300, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true },
+  // Up to the next floor: each runs back from its front tile and comes up through the floor above.
+  stairs: { type: 'stairs', name: 'Stairs', price: 450, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'storeys' },
+  escalator: { type: 'escalator', name: 'Escalator', price: 1600, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 5, category: 'storeys' },
+  elevator: { type: 'elevator', name: 'Lift', price: 2200, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 4, category: 'storeys' },
 };
 
 /**

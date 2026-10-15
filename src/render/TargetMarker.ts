@@ -25,13 +25,17 @@ export class TargetMarker {
     const k = `${rect.x0},${rect.z0},${rect.x1},${rect.z1}`;
     if (k === this.key) return;
     this.key = k;
-    const m = 0.08, w = rect.x1 - rect.x0 + 2 * m, d = rect.z1 - rect.z0 + 2 * m, cx = (rect.x0 + rect.x1) / 2, cz = (rect.z0 + rect.z1) / 2, th = 0.07;
+    const m = 0.08, w = rect.x1 - rect.x0 + 2 * m, d = rect.z1 - rect.z0 + 2 * m, th = 0.07;
+    // Upstairs, round the thing on its floor.
+    const c = this.lift((rect.x0 + rect.x1) / 2, (rect.z0 + rect.z1) / 2), cx = c.x, cz = c.z, y = c.y + 0.03;
     const [n, s, e, west] = this.sides as [Mesh, Mesh, Mesh, Mesh];
-    n.scale.set(w, 1, th); n.position.set(cx, 0.03, cz - d / 2);
-    s.scale.set(w, 1, th); s.position.set(cx, 0.03, cz + d / 2);
-    e.scale.set(th, 1, d); e.position.set(cx + w / 2, 0.03, cz);
-    west.scale.set(th, 1, d); west.position.set(cx - w / 2, 0.03, cz);
+    n.scale.set(w, 1, th); n.position.set(cx, y, cz - d / 2);
+    s.scale.set(w, 1, th); s.position.set(cx, y, cz + d / 2);
+    e.scale.set(th, 1, d); e.position.set(cx + w / 2, y, cz);
+    west.scale.set(th, 1, d); west.position.set(cx - w / 2, y, cz);
   }
+  /** Where a world point is drawn (the renderer carries points upstairs back over the ground). */
+  lift: (x: number, z: number) => { x: number; y: number; z: number } = (x, z) => ({ x, y: 0, z });
 
   update(dt: number): void {
     if (!this.group.visible) return;

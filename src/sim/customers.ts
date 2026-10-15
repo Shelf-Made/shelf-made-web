@@ -4,7 +4,7 @@
  */
 import type { GameState, CustomerType, RivalState, StoreScores } from './types';
 import { PRODUCTS, productDef } from './products';
-import { plotDef, PLOTS, DIFFICULTY, FIXTURES, floorTileCount } from './layout';
+import { plotDef, PLOTS, DIFFICULTY, FIXTURES, shopArea } from './layout';
 import { bikePull, lotAppeal } from './lot';
 
 export const TYPE_WEIGHTS: Record<CustomerType, StoreScores> = {
@@ -41,7 +41,8 @@ export function shelfFullness(state: GameState): number {
 /** Layout quality: variety of fixtures, end caps, signs, and room to walk. */
 export function layoutQuality(state: GameState): number {
   const shop = state.shop;
-  const tiles = floorTileCount(shop);
+  // Every open floor counts: shelves upstairs have the room up there.
+  const tiles = shopArea(shop);
   const fixtures = shop.fixtures.filter((f) => f.type !== 'register' && f.type !== 'kiosk' && !FIXTURES[f.type].walkable && !FIXTURES[f.type].outdoor);
   const density = fixtures.length / Math.max(1, tiles);
   const densityScore = density < 0.15 ? density / 0.15 * 0.6 : density <= 0.45 ? 0.6 + (density - 0.15) / 0.3 * 0.4 : Math.max(0.2, 1 - (density - 0.45) * 2);

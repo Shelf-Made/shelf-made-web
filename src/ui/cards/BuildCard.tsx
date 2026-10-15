@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, tilePrice, MAX_FLOOR, lotLayout } from '@/sim/layout';
+import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, tilePrice, MAX_FLOOR, MAX_LEVELS, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
+import { PANEL_PRICE } from '@/sim/storeys';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
@@ -12,8 +13,10 @@ import { FURNITURE_USE } from '@/sim/furniture';
 type Tab = BuildCategory | 'floors' | 'shop';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'checkout', label: 'Tills' }, { id: 'shelves', label: 'Shelves' }, { id: 'furniture', label: 'Furniture' }, { id: 'decor', label: 'Decor' },
-  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'outside', label: 'Outside' }, { id: 'shop', label: 'Shop' },
+  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'storeys', label: 'Upstairs' }, { id: 'outside', label: 'Outside' }, { id: 'shop', label: 'Shop' },
 ];
+/** What each floor is called. */
+const FLOOR_NAMES = ['Ground', '1st', '2nd', '3rd', '4th'];
 /** A word on what each piece is for (the tile's tooltip). */
 const NOTES: Partial<Record<FixtureType, string>> = {
   register: 'Where shoppers pay. You need one to open', kiosk: 'Shoppers scan their own: no cashier', rack: 'Snacks and sweets by the till',
@@ -25,6 +28,8 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   floorLamp: 'Warm light after dark', wallLight: 'On an outside wall', pendant: 'Hangs over the aisle', neon: 'On an outside wall, always lit',
   flowerBed: 'Brightens the frontage', planter: 'A tub of greenery', tree: 'Shade and green round the car park', parkBench: 'Somewhere to sit outside',
   bikeRack: `Shoppers ride in and lock up (${RACK_STANDS} bikes); brings in a few more`, billboard: `Your own board: no rent, seen from Main Road (up to ${LOT_MAX.billboard})`,
+  stairs: 'Opens the floor above: shoppers climb up to what is on its shelves', escalator: 'Carries shoppers up without the climb: more of them go up',
+  elevator: 'A lift to the floor above: one tile, doors on both floors', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
 };
 
 /** What a piece is for: what the furniture does, or the note above. */
@@ -68,12 +73,13 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const thumbs = runtime.renderer?.fixtureThumbs ?? {};
   const items = (Object.keys(FIXTURES) as FixtureType[]).filter((t) => FIXTURES[t].category === tab);
   const floor = s.shop.floorStyle ?? 'lino';
+  const top = storeysOf(s.shop).top;
   return (
     <>
       {b.tool ? (
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
-            <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
+            <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'panel' ? 'Putting up ceiling panels' : b.tool.kind === 'unpanel' ? 'Taking down ceiling panels' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
             <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : b.tool.kind === 'bay' || b.tool.kind === 'unbay' ? 'Click a bay beside the shop' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
@@ -101,6 +107,12 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           </select>
         </label>
       </div>
+      {(top > 0 || tab === 'storeys') && (
+        <div className="row floor-pick" role="group" aria-label="Which floor">
+          <span className="muted">Floor</span>
+          {FLOOR_NAMES.slice(0, top + 1).map((n, L) => <button key={n} className={`btn small${b.level === L ? '' : ' ghost'}`} aria-pressed={b.level === L} onClick={() => runtime.setBuildLevel(L)}>{n}</button>)}
+        </div>
+      )}
       <nav className="build-tabs" role="tablist" aria-label="What to build">
         {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
       </nav>
@@ -117,6 +129,30 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             );
           })}
         </div>
+      )}
+      {tab === 'storeys' && (
+        <>
+          <h3>Ceiling panels</h3>
+          {(() => {
+            const n = panelsOver(s.shop, b.level).size, tool = b.tool?.kind, last = b.level >= MAX_LEVELS - 1;
+            return (
+              <div className="item">
+                <span className="swatch big" style={{ background: 'repeating-linear-gradient(90deg, #E4E6EA 0 13px, #B9BCC4 13px 15px)' }} aria-hidden="true" />
+                <div style={{ flex: 1 }}>
+                  <div className="name">{last ? 'The top floor' : `${n} over the ${FLOOR_NAMES[b.level]!.toLowerCase()} floor`}</div>
+                  <div className="sub">{last ? `${MAX_LEVELS} floors is the most a shop can have` : `Each is the floor of the storey above. Take one down (${money(Math.round(PANEL_PRICE * 0.6))} back) for a double-height space: tall walls and high lights go there. ${money(PANEL_PRICE)} to put one up.`}</div>
+                </div>
+                {!last && (
+                  <span className="row">
+                    <button className={`btn small${tool === 'panel' ? ' ghost' : ''}`} disabled={tool !== 'panel' && s.cash < PANEL_PRICE} onClick={() => (tool === 'panel' ? runtime.stopPlacing() : runtime.startTool({ kind: 'panel' }))}>{tool === 'panel' ? 'Done' : 'Put up'}</button>
+                    {n > 0 && <button className="btn small ghost" onClick={() => (tool === 'unpanel' ? runtime.stopPlacing() : runtime.startTool({ kind: 'unpanel' }))}>{tool === 'unpanel' ? 'Done' : 'Take down'}</button>}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+          <p className="muted">Stairs, an escalator or a lift open the floor above: shoppers go up for what is on the shelves there. Pick a floor above to build on it.</p>
+        </>
       )}
       {tab === 'walls' && (
         <>

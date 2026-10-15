@@ -27,7 +27,8 @@ import type { ReviewPhoto } from '@/sim/reviews';
 import { box, merge } from './geometry';
 import { PhotoBooth, PHOTO_W, PHOTO_H, haulScene, photoRng, photoProduct } from './photos';
 import { shopScheme } from '@/sim/schemes';
-import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld } from '@/sim/layout';
+import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld, liftWorld, sinkWorld, STOREY, type Frame } from '@/sim/layout';
+import { poseOf } from './levels';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -83,6 +84,12 @@ export class WorldRenderer {
   /** Who the camera tracks instead of the manager (the inspect panel's Follow), or nobody. */
   followId: number | null = null;
   private lastAlpha = 0;
+  /** The floor being built on (the Build card's floor picker), or null to follow the manager's. */
+  buildLevel: number | null = null;
+  /** The floor in view this frame (null: every floor, from outside). */
+  viewLevel: number | null = null;
+  /** The player's shop frame, for carrying points upstairs to where they are drawn. */
+  private frame: Frame | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -160,9 +167,10 @@ export class WorldRenderer {
     const followed = this.followId !== null ? state.people.find((p) => p.id === this.followId) : undefined;
     const tracked = followed ?? owner;
     let focus: Vector3;
-    if (fp && tracked) {
-      const x = tracked.px + (tracked.x - tracked.px) * alpha, z = tracked.pz + (tracked.z - tracked.pz) * alpha;
-      this.follow.follow(x, z);
+    if (this.frame !== state.shop) { this.frame = state.shop; const f = state.shop; this.marker.lift = (x, z) => liftWorld(f, x, z); }
+    const pose = fp && tracked ? poseOf(state, tracked, alpha) : null;
+    if (fp && tracked && pose) {
+      this.follow.follow(pose.x, pose.z, pose.y);
       this.follow.update(dt);
       focus = this.tmpFocus.set(this.follow.target.x, 0, this.follow.target.z);
     } else {
@@ -192,13 +200,17 @@ export class WorldRenderer {
     // drop to stubs. Outside, the shop stands whole and wears its roof once the camera pulls back.
     // The cinematic camera (picker, screenshots) cuts the near walls down; the lobby keeps them whole.
     let inside = false;
-    if (fp && tracked) {
+    if (fp && tracked && pose) {
       const f = state.shop.floor;
-      const l = toLocal(state.shop, tracked.x, tracked.z);
+      const l = toLocal(state.shop, pose.x, pose.z);
       inside = l.x > f.x0 - 0.4 && l.x < f.x1 + 0.4 && l.z > f.z0 - 0.4 && l.z < f.z1 + 0.7;
     }
+    // The floor in view: the one being built on, or the manager's while inside (the floors over it are lifted off); from outside, the whole building.
+    this.viewLevel = this.buildLevel ?? (inside && pose ? pose.level : null);
+    this.store.setViewLevel(this.viewLevel);
+    this.people.viewLevel = this.viewLevel; this.reactions.viewLevel = this.viewLevel;
     const camYaw = fp ? this.follow.yaw : this.camera.yaw;
-    this.store.update(state, fp ? (inside ? camYaw : null) : (this.cutaway ? camYaw : null));
+    this.store.update(state, fp ? (inside || this.buildLevel !== null ? camYaw : null) : (this.cutaway ? camYaw : null));
     this.store.setRoof(fp ? !inside && this.follow.distance > 16 : !this.cutaway);
     if (fp && tracked) this.rivals.occlude(this.follow.camera.position, tracked.x, tracked.z); else this.rivals.occlude(null, 0, 0);
     // Skinned people are never frustum-culled by three.js (their bounds move with the bones): skip the ones out of view here.
@@ -348,7 +360,7 @@ export class WorldRenderer {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
-    return this.store.pick(this.ray, state.shop);
+    return this.store.pick(this.ray, state.shop, this.viewLevel ?? 0);
   }
 
   /**
@@ -364,10 +376,11 @@ export class WorldRenderer {
     let best: number | null = null, bestD = Infinity;
     for (const p of state.people) {
       if (p.kind === 'owner' || p.state === 'driving' || p.state === 'inRival' || p.state === 'gone') continue;
-      const wx = p.px + (p.x - p.px) * this.lastAlpha, wz = p.pz + (p.z - p.pz) * this.lastAlpha;
-      foot.set(wx, 0, wz).project(cam);
+      const pose = poseOf(state, p, this.lastAlpha);
+      if (this.viewLevel !== null && pose.level > this.viewLevel) continue;
+      foot.set(pose.x, pose.y, pose.z).project(cam);
       if (foot.z < -1 || foot.z > 1) continue;
-      head.set(wx, 0.95 * p.look.height, wz).project(cam);
+      head.set(pose.x, pose.y + 0.95 * p.look.height, pose.z).project(cam);
       const fx = (foot.x + 1) / 2 * r.width, fy = (1 - foot.y) / 2 * r.height, hy = (1 - head.y) / 2 * r.height;
       const tall = Math.max(36, fy - hy), half = Math.max(16, tall * 0.28);
       if (Math.abs(x - fx) > half || y < fy - tall - 6 || y > fy + 8) continue;
@@ -380,8 +393,8 @@ export class WorldRenderer {
   personAnchor(state: GameState, id: number): { x: number; y: number; z: number } | null {
     const p = state.people.find((q) => q.id === id);
     if (!p || p.state === 'gone') return null;
-    const a = this.lastAlpha;
-    return { x: p.px + (p.x - p.px) * a, y: p.state === 'driving' ? 1.2 : 0.95 * p.look.height + 0.15, z: p.pz + (p.z - p.pz) * a };
+    const pose = poseOf(state, p, this.lastAlpha);
+    return { x: pose.x, y: p.state === 'driving' ? 1.2 : pose.y + 0.95 * p.look.height + 0.15, z: pose.z };
   }
 
   /** The outline round the selected person (null clears it). */
@@ -391,18 +404,22 @@ export class WorldRenderer {
   private readonly tmpA = new Vector3();
   private readonly tmpB = new Vector3();
 
-  /** Ground point under a canvas pixel. */
+  /** Ground point under a canvas pixel: on the floor in view, as the sim has it (upstairs, in that floor's region). */
   groundAt(px: number, py: number): Vector3 | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
-    const t = -this.ray.ray.origin.y / this.ray.ray.direction.y;
+    const level = this.viewLevel ?? 0, h = level * STOREY;
+    const t = (h - this.ray.ray.origin.y) / this.ray.ray.direction.y;
     if (t <= 0) return null;
-    return new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);
+    const p = new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);
+    if (level && this.frame) { const q = sinkWorld(this.frame, p.x, p.z, level); p.set(q.x, h, q.z); }
+    return p;
   }
 
-  /** World → canvas pixel. */
+  /** World → canvas pixel (a point upstairs where it is drawn). */
   project(x: number, y: number, z: number, out: { x: number; y: number; visible: boolean }): void {
+    if (this.frame) { const l = liftWorld(this.frame, x, z); x = l.x; y += l.y; z = l.z; }
     const v = new Vector3(x, y, z).project(this.activeCamera);
     out.visible = v.z < 1 && v.z > -1;
     out.x = (v.x + 1) / 2 * this.canvas.clientWidth;
@@ -415,6 +432,7 @@ export class WorldRenderer {
   setTileGhost(t: Parameters<StoreView["setTileGhost"]>[0]): void { this.store.setTileGhost(t); }
   setWallGhost(w: Parameters<StoreView['setWallGhost']>[0]): void { this.store.setWallGhost(w); }
   setGrowHints(tiles: { x: number; z: number }[]): void { this.store.setGrowHints(tiles); }
+  setPanelHints(tiles: { x: number; z: number }[], level: number): void { this.store.setPanelHints(tiles, level); }
 
   debugPeople(): unknown { return this.people.debugInfo(); }
   debugFixtures(): unknown { return this.store.debugFixtures(); }

@@ -30,7 +30,7 @@ export const FURNITURE_USE: Partial<Record<FixtureType, string>> = {
   sign: 'Shoppers find things faster',
   rug: 'Looks cosy, and a calmer queue',
   doormat: 'Wipes feet: the floor stays cleaner, rain or shine',
-  floorLamp: 'Light: shoplifters think twice', wallLight: 'Light: shoplifters think twice', pendant: 'Light: shoplifters think twice',
+  floorLamp: 'Light: shoplifters think twice', wallLight: 'Light: shoplifters think twice', pendant: 'Light: shoplifters think twice. Under a double-height ceiling it hangs from up there',
   neon: 'Seen from the street: more people hear of you',
 };
 

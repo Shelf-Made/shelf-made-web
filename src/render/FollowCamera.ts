@@ -24,7 +24,7 @@ export class FollowCamera {
   /** Where across the screen the target sits, in -1..1 (docked cards and panels push the world aside). */
   sideOffset = 0;
   private side = 0;
-  private goal = { x: 0, z: 0, yaw: 0, pitch: deg(52), distance: FollowCamera.DEFAULT };
+  private goal = { x: 0, y: 0, z: 0, yaw: 0, pitch: deg(52), distance: FollowCamera.DEFAULT };
   /** The camera stays over the crossroads and its backdrop ring. */
   bounds = { minX: -32, maxX: 32, minZ: -24, maxZ: 28 };
   limits = { minPitch: deg(35), maxPitch: deg(70) };
@@ -42,12 +42,12 @@ export class FollowCamera {
   }
   get goalYaw(): number { return this.goal.yaw; }
 
-  /** Track the manager (only while following). */
-  follow(x: number, z: number): void { if (this.following) { this.goal.x = x; this.goal.z = z; this.clamp(); } }
+  /** Track the manager (only while following), at the height of the floor they are on. */
+  follow(x: number, z: number, y = 0): void { if (this.following) { this.goal.x = x; this.goal.z = z; this.goal.y = y; this.clamp(); } }
 
   /** Jump straight to a framing (screenshots, load, after picking a plot). */
-  set(x: number, z: number, yaw?: number, distance?: number, pitch?: number): void {
-    this.goal.x = x; this.goal.z = z;
+  set(x: number, z: number, yaw?: number, distance?: number, pitch?: number, y = 0): void {
+    this.goal.x = x; this.goal.z = z; this.goal.y = y;
     if (yaw !== undefined) this.goal.yaw = yaw;
     if (distance !== undefined) this.goal.distance = MathUtils.clamp(distance, FollowCamera.MIN, FollowCamera.MAX);
     if (pitch !== undefined) this.goal.pitch = MathUtils.clamp(pitch, this.limits.minPitch, this.limits.maxPitch);
@@ -55,7 +55,7 @@ export class FollowCamera {
   }
 
   snap(): void {
-    this.target.set(this.goal.x, 0, this.goal.z);
+    this.target.set(this.goal.x, this.goal.y, this.goal.z);
     this.yaw = this.goal.yaw; this.pitch = this.goal.pitch; this.distance = this.goal.distance;
     this.apply();
   }
@@ -67,7 +67,7 @@ export class FollowCamera {
     const before = this.goal.distance;
     this.goal.distance = MathUtils.clamp(this.goal.distance * factor, FollowCamera.MIN, FollowCamera.MAX);
     if (this.goal.distance > FollowCamera.FOLLOW_MAX) {
-      this.following = false;
+      this.following = false; this.goal.y = 0;
       // Pulling right out slides the view over to the middle of the crossroads, so the far limit frames the whole town.
       if (this.goal.distance > before) {
         const t = (this.goal.distance - before) / Math.max(1, FollowCamera.MAX - before);
@@ -107,8 +107,8 @@ export class FollowCamera {
   }
 
   /** Back to the manager. Zoomed right out, come back in to the default too. */
-  focus(x: number, z: number): void {
-    this.following = true;
+  focus(x: number, z: number, y = this.goal.y): void {
+    this.following = true; this.goal.y = y;
     if (this.goal.distance > FollowCamera.FOLLOW_MAX) this.goal.distance = FollowCamera.DEFAULT;
     this.goal.x = x; this.goal.z = z; this.clamp();
   }
@@ -128,6 +128,7 @@ export class FollowCamera {
     const k = 1 - Math.exp(-dt * 8);
     this.target.x += (this.goal.x - this.target.x) * k;
     this.target.z += (this.goal.z - this.target.z) * k;
+    this.target.y += (this.goal.y - this.target.y) * k;
     this.yaw += (this.goal.yaw - this.yaw) * k;
     this.pitch += (this.goal.pitch - this.pitch) * k;
     this.distance += (this.goal.distance - this.distance) * k;
@@ -143,8 +144,9 @@ export class FollowCamera {
     // Look a little to one side so the target lands at `side` across the screen.
     const off = -this.side * this.distance * Math.tan(MathUtils.degToRad(c.fov / 2)) * c.aspect;
     const tx = this.target.x + rx * off, tz = this.target.z + rz * off;
-    c.position.set(tx + Math.sin(this.yaw) * r, lookY + h, tz + Math.cos(this.yaw) * r);
-    c.lookAt(tx, lookY, tz);
+    const ty = lookY + this.target.y;
+    c.position.set(tx + Math.sin(this.yaw) * r, ty + h, tz + Math.cos(this.yaw) * r);
+    c.lookAt(tx, ty, tz);
   }
 
   /** Ground radius in view around the target, for fitting the sun's shadow camera. */

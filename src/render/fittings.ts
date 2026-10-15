@@ -28,10 +28,11 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim', pallet: 'gen:pallet',
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
+  stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
-export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim']);
+export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim', 'gen:tallWall']);
 /** Pieces that vanish (rather than being cut down) with the walls: a window's frame has nothing left to frame. */
 export const GONE_WITH_WALLS: ReadonlySet<string> = new Set(['gen:windowTrim']);
 
@@ -122,6 +123,55 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       parts.push(box(pal, '#38383D', 1.86, 0.86, 0.06, 0, 0.82, -0.36), box(pal, sc.primary, 1.78, 0.78, 0.02, 0, 0.86, -0.32), box(pal, sc.accent, 1.78, 0.1, 0.022, 0, 0.9, -0.318));
       return merge(parts);
     }
+    case 'gen:tallWall': return place(wall('market/wall'), 0, 0, 0, 0, 1, 2, 1);
+    // Up to the next floor: each runs from its front (+z, on the floor) back and up a storey, through the opening above.
+    case 'gen:stairs': {
+      const parts: BufferGeometry[] = [];
+      const n = 8, run = 2 / n, rise = 1 / n;
+      for (let i = 0; i < n; i++) {
+        const z = 1 - (i + 0.5) * run, top = (i + 1) * rise;
+        parts.push(box(pal, '#C99A62', 0.86, top, run, 0, 0, z), box(pal, '#A87B45', 0.86, 0.02, 0.04, 0, top - 0.01, z + run / 2 - 0.02));
+        // The strings either side, white, a little proud of the treads.
+        for (const x of [-0.45, 0.45]) parts.push(box(pal, '#FFFFFF', 0.06, top + 0.06, run, x, 0, z));
+      }
+      // Handrails on posts, rising with the flight.
+      for (const x of [-0.45, 0.45]) {
+        parts.push(beam(pal, '#38383D', 0.04, x, 0.5, 1, 1.5, -1));
+        for (const z of [0.95, 0, -0.95]) parts.push(box(pal, '#38383D', 0.03, 0.46, 0.03, x, (1 - z) / 2 + 0.03, z));
+      }
+      return merge(parts);
+    }
+    case 'gen:escalator': {
+      const parts: BufferGeometry[] = [
+        // Landing plates top and bottom, the moving steps between, a steel skirt and the truss under it.
+        box(pal, '#9AA0A8', 0.8, 0.04, 0.3, 0, 0, 0.85), box(pal, '#9AA0A8', 0.8, 0.04, 0.3, 0, 0.98, -0.85),
+        beam(pal, '#6E717C', 0.7, 0, 0.04, 0.7, 1.0, -0.7, 0.06),
+        beam(pal, '#38383D', 0.84, 0, -0.12, 0.6, 0.86, -0.85, 0.2),
+      ];
+      for (let i = 0; i < 9; i++) { const t = (i + 0.5) / 9, z = 0.7 - 1.4 * t, y = 0.04 + 0.96 * t; parts.push(box(pal, '#B9BCC4', 0.68, 0.012, 0.02, 0, y + 0.03, z)); }
+      for (const x of [-0.4, 0.4]) {
+        // Glass balustrades with a black rubber handrail along the top.
+        parts.push(beam(pal, '#BFEFFF', 0.03, x, 0.3, 0.75, 1.3, -0.85, 0.5), beam(pal, '#38383D', 0.06, x, 0.56, 0.8, 1.56, -0.9, 0.05));
+        parts.push(beam(pal, '#9AA0A8', 0.05, x, 0.04, 0.85, 1.0, -0.85, 0.1));
+      }
+      return merge(parts);
+    }
+    case 'gen:elevator': {
+      // A lift shaft two storeys tall: a steel frame round glass, doors on the front at each floor, the shop's colour above them.
+      const parts: BufferGeometry[] = [];
+      const H = 1.9;
+      for (const [x, z] of [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]] as const) parts.push(box(pal, '#9AA0A8', 0.08, H, 0.08, x, 0, z));
+      parts.push(box(pal, '#BFEFFF', 0.03, H, 0.78, -0.42, 0, 0), box(pal, '#BFEFFF', 0.03, H, 0.78, 0.42, 0, 0), box(pal, '#BFEFFF', 0.78, H, 0.03, 0, 0, -0.42));
+      parts.push(box(pal, '#9AA0A8', 0.92, 0.06, 0.92, 0, H, 0), box(pal, '#38383D', 0.76, 0.04, 0.76, 0, 0, 0));
+      for (const y of [0, 1]) {
+        parts.push(box(pal, '#B9BCC4', 0.37, 0.76, 0.03, -0.19, y + 0.02, 0.43), box(pal, '#B9BCC4', 0.37, 0.76, 0.03, 0.19, y + 0.02, 0.43));
+        parts.push(box(pal, '#6E717C', 0.012, 0.76, 0.035, 0, y + 0.02, 0.43), box(pal, sc.primary, 0.84, 0.14, 0.04, 0, y + 0.8, 0.43));
+        parts.push(box(pal, '#FFC044', 0.06, 0.06, 0.03, 0.3, y + 0.83, 0.455));
+      }
+      // The car, waiting at the bottom: a floor and a handrail seen through the glass.
+      parts.push(box(pal, '#C99A62', 0.74, 0.03, 0.74, 0, 0.02, 0), box(pal, '#38383D', 0.7, 0.03, 0.03, 0, 0.45, -0.36));
+      return merge(parts);
+    }
     case 'gen:pallet': {
       // Like the delivery pallet by the back door: a hazard border on the floor round a wooden pallet.
       const parts: BufferGeometry[] = [];
@@ -136,6 +186,18 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     }
   }
   return assets.geometry('market/column');
+}
+
+/**
+ * A bar between two points on the piece's centre line (x across it): from (y0, z0) to (y1, z1), `w` wide
+ * and `h` thick, square to the slope.
+ */
+function beam(pal: AssetLibrary['palette'], hex: string, w: number, x: number, y0: number, z0: number, y1: number, z1: number, h = 0.04): BufferGeometry {
+  const len = Math.hypot(y1 - y0, z1 - z0);
+  const g = box(pal, hex, w, h, len, 0, -h / 2, 0);
+  g.rotateX(Math.atan2(y1 - y0, z0 - z1));
+  g.translate(x, (y0 + y1) / 2, (z0 + z1) / 2);
+  return g;
 }
 
 /** The part of a light that glows: the lamp's shade or bulb, the neon's tubes (tile space, like the piece). */

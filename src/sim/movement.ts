@@ -1,15 +1,23 @@
-import type { Vec2 } from './types';
+import type { Vec2, Waypoint } from './types';
 
-interface Mover { x: number; z: number; yaw: number; path: Vec2[]; pathIdx: number }
+interface Mover { x: number; z: number; yaw: number; path: Waypoint[]; pathIdx: number; climb?: number }
 
 /**
  * Advance along the path at `speed`; returns true when the end is reached this step.
  * `arrive` is how close counts as reaching the final waypoint (people in a crowd never land on the exact point).
+ * A waypoint on another floor is ridden to (the stairs, an escalator, a lift): they stay at its foot for the
+ * ride (`climb` counts it; the renderer carries them up), then step off at the top.
  */
 export function followPath(m: Mover, speed: number, dt: number, turnRate = 12, arrive = 0): boolean {
   let budget = speed * dt;
   while (budget > 0 && m.pathIdx < m.path.length) {
     const t = m.path[m.pathIdx]!;
+    if (t.ride !== undefined) {
+      m.climb = (m.climb ?? 0) + dt;
+      if (t.yaw !== undefined) m.yaw = t.yaw;
+      if (m.climb >= t.ride) { m.x = t.x; m.z = t.z; m.climb = undefined; m.pathIdx++; }
+      break;
+    }
     const dx = t.x - m.x, dz = t.z - m.z;
     const d = Math.hypot(dx, dz);
     const last = m.pathIdx === m.path.length - 1;

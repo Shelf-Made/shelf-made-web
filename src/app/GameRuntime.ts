@@ -5,8 +5,9 @@ import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
-import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, rideEnds } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
+import { canAddPanel, canRemovePanel, levelOfPerson } from '@/sim/storeys';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -94,10 +95,12 @@ export interface Snapshot {
 /** A tile tool in Build: buying floor to grow the shop, or laying a finish on a tile. */
 export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle }
   /** Out on the lot: lay a surface (null takes it up), paint a parking bay, or paint one out. */
-  | { kind: 'pave'; surface: LotSurface | null } | { kind: 'bay' } | { kind: 'unbay' };
+  | { kind: 'pave'; surface: LotSurface | null } | { kind: 'bay' } | { kind: 'unbay' }
+  /** A ceiling panel over a tile (the floor of the storey above), or one taken down for a double-height space. */
+  | { kind: 'panel' } | { kind: 'unpanel' };
 /** Tools and pieces that work on the lot's own grid (whole x, half z), not the shop floor's. */
 const LOT_TOOLS = new Set<TileTool['kind']>(['pave', 'bay', 'unbay']);
-export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
+export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths'; level: number }
 
 /** Short titles for the tutorial steps (the coach card shows one at a time). */
 const JOB_TITLES: Record<string, string> = {
@@ -193,7 +196,7 @@ export class GameRuntime {
       settings: this.settings,
       saving: this.saving,
       gameOver: s ? s.gameOver : false,
-      build: { active: this.card === 'build', placing: this.build.placing, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay },
+      build: { active: this.card === 'build', placing: this.build.placing, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay, level: this.buildLevel },
       playing: this.inPlay,
       jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
       dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
@@ -293,7 +296,7 @@ export class GameRuntime {
     if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
-    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : null, refund: Math.round(def.price * 0.6), ...(f.type === 'pallet' ? { picks: picks() } : {}) };
+    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: Math.round(def.price * 0.6), ...(f.type === 'pallet' ? { picks: picks() } : {}) };
   }
   /** Picked from a pallet's menu: walk over and pick that box up. */
   palletPick(productId: string): void {
@@ -363,7 +366,7 @@ export class GameRuntime {
     const p = s.people.find((x) => x.id === id); if (!p) return;
     this.followingPerson = true;
     r.followId = id;
-    r.follow.focus(p.x, p.z);
+    { const l = liftWorld(this.state!.shop, p.x, p.z); r.follow.focus(l.x, l.z, l.y); }
     this.emit();
   }
   stopFollow(): void {
@@ -609,6 +612,8 @@ export class GameRuntime {
       this.watchReviews(s);
       if (this.screen === 'game') this.developPhotos(s, r, dt);
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
+      // Building upstairs: that floor in view, the ones over it lifted off.
+      r.buildLevel = this.card === 'build' && this.inPlay ? Math.min(this.buildLevel, storeysOf(s.shop).top) : null;
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
       // The weather's sounds: the rain's patter, and thunder after each flash (later the further away).
@@ -708,8 +713,21 @@ export class GameRuntime {
     if (tab === 'outside' && f && f.following && f.goalDistance < 18) { const from = f.goalDistance; f.zoom(18 / from); this.buildZoom ??= { from, to: f.goalDistance }; }
   }
 
+  /** The floor the Build card builds on (it starts on the manager's). */
+  buildLevel = 0;
+  setBuildLevel(level: number): void {
+    const s = this.state; if (!s) return;
+    const st = storeysOf(s.shop);
+    this.buildLevel = Math.max(0, Math.min(st.top, level));
+    this.build.hover = null;
+    this.renderer?.setGhost(null, s, 0, 0, 0, false); this.renderer?.setTileGhost(null);
+    this.showGrowHints();
+    this.emit();
+  }
+
   openCard(card: CardId): void {
     this.fixtureMenu = null;
+    if (card === 'build' && this.card !== 'build' && this.state) { const o = this.state.people.find((p) => p.kind === 'owner'); this.buildLevel = o ? Math.min(storeysOf(this.state.shop).top, levelOfPerson(this.state.shop, o)) : 0; }
     this.card = this.card === card ? null : card;
     if (this.card === 'reviews') this.reviewsSeen = this.state?.listing?.count ?? 0;
     if (this.card) this.move(0, 0);
@@ -814,12 +832,15 @@ export class GameRuntime {
   /** While growing: the tiles that could be bought, marked on the ground. */
   private showGrowHints(): void {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
+    // The panel tools: the panels over this floor, faint at ceiling height.
+    const panels = this.build.tool?.kind === 'panel' || this.build.tool?.kind === 'unpanel';
+    r.setPanelHints(panels ? [...panelsOver(s.shop, this.buildLevel)].map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z }; }) : [], this.buildLevel);
     if (this.build.tool?.kind !== 'grow') { r.setGrowHints([]); r.setWallGhost(null); return; }
     const out: { x: number; z: number }[] = [];
     for (let z = MAX_FLOOR.z0; z < MAX_FLOOR.z1; z++) for (let x = MAX_FLOOR.x0; x < MAX_FLOOR.x1; x++) { const c = canBuyTile({ ...s, cash: Infinity }, x, z); if (c.ok) out.push({ x, z }); }
     r.setGrowHints(out);
   }
-  stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); }
+  stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); this.renderer?.setPanelHints([], 0); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
@@ -862,7 +883,8 @@ export class GameRuntime {
         this.maybeEmit();
         return;
       }
-      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : tool.kind === 'sell' ? canSellTile(s, x, z) : tool.kind === 'pave' ? canPave(s, x, z, tool.surface) : canPaintFloor(s, x, z, tool.style);
+      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : tool.kind === 'sell' ? canSellTile(s, x, z) : tool.kind === 'pave' ? canPave(s, x, z, tool.surface)
+        : tool.kind === 'panel' ? canAddPanel(s, x, z) : tool.kind === 'unpanel' ? canRemovePanel(s, x, z) : canPaintFloor(s, x, z, tool.style);
       this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
       r.setTileGhost({ x, z, ok: check.ok });
       this.maybeEmit();
@@ -888,9 +910,10 @@ export class GameRuntime {
         ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style }) : { ok: false, message: 'Point at a wall' })
         : tool.kind === 'bay' || tool.kind === 'unbay'
           ? (this.build.slot !== null ? this.dispatch({ type: tool.kind === 'bay' ? 'paintBay' : 'eraseBay', slot: this.build.slot }) : { ok: false, message: 'Point at the car park' })
-          : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : tool.kind === 'sell' ? { type: 'sellTile', x, z } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface } : { type: 'paintFloor', x, z, style: tool.style });
+          : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : tool.kind === 'sell' ? { type: 'sellTile', x, z } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface }
+            : tool.kind === 'panel' ? { type: 'addPanel', x, z } : tool.kind === 'unpanel' ? { type: 'removePanel', x, z } : { type: 'paintFloor', x, z, style: tool.style });
       if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
-      else if (tool.kind === 'grow' || tool.kind === 'sell') this.showGrowHints();
+      else if (tool.kind === 'grow' || tool.kind === 'sell' || tool.kind === 'panel' || tool.kind === 'unpanel') this.showGrowHints();
       this.refreshGhost();
       return;
     }
@@ -969,7 +992,7 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
     if (this.followingPerson) { this.followingPerson = false; r.followId = null; this.emit(); }
     const o = s.people.find((p) => p.kind === 'owner');
-    if (o) r.follow.focus(o.x, o.z);
+    if (o) { const l = liftWorld(this.state!.shop, o.x, o.z); r.follow.focus(l.x, l.z, l.y); }
   }
 
   /** Walk direction on the ground (unit vector, or zero to stop). Sent straight to the sim. */
@@ -1054,7 +1077,13 @@ export class GameRuntime {
 
   /** Something you can use: a fixture, the delivery pallet, a spill. */
   private thingRect(s: GameState, t: Thing): Rect {
-    if (t.kind === 'fixture') { const f = s.shop.fixtures.find((x) => x.id === t.id)!; return rectToWorld(s.shop, footprintOf(f.type, f.x, f.z, f.rot)); }
+    if (t.kind === 'fixture') {
+      const f = s.shop.fixtures.find((x) => x.id === t.id)!, r = footprintOf(f.type, f.x, f.z, f.rot);
+      // The stairs seen from the floor they come up to: their opening up there.
+      const o = s.people.find((p) => p.kind === 'owner');
+      if (VERTICAL.has(f.type) && o && levelOfPerson(s.shop, o) === levelOf(f) + 1) return rectToWorld(s.shop, { ...r, z0: zOnLevel(r.z0, 1), z1: zOnLevel(r.z1, 1) });
+      return rectToWorld(s.shop, r);
+    }
     if (t.kind === 'delivery') return rectToWorld(s.shop, s.shop.delivery);
     const l = t.kind === 'mess' ? s.life!.litter.find((x) => x.id === t.id)! : s.shop.litter.find((x) => x.id === t.id)!;
     return { x0: l.x - 0.25, z0: l.z - 0.25, x1: l.x + 0.25, z1: l.z + 0.25 };
@@ -1117,7 +1146,7 @@ export class GameRuntime {
       const score = d - (this.actionFor(s, t, true).ok ? 0.3 : 0) - (mess ? 0.6 : 0);
       if (score < bestD) { bestD = score; best = t; }
     };
-    for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet') consider({ kind: 'fixture', id: f.id });
+    for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet' || VERTICAL.has(f.type)) consider({ kind: 'fixture', id: f.id });
     consider({ kind: 'delivery', id: 0 });
     for (const l of s.shop.litter) consider({ kind: 'spill', id: l.id });
     for (const l of frontageLitter(s)) consider({ kind: 'mess', id: l.id });
@@ -1148,6 +1177,12 @@ export class GameRuntime {
     const def = FIXTURES[f.type];
     // An extra pallet: its boxes are the delivery's, picked up and put back the same way.
     if (f.type === 'pallet') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
+    if (VERTICAL.has(f.type)) {
+      // Up or down, from whichever end you are at (walking into it does the same).
+      const up = levelOfPerson(s.shop, owner) === levelOf(f), dir = up ? 'up' : 'down';
+      const text = f.type === 'elevator' ? `Take the lift ${dir}` : f.type === 'escalator' ? `Ride the escalator ${dir}` : `Go ${dir} the stairs`;
+      return { text, ok: true, key: 'use', run: () => { const r = this.dispatch({ type: 'ride', fixtureId: f.id }); if (!r.ok && r.message) this.showToast(r.message, 1400); } };
+    }
     if (f.type === 'register') {
       if (near && !ownerAt(s, f)) return { text: 'Walk round behind the counter to scan', ok: false, key: null, run: null };
       const waiting = !!f.serving;
@@ -1191,7 +1226,9 @@ export class GameRuntime {
       const f = s.shop.fixtures.find((x) => x.id === t.id)!;
       // Empty-handed, a shelf only opens the Stock card: no need to walk over first.
       if (FIXTURES[f.type].slots > 0 && !o.carrying) { this.openStockFor(f.type); return; }
-      to = f.type === 'register' ? fixtureBackWorld(s.shop, f) : fixtureAccessWorld(s.shop, f, o);
+      // The stairs: their foot, or their top from the floor above.
+      const ends = VERTICAL.has(f.type) ? rideEnds(f) : null, end = ends && (levelOfPerson(s.shop, o) > levelOf(f) ? ends.top : ends.bottom);
+      to = f.type === 'register' ? fixtureBackWorld(s.shop, f) : end ? toWorld(s.shop, end.x, end.z) : fixtureAccessWorld(s.shop, f, o);
       if (Math.hypot(to.x - o.x, to.z - o.z) < 0.3) { this.actionFor(s, t, true).run?.(); return; }
     } else if (t.kind === 'delivery') to = storeroomPoint(s);
     else to = { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 + 0.4 };
@@ -1232,7 +1269,9 @@ export class GameRuntime {
       const what = tool.kind === 'grow' ? 'Add this tile' : tool.kind === 'sell' ? 'Sell this tile'
         : tool.kind === 'wall' ? `Finish the wall: ${WALLS.find((w) => w.id === tool.style)?.name.toLowerCase() ?? ''}`
         : tool.kind === 'pave' ? (tool.surface ? `Lay ${SURFACES.find((x) => x.id === tool.surface)?.name.toLowerCase() ?? ''}` : 'Back to grass')
-        : tool.kind === 'bay' ? 'Paint a parking bay' : tool.kind === 'unbay' ? 'Paint out this bay' : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
+        : tool.kind === 'bay' ? 'Paint a parking bay' : tool.kind === 'unbay' ? 'Paint out this bay'
+        : tool.kind === 'panel' ? 'Put up a ceiling panel' : tool.kind === 'unpanel' ? 'Take the panel down: double height'
+        : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
       const cost = this.build.price > 0 ? dollars(this.build.price) : this.build.price < 0 ? `${dollars(-this.build.price)} back` : 'free';
       return { info: { key: 'Click', text: this.build.valid ? `${what} · ${cost}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 0.6, z: at.z } }, run: this.build.valid ? () => this.clickBuild(null) : null };
     }
@@ -1251,6 +1290,8 @@ export class GameRuntime {
       };
     }
     const owner = s.people.find((p) => p.kind === 'owner'); if (!owner) return none;
+    // On the way up or down: nothing to use until they step off.
+    if (owner.climb !== undefined) { r.marker.set(null); return none; }
     const kb = this.thingInFront(s);
     const hov = this.mousePos ? this.thingAt(this.mousePos.x, this.mousePos.y) : null;
     const show = kb ?? hov;

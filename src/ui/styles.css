@@ -624,6 +624,7 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 
 /* The Build card: tabs of pieces, each a picture with its name and price. */
 .build-tools { gap: 8px; }
+.floor-pick { gap: 6px; flex-wrap: wrap; align-items: center; }
 .overlay-pick { gap: 6px; align-items: center; }
 .overlay-pick select { font: inherit; font-size: 0.9em; padding: 4px 6px; border-radius: 8px; border: 2px solid #e3e6ea; background: #fff; color: var(--slate); }
 .build-tabs { display: flex; flex-wrap: wrap; gap: 6px; }

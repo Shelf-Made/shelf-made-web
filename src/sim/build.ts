@@ -4,7 +4,8 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
-import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments } from './layout';
+import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS } from './layout';
+import { placeUpstairs, rideReachable, ensureCeilings, levelOfPerson } from './storeys';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
@@ -22,32 +23,38 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const f = shop.floor;
   const price = def.price;
   if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a floor tile', price };
-  if (!isFloor(shop, x, z)) return { ok: false, reason: 'Only inside the shop floor', price };
+  const level = levelOfZ(z + 0.5);
+  const up = placeUpstairs(state, type, x, z, rot, ignoreId);
+  if (up) return up;
+  if (!isFloor(shop, x, z)) return { ok: false, reason: level > 0 ? 'Only on the floor up here' : 'Only inside the shop floor', price };
   // One thing per tile, except a window: it is up in the wall behind, so a shelf can stand in front of it
-  // (but a light hung on the same wall cannot share it).
+  // (but a light hung on the same wall cannot share it). The stairs take two.
   const sameWall = (fx: Fixture) => !!def.onWall && !!FIXTURES[fx.type].onWall && fx.rot === rot;
-  if (shop.fixtures.some((fx) => fx.id !== ignoreId && fx.x === x && fx.z === z && (sameWall(fx) || (type !== 'window' && fx.type !== 'window')))) return { ok: false, reason: 'Something is already there', price };
+  const mine = footprintOf(type, x, z, rot);
+  if (shop.fixtures.some((fx) => fx.id !== ignoreId && !FIXTURES[fx.type].outdoor && (fx.x === x && fx.z === z
+    ? (sameWall(fx) || (type !== 'window' && fx.type !== 'window'))
+    : type !== 'window' && fx.type !== 'window' && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), mine)))) return { ok: false, reason: 'Something is already there', price };
   // A doormat, a rug, a light on the wall: nothing anyone could bump into, so they may go by the doors.
-  if (!def.walkable && Math.abs(x + 0.5 - shop.door.x) < 0.6 && z === f.z1 - 1) return { ok: false, reason: 'Keep the front door clear', price };
-  if (!def.walkable && Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && z === shop.backDoor.z) return { ok: false, reason: 'Keep the back door clear', price };
+  if (!def.walkable && overlaps(mine, { x0: shop.door.x - 0.5, z0: f.z1 - 1, x1: shop.door.x + 0.5, z1: f.z1 })) return { ok: false, reason: 'Keep the front door clear', price };
+  if (!def.walkable && overlaps(mine, { x0: shop.backDoor.x - 0.5, z0: shop.backDoor.z, x1: shop.backDoor.x + 0.5, z1: shop.backDoor.z + 1 })) return { ok: false, reason: 'Keep the back door clear', price };
   if (def.onWall) {
-    // Its back against the outer wall: the tile behind it is outside the floor.
+    // Its back against the outer wall: the tile behind it is outside the building (on that floor).
     const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][rot & 3]!;
     const bx = x - fc.x, bz = z - fc.z;
-    if (isFloor(shop, bx, bz)) return { ok: false, reason: 'Hang it on a wall, facing in (R turns it)', price };
+    if (insideOn(shop, level, bx, groundZ(bz))) return { ok: false, reason: 'Hang it on a wall, facing in (R turns it)', price };
     const onDoor = (Math.abs(x + 0.5 - shop.door.x) < 0.6 && bz >= f.z1) || (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && fc.z === 1 && bz + 1 === shop.backDoor.z);
     if (onDoor) return { ok: false, reason: 'Not over a door', price };
     if (type === 'window' && bz >= f.z1) return { ok: false, reason: 'The front is all windows already', price };
   }
   const d = shop.delivery;
-  if (!def.onWall && d && x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
+  if (!def.onWall && d && overlaps(mine, d)) return { ok: false, reason: 'That is where deliveries go', price };
   if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need ${dollars(price)}`, price };
   // Never on top of the manager.
   const owner = state.people.find((p) => p.kind === 'owner');
-  if (owner && !def.onWall) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > x - 0.3 && lo.x < x + 1.3 && lo.z > z - 0.3 && lo.z < z + 1.3) return { ok: false, reason: 'You are standing there', price }; }
+  if (owner && !def.onWall) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > mine.x0 - 0.3 && lo.x < mine.x1 + 0.3 && lo.z > mine.z0 - 0.3 && lo.z < mine.z1 + 0.3) return { ok: false, reason: 'You are standing there', price }; }
   if (type === 'register') {
     const bx = x - [0, 1, 0, -1][rot]!, bz = z - [1, 0, -1, 0][rot]!;
-    if (bx < f.x0 || bx + 1 > f.x1 || bz < f.z0 || bz + 1 > f.z1) return { ok: false, reason: 'Leave room behind the counter to stand', price };
+    if (!isFloor(shop, bx, bz)) return { ok: false, reason: 'Leave room behind the counter to stand', price };
   }
   // Trial layout: every front and both doors must stay reachable.
   const trial: Fixture = { id: -1, type, x, z, rot, slots: [] };
@@ -75,7 +82,15 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
     if (!stand || !findPath(inside, from, stand)) return { ok: false, reason: fx === trial ? 'Nobody could reach it from inside' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
     if (fx.type === 'register' && !findPath(inside, from, fixtureBackWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'You could not get behind it' : 'Would block the way behind the counter', price };
   }
-  return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : def.name, price };
+  // Every way up still goes up (from its foot to the floor above), and the new one too.
+  for (const fx of fixtures) if (VERTICAL.has(fx.type) && !rideReachable(state, inside, fx)) return { ok: false, reason: fx === trial ? 'Nobody could get on it from inside' : 'Would block the way up', price };
+  // Upstairs, nothing may be cut off from the stairs.
+  for (const fx of fixtures) {
+    if (fx === trial || FIXTURES[fx.type].outdoor || FIXTURES[fx.type].walkable || levelOf(fx) === 0 || FIXTURES[fx.type].slots > 0 || fx.type === 'register' || fx.type === 'kiosk') continue;
+    const stand = VERTICAL.has(fx.type) ? fixtureFrontWorld(shop, fx) : fixtureStandWorld(trialShop, fx, undefined, grid);
+    if (stand && !findPath(inside, from, stand)) return { ok: false, reason: `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()} upstairs`, price };
+  }
+  return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : VERTICAL.has(type) ? `${def.name} up to the next floor` : def.name, price };
 }
 
 /** The finish on one tile of floor. */
@@ -149,11 +164,18 @@ export function paintWall(state: GameState, key: string, style: WallStyle): stri
  */
 export function canSellTile(state: GameState, x: number, z: number): PlaceCheck {
   const shop = state.shop, n = floorTileCount(shop), price = -Math.round(RESALE * tilePriceAt(n - 1));
+  if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Upstairs, take the ceiling panel down instead (Upstairs tab)', price };
   if (!isFloor(shop, x, z)) return { ok: false, reason: 'Point at a tile of floor', price };
   if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z + 1 === shop.floor.z1) return { ok: false, reason: 'The front door stands here', price };
   const d = shop.delivery;
   if (x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
-  if (shop.fixtures.some((f) => f.x === x && f.z === z)) return { ok: false, reason: 'Move or sell what is on it first', price };
+  if (shop.fixtures.some((f) => !FIXTURES[f.type].outdoor && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: 'Move or sell what is on it first', price };
+  for (let L = 1; L < MAX_LEVELS; L++) {
+    const t = { x0: x, z0: zOnLevel(z, L), x1: x + 1, z1: zOnLevel(z, L) + 1 };
+    if (shop.fixtures.some((f) => !FIXTURES[f.type].outdoor && levelOf(f) === L && overlaps(footprintOf(f.type, f.x, f.z, f.rot), t))) return { ok: false, reason: 'Something upstairs stands over it', price };
+  }
+  if (shop.fixtures.some((f) => VERTICAL.has(f.type) && (() => { const t = rideEnds(f).top; return t.x - 0.5 === x && groundZ(t.z - 0.5) === z; })())) return { ok: false, reason: 'The stairs come up over it', price };
+  if (state.people.some((p) => p.kind !== 'walker' && levelOfPerson(shop, p) > 0 && (() => { const l = toLocal(shop, p.x, p.z); return l.x > x && l.x < x + 1 && groundZ(l.z) > z && groundZ(l.z) < z + 1; })())) return { ok: false, reason: 'Someone is standing over it upstairs', price };
   if (state.people.some((p) => { const l = toLocal(shop, p.x, p.z); return l.x > x && l.x < x + 1 && l.z > z && l.z < z + 1; })) return { ok: false, reason: 'Someone is standing there', price };
   // The back door's column keeps a tile.
   if (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && !floorTileList(shop).some((t) => t.x === x && t.z !== z)) return { ok: false, reason: 'The back door needs a tile', price };
@@ -183,6 +205,9 @@ export function sellTile(state: GameState, x: number, z: number): string | null 
   state.cash -= check.price;
   const shop = state.shop;
   const rest = floorTileList(shop).filter((t) => !(t.x === x && t.z === z));
+  // The panels over it go with it, on every floor.
+  const rows = ensureCeilings(shop);
+  for (let L = 0; L < rows.length; L++) rows[L] = rows[L]!.filter((k) => k !== tileKey(x, z));
   setFloorTiles(shop, rest);
   if (shop.tileStyles?.[tileKey(x, z)]) { const st = { ...shop.tileStyles }; delete st[tileKey(x, z)]; shop.tileStyles = st; }
   // The back door comes forward to the back edge of its column.
@@ -207,6 +232,7 @@ export function paintFloor(state: GameState, x: number, z: number, style: FloorS
 /** Can this tile be bought and built on? Next to the floor you have, inside the plot's limit, behind the front wall. */
 export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
   const shop = state.shop, price = tilePrice(shop), m = MAX_FLOOR, f = shop.floor;
+  if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Grow the ground floor: the floors above grow with it (Upstairs tab: ceiling panels)', price };
   if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a tile', price };
   if (isFloor(shop, x, z)) return { ok: false, reason: 'That is floor already', price };
   if (z + 1 > m.z1) return { ok: false, reason: 'The front wall stays where it is', price };
@@ -227,6 +253,9 @@ export function buyTile(state: GameState, x: number, z: number): string | null {
   const check = canBuyTile(state, x, z);
   if (!check.ok) return check.reason;
   state.cash -= check.price;
+  // It comes with a ceiling panel, like the rest.
+  const rows = ensureCeilings(state.shop);
+  rows[0] = [...rows[0]!, tileKey(x, z)];
   addFloor(state.shop, [{ x, z }]);
   // New floor comes with the cheapest finish (lay a better one a tile at a time).
   if ((state.shop.floorStyle ?? 'lino') !== FLOORS[0]!.id) state.shop.tileStyles = { ...state.shop.tileStyles, [tileKey(x, z)]: FLOORS[0]!.id };
@@ -289,9 +318,10 @@ export function wallOf(f: { x: number; z: number; rot: Rot }): { side: 'back' | 
  */
 export function facingOffWall(state: GameState, type: FixtureType, x: number, z: number, prefer: Rot): Rot | null {
   if (!isFloor(state.shop, x, z)) return null;
+  const level = levelOfZ(z + 0.5);
   for (const r of [prefer, 0, 1, 3, 2] as Rot[]) {
     const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][r]!;
-    if (!isFloor(state.shop, x - fc.x, z - fc.z) && !(type === 'window' && r === 2)) return r;
+    if (!insideOn(state.shop, level, x - fc.x, groundZ(z - fc.z)) && !(type === 'window' && r === 2 && level === 0)) return r;
   }
   return null;
 }
@@ -325,6 +355,8 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   for (let i = 0; i < want.length; i++, n++) cost += tilePriceAt(n);
   if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
   state.cash -= cost;
+  const rows = ensureCeilings(shop);
+  rows[0] = [...rows[0]!, ...want.map((t) => tileKey(t.x, t.z))];
   addFloor(shop, want);
   // The delivery pallet goes to the new back corner, by the back door.
   shop.delivery = deliveryZone(shop.floor);
@@ -346,6 +378,7 @@ export function moveFixture(state: GameState, id: number, x: number, z: number, 
   if (!f) return 'No such fixture.';
   if (f.type === 'register' && (f.serving || (f.queue?.length ?? 0) > 0)) return 'Wait until the line is served.';
   if (f.bikes?.some((b) => b !== null)) return 'Bikes are locked to it: wait till they ride off.';
+  if (state.people.some((p) => p.climb !== undefined && p.path[p.pathIdx]?.via === id)) return 'Someone is on it: wait till they are off.';
   const check = canPlace(state, f.type, x, z, rot, id);
   if (!check.ok) return check.reason;
   f.x = x; f.z = z; f.rot = rot;

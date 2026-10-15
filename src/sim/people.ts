@@ -1,6 +1,6 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf } from './layout';
+import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf } from './layout';
 import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
@@ -18,6 +18,7 @@ import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './l
 import { noteVisit } from './reviews';
 import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './shoplifting';
 import { freeStand, standPoint, freeStands } from './lot';
+import { rideAt, startRide } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
 import { RACK_STANDS } from './layout';
 
@@ -51,6 +52,7 @@ export function dynamicBlockers(state: GameState): Set<number> {
 }
 
 export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): boolean {
+  p.climb = undefined;
   const path = findPath(gridFor(state), { x: p.x, z: p.z }, to, dyn);
   if (!path) { p.path = [to]; p.pathIdx = 0; return false; }
   p.path = path; p.pathIdx = 0;
@@ -68,7 +70,7 @@ export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   else {
     // Bend toward the shop's centre so the line never runs into a wall.
     const base = { x: front.x + f.x * (straight - 1) * spacing, z: front.z + f.z * (straight - 1) * spacing };
-    const { x: cx, z: cz } = toWorld(state.shop, (state.shop.floor.x0 + state.shop.floor.x1) / 2, (state.shop.floor.z0 + state.shop.floor.z1) / 2);
+    const { x: cx, z: cz } = toWorld(state.shop, (state.shop.floor.x0 + state.shop.floor.x1) / 2, zOnLevel((state.shop.floor.z0 + state.shop.floor.z1) / 2, levelOf(reg)));
     let side = { x: -f.z, z: f.x };
     if ((cx - base.x) * side.x + (cz - base.z) * side.z < 0) side = { x: f.z, z: -f.x };
     const j = k - straight + 1;
@@ -727,6 +729,10 @@ function steer(state: GameState, p: Person, dyn: Set<number>): void {
   // Walls from the grid; the furniture by the shape of each model, so you can walk right up to any of it.
   const g = wallGridFor(state);
   const d = p.moveDir!;
+  // Pushing into the stairs at their foot (or their top, or a lift's door): ride them.
+  if (p.rideLock && Math.hypot(p.x - p.rideLock.x, p.z - p.rideLock.z) > 0.4) p.rideLock = undefined;
+  const ride = p.rideLock ? null : rideAt(state, p, d);
+  if (ride) { startRide(state, p, ride); p.rideLock = { x: ride.x, z: ride.z }; p.anim = p.carrying ? 'carry' : 'walk'; if (p.task && !p.carrying) p.task = null; return; }
   const len = Math.hypot(d.x, d.z) || 1;
   const step = (p.speed * TICK) / Math.max(1, state.timeScale || 1);
   const dx = (d.x / len) * step, dz = (d.z / len) * step;
@@ -955,7 +961,8 @@ function spareCashier(state: GameState, p: Person): boolean {
 /** Workers (the owner and staff): stand at their post, carry stock, clean up. */
 function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   const dt = TICK;
-  if (p.kind === 'owner' && p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0)) { steer(state, p, dyn); return; }
+  if (p.kind === 'owner' && !(p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0))) p.rideLock = undefined;
+  if (p.kind === 'owner' && p.climb === undefined && p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0)) { steer(state, p, dyn); return; }
   if (p.kind === 'owner' && p.state === 'walking') {
     // Click-to-move.
     if (followPath(p, p.speed / Math.max(1, state.timeScale || 1), dt, 12, 0.15)) { p.state = 'idle'; p.anim = p.carrying ? 'carry' : 'idle'; }
@@ -1198,7 +1205,7 @@ function shelvedAnywhere(state: GameState, productId: string): boolean {
 
 function separate(state: GameState, dyn: Set<number>): void {
   const g = gridFor(state);
-  const movers = state.people.filter((p) => p.kind !== 'walker' && p.state !== 'driving' && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'gone' && !(p.state === 'resting' && p.timer > 0));
+  const movers = state.people.filter((p) => p.kind !== 'walker' && p.state !== 'driving' && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'gone' && !(p.state === 'resting' && p.timer > 0) && p.climb === undefined);
   for (let i = 0; i < movers.length; i++) {
     const a = movers[i]!;
     // The player is never shoved; everyone else steps round them.
@@ -1224,7 +1231,7 @@ function separate(state: GameState, dyn: Set<number>): void {
 function watchdog(state: GameState, p: Person, dyn: Set<number>): void {
   // Out on the streets (waiting at a kerb, off at a rival's) nobody is stuck: the grid only covers our plot.
   if (p.kind === 'walker' || p.heldAnim || (p.xings && p.xings.length) || p.state === 'walking') { p.stuckTicks = 0; return; }
-  const moving = p.path.length > 0 && p.pathIdx < p.path.length && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'driving' && p.state !== 'browsing' && p.state !== 'pickBox' && p.state !== 'stocking';
+  const moving = p.climb === undefined && p.path.length > 0 && p.pathIdx < p.path.length && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'driving' && p.state !== 'browsing' && p.state !== 'pickBox' && p.state !== 'stocking';
   if (!moving) { p.stuckTicks = 0; return; }
   const moved = Math.hypot(p.x - p.px, p.z - p.pz);
   p.stuckTicks = moved < 0.002 ? (p.stuckTicks ?? 0) + 1 : 0;

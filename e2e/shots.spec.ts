@@ -560,6 +560,36 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('57-lamps-after-dark') });
   });
 
+  test('building up: stairs, an escalator and a lift, shoppers on the first floor, the building three storeys tall', async ({ page }) => {
+    test.setTimeout(300_000);
+    const UP = -16;
+    await ready(page);
+    await hooks(page, 'newGame', 7, 'main', 'Tall Order', { tutorial: false });
+    await hooks(page, 'setSpeed', 0);
+    await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 50000; });
+    await hooks(page, 'quickSetup', true);
+    const put: [string, number, number, number][] = [
+      ['stairs', 0.5, -2, 0], ['elevator', -2.5, -2, 1],
+      ['shelf', -2.5, -4 + UP, 1], ['shelf', -2.5, -3 + UP, 1], ['fridge', 1.5, -6 + UP, 3], ['register', 1.5, -2 + UP, 2], ['plant', -1.5, -6 + UP, 0], ['pendant', -1.5, -5 + UP, 0],
+      ['escalator', -0.5, -2 + UP, 0], ['produce', 1.5, -5 + 2 * UP, 3], ['produce', 1.5, -4 + 2 * UP, 3],
+    ];
+    for (const [fixtureType, x, z, rot] of put) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType, x, z, rot });
+    // A double-height corner by the pallet: the panel over it sold, a lamp hung high.
+    await hooks(page, 'dispatch', { type: 'removePanel', x: -2.5, z: -5 });
+    await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType: 'pendant', x: -2.5, z: -5, rot: 0 });
+    await page.evaluate(() => {
+      const s = (window as unknown as { __shelf: { state: () => { shop: { fixtures: { z: number; type: string; slots: { productId: string | null; qty: number }[] }[] } } } }).__shelf.state();
+      const goods: Record<string, string[]> = { shelf: ['pasta', 'cereal', 'cookies', 'beans'], fridge: ['milk', 'cheese', 'juice', 'cola'], produce: ['apples', 'bananas'] };
+      for (const f of s.shop.fixtures) if (f.z < -12 && goods[f.type]) f.slots = f.slots.map((_, i) => ({ productId: goods[f.type]![i % goods[f.type]!.length]!, qty: 8 }));
+    });
+    await hooks(page, 'crowd', 8);
+    await hooks(page, 'advance', 45);
+    await follow(page, -1, -2.5 + UP, 12, 0.5, 2000);
+    await page.screenshot({ path: out('58-upstairs') });
+    await follow(page, 3, 2, 24, 0.6, 2000, 0.6);
+    await page.screenshot({ path: out('59-three-storeys') });
+  });
+
   test('design your manager in the lobby', async ({ page }) => {
     await ready(page);
     await page.getByRole('button', { name: /your manager/i }).click();

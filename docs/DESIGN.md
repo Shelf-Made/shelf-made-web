@@ -183,10 +183,23 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - Stats card, "Who shops where": today's shoppers so far by type at each store (yours counted as
   they set out, the rivals' modelled day scaled by the hour). A row marks every shopper of that
   type in town for ten seconds.
-- **Build card**: tabs Tills / Shelves / Furniture / Decor / Walls / Lights / Floors / Shop, each a
-  grid of pictures (rendered at load from the pieces' own models) with name and price; the tooltip
-  says what a piece is for. Undo, redo and the view overlays sit in one row above. Floors and Shop
-  are lists (a swatch per floor finish; sizes, the car park, windows per wall, the sign, corners).
+- **Build card**: tabs Tills / Shelves / Furniture / Decor / Walls / Lights / Floors / Upstairs /
+  Outside / Shop, each a grid of pictures (rendered at load from the pieces' own models) with name
+  and price; the tooltip says what a piece is for. Undo, redo and the view overlays sit in one row
+  above, and once a floor above is open, a floor picker (Ground, 1st...) chooses which one you build
+  on. Floors and Shop are lists (a swatch per floor finish; sizes, the car park, windows per wall,
+  the sign, corners).
+- **Building up** (Upstairs tab): every tile comes with a ceiling panel, which is also the floor of
+  the storey above. Stairs, an escalator (faster up: shoppers take it gladly) or a lift on a floor
+  open the one above it, which comes with its own ceiling; five floors at most. Anything that goes on
+  the ground floor goes on any open floor. Taking a panel down (60% back) leaves a double-height
+  space: the building stands a storey taller there, a hanging light hangs from the high ceiling, and
+  a Tall wall (Walls tab) fits it. In the sim each floor up is walked in a region of its own,
+  LEVEL_DZ further back (shop-relative), joined to the floor below by the rides on the walking
+  grid, so paths, distances and every "is it near" test work unchanged; the renderer lifts each
+  floor back over the ground one a storey up, carries riders up the flight, and lifts the floors
+  above the one in view off. Walk into the foot of the stairs (or their top, or a lift's door), or
+  press Use there, to ride them; a click on them from across the room walks over and rides.
 - **Business profile** (the storefront button by the speed controls, badge = review count, red
   while some are unread; the rating under it). The shop's listing on a made-up map app, Pinpoint,
   in that app's own look (white, Roboto/Arial, teal accents, yellow stars), docked like a card:

@@ -393,7 +393,7 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   await page.keyboard.press('KeyB');
   const build = page.locator('.card.t-build');
   await expect(build).toBeVisible();
-  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Floors', 'Outside', 'Shop']);
+  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Floors', 'Upstairs', 'Outside', 'Shop']);
   await build.getByRole('tab', { name: 'Furniture' }).click();
   const cafe = build.getByRole('button', { name: /^Café table/ });
   await expect(cafe.locator('img')).toHaveAttribute('src', /^data:image\/png/);
@@ -423,6 +423,44 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   await expect.poll(() => aimText(page)).toMatch(/^Place Window/);
   await clickAt(page, -2.0, -2.5);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`)).toEqual(['-2.5,-3,1']);
+});
+
+test('building up: stairs open the first floor, a shelf goes up there, and a ceiling panel comes down', async ({ page }) => {
+  const UP = -16;
+  test.setTimeout(300_000);
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
+  await hooks(page, 'fp', -0.5, -1.0);
+  await page.keyboard.press('KeyB');
+  const build = page.locator('.card.t-build');
+  await build.getByRole('tab', { name: 'Upstairs' }).click();
+  // Only the ground floor so far: stairs beside the counter, coming up a tile behind it.
+  await expect(build.getByRole('group', { name: 'Which floor' }).getByRole('button')).toHaveText(['Ground']);
+  await build.getByRole('button', { name: /^Stairs/ }).dispatchEvent('click');
+  await pointAt(page, 1.0, -1.5);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Stairs/);
+  await clickAt(page, 1.0, -1.5);
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'stairs').map((f) => `${f.x},${f.z}`)).toEqual(['0.5,-2']);
+  await page.keyboard.press('Escape');
+  // The first floor is open: build on it.
+  await build.getByRole('group', { name: 'Which floor' }).getByRole('button', { name: '1st' }).click();
+  await build.getByRole('tab', { name: 'Shelves' }).click();
+  await build.getByRole('button', { name: /^Shelf/ }).dispatchEvent('click');
+  await pointAt(page, -2.0, -3.5 + UP);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Shelf/);
+  await clickAt(page, -2.0, -3.5 + UP);
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'shelf' && f.z < -12).length).toBe(1);
+  await page.keyboard.press('Escape');
+  // A panel over the first floor taken down: sold, a double-height space above it.
+  await build.getByRole('tab', { name: 'Upstairs' }).click();
+  await build.locator('.item', { hasText: 'over the 1st floor' }).getByRole('button', { name: 'Take down' }).click();
+  await pointAt(page, -1.0, -0.5 + UP);
+  await expect.poll(() => aimText(page)).toMatch(/^Take the panel down/);
+  await clickAt(page, -1.0, -0.5 + UP);
+  await expect.poll(async () => (await hooks<{ shop: { ceilings: string[][] } }>(page, 'state')).shop.ceilings[1]!.includes('-1.5,-1')).toBe(false);
 });
 
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {

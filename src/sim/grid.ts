@@ -4,9 +4,12 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, WALL_T, rectToWorld, toWorld, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES } from './layout';
+import { lotLayout, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ } from './layout';
 
 export const CELL = 0.5;
+
+/** A ride between floors from a cell: the cell it comes off at, its cost on a path, and its ends (world). */
+export interface Portal { to: number; cost: number; ride: number; via: number; yaw: number; from: Vec2; at: Vec2 }
 
 export interface Grid {
   x0: number; z0: number; w: number; h: number;
@@ -17,6 +20,10 @@ export interface Grid {
   /** Cells that are inside the shop building (floor or storeroom). */
   inside: Uint8Array;
   version: number;
+  /** Upstairs: the rides (stairs, escalators, lifts) from each cell that has one. */
+  portals?: Map<number, Portal[]>;
+  /** Upstairs: each row's floor, and how many rows a floor's region is shifted from the ground's (for estimating distances across floors). */
+  rowLevel?: Uint8Array; levelRows?: number;
 }
 
 export function cellOf(g: Grid, p: Vec2): [number, number] {
@@ -111,6 +118,12 @@ function reachableCells(shop: Shop, g: Grid): Uint8Array {
         r[cellIndex(g, nx, nz)] = 1;
         todo.push(nx, nz);
       }
+      // Up or down the stairs.
+      for (const pt of g.portals?.get(cellIndex(g, x, z)) ?? []) {
+        if (r[pt.to] || isBlocked(g, pt.to % g.w, (pt.to / g.w) | 0)) continue;
+        r[pt.to] = 1;
+        todo.push(pt.to % g.w, (pt.to / g.w) | 0);
+      }
     }
   }
   reachCache.set(g, r);
@@ -136,15 +149,25 @@ export function fixtureFacing(rot: number): Vec2 {
 /** Grid in world coordinates: store-relative rects are carried into the world by the shop's frame. */
 export function buildGrid(shop: Shop, version: number, backDoorShut = false): Grid {
   const L = lotLayout(shop);
+  const st = storeysOf(shop);
   // The whole plot (pieces out on the lot can stand anywhere on it), to the far side of the frontage sidewalk.
   // Edges on the half-tile, so cells line up with tiles on every corner (the south ones are turned round).
-  const bounds = rectToWorld(shop, { x0: Math.floor(PLOT_RECT.x0 * 2) / 2, z0: Math.floor(PLOT_RECT.z0 * 2) / 2, x1: Math.floor(PLOT_RECT.x1 * 2) / 2, z1: 3.5 });
+  // With floors open upstairs, on back over each one's region.
+  const plotZ0 = Math.floor(PLOT_RECT.z0 * 2) / 2;
+  const bounds = rectToWorld(shop, { x0: Math.floor(PLOT_RECT.x0 * 2) / 2, z0: st.top ? zOnLevel(MAX_FLOOR.z0, st.top) - 1 : plotZ0, x1: Math.floor(PLOT_RECT.x1 * 2) / 2, z1: 3.5 });
   const { x0, z0, x1, z1 } = bounds;
   const w = Math.round((x1 - x0) / CELL), h = Math.round((z1 - z0) / CELL);
   const g: Grid = { x0, z0, w, h, cost: new Float32Array(w * h), edges: new Set(), inside: new Uint8Array(w * h), version };
   const R = (r: { x0: number; z0: number; x1: number; z1: number }, cost: number, inside = false) => { const q = rectToWorld(shop, r); fillRect(g, q.x0, q.z0, q.x1, q.z1, cost, inside); };
   // Gardens: walkable but slow.
   fillRect(g, x0, z0, x1, z1, 2.5);
+  if (st.top) {
+    // Upstairs is nothing but its floors.
+    R({ x0: PLOT_RECT.x0 - 1, z0: zOnLevel(MAX_FLOOR.z0, st.top) - 2, x1: PLOT_RECT.x1 + 1, z1: plotZ0 }, 0);
+    g.rowLevel = new Uint8Array(h);
+    for (let cz = 0; cz < h; cz++) g.rowLevel[cz] = levelOfZ(toLocal(shop, x0, z0 + (cz + 0.5) * CELL).z);
+    g.levelRows = (shop.flip ? -LEVEL_DZ : LEVEL_DZ) / CELL;
+  }
   // Paving.
   R(L.apron, 1);
   R({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.5 }, 1);
@@ -171,6 +194,8 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   // The door openings are paved and walkable.
   R({ x0: shop.door.x - 0.5, z0: f.z1, x1: shop.door.x + 0.5, z1: f.z1 + T }, 1);
   R({ x0: shop.backDoor.x - 0.5, z0: shop.backDoor.z - T, x1: shop.backDoor.x + 0.5, z1: shop.backDoor.z }, backDoorShut ? 0 : 1.1);
+  // Upstairs: each open floor, with the building's walls round it, its openings and double-height spaces closed off.
+  for (let lv = 1; lv <= st.top; lv++) for (const t of levelTileList(shop, lv)) R({ x0: t.x, z0: t.z, x1: t.x + 1, z1: t.z + 1 }, 1, true);
   // Delivered boxes stand here.
   if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.
@@ -180,7 +205,27 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
     if (FIXTURES[fx.type].walkable) continue;
     R(blockedRect(fx), 0);
   }
+  if (st.top) addPortals(shop, g);
   return g;
+}
+
+/** The rides between floors: from the foot of each flight of stairs, escalator and lift to where it comes off upstairs, and back down. */
+function addPortals(shop: Shop, g: Grid): void {
+  const st = storeysOf(shop);
+  g.portals = new Map();
+  const add = (from: number, p: Portal) => { const list = g.portals!.get(from) ?? []; list.push(p); g.portals!.set(from, list); };
+  for (const f of shop.fixtures) {
+    if (!VERTICAL.has(f.type) || !st.built[levelOf(f) + 1]) continue;
+    const e = rideEnds(f), r = RIDE[f.type]!;
+    const a = toWorld(shop, e.bottom.x, e.bottom.z), b = toWorld(shop, e.top.x, e.top.z);
+    const [ax, az] = cellOf(g, a), [bx, bz] = cellOf(g, b);
+    if (isBlocked(g, ax, az) || isBlocked(g, bx, bz)) continue;
+    const ia = cellIndex(g, ax, az), ib = cellIndex(g, bx, bz);
+    const fw = fixtureFacingWorld(shop, f.rot);
+    const into = Math.atan2(-fw.x, -fw.z), out = Math.atan2(fw.x, fw.z);
+    add(ia, { to: ib, cost: r.cost, ride: r.secs, via: f.id, yaw: into, from: a, at: b });
+    add(ib, { to: ia, cost: r.cost, ride: r.secs, via: f.id, yaw: f.type === 'elevator' ? into : out, from: b, at: a });
+  }
 }
 
 /** World-space centre of a fixture (of its footprint: a billboard is two tiles wide). */

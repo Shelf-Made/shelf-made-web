@@ -4,6 +4,11 @@ import type { Listing } from './reviews';
 import type { Category } from './products';
 
 export interface Vec2 { x: number; z: number }
+/**
+ * A point on a path. Most are walked to; one with `ride` is reached by riding the stairs, the escalator
+ * or the lift `via` that piece (seconds), from the point before it on another floor, facing `yaw` (world).
+ */
+export interface Waypoint extends Vec2 { ride?: number; via?: number; yaw?: number }
 
 /** Rotation in quarter turns, 0 = facing +z (south, toward the camera). */
 export type Rot = 0 | 1 | 2 | 3;
@@ -11,13 +16,15 @@ export type Rot = 0 | 1 | 2 | 3;
 export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
-  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window'
+  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'
   | 'floorLamp' | 'wallLight' | 'pendant' | 'neon'
   /** Out on the lot. */
-  | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard';
+  | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard'
+  /** Up to the next floor. */
+  | 'stairs' | 'escalator' | 'elevator';
 
 /** The Build card's tabs. */
-export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights' | 'outside';
+export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights' | 'outside' | 'storeys';
 /** What a tile of the lot is laid with (grass where none is). */
 export type LotSurface = 'gravel' | 'asphalt' | 'paving' | 'brick';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
@@ -110,7 +117,7 @@ export interface Person {
   px: number; pz: number;
   state: PersonState;
   anim: Anim;
-  path: Vec2[];
+  path: Waypoint[];
   pathIdx: number;
   speed: number;
   /** Seconds left in the current state (browsing, paying...). */
@@ -195,6 +202,10 @@ export interface Person {
   rest?: { kind: 'seat' | 'cafe' | 'desk'; fixtureId: number; seat: number; productId?: string } | null;
   /** Has had a sit down this visit. */
   rested?: boolean;
+  /** On the stairs, the escalator or in the lift: how far through the ride (seconds) to the next waypoint. */
+  climb?: number;
+  /** The manager, just off a ride: where they stepped off (no riding straight back until they step away or let go). */
+  rideLock?: Vec2;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -340,6 +351,11 @@ export interface Shop {
   /** Windows bought for the side and back walls. */
   /** Old saves only: whole walls of windows, turned into Window pieces on load. */
   windows?: Partial<Record<WindowSide, boolean>>;
+  /**
+   * Ceiling panels, floor by floor: `ceilings[L]` holds the tiles (keys "x,z") with a panel over floor L.
+   * A panel is also the floor of the storey above, so `ceilings[0]` is the first floor up. Old saves: none.
+   */
+  ceilings?: string[][];
   /** The lot, tile by tile (keys from lotKey): what is laid where it is not grass. */
   lotTiles?: Record<string, LotSurface>;
   /** Which parking bays are painted, by slot (see baySlots), in the order they were painted (`bays` follows it). Old saves: every slot of `lotRows` rows. */
