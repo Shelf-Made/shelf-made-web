@@ -8,7 +8,7 @@ import { FIXTURES, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, footprintOf, groundZ, 
 import { buildGrid, fixtureStandWorld, fixtureFrontWorld } from './grid';
 import { findPath } from './pathfinding';
 import { followPath } from './movement';
-import { doorInside } from './people';
+import { doorInside, dynamicBlockers, setPath } from './people';
 import { gridFor } from './state';
 import { dollars } from './money';
 import type { PlaceCheck } from './build';
@@ -207,13 +207,52 @@ export function rideOn(state: GameState, p: Vec2, fixtureId: number, within = 1.
   return best;
 }
 
+// ---- Rides under way.
+
+/** Is this ride still there to take: its piece where it stood, between two open floors? */
+function rideStands(state: GameState, w: Waypoint): boolean {
+  for (const list of gridFor(state).portals?.values() ?? []) for (const pt of list) if (pt.via === w.via && pt.at.x === w.x && pt.at.z === w.z) return true;
+  return false;
+}
+
+/** Does someone's way on ride stairs, an escalator or a lift that is not there any more (sold, moved), or up to a floor that has closed? */
+function wayGone(state: GameState, p: Person): boolean {
+  for (let i = p.pathIdx; i < p.path.length; i++) { const w = p.path[i]!; if (w.ride !== undefined && !rideStands(state, w)) return true; }
+  return false;
+}
+
+/**
+ * Someone's way planned again from where they stand, to where it went (a walk out to the street keeps its
+ * crossings: only the way to the first kerb, all the grid covers, is planned again). With no way there any more
+ * (it was up on a floor that has closed) they stop.
+ */
+function replan(state: GameState, p: Person): void {
+  const w = p.path[p.pathIdx];
+  if (w?.ride !== undefined && !rideStands(state, w)) p.climb = undefined;
+  const k = p.xings?.length ? p.xings[0]! : p.path.length - 1, tail = p.path.slice(k + 1);
+  if (!setPath(state, p, p.path[k]!, dynamicBlockers(state))) { p.path = []; p.pathIdx = 0; p.xings = undefined; return; }
+  if (p.xings) p.xings = p.xings.map((i) => i - k - 1 + p.path.length);
+  p.path.push(...tail);
+}
+
+/**
+ * After the building changes (stairs, an escalator or a lift sold or moved, a floor closed): everyone whose way
+ * rides one that is not there any more, or up to a floor that has closed, sets off another way from where they
+ * stand. (Each tick does the same for anyone on the move: see rideStep.)
+ */
+export function repathAfterBuildChange(state: GameState): void {
+  for (const p of state.people) if (wayGone(state, p)) replan(state, p);
+}
+
 /**
  * Partway up (or down) a ride: it carries on to the other end whatever happens meanwhile (the keys let go, a
- * card opened, a change of plan), and nothing else is done till then. False when not on one.
+ * card opened, a change of plan), and nothing else is done till then. False when not on one. A ride ahead
+ * that has gone from under them (sold, moved, up to a floor that has closed) is never got on: they set off
+ * another way from where they stand.
  */
-export function rideStep(p: Person): boolean {
+export function rideStep(state: GameState, p: Person): boolean {
+  if (wayGone(state, p)) replan(state, p);
   if (p.climb === undefined) return false;
-  // The path went from under them before they were carried anywhere: still at the foot.
   if (p.path[p.pathIdx]?.ride === undefined) { p.climb = undefined; return false; }
   followPath(p, p.speed, TICK);
   return true;

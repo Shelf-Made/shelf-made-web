@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState } from './index';
 import { openGame } from './testUtil';
-import { toLocal, toWorld, zOnLevel } from './layout';
+import { storeysOf, toLocal, toWorld, zOnLevel } from './layout';
 import { fixtureFacingWorld, nearestWalkable } from './grid';
 import { gridFor } from './state';
 import { findPath } from './pathfinding';
-import { levelOfPerson } from './storeys';
+import { levelOfPerson, repathAfterBuildChange } from './storeys';
 import { spawnCustomer } from './people';
 import { bolt } from './shoplifting';
 import { makeCandidate } from './staff';
@@ -182,6 +182,96 @@ describe('a change of plan on the stairs', () => {
     expect(Math.hypot(o.x - there.x, o.z - there.z)).toBeLessThan(0.3);
     expect(w.started).toBe(2);
     expect(w.dropped).toBe(0);
+  });
+});
+
+/** Every tick: nobody rides a piece that is not there any more. */
+const ghost = (s: GameState) => s.people.some((p) => p.climb !== undefined && !s.shop.fixtures.some((f) => f.id === p.path[p.pathIdx]?.via));
+
+describe('stairs sold or moved while someone heads for them', () => {
+  it('the manager on the way up stairs that are sold stops downstairs, not up on a floor that has gone', () => {
+    const s = quiet(79);
+    const o = owner(s), stairs = s.shop.fixtures.find((f) => f.type === 'stairs')!;
+    const there = at(s, -1.5, -4.5, 1);
+    expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
+    expect(o.path.some((w) => w.via === stairs.id)).toBe(true);
+    run(s, 0.5);
+    // Nothing upstairs yet: they can go.
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: stairs.id }).ok).toBe(true);
+    expect(storeysOf(s.shop).top).toBe(0);
+    let rodeGhost = false;
+    run(s, 10, () => { rodeGhost ||= ghost(s); return false; });
+    expect(rodeGhost).toBe(false);
+    expect(levelOfPerson(s.shop, o)).toBe(0);
+    expect(o.climb).toBeUndefined();
+    // The keys still walk them about.
+    const was = { x: o.x, z: o.z };
+    applyCommand(s, { type: 'moveDir', x: 1, z: 0 });
+    run(s, 0.5);
+    expect(Math.hypot(o.x - was.x, o.z - was.z)).toBeGreaterThan(0.3);
+  });
+
+  it('a shopper heading for an escalator that is sold goes up the stairs instead', () => {
+    const s = shop(80);
+    expect(place(s, 'stairs', -0.5, -2).ok).toBe(true);
+    expect(place(s, 'escalator', 0.5, -2).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, zOnLevel(-5, 1), 1).ok).toBe(true);
+    const up = s.shop.fixtures.find((f) => f.type === 'shelf' && f.z < -12)!;
+    up.slots = up.slots.map(() => ({ productId: 'apples', qty: 8 }));
+    s.phase = 'open';
+    const esc = s.shop.fixtures.find((f) => f.type === 'escalator')!;
+    const p = spawnCustomer(s, true)!;
+    p.list = [{ productId: 'apples', qty: 1 }];
+    run(s, 40, () => p.path.slice(p.pathIdx).some((w) => w.via === esc.id));
+    expect(p.climb).toBeUndefined();
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: esc.id }).ok).toBe(true);
+    const w = rideWatch(s);
+    let rodeGhost = false;
+    run(s, 30, () => { rodeGhost ||= ghost(s); return w.check() || levelOfPerson(s.shop, p) === 1; });
+    expect(rodeGhost).toBe(false);
+    expect(levelOfPerson(s.shop, p)).toBe(1);
+    expect(w.dropped).toBe(0);
+  });
+
+  it('a shopper heading for stairs that are moved takes them where they now stand', () => {
+    const s = shop(81);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, zOnLevel(-5, 1), 1).ok).toBe(true);
+    const up = s.shop.fixtures.find((f) => f.type === 'shelf' && f.z < -12)!;
+    up.slots = up.slots.map(() => ({ productId: 'apples', qty: 8 }));
+    s.phase = 'open';
+    const stairs = s.shop.fixtures.find((f) => f.type === 'stairs')!;
+    const p = spawnCustomer(s, true)!;
+    p.list = [{ productId: 'apples', qty: 1 }];
+    run(s, 40, () => p.path.slice(p.pathIdx).some((w) => w.via === stairs.id));
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: stairs.id, x: -0.5, z: -2, rot: 0 }).ok).toBe(true);
+    const old = toWorld(s.shop, STAIRS.x + 0.5, STAIRS.z + 1.5);
+    let wrong = false;
+    run(s, 30, () => { if (p.climb !== undefined && Math.hypot(p.x - old.x, p.z - old.z) < 0.3) wrong = true; return levelOfPerson(s.shop, p) === 1; });
+    expect(wrong).toBe(false);
+    expect(levelOfPerson(s.shop, p)).toBe(1);
+  });
+
+  it('after a change to the building, everyone whose way rode a piece that has gone is sent another way', () => {
+    const s = shop(82);
+    expect(place(s, 'stairs', -0.5, -2).ok).toBe(true);
+    expect(place(s, 'escalator', 0.5, -2).ok).toBe(true);
+    const esc = s.shop.fixtures.find((f) => f.type === 'escalator')!;
+    s.people = s.people.filter((p) => p.kind === 'owner');
+    const o = owner(s);
+    put(o, at(s, -2, -5.5));
+    const there = at(s, 2, -5.5, 1);
+    expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
+    expect(o.path.some((w) => w.via === esc.id)).toBe(true);
+    s.shop.fixtures = s.shop.fixtures.filter((f) => f !== esc); s.shop.layoutVersion++;
+    repathAfterBuildChange(s);
+    expect(o.path.some((w) => w.via === esc.id)).toBe(false);
+    expect(o.path.some((w) => w.ride !== undefined)).toBe(true);
+    expect(o.path[o.path.length - 1]).toEqual(there);
+    // And with no way up left, they stop where they are.
+    s.shop.fixtures = s.shop.fixtures.filter((f) => f.type !== 'stairs'); s.shop.layoutVersion++;
+    repathAfterBuildChange(s);
+    expect(o.path.length - o.pathIdx).toBe(0);
   });
 });
 
