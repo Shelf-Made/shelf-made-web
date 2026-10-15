@@ -110,10 +110,10 @@ export function walkStreet(p: Person, speed: number, tick: number): boolean {
       if (p.heldAnim) { p.anim = p.heldAnim; p.heldAnim = undefined; }
       return walkStreet(p, speed, tick);
     } else {
-      // Walk only as far as the kerb this step.
-      const view = { x: p.x, z: p.z, yaw: p.yaw, path: p.path.slice(0, kerb + 1), pathIdx: p.pathIdx };
+      // Walk only as far as the kerb this step (from upstairs, down the stairs first: the ride is theirs).
+      const view = { x: p.x, z: p.z, yaw: p.yaw, path: p.path.slice(0, kerb + 1), pathIdx: p.pathIdx, climb: p.climb };
       followPath(view, speed, TICK);
-      p.x = view.x; p.z = view.z; p.yaw = view.yaw; p.pathIdx = view.pathIdx;
+      p.x = view.x; p.z = view.z; p.yaw = view.yaw; p.pathIdx = view.pathIdx; p.climb = view.climb;
       return false;
     }
   }
