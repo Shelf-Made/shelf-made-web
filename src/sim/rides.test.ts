@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState } from './index';
 import { openGame } from './testUtil';
 import { storeysOf, toLocal, toWorld, zOnLevel } from './layout';
-import { fixtureFacingWorld, nearestWalkable } from './grid';
+import { fixtureAccessWorld, fixtureFacingWorld, nearestWalkable } from './grid';
 import { gridFor } from './state';
 import { findPath } from './pathfinding';
 import { levelOfPerson, repathAfterBuildChange } from './storeys';
-import { spawnCustomer } from './people';
+import { addSpill, spawnCustomer, startLeaving, setPath } from './people';
 import { bolt } from './shoplifting';
 import { makeCandidate } from './staff';
 import type { FixtureType, Person } from './types';
@@ -322,6 +322,114 @@ describe('shoplifters and the stairs', () => {
       if (by === 'stocker') { run(s, 20, () => w.check() || levelOfPerson(s.shop, c) === 0 && c.state === 'idle'); expect(levelOfPerson(s.shop, c)).toBe(0); }
       expect(w.dropped, by).toBe(0);
       expect(s.stuckRescues, by).toBe(0);
+    }
+  });
+});
+
+/** A shelf of rice (nowhere else in the shop) on floor `level`, empty, and boxes of it on the pallet. */
+function riceUpstairs(s: GameState, level: number) {
+  expect(place(s, 'shelf', -2.5, zOnLevel(-5, level), 1).ok).toBe(true);
+  const shelf = s.shop.fixtures.find((f) => f.type === 'shelf' && f.z < zOnLevel(-4, level) + 1 && f.z > zOnLevel(-6, level))!;
+  s.shop.storage = [{ productId: 'rice', qty: 40, day: s.day }];
+  return shelf;
+}
+const rice = (f: { slots: { productId: string | null; qty: number }[] }) => f.slots.reduce((a, sl) => a + (sl.productId === 'rice' ? sl.qty : 0), 0);
+
+describe('everyone rides every way up', () => {
+  for (const type of ['stairs', 'escalator', 'elevator'] as const) {
+    it(`stockers with boxes, cleaners, cashiers and shoppers with baskets all ride the ${type === 'elevator' ? 'lift' : type}`, () => {
+      const s = shop(83);
+      expect(place(s, type, STAIRS.x, STAIRS.z).ok).toBe(true);
+      const shelf = riceUpstairs(s, 1);
+      // A till upstairs too, with a cashier of its own (the first one hired takes the one downstairs).
+      expect(place(s, 'register', 1.5, zOnLevel(-5, 1), 2).ok).toBe(true);
+      const upTill = s.shop.fixtures.find((f) => f.type === 'register' && f.z < -12)!;
+      hire(s, 'cashier');
+      const cashier = hire(s, 'cashier'), stocker = hire(s, 'stocker'), cleaner = hire(s, 'cleaner');
+      expect(upTill.staffId).toBe(cashier.id);
+      const spill = at(s, 1, -1.5, 1);
+      expect(addSpill(s, spill.x, spill.z)).toBe(true);
+      s.phase = 'open';
+      const w = rideWatch(s);
+      const went = new Set<number>(), carried = new Set<number>();
+      let bought = 0;
+      for (let i = 0; i < 150 / TICK; i++) {
+        if (i % 100 === 0 && s.people.filter((p) => p.kind === 'customer').length < 4) { const p = spawnCustomer(s, true); if (p) p.list = [{ productId: 'rice', qty: 1 }]; }
+        tick(s); w.check();
+        for (const p of s.people) {
+          if (p.climb !== undefined) went.add(p.id);
+          if (p.kind === 'customer' && p.climb !== undefined && p.basket?.some((b) => b.productId === 'rice')) carried.add(p.id);
+          if (p.kind === 'staff' && p.climb !== undefined && p.carrying) carried.add(p.id);
+        }
+        bought = Math.max(bought, s.today.served);
+      }
+      expect(went.has(stocker.id), 'stocker').toBe(true);
+      expect(carried.has(stocker.id), 'stocker with a box').toBe(true);
+      expect(rice(shelf), 'shelved upstairs').toBeGreaterThan(0);
+      expect(went.has(cleaner.id), 'cleaner').toBe(true);
+      expect(s.shop.litter.length, 'mopped upstairs').toBe(0);
+      expect(went.has(cashier.id), 'cashier').toBe(true);
+      expect(levelOfPerson(s.shop, cashier)).toBe(1);
+      expect([...carried].some((id) => id !== stocker.id), 'a shopper down with a basket').toBe(true);
+      expect(bought, 'served').toBeGreaterThan(0);
+      expect(w.dropped).toBe(0);
+      expect(s.stuckRescues).toBe(0);
+    });
+  }
+
+  it('up three floors and back: a stocker with a box, a shopper with a basket', () => {
+    const s = shop(84);
+    for (let L = 0; L < 3; L++) expect(place(s, L % 2 ? 'escalator' : 'stairs', L % 2 ? -0.5 : 0.5, zOnLevel(STAIRS.z, L)).ok, `floor ${L}`).toBe(true);
+    expect(storeysOf(s.shop).top).toBe(3);
+    const shelf = riceUpstairs(s, 3);
+    const stocker = hire(s, 'stocker');
+    hire(s, 'cashier');
+    s.phase = 'open';
+    const w = rideWatch(s);
+    let top = 0, boxUp = 0, shopper: Person | null = null, home = false;
+    for (let i = 0; i < 240 / TICK && !home; i++) {
+      if (!shopper && rice(shelf) > 0) { shopper = spawnCustomer(s, true); shopper!.list = [{ productId: 'rice', qty: 1 }]; }
+      tick(s); w.check();
+      if (stocker.carrying) boxUp = Math.max(boxUp, levelOfPerson(s.shop, stocker));
+      if (shopper) top = Math.max(top, levelOfPerson(s.shop, shopper));
+      // Paid downstairs and out of the door.
+      if (shopper && top === 3 && s.today.served > 0 && (!s.people.includes(shopper) || toLocal(s.shop, shopper.x, shopper.z).z > 0.5)) home = true;
+    }
+    expect(boxUp).toBe(3);
+    expect(rice(shelf)).toBeGreaterThan(0);
+    expect(top).toBe(3);
+    expect(home).toBe(true);
+    // Up and down three floors each, at least.
+    expect(w.started).toBeGreaterThanOrEqual(12);
+    expect(w.dropped).toBe(0);
+    expect(s.stuckRescues).toBe(0);
+  });
+
+  it('two meeting on a flight, one going up as the other comes down, both get where they were going', () => {
+    for (const type of ['stairs', 'escalator', 'elevator'] as const) {
+      const s = quiet(85, type);
+      const shelf = riceUpstairs(s, 1);
+      shelf.slots[0] = { productId: 'rice', qty: 8 };
+      const up = spawnCustomer(s, true)!, down = spawnCustomer(s, true)!;
+      for (const p of [up, down]) { p.xings = undefined; p.list = [{ productId: 'rice', qty: 1 }]; p.listIdx = 0; p.basket = []; }
+      const f = s.shop.fixtures.find((x) => x.type === type)!;
+      // One at the foot after the rice, the other at the top on their way out.
+      put(up, foot(s));
+      up.state = 'browsing'; up.timer = -1; up.targetFixture = shelf.id;
+      setPath(s, up, fixtureAccessWorld(s.shop, shelf, up, gridFor(s)));
+      put(down, toWorld(s.shop, STAIRS.x + 0.5, zOnLevel(type === 'elevator' ? STAIRS.z + 1.5 : STAIRS.z - 1.5, 1)));
+      startLeaving(s, down, true);
+      expect(up.path.some((x) => x.via === f.id), type).toBe(true);
+      expect(down.path.some((x) => x.via === f.id), type).toBe(true);
+      const w = rideWatch(s);
+      let both = false;
+      run(s, 20, () => { w.check(); both ||= up.climb !== undefined && down.climb !== undefined; return levelOfPerson(s.shop, up) === 1 && up.timer > 0 && (!s.people.includes(down) || toLocal(s.shop, down.x, down.z).z > 0.5); });
+      expect(both, type).toBe(true);
+      expect(levelOfPerson(s.shop, up), type).toBe(1);
+      expect(up.timer, type).toBeGreaterThan(0);
+      expect(!s.people.includes(down) || toLocal(s.shop, down.x, down.z).z > 0.5, type).toBe(true);
+      expect(w.dropped, type).toBe(0);
+      expect(s.stuckRescues, type).toBe(0);
     }
   });
 });
