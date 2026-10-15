@@ -88,6 +88,11 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   at different sizes, bushes, flower patches, rocks, and grass tufts all over the lawn in one swaying
   mesh, never on paving, a path, a bay or a prop. Clumps of mixed trees stand round the corners'
   outer edges; past the edge of town only the roads run on. The zebras are painted, all four alike.
+- **Trees** are our own, generated at load in the same faceted style and palette and standing in for
+  Kenney's tree models under their ids (`trees.ts`): a tapered trunk with a root flare and bark in two
+  browns, branches out to a crown of overlapping faceted leaf clusters (sunlit faces lighter, the
+  undersides darker), egg-shaped round crowns, columns of poplars, a white birch with dark marks, and
+  conifers of six jagged tiers. 140–700 triangles each, seeded, the same every load.
 - **Traffic feel.** Cars ease toward the speed they want (pulling away at 5 units/s², braking at
   12), and a car turning off the road slows before its bend rather than in it, so turning into a lot
   reads as easing off and rolling in. Coming up to a queue or a red light a car brakes steadily
@@ -95,6 +100,11 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   last moment, never passes a stop line that holds it, and on amber goes on through only if it is too
   close to stop. Through traffic (and a turned-away car, which is only for show)
   does not join a queue that already reaches the edge of town, so the busiest day's jam drains.
+- **Backing out** is worked out on the rear axle, like a real car: straight back about half a car
+  length until the nose clears the cars either side, then steering so the rear swings away from the
+  exit, the heading turning only as the car rolls. It eases off the mark, slows to a stop across the
+  aisle, takes a moment to change gear and pulls away to finish the turn. A car turning across the
+  oncoming lane keeps checking for a gap until its nose is in that lane.
 - **Surfaces.** Nothing in the town is flat colour. The world material samples a small tileable
   noise texture in world space along each surface's main axis (no UVs needed, three texture reads a
   pixel) and decides by colour what a surface is: light greys are concrete (grain and slab joints a tile apart), dark greys are asphalt (grain and
