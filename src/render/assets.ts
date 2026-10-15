@@ -76,6 +76,7 @@ export class AssetLibrary {
     if (!info) throw new Error(`unknown model ${id}`);
     const gltf: GLTF = await this.loader.loadAsync(`${this.base}${info.file}${BUILD_QUERY}`);
     if (info.skinned) {
+      if (id === 'people/female-a') dropCrutches(gltf.scene);
       this.chars.set(id, { scene: gltf.scene, clips: gltf.animations, info });
       gltf.scene.traverse((o) => { if ((o as Mesh).isMesh) ((o as Mesh).material as Material) = this.material; });
       return;
@@ -119,6 +120,42 @@ export class AssetLibrary {
     g.add(m, new Mesh(glass, this.glass));
     return g;
   }
+}
+
+/**
+ * Kenney's first female character comes on crutches, built into her body mesh. Every character's arm
+ * is two pieces (a hand of 30 triangles and a sleeve of 28, both within reach of the shoulder); on
+ * this one, the other pieces skinned to the arms are the crutches (shafts reaching past the hands,
+ * grips and pads), so those triangles go.
+ */
+function dropCrutches(scene: Object3D): void {
+  scene.traverse((o) => {
+    const m = o as SkinnedMesh;
+    if (!m.isSkinnedMesh || !m.geometry.index) return;
+    const g = m.geometry, pos = g.getAttribute('position'), idx = g.index!, joints = g.getAttribute('skinIndex');
+    const names = m.skeleton.bones.map((b) => b.name);
+    // Pieces: triangles joined by shared corners (by position, as the exporter splits vertices by normal).
+    const key = (i: number) => `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
+    const parent = new Map<string, string>();
+    const find = (k: string): string => { let r = k; while (parent.get(r) !== r) r = parent.get(r)!; parent.set(k, r); return r; };
+    for (let i = 0; i < pos.count; i++) { const k = key(i); if (!parent.has(k)) parent.set(k, k); }
+    const tris = idx.count / 3;
+    for (let t = 0; t < tris; t++) { const a = find(key(idx.getX(t * 3))); for (const c of [1, 2]) { const b = find(key(idx.getX(t * 3 + c))); if (a !== b) parent.set(b, a); } }
+    const pieces = new Map<string, { tris: number[]; maxX: number; arm: boolean }>();
+    for (let t = 0; t < tris; t++) {
+      const first = idx.getX(t * 3), r = find(key(first));
+      const p = pieces.get(r) ?? { tris: [], maxX: 0, arm: /arm/.test(names[joints.getX(first)] ?? '') };
+      p.tris.push(t);
+      for (const c of [0, 1, 2]) p.maxX = Math.max(p.maxX, Math.abs(pos.getX(idx.getX(t * 3 + c))));
+      pieces.set(r, p);
+    }
+    const drop = new Set<number>();
+    for (const p of pieces.values()) if (p.arm && !((p.tris.length === 30 || p.tris.length === 28) && p.maxX <= 0.39)) for (const t of p.tris) drop.add(t);
+    if (!drop.size) return;
+    const keep: number[] = [];
+    for (let t = 0; t < tris; t++) if (!drop.has(t)) keep.push(idx.getX(t * 3), idx.getX(t * 3 + 1), idx.getX(t * 3 + 2));
+    g.setIndex(keep);
+  });
 }
 
 export function isSkinned(o: Object3D): o is SkinnedMesh { return (o as SkinnedMesh).isSkinnedMesh === true; }
