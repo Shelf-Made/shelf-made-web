@@ -344,6 +344,34 @@ test("the day's log: closes and comes back, gives way to a card, says when Staff
   await expect(page.getByRole('button', { name: 'Day 1 log' })).toHaveCount(0);
 });
 
+test('after a fast-forwarded day the manager walks at normal pace, and the shop can be fitted out at night', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 8, 'main', 'Night Shift', { tutorial: false });
+  await hooks(page, 'quickSetup', true);
+  // The day runs out at the fastest speed; the night puts the clock back to normal speed, and the manager's pace with it.
+  await hooks(page, 'setSpeed', 4);
+  await expect.poll(async () => (await hooks<{ timeScale: number }>(page, 'state')).timeScale).toBe(4);
+  await hooks(page, 'advance', 900);
+  await expect(page.getByRole('dialog', { name: 'Day summary' })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => (await hooks<{ timeScale: number }>(page, 'state')).timeScale).toBe(1);
+  await expect(page.getByRole('group', { name: 'Game speed' }).getByRole('button', { name: '1x speed' })).toHaveAttribute('aria-pressed', 'true');
+  // Build at night: open Build, pick a shelf, and put it down on a free tile.
+  await page.locator('.dock [data-card="build"]').click();
+  await expect(page.locator('.card.t-build')).toBeVisible();
+  await hooks(page, 'fp', 0.5, -1.0);
+  const before = (await state(page)).shop.fixtures.length;
+  await hooks(page, 'startPlacing', 'shelf');
+  const taken = new Set((await state(page)).shop.fixtures.map((f) => `${f.x},${f.z}`));
+  let placed = false;
+  for (const z of [-2, -3, -4]) for (const x of [-1.5, -0.5, 0.5, 1.5]) if (!placed && !taken.has(`${x},${z}`)) {
+    await pointAt(page, x + 0.5, z + 0.5);
+    if (/^place shelf/i.test(await aimText(page))) { await clickAt(page, x + 0.5, z + 0.5); placed = true; }
+  }
+  expect(placed).toBe(true);
+  await expect.poll(async () => (await state(page)).shop.fixtures.length).toBe(before + 1);
+  expect((await state(page)).phase).toBe('night');
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

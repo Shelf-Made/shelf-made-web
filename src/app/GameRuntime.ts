@@ -397,7 +397,7 @@ export class GameRuntime {
     this.lobbyState = null;
     if (this.renderer) { this.renderer.camera.lookY = 0; this.renderer.cutaway = true; }
     this.screen = 'game';
-    this.speed = 1; this.card = null;
+    this.resetSpeed(); this.card = null;
     this.forgetSelection();
     this.renderer?.setTown(s.seed, s.shop.plotId);
     this.renderer?.setShop(s);
@@ -490,7 +490,7 @@ export class GameRuntime {
       this.alpha = Math.min(1, this.acc / TICK);
       this.drainSounds(s);
       if (s.phase !== this.lastPhase) {
-        if (s.phase === 'night') { this.nightLogHidden = false; void this.save('auto'); this.speed = 1; analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
+        if (s.phase === 'night') { this.nightLogHidden = false; this.resetSpeed(); void this.save('auto'); analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
         this.lastPhase = s.phase;
         this.updateSideOffset();
       }
@@ -575,6 +575,15 @@ export class GameRuntime {
   showHint(): void { if (this.state) this.showToast(hint(this.state), 6000); this.audio.play('click'); }
 
   showToast(text: string, ms = 2600): void { this.toast = { id: ++this.toastId, text }; this.toastUntil = performance.now() + ms; this.emit(); }
+
+  /**
+   * Back to normal speed (the night, a loaded game): the clock and the sim's time scale together, or the
+   * manager, who walks in real time, would keep crawling at a quarter of their pace after a fast-forwarded day.
+   */
+  private resetSpeed(): void {
+    this.speed = 1;
+    if (this.state) applyCommand(this.state, { type: 'setTimeScale', scale: 1 });
+  }
 
   setSpeed(speed: Speed): void {
     if (speed !== this.speed) this.audio.play('speed');
@@ -809,8 +818,11 @@ export class GameRuntime {
   clickAt(px: number, py: number): void {
     const s = this.state; const r = this.renderer;
     this.audio.start();
-    if (!s || !r || !this.inPlay || s.phase === 'night') return;
-    if (this.build.placing || this.build.selectedId !== null || this.card === 'build') {
+    if (!s || !r || !this.inPlay) return;
+    const building = this.build.placing || this.build.selectedId !== null || this.card === 'build';
+    // At night the shop is shut but the manager can still fit it out for tomorrow: only the build tools work.
+    if (s.phase === 'night' && !building) return;
+    if (building) {
       const g = r.groundAt(px, py);
       if (g && (this.build.placing || this.build.selectedId !== null)) { this.hoverWorld(g.x, g.z); this.clickBuild(null); return; }
       const hit = r.pick(px, py, s);
@@ -995,7 +1007,7 @@ export class GameRuntime {
   private resolveAim(): { info: AimInfo | null; run: (() => void) | null } {
     const s = this.state; const r = this.renderer;
     const none = { info: null, run: null };
-    if (!s || !r || !this.inPlay || s.phase === 'night') { r?.marker.set(null); return none; }
+    if (!s || !r || !this.inPlay || (s.phase === 'night' && !this.build.placing && this.build.selectedId === null && this.card !== 'build')) { r?.marker.set(null); return none; }
     const keys = this.settings.keys;
     const useKey = keyLabel(keys.interact), scanKey = keyLabel(keys.scan);
     if (this.build.placing || this.build.selectedId !== null) {
@@ -1017,6 +1029,8 @@ export class GameRuntime {
     const hov = this.mousePos ? this.thingAt(this.mousePos.x, this.mousePos.y) : null;
     const show = kb ?? hov;
     if (!show) { if (!this.pendingUse) r.marker.set(null); return none; }
+    // At night only the Build card's moves: nothing else is open for business.
+    if (s.phase === 'night' && !(this.card === 'build' && show.kind === 'fixture')) { r.marker.set(null); return none; }
     const rect = this.thingRect(s, show);
     const near = show === kb;
     const a = this.actionFor(s, show, near);
