@@ -3,7 +3,7 @@ import { type GameState, type Command, type CommandResult, newGame, tick, applyC
 import type { Difficulty, FixtureType, Rot, CustomerType, Look } from '@/sim/types';
 import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
-import { canPlace } from '@/sim/build';
+import { canPlace, facingOffWall } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
 import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame, rectToWorld, type Rect } from '@/sim/layout';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
@@ -782,6 +782,8 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer; if (!s || !r || !this.build.hover) return;
     const type = this.build.placing ?? (this.build.selectedId !== null ? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type ?? null : null);
     if (!type) { r.setGhost(null, s, 0, 0, 0, false); return; }
+    // Windows and lights turn to face into the room from whichever wall they are pointed at.
+    if (FIXTURES[type].onWall) { const rot = facingOffWall(s, type, this.build.hover.x, this.build.hover.z, this.build.rot); if (rot !== null) this.build.rot = rot; }
     const check = canPlace(s, type, this.build.hover.x, this.build.hover.z, this.build.rot, this.build.selectedId ?? undefined);
     this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = this.build.selectedId !== null ? 0 : check.price;
     r.setGhost(type, s, this.build.hover.x, this.build.hover.z, this.build.rot, check.ok);

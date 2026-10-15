@@ -3,8 +3,8 @@
  * Placement never blocks a path: the door, the back door and every fixture's front must
  * stay reachable after the change.
  */
-import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WindowSide } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, WINDOW_PER_TILE, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld } from './layout';
+import type { GameState, FixtureType, Rot, Fixture, FloorStyle } from './types';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
@@ -20,7 +20,10 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const price = def.price;
   if (x < f.x0 || x + 1 > f.x1 || z < f.z0 || z + 1 > f.z1) return { ok: false, reason: 'Only inside the shop floor', price };
   if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a floor tile', price };
-  if (shop.fixtures.some((fx) => fx.id !== ignoreId && fx.x === x && fx.z === z)) return { ok: false, reason: 'Something is already there', price };
+  // One thing per tile, except a window: it is up in the wall behind, so a shelf can stand in front of it
+  // (but a light hung on the same wall cannot share it).
+  const sameWall = (fx: Fixture) => !!def.onWall && !!FIXTURES[fx.type].onWall && fx.rot === rot;
+  if (shop.fixtures.some((fx) => fx.id !== ignoreId && fx.x === x && fx.z === z && (sameWall(fx) || (type !== 'window' && fx.type !== 'window')))) return { ok: false, reason: 'Something is already there', price };
   // A doormat, a rug, a light on the wall: nothing anyone could bump into, so they may go by the doors.
   if (!def.walkable && Math.abs(x + 0.5 - shop.door.x) < 0.6 && z === f.z1 - 1) return { ok: false, reason: 'Keep the front door clear', price };
   if (!def.walkable && Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && z === f.z0) return { ok: false, reason: 'Keep the back door clear', price };
@@ -31,13 +34,14 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
     if (bx >= f.x0 && bx + 1 <= f.x1 && bz >= f.z0 && bz + 1 <= f.z1) return { ok: false, reason: 'Hang it on a wall, facing in (R turns it)', price };
     const onDoor = (Math.abs(x + 0.5 - shop.door.x) < 0.6 && bz >= f.z1) || (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && bz < f.z0);
     if (onDoor) return { ok: false, reason: 'Not over a door', price };
+    if (type === 'window' && bz >= f.z1) return { ok: false, reason: 'The front is all windows already', price };
   }
   const d = shop.delivery;
-  if (d && x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
+  if (!def.onWall && d && x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
   if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need ${dollars(price)}`, price };
   // Never on top of the manager.
   const owner = state.people.find((p) => p.kind === 'owner');
-  if (owner) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > x - 0.3 && lo.x < x + 1.3 && lo.z > z - 0.3 && lo.z < z + 1.3) return { ok: false, reason: 'You are standing there', price }; }
+  if (owner && !def.onWall) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > x - 0.3 && lo.x < x + 1.3 && lo.z > z - 0.3 && lo.z < z + 1.3) return { ok: false, reason: 'You are standing there', price }; }
   if (type === 'register') {
     const bx = x - [0, 1, 0, -1][rot]!, bz = z - [1, 0, -1, 0][rot]!;
     if (bx < f.x0 || bx + 1 > f.x1 || bz < f.z0 || bz + 1 > f.z1) return { ok: false, reason: 'Leave room behind the counter to stand', price };
@@ -95,21 +99,40 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
   return null;
 }
 
-/** Tiles of wall on one side of the shell (for pricing its windows). */
-export function windowCost(state: GameState, side: WindowSide): number {
-  const f = state.shop.floor, back = Math.min(f.z0, state.shop.storeroom.z0);
-  return WINDOW_PER_TILE * Math.round(side === 'back' ? f.x1 - f.x0 : f.z1 - back);
+/**
+ * The outside wall an on-the-wall piece hangs on (it faces into the room, so the wall is behind it),
+ * and where along that wall: the tile's centre (x along the back and front, z along the sides).
+ */
+export function wallOf(f: { x: number; z: number; rot: Rot }): { side: 'back' | 'left' | 'front' | 'right'; t: number } {
+  return [{ side: 'back' as const, t: f.x + 0.5 }, { side: 'left' as const, t: f.z + 0.5 }, { side: 'front' as const, t: f.x + 0.5 }, { side: 'right' as const, t: f.z + 0.5 }][f.rot & 3]!;
 }
 
-/** Put windows in a side or back wall. */
-export function addWindows(state: GameState, side: WindowSide): string | null {
-  if (state.shop.windows?.[side]) return 'That wall has windows already.';
-  const cost = windowCost(state, side);
-  if (state.cash < cost) return `Need ${dollars(cost)}`;
-  state.cash -= cost;
-  state.shop.windows = { ...state.shop.windows, [side]: true };
-  state.shop.layoutVersion++;
+/**
+ * Which way a piece for the wall should face on this tile: away from the outside wall behind it
+ * (the way it already faces if that works, in a corner), or null when the tile is not against one.
+ */
+export function facingOffWall(state: GameState, type: FixtureType, x: number, z: number, prefer: Rot): Rot | null {
+  const f = state.shop.floor;
+  for (const r of [prefer, 0, 1, 3, 2] as Rot[]) {
+    const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][r]!;
+    const bx = x - fc.x, bz = z - fc.z;
+    const behindOutside = bx < f.x0 || bx + 1 > f.x1 || bz < f.z0 || bz + 1 > f.z1;
+    if (behindOutside && !(type === 'window' && r === 2)) return r;
+  }
   return null;
+}
+
+/** Old saves glazed whole walls: a window on every tile of them instead. */
+export function windowsFromSides(state: GameState): void {
+  const shop = state.shop, sides = shop.windows;
+  if (!sides) return;
+  delete shop.windows;
+  const f = shop.floor;
+  const want: { x: number; z: number; rot: Rot }[] = [];
+  for (let x = f.x0; x < f.x1; x++) if (sides.back && Math.abs(x + 0.5 - shop.backDoor.x) > 0.6) want.push({ x, z: f.z0, rot: 0 });
+  for (let z = f.z0; z < f.z1; z++) { if (sides.left) want.push({ x: f.x0, z, rot: 1 }); if (sides.right) want.push({ x: f.x1 - 1, z, rot: 3 }); }
+  for (const w of want) if (!shop.fixtures.some((fx) => fx.type === 'window' && fx.x === w.x && fx.z === w.z && fx.rot === w.rot)) shop.fixtures.push({ id: state.nextId++, type: 'window', ...w, slots: [] });
+  shop.layoutVersion++;
 }
 
 export function expandShop(state: GameState, sizeId: string): string | null {
@@ -125,7 +148,14 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   shop.floor = { ...size.floor }; shop.storeroom = { ...size.storeroom }; shop.sizeId = size.id;
   shop.delivery = deliveryZone(size.floor);
   shop.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
-  // Fixtures keep their tiles (the shop grows back and sideways; the front wall does not move).
+  // Fixtures keep their tiles (the shop grows back and sideways; the front wall does not move), but
+  // windows and lights on a wall that moved go with it.
+  for (const fx of shop.fixtures) {
+    if (!FIXTURES[fx.type].onWall) continue;
+    if (fx.rot === 0) fx.z = size.floor.z0;
+    else if (fx.rot === 1) fx.x = size.floor.x0;
+    else if (fx.rot === 3) fx.x = size.floor.x1 - 1;
+  }
   const L = lotLayout(shop);
   shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
   shop.storageCapacity = 120 + target * 100;

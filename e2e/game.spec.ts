@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { ready, hooks, settle } from './helpers';
 
-type Fx = { id: number; type: string; x: number; z: number; slots: { productId: string | null; qty: number }[]; serving?: number | null; scanned?: number };
+type Fx = { id: number; type: string; x: number; z: number; rot?: number; slots: { productId: string | null; qty: number }[]; serving?: number | null; scanned?: number };
 type S = { phase: string; cash: number; shop: { fixtures: Fx[]; storage: { productId: string; qty: number }[]; delivery: { x0: number; z0: number; x1: number; z1: number } }; orders: { state: string }[]; people: { kind: string; carrying?: { productId: string; qty: number } | null }[]; today: { served: number } };
 type Pt = { x: number; y: number; visible: boolean };
 
@@ -400,14 +400,17 @@ test('the Build card: tabs of pictures, a café table placed, a floor laid, wind
   expect(placed).toBe(true);
   await expect.poll(async () => (await state(page)).shop.fixtures.length).toBe(before + 1);
   await page.keyboard.press('Escape');
-  // Floors: wooden boards over the whole shop. Shop: windows in the left wall.
+  // Floors: wooden boards over the whole shop. Walls: a window in the left wall, turned to face in by itself.
   await build.getByRole('tab', { name: 'Floors' }).click();
   await build.locator('.item', { hasText: 'Wooden boards' }).getByRole('button', { name: 'Lay' }).click();
   await expect.poll(async () => (await hooks<{ shop: { floorStyle?: string } }>(page, 'state')).shop.floorStyle).toBe('wood');
   await expect(build.locator('.item', { hasText: 'Wooden boards' })).toContainText('Down now');
-  await build.getByRole('tab', { name: 'Shop' }).click();
-  await build.locator('.item', { hasText: 'Left wall' }).getByRole('button', { name: 'Add windows' }).click();
-  await expect.poll(async () => (await hooks<{ shop: { windows?: { left?: boolean } } }>(page, 'state')).shop.windows?.left).toBe(true);
+  await build.getByRole('tab', { name: 'Walls' }).click();
+  await build.getByRole('button', { name: /^Window/ }).dispatchEvent('click');
+  await pointAt(page, -2.0, -2.5);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Window/);
+  await clickAt(page, -2.0, -2.5);
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`)).toEqual(['-2.5,-3,1']);
 });
 
 test("the shop's business profile: reviews come in, the badge counts them, photos develop, and the owner replies", async ({ page }) => {

@@ -6,6 +6,7 @@ import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
 import { inferGoals } from '@/sim/goals';
 import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
+import { windowsFromSides } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
 import type { StorageBackend } from './storage';
 
@@ -105,6 +106,8 @@ export function migrate(file: SaveFile): SaveFile {
   // Elm Street's bays moved apart (same count, same version): seat them where they stand now.
   const st = raw as unknown as GameState;
   if (Array.isArray(st.streetBays)) st.streetBays = STREET_BAYS.map((b, i) => ({ ...b, carId: st.streetBays[i]?.carId ?? null }));
+  // Whole walls of windows become a Window piece on each tile of them.
+  windowsFromSides(st);
   // Staff all wore the one shop-worker character: each gets a look of their own.
   for (const p of st.people ?? []) if (p.kind === 'staff' && p.look.model >= 12) p.look = staffLook(p.id, { model: p.id % 12, variant: p.look.variant, height: p.look.height });
   return { ...file, version: v, state: st };

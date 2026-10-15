@@ -11,14 +11,14 @@ export type Rot = 0 | 1 | 2 | 3;
 export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
-  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate'
+  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window'
   | 'floorLamp' | 'wallLight' | 'pendant' | 'neon';
 
 /** The Build card's tabs. */
 export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
 export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete';
-/** The shell walls that can have windows put in (the front always has them). */
+/** The shell walls (old saves put windows in a whole wall at a time; see windowsFromSides). */
 export type WindowSide = 'left' | 'right' | 'back';
 
 export interface FixtureDef {
@@ -274,6 +274,7 @@ export interface Shop {
   /** The floor's finish (older saves: the checker lino). */
   floorStyle?: FloorStyle;
   /** Windows bought for the side and back walls. */
+  /** Old saves only: whole walls of windows, turned into Window pieces on load. */
   windows?: Partial<Record<WindowSide, boolean>>;
 }
 

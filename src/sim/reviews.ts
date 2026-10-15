@@ -108,7 +108,8 @@ export function looksOf(state: GameState): Looks {
   const teens = (state.life?.hangouts ?? []).some((h) => h.mine);
   const outside = clamp(1 - mess * 0.18 - (teens ? 0.35 : 0), 0, 1);
   const floor = FLOORS.find((x) => x.id === (shop.floorStyle ?? 'lino'))?.looks ?? 0;
-  const windows = Object.values(shop.windows ?? {}).filter(Boolean).length * 0.08;
+  // Windows: daylight on more of the shop (a few each make a difference; past a dozen, not much).
+  const windows = Math.min(count('window'), 15) * 0.016;
   const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.lotRows > 1 ? 0.15 : 0) + (count('produce') > 0 ? 0.25 : 0) + floor + windows + 0.1, 0, 1);
   // Decor matters most: a clean, full shop with nothing on show is fine, not lovely.
   const score = 0.3 * decor + 0.16 * tidy + 0.18 * shelves + 0.1 * space + 0.14 * outside + 0.12 * extras;

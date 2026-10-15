@@ -237,6 +237,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   // Walls and doors inside the shop.
   wall: { type: 'wall', name: 'Wall', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
   wallWindow: { type: 'wallWindow', name: 'Wall with window', price: 70, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', looks: 0.04, looksCap: 4 },
+  /** A window put into the outside wall behind its tile (shelves can still stand in front of it). */
+  window: { type: 'window', name: 'Window', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, onWall: true },
   doorway: { type: 'doorway', name: 'Doorway', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
   railing: { type: 'railing', name: 'Railing', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
   gate: { type: 'gate', name: 'Gate', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
@@ -256,8 +258,6 @@ export const FLOORS: { id: FloorStyle; name: string; perTile: number; looks: num
   { id: 'wood', name: 'Wooden boards', perTile: 7, looks: 0.2 },
   { id: 'stone', name: 'White stone', perTile: 9, looks: 0.22 },
 ];
-/** Windows for one side or back wall, per tile of wall. */
-export const WINDOW_PER_TILE = 25;
 
 export const DIFFICULTY = {
   relaxed: { cash: 1200, rentMul: 0.8, demandMul: 1.2, patienceMul: 1.3 },

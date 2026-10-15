@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, FIXTURES, buildGrid, findPath, type GameState } from './index';
-import { canPlace, floorCost, windowCost } from './build';
+import { canPlace, floorCost, windowsFromSides } from './build';
 import { toWorld } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint } from './people';
@@ -62,15 +62,49 @@ describe('building: walls, doors, lights, floors and windows', () => {
     expect(s.cash).toBeCloseTo(cash - cost);
     expect(s.shop.floorStyle).toBe('wood');
     expect(applyCommand(s, { type: 'setFloor', style: 'wood' }).ok).toBe(false);
-    const w = windowCost(s, 'left');
-    expect(applyCommand(s, { type: 'addWindows', side: 'left' }).ok).toBe(true);
-    expect(s.cash).toBeCloseTo(cash - cost - w);
-    expect(applyCommand(s, { type: 'addWindows', side: 'left' }).ok).toBe(false);
+    const f = s.shop.floor;
+    for (let z = f.z0; z < f.z1; z++) expect(place(s, 'window', f.x0, z, 1).ok).toBe(true);
+    expect(s.cash).toBeCloseTo(cash - cost - FIXTURES.window.price * (f.z1 - f.z0));
     expect(looksOf(s).extras).toBeGreaterThan(before.extras + 0.2);
     // Too poor: refused, nothing taken.
     s.cash = 5;
     expect(applyCommand(s, { type: 'setFloor', style: 'stone' }).ok).toBe(false);
     expect(s.cash).toBe(5);
+  });
+
+  it('puts windows in one at a time: in a side or back wall, never the front, and a shelf may stand in front of one', () => {
+    const s = shop();
+    const f = s.shop.floor;
+    // Its back to the left wall, facing in.
+    expect(place(s, 'window', f.x0, -4, 1).ok).toBe(true);
+    // Facing the wrong way, in the middle of the floor, or against the glazed front: no.
+    expect(canPlace(s, 'window', f.x0, -3, 3).reason).toMatch(/wall/);
+    expect(canPlace(s, 'window', -0.5, -3, 0).ok).toBe(false);
+    expect(canPlace(s, 'window', f.x0, f.z1 - 1, 2).reason).toMatch(/front/);
+    // The same window twice, or a wall light on it: no. A shelf in front of it: yes; the next tile along: yes.
+    expect(canPlace(s, 'window', f.x0, -4, 1).ok).toBe(false);
+    expect(canPlace(s, 'wallLight', f.x0, -4, 1).ok).toBe(false);
+    expect(place(s, 'shelf', f.x0, -4, 1).ok).toBe(true);
+    expect(place(s, 'window', f.x0, -5, 1).ok).toBe(true);
+    // In the back wall, over the delivery pallet, but never over the back door.
+    expect(place(s, 'window', f.x0, f.z0, 0).ok).toBe(true);
+    expect(canPlace(s, 'window', s.shop.backDoor.x - 0.5, f.z0, 0).reason).toMatch(/door/);
+    // Built bigger, the windows go out with their walls.
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).ok).toBe(true);
+    const wins = s.shop.fixtures.filter((x) => x.type === 'window');
+    expect(wins.filter((x) => x.rot === 1).every((x) => x.x === s.shop.floor.x0)).toBe(true);
+    expect(wins.filter((x) => x.rot === 0).every((x) => x.z === s.shop.floor.z0)).toBe(true);
+  });
+
+  it('turns an old save\'s whole walls of windows into a window on each tile', () => {
+    const s = shop();
+    s.shop.windows = { right: true, back: true };
+    windowsFromSides(s);
+    const f = s.shop.floor;
+    const wins = s.shop.fixtures.filter((x) => x.type === 'window');
+    expect(wins.filter((x) => x.rot === 3).length).toBe(f.z1 - f.z0);
+    expect(wins.filter((x) => x.rot === 0).length).toBe(f.x1 - f.x0 - 1);
+    expect(s.shop.windows).toBeUndefined();
   });
 
   it('counts furniture, decor and lights toward the looks, each kind up to its cap', () => {

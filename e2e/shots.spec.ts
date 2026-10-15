@@ -530,7 +530,7 @@ test.describe('screenshots', () => {
     ];
     for (const [fixtureType, x, z, rot] of put) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType, x, z, rot });
     await hooks(page, 'dispatch', { type: 'setFloor', style: 'wood' });
-    await hooks(page, 'dispatch', { type: 'addWindows', side: 'left' });
+    for (const z of [-7, -5, -4, -3, -2, -1]) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType: 'window', x: -3.5, z, rot: 1 });
     await follow(page, 0, -3.5, 10, 0, 2000);
     await page.keyboard.press('KeyB');
     await page.locator('.card.t-build').getByRole('tab', { name: 'Furniture' }).click();

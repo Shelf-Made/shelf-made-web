@@ -4,7 +4,7 @@
  */
 import { pickUpLitter, moveAlong } from './life';
 import { replyToReview } from './reviews';
-import type { GameState, Rot, FixtureType, FloorStyle, WindowSide } from './types';
+import type { GameState, Rot, FixtureType, FloorStyle } from './types';
 import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock } from './people';
 import { fixtureBackWorld } from './grid';
@@ -15,7 +15,7 @@ import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift } from './staff';
-import { canPlace, expandShop, expandLot, moveFixture, setFloor, addWindows } from './build';
+import { canPlace, expandShop, expandLot, moveFixture, setFloor } from './build';
 import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
 import { schemeById } from './schemes';
@@ -60,7 +60,6 @@ export type Command =
   | { type: 'openingEvent' }
   | { type: 'signStyle'; style: 'classic' | 'lit' }
   | { type: 'setFloor'; style: FloorStyle }
-  | { type: 'addWindows'; side: WindowSide }
   | { type: 'ackChampion' }
   | { type: 'takeLoan'; offerId: string }
   | { type: 'repayLoan'; loanId: number; amount: number }
@@ -263,7 +262,6 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'buyCorner': { const err = buyCorner(state, cmd.rivalId, cmd.managerId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'openingEvent': { const err = bookOpeningEvent(state); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setFloor': { const err = setFloor(state, cmd.style); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
-    case 'addWindows': { const err = addWindows(state, cmd.side); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'signStyle': {
       if (cmd.style === 'lit' && !state.goals.unlocked.includes('signLit') && !state.sandbox) return { ok: false, message: 'Reach the Regulars goal to light the sign.' };
       state.shop.signStyle = cmd.style; state.shop.layoutVersion++;

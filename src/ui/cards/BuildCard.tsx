@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS, FLOORS } from '@/sim/layout';
-import type { BuildCategory, FixtureType, WindowSide } from '@/sim/types';
-import { floorCost, windowCost } from '@/sim/build';
+import type { BuildCategory, FixtureType } from '@/sim/types';
+import { floorCost } from '@/sim/build';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
 import { StoresSection } from './StoresSection';
@@ -21,10 +21,9 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   bench: 'A seat by the door', sofa: 'A comfier seat', cafe: 'A table and two chairs', desk: 'Questions answered here', basketStack: 'Baskets by the door',
   trolleys: 'Trolleys for big shops', bin: 'Keeps the floor cleaner', speaker: 'Music in the aisles', screen: 'Shows your offers', bookcase: 'Magazines and papers',
   plant: 'Shoppers like plants', flowers: 'Pots of herbs and flowers', sign: 'Shoppers find things faster', rug: 'Walk on it', doormat: 'Just inside the door',
-  wall: 'Divide the floor', wallWindow: 'A wall you can see through', doorway: 'A wall you can walk through', railing: 'A low divider', gate: 'A railing you can walk through',
+  window: 'In a side or back wall, one tile at a time', wall: 'Divide the floor', wallWindow: 'A wall you can see through', doorway: 'A wall you can walk through', railing: 'A low divider', gate: 'A railing you can walk through',
   floorLamp: 'Warm light after dark', wallLight: 'On an outside wall', pendant: 'Hangs over the aisle', neon: 'On an outside wall, always lit',
 };
-const SIDES: { id: WindowSide; label: string }[] = [{ id: 'left', label: 'Left wall' }, { id: 'right', label: 'Right wall' }, { id: 'back', label: 'Back wall' }];
 
 /** The swatch for a floor finish: two tiles of its colours. */
 function floorSwatch(id: string, light: string): string {
@@ -111,16 +110,6 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <div><div className="name">Bigger car park</div><div className="sub">{s.shop.lotRows > 1 ? `${s.shop.bays.length} bays` : `Twice the bays · ${money(LOT_EXPANSION_COST)}`}</div></div>
             {s.shop.lotRows === 1 && <button className="btn small" disabled={s.cash < LOT_EXPANSION_COST} onClick={() => runtime.dispatch({ type: 'expandLot' })}>Expand</button>}
           </div>
-          <h3>Windows</h3>
-          {SIDES.map(({ id, label }) => {
-            const has = !!s.shop.windows?.[id], cost = windowCost(s, id);
-            return (
-              <div className="item" key={id}>
-                <div><div className="name">{label}</div><div className="sub">{has ? 'Windows in' : money(cost)}</div></div>
-                {!has && <button className="btn small" disabled={s.cash < cost} onClick={() => runtime.dispatch({ type: 'addWindows', side: id })}>Add windows</button>}
-              </div>
-            );
-          })}
           <h3>Sign letters</h3>
           <div className="item">
             <div><div className="name">{s.shop.signStyle === 'lit' ? 'Lit letters' : 'Painted letters'}</div><div className="sub">{s.goals.unlocked.includes('signLit') || s.sandbox ? 'Lit letters glow after dark' : 'Unlocks with the Regulars goal'}</div></div>

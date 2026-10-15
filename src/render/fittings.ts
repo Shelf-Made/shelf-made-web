@@ -24,16 +24,44 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   sofa: 'furniture/bench-cushion', cafe: 'gen:cafe', desk: 'gen:desk', bin: 'furniture/trashcan', trolleys: 'gen:trolleys', speaker: 'furniture/speaker',
   screen: 'gen:screen', bookcase: 'gen:bookcase', flowers: 'gen:flowers', rug: 'gen:rug', doormat: 'gen:doormat',
   wall: 'gen:wall', wallWindow: 'gen:wallWindow', doorway: 'gen:doorway', railing: 'gen:railing', gate: 'market/fence-door',
-  floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon',
+  floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
-export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway']);
+export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim']);
+/** Pieces that vanish (rather than being cut down) with the walls: a window's frame has nothing left to frame. */
+export const GONE_WITH_WALLS: ReadonlySet<string> = new Set(['gen:windowTrim']);
 
 /** Tiles' floor finish sits 0.0125 up: flat things lie on top of it. */
 const ON_FLOOR = 0.014;
 /** The inside face of the shop's outer wall, from the centre of a tile against it. */
 const WALL_FACE = -0.44;
+
+/** The opening of a window in the shell's walls (Kenney's wall-window), across the wall and up it, from the tile's centre. */
+export function windowOpening(assets: AssetLibrary): { w: number; y0: number; y1: number } {
+  const g = assets.glassGeometry('market/wall-window');
+  if (!g) return { w: 0.56, y0: 0.3, y1: 0.78 };
+  g.computeBoundingBox();
+  const b = g.boundingBox!;
+  return { w: b.max.x - b.min.x, y0: b.min.y, y1: b.max.y };
+}
+
+/** A window's frame and sill on the inside of the wall, in the shop's white trim. */
+function windowTrim(assets: AssetLibrary): BufferGeometry {
+  const pal = assets.palette;
+  const o = windowOpening(assets), t = 0.035, z = WALL_FACE + 0.012, h = o.y1 - o.y0;
+  return merge([
+    box(pal, '#FFFFFF', o.w + 2 * t + 0.04, 0.028, 0.075, 0, o.y0 - 0.028, WALL_FACE + 0.035),
+    box(pal, '#FFFFFF', t, h, 0.024, -o.w / 2 - t / 2, o.y0, z), box(pal, '#FFFFFF', t, h, 0.024, o.w / 2 + t / 2, o.y0, z),
+    box(pal, '#FFFFFF', o.w + 2 * t, t, 0.024, 0, o.y1, z),
+  ]);
+}
+
+/** Placing a window: its frame and a pane filling the opening, so the ghost reads as a window in the wall. */
+export function windowGhost(assets: AssetLibrary): BufferGeometry {
+  const o = windowOpening(assets);
+  return merge([windowTrim(assets), box(assets.palette, '#FFFFFF', o.w, o.y1 - o.y0, 0.02, 0, o.y0, WALL_FACE + 0.004)]);
+}
 
 /** A composed piece. */
 export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): BufferGeometry {
@@ -59,6 +87,7 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:wallLight': return merge([m('furniture/lamp-wall', 0, 0.62, WALL_FACE + 0.06, 0, 1.6)]);
     case 'gen:pendant': return merge([box(pal, '#38383D', 0.008, 0.2, 0.008, 0, 0.8, 0), m('furniture/lamp-square-ceiling', 0, 0.64, 0, 0, 1.6)]);
     case 'gen:neon': return merge([box(pal, '#222226', 0.56, 0.3, 0.02, 0, 0.52, WALL_FACE + 0.01)]);
+    case 'gen:windowTrim': return windowTrim(assets);
   }
   return assets.geometry('market/column');
 }
