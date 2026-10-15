@@ -6,7 +6,7 @@ import { pickUpLitter, moveAlong } from './life';
 import { replyToReview } from './reviews';
 import type { GameState, Rot, FixtureType, FloorStyle, WindowSide } from './types';
 import { placeOrder, openTomorrow } from './economy';
-import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerStock } from './people';
+import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
 import { PLOTS, FIXTURES } from './layout';
@@ -31,6 +31,7 @@ export type Command =
   | { type: 'walkTo'; x: number; z: number }
   | { type: 'openShop' }
   | { type: 'pickUp'; productId?: string }
+  | { type: 'putBack' }
   | { type: 'stockFixture'; fixtureId: number }
   | { type: 'setTimeScale'; scale: number }
   /** In person: scan only if you are already at the till (no walking for you). */
@@ -130,6 +131,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       return { ok: true };
     }
     case 'pickUp': { const err = ownerPickUp(state, cmd.productId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'putBack': { const err = ownerPutBack(state); return err ? { ok: false, message: err } : { ok: true }; }
     case 'stockFixture': { const err = ownerStock(state, cmd.fixtureId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setTimeScale': { state.timeScale = [1, 2, 4].includes(cmd.scale) ? cmd.scale : 1; return { ok: true }; }
     case 'scanHere': {

@@ -1005,7 +1005,7 @@ export class GameRuntime {
       return { text: kind === 'poop' ? 'Clear up after the dog' : 'Pick up the litter', ok: true, key: 'use', run: () => { this.dispatch({ type: 'cleanTown', litterId: t.id }); } };
     }
     if (t.kind === 'delivery') {
-      if (owner.carrying) return { text: 'Put the box back', ok: true, key: 'use', run: () => { this.dispatch({ type: 'pickUp', productId: undefined }); } };
+      if (owner.carrying) return { text: `Put the ${productDef(owner.carrying.productId).name} back`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'putBack' }); } };
       const pid = neediestInStorage(s);
       if (!pid) return { text: 'No boxes yet: order stock', ok: false, key: null, run: null };
       const qty = Math.min(8, s.shop.storage.filter((e) => e.productId === pid).reduce((a, e) => a + e.qty, 0));

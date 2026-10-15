@@ -653,14 +653,34 @@ export function neediestInStorage(state: GameState): string | null {
   return best ?? [...have.keys()][0]!;
 }
 
+/** Is someone close enough to the delivery pallet to reach it? */
+function atPallet(state: GameState, p: Person): boolean {
+  const d = state.shop.delivery;
+  const lo = toLocal(state.shop, p.x, p.z);
+  const zone = toWorld(state.shop, Math.max(d.x0, Math.min(d.x1, lo.x)), Math.max(d.z0, Math.min(d.z1, lo.z)));
+  return Math.hypot(p.x - zone.x, p.z - zone.z) <= 1.4;
+}
+
+/** Put the box you are holding back on the pallet (in person: next to it), hands empty after. */
+export function ownerPutBack(state: GameState): string | null {
+  const o = state.people.find((x) => x.kind === 'owner');
+  if (!o) return 'Nobody to carry.';
+  if (!o.carrying) return 'You are not holding a box.';
+  if (!atPallet(state, o)) return 'Walk over to the pallet first.';
+  const { productId, qty } = o.carrying;
+  const same = state.shop.storage.find((e) => e.productId === productId && e.day === state.day);
+  if (same) same.qty += qty; else state.shop.storage.push({ productId, qty, day: state.day });
+  o.carrying = null;
+  o.anim = 'idle';
+  cue(state, 'thud');
+  return null;
+}
+
 /** Pick up a box from the delivery zone (in person: you must be standing next to it). */
 export function ownerPickUp(state: GameState, productId?: string): string | null {
   const o = state.people.find((x) => x.kind === 'owner');
   if (!o) return 'Nobody to carry.';
-  const d = state.shop.delivery;
-  const lo = toLocal(state.shop, o.x, o.z);
-  const zone = toWorld(state.shop, Math.max(d.x0, Math.min(d.x1, lo.x)), Math.max(d.z0, Math.min(d.z1, lo.z)));
-  if (Math.hypot(o.x - zone.x, o.z - zone.z) > 1.4) return 'Walk over to the boxes first.';
+  if (!atPallet(state, o)) return 'Walk over to the boxes first.';
   if (o.carrying) {
     // Put back what you hold first, then take the new box.
     state.shop.storage.push({ productId: o.carrying.productId, qty: o.carrying.qty, day: state.day });

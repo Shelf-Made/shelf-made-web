@@ -21,14 +21,19 @@ export const MODEL_OFFSET: Partial<Record<FixtureType, number>> = { freezer: 0.2
 /** A box on a fixture, in fixture-local space (fixture faces +z), where one slot's stock stands. */
 export interface SlotBox { x0: number; x1: number; z0: number; z1: number; y: number; h: number; /** stock faces −z (back of a double-sided shelf) */ back?: boolean }
 
-const half = (y: number, h: number, back = false): SlotBox[] => [{ x0: -0.29, x1: 0.29, z0: back ? -0.31 : 0.04, z1: back ? -0.04 : 0.31, y, h, back }];
+const half = (y: number, h: number, back = false): SlotBox[] => [{ x0: -0.33, x1: 0.33, z0: back ? -0.24 : 0.02, z1: back ? -0.02 : 0.24, y, h, back }];
 
-/** Measured from shelf-boxes: tiers at y 0.175 and 0.55, double-sided at z ±0.15. */
+/**
+ * Measured from the models' boards (model space, before MODEL_OFFSET): shelf-boxes has boards at
+ * y 0.18 and 0.55 spanning x ±0.35, z ±0.25, stocked from both sides; shelf-bags' boards top out at
+ * y 0.21 and 0.58; shelf-end's are only 0.2 deep (z −0.30..−0.10, its pivot on the front face);
+ * display-bread's crate floor is at y 0.27 within x ±0.25, z ±0.20.
+ */
 export const SLOT_BOXES: Partial<Record<FixtureType, SlotBox[]>> = {
   shelf: [...half(0.18, 0.33), ...half(0.555, 0.3), ...half(0.18, 0.33, true), ...half(0.555, 0.3, true)],
-  rack: [...half(0.3, 0.3), ...half(0.675, 0.25)],
-  endcap: [{ x0: -0.29, x1: 0.29, z0: -0.09, z1: 0.1, y: 0.18, h: 0.32 }, { x0: -0.29, x1: 0.29, z0: -0.09, z1: 0.1, y: 0.555, h: 0.28 }],
-  produce: [{ x0: -0.3, x1: -0.02, z0: -0.2, z1: 0.22, y: 0.235, h: 0.24 }, { x0: 0.02, x1: 0.3, z0: -0.2, z1: 0.22, y: 0.235, h: 0.24 }],
+  rack: [...half(0.21, 0.3), ...half(0.58, 0.25)],
+  endcap: [{ x0: -0.33, x1: 0.33, z0: -0.29, z1: -0.11, y: 0.17, h: 0.33 }, { x0: -0.33, x1: 0.33, z0: -0.29, z1: -0.11, y: 0.55, h: 0.24 }],
+  produce: [{ x0: -0.24, x1: -0.01, z0: -0.19, z1: 0.19, y: 0.27, h: 0.2 }, { x0: 0.01, x1: 0.24, z0: -0.19, z1: 0.19, y: 0.27, h: 0.2 }],
   // The chiller is Kenney's chest freezer with its painted lid removed; stock stands in the lit well.
   fridge: [
     { x0: -0.29, x1: -0.01, z0: 0.0, z1: 0.19, y: 0.13, h: 0.17 }, { x0: 0.01, x1: 0.29, z0: 0.0, z1: 0.19, y: 0.13, h: 0.17 },

@@ -186,6 +186,25 @@ describe('simulation', () => {
     expect(p.x).toBeGreaterThan(s.shop.floor.x0);
     expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeCloseTo(1, 5);
   });
+  it('a box you are holding goes back on the pallet, and stays there', () => {
+    const s = newGame({ seed: 11, plotId: 'main', name: 'Back' });
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    const d = s.shop.delivery;
+    const at = (x: number, z: number) => { const w = toWorld(s.shop, x, z); o.x = o.px = w.x; o.z = o.pz = w.z; };
+    s.shop.storage = [{ productId: 'soup', qty: 20, day: s.day }];
+    expect(applyCommand(s, { type: 'putBack' }).message).toBe('You are not holding a box.');
+    at((d.x0 + d.x1) / 2, (d.z0 + d.z1) / 2);
+    expect(applyCommand(s, { type: 'pickUp', productId: 'soup' }).ok).toBe(true);
+    expect(o.carrying).toEqual({ productId: 'soup', qty: 8 });
+    // Away from the pallet you are told to walk over; next to it the box goes back and your hands are empty.
+    at(s.shop.floor.x1 - 0.5, s.shop.floor.z1 - 0.5);
+    expect(applyCommand(s, { type: 'putBack' }).message).toMatch(/pallet/);
+    expect(o.carrying).toEqual({ productId: 'soup', qty: 8 });
+    at((d.x0 + d.x1) / 2, (d.z0 + d.z1) / 2);
+    expect(applyCommand(s, { type: 'putBack' }).ok).toBe(true);
+    expect(o.carrying).toBeNull();
+    expect(s.shop.storage.reduce((a, e) => a + e.qty, 0)).toBe(20);
+  });
   it('a box goes on a shelf with room even when its own slot is full', () => {
     const s = newGame({ seed: 11, plotId: 'main', name: 'Room' });
     s.cash = 5000;
