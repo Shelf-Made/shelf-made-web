@@ -185,14 +185,20 @@ test.describe('screenshots', () => {
     // Wait for a couple of Cheapo's shoppers to come out with their bags.
     type P = { people: { rivalId?: string; bags?: boolean; x: number; z: number; state: string }[] };
     let seen: { x: number; z: number }[] = [];
-    for (let i = 0; i < 200; i++) {
+    let cheapoPeople: Record<string, number> = {};
+    for (let i = 0; i < 320; i++) {
       // Out on the walkway or the pavement (past the pylon), not still in the doorway.
-      seen = (await hooks<P>(page, 'state')).people.filter((p) => p.rivalId === 'discount' && p.bags && (p.state === 'leaving' || p.state === 'toCar')
-        && Math.hypot(p.x - cx, p.z - (cz + 2 * facing)) < 7 && (p.z - cz) * facing > 2.2);
+      const people = (await hooks<P>(page, 'state')).people.filter((p) => p.rivalId === 'discount');
+      seen = people.filter((p) => p.bags && (p.state === 'leaving' || p.state === 'toCar') && Math.hypot(p.x - cx, p.z - (cz + 2 * facing)) < 7 && (p.z - cz) * facing > 2.2);
+      cheapoPeople = {}; for (const p of people) cheapoPeople[`${p.state}${p.bags ? '+bags' : ''}`] = (cheapoPeople[`${p.state}${p.bags ? '+bags' : ''}`] ?? 0) + 1;
       if (seen.length >= 2 || (seen.length && i > 100)) break;
+      // The town is a new one every run (its seed is random): never wait on luck. After a minute,
+      // whoever is inside comes out now; later, a few more are sent along.
+      if (i === 60 || i === 180) await page.evaluate(() => { const st = (window as unknown as { __shelf: { state: () => { people: { rivalId?: string; state: string; timer: number }[] } } }).__shelf.state(); for (const p of st.people) if (p.rivalId === 'discount' && p.state === 'inRival') p.timer = 0.05; });
+      if (i === 120 || i === 240) await hooks(page, 'rivalShoppers', 'discount', 6);
       await hooks(page, 'advanceScan', 1, 2);
     }
-    expect(seen.length, 'a Cheapo shopper with bags on the pavement').toBeGreaterThan(0);
+    expect(seen.length, `a Cheapo shopper with bags on the pavement (Cheapo's shoppers: ${JSON.stringify(cheapoPeople)})`).toBeGreaterThan(0);
     // Centre on one of them (not the sale sign over the pavement), from in front of the store and to one side.
     await hooks(page, 'viewWorld', seen[0]!.x, seen[0]!.z, facing > 0 ? 0.8 : Math.PI + 0.8, 8, 0.75);
     await settle(page, 1500);
