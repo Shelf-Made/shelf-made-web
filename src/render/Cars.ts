@@ -14,7 +14,7 @@ export class CarsView {
 
   init(): void {
     this.meshes = CAR_MODEL_IDS.map((id) => {
-      const m = new InstancedMesh(this.assets.geometry(id), this.assets.material, 48);
+      const m = new InstancedMesh(this.assets.geometry(id), this.assets.plainMaterial, 48);
       m.castShadow = false; m.receiveShadow = true; m.count = 0; m.frustumCulled = false;
       this.group.add(m);
       return m;

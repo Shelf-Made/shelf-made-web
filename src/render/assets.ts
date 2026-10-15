@@ -2,9 +2,14 @@ import type { Object3D, SkinnedMesh, Texture, AnimationClip, Material} from 'thr
 import { BufferGeometry, Group, Mesh, MeshStandardMaterial, TextureLoader, Matrix4, MeshBasicMaterial, Color, Float32BufferAttribute, type BufferAttribute } from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { detailTexture, addSurfaceDetail } from './detail';
 import { PaletteMap, configureAtlas, type PaletteData } from './palette';
 
 export interface ModelInfo { pack: string; name: string; file: string; size: [number, number, number]; min: [number, number, number]; tris: number; skinned: boolean; clips: string[] }
+
+/** Every fetch carries the build id: a deploy is never answered from the browser cache of the last one. */
+const BUILD_QUERY = typeof __BUILD_ID__ === 'string' ? `?v=${__BUILD_ID__}` : '';
+declare const __BUILD_ID__: string;
 
 export interface CharacterAsset { scene: Group; clips: AnimationClip[]; info: ModelInfo }
 
@@ -17,6 +22,8 @@ export class AssetLibrary {
   atlas!: Texture;
   palette!: PaletteMap;
   material!: MeshStandardMaterial;
+  /** Without surface detail: for people, cars, products and the pictures of them. */
+  plainMaterial!: MeshStandardMaterial;
   glass!: MeshStandardMaterial;
   unlit!: MeshBasicMaterial;
   index = new Map<string, ModelInfo>();
@@ -29,21 +36,26 @@ export class AssetLibrary {
 
   async loadCore(onProgress?: (done: number, total: number) => void): Promise<void> {
     const [palette, index, atlas] = await Promise.all([
-      fetch(`${this.base}textures/palette.json`).then((r) => r.json() as Promise<PaletteData>),
-      fetch(`${this.base}models/index.json`).then((r) => r.json() as Promise<{ models: ModelInfo[] }>),
-      new TextureLoader().loadAsync(`${this.base}textures/atlas.png`),
+      fetch(`${this.base}textures/palette.json${BUILD_QUERY}`).then((r) => r.json() as Promise<PaletteData>),
+      fetch(`${this.base}models/index.json${BUILD_QUERY}`).then((r) => r.json() as Promise<{ models: ModelInfo[] }>),
+      new TextureLoader().loadAsync(`${this.base}textures/atlas.png${BUILD_QUERY}`),
     ]);
     this.palette = new PaletteMap(palette);
     for (const m of index.models) this.index.set(`${m.pack}/${m.name}`, m);
     configureAtlas(atlas);
     this.atlas = atlas;
-    this.material = new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false });
+    // The town and the shops wear surface detail (grain, slab joints, asphalt specks); people, cars and
+    // the products on the shelves keep the clean material.
+    this.plainMaterial = new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false });
+    this.material = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detailTexture());
     this.glass = new MeshStandardMaterial({ color: new Color('#CFE9F7'), roughness: 0.2, metalness: 0, transparent: true, opacity: 0.45, depthWrite: false });
     this.unlit = new MeshBasicMaterial({ map: atlas });
     onProgress?.(1, 1);
   }
 
   has(id: string): boolean { return this.index.has(id); }
+  /** A character that has been loaded (and can be cloned). */
+  hasCharacter(id: string): boolean { return this.chars.has(id); }
 
   /** Load a batch of static models (ids like "market/shelf-boxes") with progress. */
   async loadModels(ids: string[], onProgress?: (done: number, total: number) => void): Promise<void> {
@@ -59,7 +71,7 @@ export class AssetLibrary {
   private async loadOne(id: string): Promise<void> {
     const info = this.index.get(id);
     if (!info) throw new Error(`unknown model ${id}`);
-    const gltf: GLTF = await this.loader.loadAsync(`${this.base}${info.file}`);
+    const gltf: GLTF = await this.loader.loadAsync(`${this.base}${info.file}${BUILD_QUERY}`);
     if (info.skinned) {
       this.chars.set(id, { scene: gltf.scene, clips: gltf.animations, info });
       gltf.scene.traverse((o) => { if ((o as Mesh).isMesh) ((o as Mesh).material as Material) = this.material; });

@@ -15,6 +15,8 @@ import { StreetView } from './StreetView';
 import { AmbientView } from './Ambient';
 import { Overlays, type OverlayKind } from './Overlays';
 import { buildTown, type TownPlan } from './town';
+import { renderProductThumbs, renderCharacterThumbs } from './thumbnails';
+import { PRODUCTS } from '@/sim/products';
 import type { GameState, CustomerType } from '@/sim/types';
 import { DAY_SECONDS, toLocal } from '@/sim/layout';
 
@@ -57,6 +59,10 @@ export class WorldRenderer {
   private night = false;
   private readonly tmpFocus = new Vector3();
   quality: 'high' | 'medium' | 'low' = 'high';
+  /** A picture of every product (PNG data URLs), rendered at load from the shelf models. */
+  productThumbs: Record<string, string> = {};
+  /** Portraits of every character (for the manager designer), by model id. */
+  characterThumbs: Record<string, string> = {};
   /** Who the camera tracks instead of the manager (the inspect panel's Follow), or nobody. */
   followId: number | null = null;
   private lastAlpha = 0;
@@ -95,6 +101,8 @@ export class WorldRenderer {
     const all = [...new Set([...StaticWorld.modelsNeeded(plan), ...STORE_MODELS, ...PEOPLE_MODELS, ...RIVAL_MODELS])].filter((id) => this.assets.has(id));
     await this.assets.loadModels(all, (done, total) => onProgress(0.05 + 0.85 * (done / total), `Loading models (${done}/${total})`));
     await this.store.init();
+    this.productThumbs = renderProductThumbs(this.renderer, this.assets, PRODUCTS.map((p) => p.id));
+    this.characterThumbs = renderCharacterThumbs(this.renderer, this.assets, PEOPLE_MODELS.filter((id) => this.assets.hasCharacter(id)));
     this.cars.init();
     this.scene.add(this.marker.group);
     onProgress(1, 'Ready');

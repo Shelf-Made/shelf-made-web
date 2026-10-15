@@ -1,4 +1,4 @@
-import { BufferGeometry, Float32BufferAttribute, Color } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Color, CanvasTexture, RepeatWrapping, SRGBColorSpace } from 'three';
 import type { PaletteMap } from './palette';
 import { box, merge } from './geometry';
 import { BUS_STOP, BILLBOARDS } from '@/sim/layout';
@@ -14,7 +14,8 @@ const STEP = 2, FAR = 320;
 export function terrainGeometry(): BufferGeometry {
   const pos: number[] = [], col: number[] = [];
   const c = new Color();
-  const push = (x: number, z: number) => { pos.push(x, 0, z); colourAt(c, x, z); col.push(c.r, c.g, c.b); };
+  // A touch brighter than the palette: the grass texture over them is a little darker than white on average.
+  const push = (x: number, z: number) => { pos.push(x, 0, z); colourAt(c, x, z); col.push(c.r * 1.12, c.g * 1.12, c.b * 1.12); };
   for (let z = INNER.z0; z < INNER.z1; z += STEP) for (let x = INNER.x0; x < INNER.x1; x += STEP) {
     const flip = ((x - INNER.x0) / STEP + (z - INNER.z0) / STEP) % 2;
     const a: [number, number] = [x, z], b: [number, number] = [x + STEP, z], d: [number, number] = [x, z + STEP], e: [number, number] = [x + STEP, z + STEP];
@@ -27,9 +28,54 @@ export function terrainGeometry(): BufferGeometry {
   const g = new BufferGeometry();
   g.setAttribute('position', new Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new Float32BufferAttribute(col, 3));
+  // World-space UVs: the grass texture repeats every GRASS_TILE units whatever the triangle.
+  const uv: number[] = [];
+  for (let i = 0; i < pos.length; i += 3) uv.push(pos[i]! / GRASS_TILE, pos[i + 2]! / GRASS_TILE);
+  g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
   g.translate(0, -0.02, 0);
   return g;
+}
+
+/** World units per repeat of the grass texture. */
+export const GRASS_TILE = 2.6;
+
+/**
+ * Lawn detail, multiplied over the terrain's mottled greens: short blades in lighter and darker
+ * shades, a few clover dots and soft patches, drawn on a canvas that tiles seamlessly. Mostly near
+ * white so the colours underneath still lead. Null outside a browser.
+ */
+export function grassTexture(size = 512): CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const ctx = cv.getContext('2d'); if (!ctx) return null;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  ctx.fillStyle = 'rgb(246,248,240)'; ctx.fillRect(0, 0, size, size);
+  // Draw everything three times across each edge so the tile wraps without a seam.
+  const wrap = (fn: (ox: number, oy: number) => void) => { for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) fn(ox, oy); };
+  for (let i = 0; i < 70; i++) {
+    const x = rnd() * size, y = rnd() * size, r = 18 + rnd() * 50, light = rnd() < 0.5;
+    wrap((ox, oy) => { const gr = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); gr.addColorStop(0, light ? 'rgba(255,255,240,0.22)' : 'rgba(150,175,120,0.16)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = gr; ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2); });
+  }
+  ctx.lineCap = 'round';
+  const shades = ['rgba(170,196,140,0.85)', 'rgba(195,214,165,0.8)', 'rgba(255,255,236,0.75)', 'rgba(150,180,130,0.7)', 'rgba(222,236,190,0.8)'];
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd() * size, y = rnd() * size, len = 5 + rnd() * 9, ang = -Math.PI / 2 + (rnd() - 0.5) * 1.3;
+    ctx.strokeStyle = shades[Math.floor(rnd() * shades.length)]!; ctx.lineWidth = 1.2 + rnd() * 1.4;
+    wrap((ox, oy) => { ctx.beginPath(); ctx.moveTo(x + ox, y + oy); ctx.lineTo(x + ox + Math.cos(ang) * len, y + oy + Math.sin(ang) * len); ctx.stroke(); });
+  }
+  // Clover: little three-leaf dots in a deeper green.
+  for (let i = 0; i < 90; i++) {
+    const x = rnd() * size, y = rnd() * size;
+    ctx.fillStyle = rnd() < 0.85 ? 'rgba(140,175,115,0.85)' : 'rgba(255,250,235,0.9)';
+    wrap((ox, oy) => { for (let k = 0; k < 3; k++) { const a = k * 2.09; ctx.beginPath(); ctx.arc(x + ox + Math.cos(a) * 2.4, y + oy + Math.sin(a) * 2.4, 2.1, 0, Math.PI * 2); ctx.fill(); } });
+  }
+  const tex = new CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = RepeatWrapping;
+  tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
 }
 
 function h01(x: number, z: number): number { const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return s - Math.floor(s); }

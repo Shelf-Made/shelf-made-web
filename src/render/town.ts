@@ -11,7 +11,7 @@
  * Every corner is a Lot (a property rectangle). Lots never overlap and never touch a road.
  */
 import { Rng } from '@/sim/rng';
-import { ROAD_Z, ROAD_FAR, PLOT_RECT, CORNERS, CORNER_IDS, SIDE_HALF, SIDEWALK_W_X, SIDEWALK_E_X, STREET_BAYS, BUS_STOP, MAP_X, MAP_Z, cornerOfPlot, rectToWorld, lotLayout, SHOP_SIZES, type Rect as SimRect } from '@/sim/layout';
+import { ROAD_Z, ROAD_FAR, PLOT_RECT, CORNERS, CORNER_IDS, SIDE_HALF, ZEBRA, SIDEWALK_W_X, SIDEWALK_E_X, STREET_BAYS, BUS_STOP, MAP_X, MAP_Z, cornerOfPlot, rectToWorld, lotLayout, SHOP_SIZES, type Rect as SimRect } from '@/sim/layout';
 import { rivalCorners, RIVAL_DEFS } from '@/sim/rivals';
 import type { CornerId } from '@/sim/types';
 
@@ -46,6 +46,10 @@ export interface TownPlan {
 }
 
 
+/** A mix of trees for gardens and clumps: round, oak, conifer and tall shapes, some darker, a few in autumn colours. */
+export const TREE_MIX = ['nature/tree-oak', 'nature/tree-default', 'nature/tree-detailed', 'nature/tree-fat', 'nature/tree-tall', 'nature/tree-cone', 'nature/tree-small',
+  'nature/tree-oak-dark', 'nature/tree-default-dark', 'nature/tree-cone-dark', 'nature/tree-pineroundb', 'nature/tree-thin', 'nature/tree-oak-fall', 'nature/tree-small-fall', 'suburban/tree-large'];
+export const BUSH_MIX = ['nature/plant-bush', 'nature/plant-bushdetailed', 'nature/plant-bushsmall', 'nature/plant-bushlarge', 'nature/plant-flattall'];
 const GARDEN_TREES = ['nature/tree-default', 'nature/tree-oak', 'nature/tree-fat', 'nature/tree-small', 'nature/tree-tall', 'nature/tree-detailed', 'nature/tree-simple'];
 const STREET_TREES = ['suburban/tree-large', 'suburban/tree-small'];
 const BUSHES = ['nature/plant-bush', 'nature/plant-bushsmall', 'nature/plant-bushlarge', 'nature/plant-bushdetailed'];
@@ -103,8 +107,9 @@ export function onPaving(x: number, z: number, m = 0): boolean {
 
 /** Every model the town can place, whatever the seed (loaded up front). */
 export const TOWN_MODEL_IDS: string[] = [...new Set([
-  ...GARDEN_TREES, ...STREET_TREES, ...BUSHES, ...FLOWERS,
-  'roads/road-straight', 'roads/road-crossing', 'roads/road-crossroad', 'roads/lamp', 'roads/dumpster', 'roads/sign-highway', 'roads/traffic-light', 'roads/sign-street', 'roads/electricity-pole',
+  ...GARDEN_TREES, ...STREET_TREES, ...BUSHES, ...FLOWERS, ...TREE_MIX, ...BUSH_MIX,
+  'nature/flower-redb', 'nature/flower-yellowb', 'nature/rock-smallc',
+  'roads/road-straight', 'roads/road-crossroad', 'roads/lamp', 'roads/dumpster', 'roads/sign-highway', 'roads/traffic-light', 'roads/sign-street', 'roads/electricity-pole',
   'suburban/fence', 'suburban/planter', 'nature/fence-simple', 'nature/sign', 'nature/log', 'nature/stump-old', 'nature/stump-round',
   'nature/grass-large', 'nature/plant-flattall', 'nature/mushroom-red', 'nature/tree-small', 'nature/tree-simple', 'nature/plant-bushdetailed', 'nature/rock-smalla', 'nature/rock-smallb',
   'furniture/bench', 'furniture/trashcan', 'commercial/parasol-a', 'commercial/parasol-b',
@@ -129,14 +134,17 @@ export function buildTown(seed: number, plotId: string): TownPlan {
   const FAR = ROAD_FAR + 6;
   for (let x = -FAR; x <= FAR; x += 2) {
     if (x === 0) { P.push({ model: 'roads/road-crossroad', x: 0, y: 0.001, z: ROAD_Z, yaw: 0 }); continue; }
-    const zebra = Math.abs(x) === 2;
-    P.push({ model: zebra ? 'roads/road-crossing' : 'roads/road-straight', x, y: 0.001, z: ROAD_Z, yaw: zebra ? Math.PI / 2 : 0 });
+    P.push({ model: 'roads/road-straight', x, y: 0.001, z: ROAD_Z, yaw: 0 });
   }
   for (let k = -Math.ceil(FAR / 2); k <= Math.ceil(FAR / 2); k++) {
     if (k === 0) continue;
-    const z = ROAD_Z + 2 * k, zebra = Math.abs(k) === 1;
-    P.push({ model: zebra ? 'roads/road-crossing' : 'roads/road-straight', x: 0, y: 0.001, z, yaw: zebra ? 0 : Math.PI / 2 });
+    P.push({ model: 'roads/road-straight', x: 0, y: 0.001, z: ROAD_Z + 2 * k, yaw: Math.PI / 2 });
   }
+  // The zebras are painted, all four the same: slim bars along the traffic, in a soft off-white, where
+  // the walkers actually cross (Kenney's crossing tile drew them bold on one road and sideways on the other).
+  const BAR = 0.15, PITCH = 0.3, ZEBRA_PAINT = '#D8DADF', ZEBRA_Y = 0.045;
+  for (const x of [ZEBRA.west, ZEBRA.east]) for (let z = MAIN_N[1] + 0.12; z + BAR <= MAIN_S[0] - 0.1; z += PITCH) slab(ZEBRA_PAINT, { x0: x - 0.42, z0: z, x1: x + 0.42, z1: z + BAR }, 0.003, ZEBRA_Y);
+  for (const z of [ZEBRA.north, ZEBRA.south]) for (let x = -SIDE_HALF + 0.1; x + BAR <= SIDE_HALF - 0.08; x += PITCH) slab(ZEBRA_PAINT, { x0: x, z0: z - 0.42, x1: x + BAR, z1: z + 0.42 }, 0.003, ZEBRA_Y);
   // Sidewalks. The corner shops draw their own frontage (with driveway cuts); the town draws the rest.
   const span = (x0: number, x1: number) => { slab(PAVEMENT, { x0, z0: MAIN_N[0], x1, z1: MAIN_N[1] }, 0.06); slab(PAVEMENT, { x0, z0: MAIN_S[0], x1, z1: MAIN_S[1] }, 0.06); };
   // A corner lot reaches from |x| = 2.9 to 23.5; beyond it the town's own sidewalk runs on.
@@ -190,6 +198,21 @@ export function buildTown(seed: number, plotId: string): TownPlan {
   }
   // Street trees on Elm Street's west verge, both arms.
   for (const z of [-6, -11, -16, 9, 14, 19]) P.push({ model: rng.pick(STREET_TREES), x: -SIDE_HALF - 0.45, z, yaw: rng.range(0, 6.28), scale: 0.9 });
+
+  // ---- Clumps of mixed trees and bushes round the corners' outer edges (not a forest, and nothing past the
+  // edge of town: out there only the roads run on): a few species and sizes in each, never on paving or a corner.
+  const trng = new Rng(seed ^ 0x7e3e);
+  for (let cz = TOWN.z0 - 2; cz <= TOWN.z1 + 2; cz += 3.2) for (let cx = TOWN.x0 - 2; cx <= TOWN.x1 + 2; cx += 3.2) {
+    const x0 = cx + trng.range(-1.2, 1.2), z0 = cz + trng.range(-1.2, 1.2);
+    if (!trng.chance(0.55)) continue;
+    const n = 1 + Math.floor(trng.range(0, 3));
+    for (let i = 0; i <= n; i++) {
+      const tree = i < n;
+      const x = x0 + trng.range(-1.3, 1.3), z = z0 + trng.range(-1.3, 1.3);
+      if (outsideTown(x, z) > 1.5 || onPaving(x, z, tree ? 1.1 : 0.6) || CORNER_IDS.some((c) => inRect(plan.corners[c], x, z, tree ? 0.9 : 0.5))) continue;
+      P.push({ model: tree ? trng.pick(TREE_MIX) : trng.pick(BUSH_MIX), x, z, yaw: trng.range(0, 6.28), scale: tree ? trng.range(0.8, 1.45) : trng.range(0.8, 1.2) });
+    }
+  }
 
   // ---- Grass and flowers on the verges between the corners, thinning out at the edge of town (never on paving or a corner).
   const grng = new Rng(seed ^ 0x9a55);

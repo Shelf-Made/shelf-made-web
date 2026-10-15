@@ -17,7 +17,8 @@ import { FIXTURE_MODEL, MODEL_OFFSET, SLOT_BOXES, productGeometry, productModelI
 import { schemeById, type Scheme } from '@/sim/schemes';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, spillGeometry } from './glow';
 import { BlobShadows } from './blobs';
-import { cornerProps } from './dressing';
+import { cornerProps, pylonSpot, cornerGarden } from './dressing';
+import { tuftMesh } from './StaticWorld';
 import { PROP_MODELS, posterGeometry, buntingGeometry } from './props';
 
 const SLATE = '#38383D', CREAM = '#FFF3DC', YELLOW = '#FFC044';
@@ -79,7 +80,7 @@ export class StoreView {
       const geo = productGeometry(this.assets, p.id);
       geo.computeBoundingBox();
       const b = geo.boundingBox!;
-      const mesh = new InstancedMesh(geo, this.assets.material, 64);
+      const mesh = new InstancedMesh(geo, this.assets.plainMaterial, 64);
       mesh.count = 0; mesh.castShadow = true; mesh.frustumCulled = false; mesh.visible = false;
       this.root.add(mesh);
       this.productMeshes.set(p.id, { mesh, w: b.max.x - b.min.x, h: b.max.y - b.min.y, d: b.max.z - b.min.z, minY: b.min.y });
@@ -202,7 +203,8 @@ export class StoreView {
     slab({ x0: sx, z0: swIn, x1: PLOT_RECT.x1, z1: swOut }, PAVEMENT, 0.06, -0.012);
     for (const [c0, c1] of cuts) slab({ x0: c0!, z0: swIn, x1: c1!, z1: swOut }, '#B9BCC4', 0.034, -0.01);
     // A zebra across the driveway mouth: walkers have priority.
-    for (let i = 0; i < 4; i++) floorParts.push(box(pal, '#F2F2F2', 0.22, 0.004, swOut - swIn - 0.08, ox + L.driveway.x0 + 0.3 + i * 0.44, 0.026, oz + (swIn + swOut) / 2));
+    // Painted like the street's zebras: slim bars along the traffic, in the same soft off-white.
+    for (let x = L.driveway.x0 + 0.2; x + 0.15 <= L.driveway.x1 - 0.1; x += 0.3) floorParts.push(box(pal, '#D8DADF', 0.15, 0.004, swOut - swIn - 0.12, ox + x + 0.075, 0.026, oz + (swIn + swOut) / 2));
     this.dressLot(shop, floorParts);
     const floorMesh = new Mesh(merge(floorParts), this.assets.material);
     floorMesh.receiveShadow = true;
@@ -296,11 +298,13 @@ export class StoreView {
     this.shell.add(fasciaMesh);
     // The fascia stays up whatever the cut-away does: the shop keeps its name.
     // Pylon sign on the lawn by the sidewalk, readable from the street in both directions.
-    const px = ox - L.halfW - 0.6, pz = oz + 1.85;
-    const boardW = 2.6;
+    // Between the service lane and the walkway; the posts sit inside the board's depth so their faces never fight it.
+    const spot = pylonSpot(shop);
+    const px = ox + spot.x, pz = oz + spot.z;
+    const boardW = spot.w;
     const psize = Math.min(0.26, (boardW - 0.35) / Math.max(1, this.textWidth(name, 1)));
     const pylon: BufferGeometry[] = [
-      box(pal, SLATE, 0.12, 1.5, 0.12, px - boardW / 2 + 0.2, 0, pz), box(pal, SLATE, 0.12, 1.5, 0.12, px + boardW / 2 - 0.2, 0, pz),
+      box(pal, SLATE, 0.12, 1.5, 0.08, px - boardW / 2 + 0.2, 0, pz), box(pal, SLATE, 0.12, 1.5, 0.08, px + boardW / 2 - 0.2, 0, pz),
       box(pal, sc.primary, boardW, 0.55, 0.12, px, 1.0, pz), box(pal, sc.dark, boardW + 0.06, 0.05, 0.16, px, 1.55, pz),
     ];
     for (const yaw of [0, Math.PI]) {
@@ -348,30 +352,15 @@ export class StoreView {
    * loose grid, never on paving. A bench and a bin by the door, a dumpster in the yard.
    */
   private dressLot(shop: Shop, parts: BufferGeometry[]): void {
-    const L = lotLayout(shop);
-    const f = shop.floor, ox = 0, oz = 0;
-    const backZ = Math.min(f.z0, shop.storeroom.z0);
-    const used = [
-      { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T }, L.apron, L.aisle, L.driveway, L.serviceLane, L.backYard,
-      { x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3 },
-      { x0: -L.halfW - 2.0, z0: 0, x1: -L.halfW + 0.8, z1: 1.2 }, // pylon sign
-      ...L.bays.map((b) => ({ x0: b.x - 0.9, z0: b.z - 0.6, x1: b.x + 0.9, z1: b.z + 0.6 })),
-    ];
     // Street props first (more as the shop grows), on the lawn beside the paths; then the garden round them.
     const tier = shop.sizeId === 'large' ? 2 : shop.sizeId === 'medium' ? 1 : 0;
     const props = cornerProps(shop, tier, { trolleys: shop.lotRows >= 2 });
-    for (const pr of props) parts.push(this.placed(pr.model, ox + pr.x, oz + pr.z, pr.yaw, pr.scale ?? 1));
-    const free = (x: number, z: number, m: number) => !used.some((r) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m) && !props.some((pr) => Math.hypot(pr.x - x, pr.z - z) < pr.r + m);
-    const swIn = MAIN_N[0] - NORTH_Z;
-    const trees = ['nature/tree-oak', 'nature/tree-default', 'nature/tree-detailed', 'suburban/tree-small'];
-    const bushes = ['nature/plant-bush', 'nature/plant-bushdetailed', 'nature/plant-bushsmall'];
-    const flowers = ['nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea'];
-    for (let z = PLOT_RECT.z0 + 1.1; z < swIn - 0.5; z += 1.0) for (let x = PLOT_RECT.x0 + 1.1; x < PLOT_RECT.x1 - 0.9; x += 1.0) {
-      const k = (Math.round(x * 2) * 7 + Math.round(z * 2) * 13) & 15;
-      if (k === 0 && free(x, z, 1.1)) parts.push(this.placed(trees[(Math.round(x) + Math.round(z)) & 3]!, ox + x, oz + z, x * 1.7, 0.95));
-      else if ((k === 5 || k === 11) && free(x, z, 0.5)) parts.push(this.placed(bushes[Math.abs(Math.round(x * 3)) % 3]!, ox + x, oz + z, z * 2.1, 1));
-      else if (k === 8 && free(x, z, 0.4)) for (let i = 0; i < 3; i++) parts.push(this.placed(flowers[i]!, ox + x + (i - 1) * 0.28, oz + z + (i % 2) * 0.2, i, 1));
-    }
+    for (const pr of props) parts.push(this.placed(pr.model, pr.x, pr.z, pr.yaw, pr.scale ?? 1));
+    const garden = cornerGarden(shop, props, 1);
+    for (const it of garden.items) parts.push(this.placed(it.model, it.x, it.z, it.yaw, it.scale));
+    // Grass tufts and wild flowers all over the lawn: one swaying mesh.
+    const tuft = tuftMesh(this.assets, garden.tufts);
+    if (tuft) this.shell.add(tuft);
   }
 
   private placed(id: string, x: number, z: number, yaw: number, s: number): BufferGeometry {

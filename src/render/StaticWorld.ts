@@ -5,12 +5,12 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { AssetLibrary } from './assets';
 import { TOWN_MODEL_IDS, type TownPlan, type Placement, type ScatterKind } from './town';
 import { box, paint } from './geometry';
-import { terrainGeometry, structuresGeometry } from './terrain';
+import { terrainGeometry, structuresGeometry, grassTexture } from './terrain';
 import { LAMP_GLOW, SPILL, spillGeometry } from './glow';
 
 /** Wind: grass, flowers and leaves sway with height above their base. One clock for all of them. */
 export const wind = { value: 0 };
-function swaying(base: MeshStandardMaterial, amp: number, double = false): MeshStandardMaterial {
+export function swaying(base: MeshStandardMaterial, amp: number, double = false): MeshStandardMaterial {
   const m = base.clone();
   if (double) m.side = DoubleSide;
   m.onBeforeCompile = (sh) => {
@@ -30,7 +30,7 @@ function swaying(base: MeshStandardMaterial, amp: number, double = false): MeshS
 }
 
 /** Generated meadow pieces, all a handful of triangles: a tuft of blades, a flower, a pebble. */
-function scatterGeometry(pal: PaletteMap, kind: ScatterKind): BufferGeometry {
+export function scatterGeometry(pal: PaletteMap, kind: ScatterKind): BufferGeometry {
   const pos: number[] = [], uv: number[] = [];
   const tri = (a: number[], b: number[], c: number[], hex: string) => { const [u, v] = pal.uv(hex); pos.push(...a, ...b, ...c); uv.push(u, v, u, v, u, v); };
   const blade = (ang: number, h: number, lean: number, hex: string, w = 0.03) => {
@@ -57,6 +57,28 @@ function scatterGeometry(pal: PaletteMap, kind: ScatterKind): BufferGeometry {
   g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
   g.computeVertexNormals();
   return g;
+}
+
+/** Grass tufts and wild flowers on a corner's lawn, merged into one swaying mesh (null when there are none). */
+let tuftMat: MeshStandardMaterial | null = null;
+export function tuftMesh(assets: AssetLibrary, tufts: { kind: ScatterKind; x: number; z: number; yaw: number; scale: number }[]): Mesh | null {
+  if (!tufts.length) return null;
+  const geos = new Map<ScatterKind, BufferGeometry>();
+  const d = new Object3D();
+  const parts: BufferGeometry[] = [];
+  for (const t of tufts) {
+    let g = geos.get(t.kind);
+    if (!g) { const raw = scatterGeometry(assets.palette, t.kind); g = raw.index ? raw.toNonIndexed() : raw; geos.set(t.kind, g); }
+    d.position.set(t.x, 0, t.z); d.rotation.set(0, t.yaw, 0); d.scale.setScalar(t.scale); d.updateMatrix();
+    parts.push(g.clone().applyMatrix4(d.matrix));
+  }
+  const merged = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  for (const g of geos.values()) g.dispose();
+  if (!merged) return null;
+  tuftMat ??= swaying(assets.material, 0.22, true);
+  const m = new Mesh(merged, tuftMat); m.name = 'lawn-grass'; m.receiveShadow = true;
+  return m;
 }
 
 const CAR_MODEL_IDS = ['cars/sedan', 'cars/hatchback', 'cars/suv', 'cars/sedan-sports', 'cars/van', 'cars/suv-luxury', 'cars/delivery', 'cars/truck', 'cars/taxi', 'cars/truck-flat', 'cars/delivery-flat', 'cars/garbage-truck'];
@@ -86,7 +108,7 @@ export class StaticWorld {
     const pal = this.assets.palette;
     // The land and the river never change between towns: build them once.
     if (!this.terrain) {
-      const land = new Mesh(terrainGeometry(), new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true }));
+      const land = new Mesh(terrainGeometry(), new MeshStandardMaterial({ vertexColors: true, map: grassTexture(), roughness: 1, metalness: 0, flatShading: true }));
       land.receiveShadow = true; land.name = 'terrain';
       this.terrain = land;
       this.group.add(land);

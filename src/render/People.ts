@@ -1,5 +1,5 @@
 import type { AnimationAction, BufferGeometry, Vector3, Frustum } from 'three';
-import { Group, Mesh, AnimationMixer, LoopRepeat, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color, SkinnedMesh, MeshBasicMaterial, BackSide, ConeGeometry } from 'three';
+import { Group, Mesh, AnimationMixer, AnimationClip, LoopRepeat, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color, SkinnedMesh, MeshBasicMaterial, BackSide, ConeGeometry } from 'three';
 import { BlobShadows } from './blobs';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -8,13 +8,32 @@ import type { GameState, Person, Anim as SimAnim, CustomerType } from '@/sim/typ
 import { box, merge } from './geometry';
 import { bagsGeometry, BAG_HEIGHT } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
-import { paintStrips } from './recolor';
+import { paintStrips, stripOf } from './recolor';
+
+/**
+ * Where each character keeps its skin and its hair in the colour map (row:strip), measured from the
+ * models: the face is the head's one big block of skin (the hands share it), the hair its other big
+ * strip. The eyes are a few dark triangles on the front of the face, kept when the hair shares their strip.
+ * Clothes are row 2 (above the waist a top, below it trousers), but the shop worker wears them in 3:4.
+ */
+const SKIN_STRIP: Record<string, string> = {
+  'people/female-a': '3:6', 'people/male-a': '3:6', 'people/female-b': '3:7', 'people/male-b': '3:7', 'people/female-c': '3:5', 'people/male-c': '3:7',
+  'people/female-d': '3:7', 'people/male-d': '3:7', 'people/female-e': '3:7', 'people/male-e': '3:7', 'people/female-f': '3:7', 'people/male-f': '3:5', 'market/character-employee': '3:5',
+};
+const HAIR_STRIP: Record<string, string> = {
+  'people/female-a': '3:0', 'people/male-a': '3:0', 'people/female-b': '3:5', 'people/male-b': '3:5', 'people/female-c': '3:1', 'people/male-c': '3:5',
+  'people/female-d': '3:5', 'people/male-d': '3:5', 'people/female-e': '3:0', 'people/male-e': '3:6', 'people/female-f': '3:6', 'people/male-f': '3:0', 'market/character-employee': '3:0',
+};
+/** The manager's own colours, if designed (null when it is the character's own look). */
+type Custom = { skin?: string; hair?: string; top?: string; bottom?: string } | null;
+const customOf = (p: Person): Custom => (p.kind === 'owner' && (p.look.skin || p.look.hair || p.look.top || p.look.bottom)) ? { skin: p.look.skin, hair: p.look.hair, top: p.look.top, bottom: p.look.bottom } : null;
+const customKey = (c: Custom) => c ? `${c.skin ?? ''}${c.hair ?? ''}${c.top ?? ''}${c.bottom ?? ''}` : '';
 
 export const PEOPLE_MODELS = ['people/female-a', 'people/male-a', 'people/female-b', 'people/male-b', 'people/female-c', 'people/male-c', 'people/female-d', 'people/male-d', 'people/female-e', 'people/male-e', 'people/female-f', 'people/male-f', 'market/character-employee'];
 
-/** The sim's animations, plus a wave (regulars greet the staff). */
-type Anim = SimAnim | 'greet';
-const CLIP_FOR: Record<Anim, string> = { idle: 'idle', walk: 'walk', browse: 'pick-up', carry: 'holding-both', pay: 'interact-right', sit: 'sit', greet: 'emote-yes' };
+/** The sim's animations, plus two the renderer adds: a wave, and walking with a box (the walk's legs, the carry's arms). */
+type Anim = SimAnim | 'greet' | 'carryWalk';
+const CLIP_FOR: Record<Exclude<Anim, 'carryWalk'>, string> = { idle: 'idle', walk: 'walk', browse: 'pick-up', carry: 'holding-both', pay: 'interact-right', sit: 'sit', greet: 'emote-yes' };
 
 /** A shopper type's colour and the look it gets (no new meshes: recolours and a prop in the free hand). */
 export const TYPE_COLOURS: Record<CustomerType, string> = { bargain: '#FFC044', convenience: '#4F8FE0', loyalist: '#E8573F', impulse: '#7E57C2' };
@@ -49,7 +68,10 @@ interface Instance {
   /** Regulars wave at the staff once as they pass. */
   greetUntil: number;
   greeted: number;
+  /** The manager's look when the figure was built (a redesign rebuilds it). */
+  lookKey: string;
 }
+const lookKey = (p: Person) => `${p.look.model}|${p.look.height}|${customKey(customOf(p))}`;
 
 /** The staff's model: its green apron takes the shop's colour. */
 const UNIFORM_MODEL = 'market/character-employee';
@@ -92,9 +114,9 @@ export class PeopleView {
     const head = box(pal, '#FFFFFF', 0.22, 0.22, 0.2, 0, 0.46, 0);
     // Bags beside the stand-in, a little bigger than life so the store's colour reads from the overview.
     const bag = box(pal, '#FFFFFF', 0.24, 0.26, 0.12, 0.27, 0.02, 0);
-    this.pawnBody = new InstancedMesh(body, this.assets.material, 192);
-    this.pawnHead = new InstancedMesh(head, this.assets.material, 192);
-    this.pawnBags = new InstancedMesh(bag, this.assets.material, 192);
+    this.pawnBody = new InstancedMesh(body, this.assets.plainMaterial, 192);
+    this.pawnHead = new InstancedMesh(head, this.assets.plainMaterial, 192);
+    this.pawnBags = new InstancedMesh(bag, this.assets.plainMaterial, 192);
     for (const m of [this.pawnBody, this.pawnHead, this.pawnBags]) { m.count = 0; m.frustumCulled = false; this.group.add(m); }
   }
   private pawn(state: GameState, p: Person, x: number, z: number, moving: boolean): void {
@@ -138,10 +160,11 @@ export class PeopleView {
     return out;
   }
 
-  private variantGeometry(model: string, variant: number, geo: BufferGeometry, meshName: string, style: Style = ''): BufferGeometry {
-    const key = `${model}|${variant}|${meshName}|${style}`;
+  private variantGeometry(model: string, variant: number, geo: BufferGeometry, meshName: string, style: Style = '', custom: Custom = null): BufferGeometry {
+    const key = `${model}|${variant}|${meshName}|${style}|${customKey(custom)}`;
     const cached = this.variantGeo.get(key);
     if (cached) return cached;
+    if (custom) { const g = this.customGeometry(model, geo, meshName, custom); this.variantGeo.set(key, g); return g; }
     const out = geo.clone();
     if (variant !== 0 || style) {
       // Kenney's colormap strips are gradients and a face's darkest vertex sits exactly on the
@@ -182,6 +205,33 @@ export class PeopleView {
     return out;
   }
 
+  /** The designed manager: the chosen skin, hair, top and trousers painted over the character's own colours. */
+  private customGeometry(model: string, geo: BufferGeometry, meshName: string, c: NonNullable<Custom>): BufferGeometry {
+    const out = geo.index ? geo.toNonIndexed() : geo.clone();
+    const uv = out.getAttribute('uv'), pos = out.getAttribute('position');
+    if (!uv) return out;
+    const pal = this.assets.palette;
+    const dst = new Float32Array(uv.count * 2);
+    for (let i = 0; i < uv.count; i++) { dst[i * 2] = uv.getX(i); dst[i * 2 + 1] = uv.getY(i); }
+    const head = meshName.includes('head'), worker = model === UNIFORM_MODEL;
+    const skin = SKIN_STRIP[model], hair = HAIR_STRIP[model];
+    for (let t = 0; t < uv.count / 3; t++) {
+      const st = stripOf((dst[t * 6]! + dst[t * 6 + 2]! + dst[t * 6 + 4]!) / 3, (dst[t * 6 + 1]! + dst[t * 6 + 3]! + dst[t * 6 + 5]!) / 3);
+      if (!st) continue;
+      const k = `${st.row}:${st.strip}`;
+      const y = (pos.getY(t * 3) + pos.getY(t * 3 + 1) + pos.getY(t * 3 + 2)) / 3, z = (pos.getZ(t * 3) + pos.getZ(t * 3 + 1) + pos.getZ(t * 3 + 2)) / 3;
+      let hex: string | undefined;
+      if (k === skin) hex = c.skin;
+      else if (head && k === hair && !(z > 0.14 && y > 0.38 && y < 0.52)) hex = c.hair;
+      else if (!head && (worker ? k === '3:4' : st.row === 2)) hex = y >= 0.18 ? c.top : c.bottom;
+      if (!hex) continue;
+      const [u, v] = pal.uv(hex);
+      for (let i = 0; i < 3; i++) { dst[(t * 3 + i) * 2] = u; dst[(t * 3 + i) * 2 + 1] = v; }
+    }
+    out.setAttribute('uv', new Float32BufferAttribute(dst, 2));
+    return out;
+  }
+
   private makeDog(): Mesh {
     if (!this.dogGeo) {
       const pal = this.assets.palette;
@@ -192,7 +242,7 @@ export class PeopleView {
         box(pal, D, 0.03, 0.03, 0.1, 0, 0.17, -0.16), box(pal, '#222226', 0.05, 0.03, 0.03, 0, 0.17, 0.22),
       ]);
     }
-    return new Mesh(this.dogGeo, this.assets.material);
+    return new Mesh(this.dogGeo, this.assets.plainMaterial);
   }
 
   private spawn(state: GameState, p: Person): Instance {
@@ -204,17 +254,17 @@ export class PeopleView {
       const m = o as SkinnedMesh;
       if (m.isSkinnedMesh) {
         skinned.push(m);
-        m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name, styleOf(p));
+        m.geometry = this.variantGeometry(model, p.look.variant, m.geometry, m.name, styleOf(p), customOf(p));
         // The shop's staff (and you) wear its colour: Kenney's green apron, repainted.
         if ((p.kind === 'staff' || p.kind === 'owner') && model === UNIFORM_MODEL) m.geometry = this.uniform(m.geometry, `${model}|${p.look.variant}|${m.name}`, shopScheme(state).primary);
-        m.material = this.assets.material;
+        m.material = this.assets.plainMaterial;
         m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false;
-      } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.material; (o as Mesh).castShadow = false; }
+      } else if ((o as Mesh).isMesh) { (o as Mesh).material = this.assets.plainMaterial; (o as Mesh).castShadow = false; }
     });
     const first = skinned[0];
     if (first && skinned.length > 1 && skinned.every((m) => m.skeleton.bones.every((b, i) => b === first.skeleton.bones[i]))) {
       const uniformed = (p.kind === 'staff' || p.kind === 'owner') && model === UNIFORM_MODEL;
-      const merged = this.mergedGeometry(`${model}|${p.look.variant}|${uniformed ? shopScheme(state).primary : ''}|${styleOf(p)}`, skinned);
+      const merged = this.mergedGeometry(`${model}|${p.look.variant}|${uniformed ? shopScheme(state).primary : ''}|${styleOf(p)}|${customKey(customOf(p))}`, skinned);
       if (merged) { first.geometry = merged; for (const m of skinned.slice(1)) m.removeFromParent(); }
     }
     const scale = p.look.height;
@@ -225,7 +275,9 @@ export class PeopleView {
       const clip = asset.clips.find((c) => c.name === clipName) ?? asset.clips.find((c) => c.name === 'idle');
       if (clip) { const a = mixer.clipAction(clip); a.setLoop(LoopRepeat, Infinity); actions[anim] = a; }
     }
-    const inst: Instance = { root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
+    const cw = this.carryWalkClip(asset.clips);
+    if (cw) { const a = mixer.clipAction(cw); a.setLoop(LoopRepeat, Infinity); actions.carryWalk = a; }
+    const inst: Instance = { lookKey: p.kind === 'owner' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
     const pg = this.propFor(p);
     if (pg) { inst.prop = pg; root.add(pg); }
     if (p.kind === 'owner') root.add(this.badge());
@@ -236,10 +288,22 @@ export class PeopleView {
     return inst;
   }
 
+  /** Walking with a box in both arms: the walk clip's legs, body and head, the carry clip's arms (one per clip set). */
+  private carryWalkClips = new Map<AnimationClip[], AnimationClip | null>();
+  private carryWalkClip(clips: AnimationClip[]): AnimationClip | null {
+    let c = this.carryWalkClips.get(clips);
+    if (c === undefined) {
+      const walk = clips.find((x) => x.name === 'walk'), hold = clips.find((x) => x.name === 'holding-both');
+      c = walk && hold ? new AnimationClip('carry-walk', walk.duration, [...walk.tracks.filter((t) => !t.name.startsWith('arm-')), ...hold.tracks.filter((t) => t.name.startsWith('arm-'))]) : null;
+      this.carryWalkClips.set(clips, c);
+    }
+    return c;
+  }
+
   private play(inst: Instance, anim: Anim, speed: number): void {
     const action = inst.actions[anim] ?? inst.actions.idle;
     if (!action) return;
-    action.timeScale = anim === 'walk' || anim === 'carry' ? speed : 1;
+    action.timeScale = anim === 'walk' || anim === 'carryWalk' ? speed : 1;
     if (inst.current === anim) return;
     const prev = inst.current ? inst.actions[inst.current] : undefined;
     action.reset().setEffectiveWeight(1).play();
@@ -252,8 +316,8 @@ export class PeopleView {
   private badge(): Group {
     const pal = this.assets.palette;
     const g = new Group();
-    const badge = new Mesh(merge([box(pal, '#FFC044', 0.07, 0.05, 0.012, 0.07, 0.42, 0.1), box(pal, '#38383D', 0.05, 0.01, 0.014, 0.07, 0.445, 0.1)]), this.assets.material);
-    const board = new Mesh(merge([box(pal, '#D9A066', 0.1, 0.13, 0.012, 0, 0, 0), box(pal, '#FFFFFF', 0.08, 0.1, 0.014, 0, 0.012, 0), box(pal, '#9AA0A8', 0.04, 0.015, 0.016, 0, 0.12, 0)]), this.assets.material);
+    const badge = new Mesh(merge([box(pal, '#FFC044', 0.07, 0.05, 0.012, 0.07, 0.42, 0.1), box(pal, '#38383D', 0.05, 0.01, 0.014, 0.07, 0.445, 0.1)]), this.assets.plainMaterial);
+    const board = new Mesh(merge([box(pal, '#D9A066', 0.1, 0.13, 0.012, 0, 0, 0), box(pal, '#FFFFFF', 0.08, 0.1, 0.014, 0, 0.012, 0), box(pal, '#9AA0A8', 0.04, 0.015, 0.016, 0, 0.12, 0)]), this.assets.plainMaterial);
     board.position.set(-0.16, 0.22, 0.02); board.rotation.set(0, 0.3, 0.15);
     g.add(badge, board);
     g.name = 'badge';
@@ -262,7 +326,7 @@ export class PeopleView {
 
   private boxMesh(): Mesh {
     const pal = this.assets.palette;
-    const m = new Mesh(merge([box(pal, '#C99A62', 0.24, 0.17, 0.19, 0, 0, 0), box(pal, '#A87B45', 0.242, 0.03, 0.06, 0, 0.16, 0), box(pal, '#FFF3DC', 0.09, 0.05, 0.004, 0.05, 0.07, 0.096)]), this.assets.material);
+    const m = new Mesh(merge([box(pal, '#C99A62', 0.24, 0.17, 0.19, 0, 0, 0), box(pal, '#A87B45', 0.242, 0.03, 0.06, 0, 0.16, 0), box(pal, '#FFF3DC', 0.09, 0.05, 0.004, 0.05, 0.07, 0.096)]), this.assets.plainMaterial);
     m.position.set(0, 0.24, 0.17);
     return m;
   }
@@ -282,7 +346,7 @@ export class PeopleView {
       this.propGeo[p.ctype] = g;
     }
     const grp = new Group();
-    grp.add(new Mesh(g, this.assets.material));
+    grp.add(new Mesh(g, this.assets.plainMaterial));
     return grp;
   }
   private holdProp(inst: Instance): void {
@@ -362,7 +426,7 @@ export class PeopleView {
     const k = `${hex}:${n}`;
     let g = this.bagGeo.get(k);
     if (!g) { g = bagsGeometry(this.assets.palette, hex, n); this.bagGeo.set(k, g); }
-    return new Mesh(g, this.assets.material);
+    return new Mesh(g, this.assets.plainMaterial);
   }
 
   /** far: people beyond this distance from the focus are not drawn; nor is anyone outside the camera's view. */
@@ -376,6 +440,8 @@ export class PeopleView {
     if (this.highlight && !hl) this.highlight = null;
     for (const p of state.people) {
       let inst = this.live.get(p.id);
+      // The manager can be redesigned at any time: a new look is a new figure.
+      if (inst && p.kind === 'owner' && inst.lookKey !== lookKey(p)) { this.despawn(inst); this.live.delete(p.id); inst = undefined; }
       if (!inst) { inst = this.spawn(state, p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
       const x = p.px + (p.x - p.px) * alpha, z = p.pz + (p.z - p.pz) * alpha;
@@ -412,7 +478,7 @@ export class PeopleView {
       }
       const moving = Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4;
       // Shopping bags swing from one hand: walk normally. Only a box needs both arms.
-      let anim: Anim = moving ? (p.anim === 'carry' && !bags ? 'carry' : 'walk') : p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
+      let anim: Anim = moving ? (carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk') : carryBox ? 'carry' : p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
       // Regulars greet the staff: a wave the first time they pass someone at work.
       if (p.ctype === 'loyalist' && p.kind === 'customer' && (p.state === 'shopping' || p.state === 'browsing' || p.state === 'toQueue') && this.frame % 10 === 0) {
         const near = state.people.find((o) => (o.kind === 'staff' || o.kind === 'owner') && Math.abs(o.x - p.x) < 1.3 && Math.abs(o.z - p.z) < 1.3);
@@ -447,6 +513,13 @@ export class PeopleView {
   }
 
   private lastState: GameState | null = null;
+  private despawn(inst: Instance): void {
+    this.group.remove(inst.root);
+    if (inst.dog) this.group.remove(inst.dog);
+    inst.mixer.stopAllAction();
+    if (this.outline && this.outline.parent && inst.root.getObjectById(this.outline.parent.id)) { this.outline.removeFromParent(); this.outline = null; }
+  }
+
   private clear(): void {
     for (const inst of this.live.values()) { this.group.remove(inst.root); if (inst.dog) this.group.remove(inst.dog); inst.mixer.stopAllAction(); }
     this.live.clear();

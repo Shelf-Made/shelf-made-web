@@ -1,7 +1,8 @@
 import { Group, Mesh, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { WINDOW_GLOW, SPILL, spillGeometry } from './glow';
-import { cornerProps } from './dressing';
+import { cornerProps, pylonSpot, cornerGarden } from './dressing';
+import { tuftMesh } from './StaticWorld';
 import { trolleyShelterGeometry, posterGeometry, buntingGeometry, PROP_MODELS } from './props';
 import type { AssetLibrary } from './assets';
 import type { GameState, RivalMove } from '@/sim/types';
@@ -277,12 +278,19 @@ export class RivalsView {
       const size = Math.min(0.3, (width - 0.6) / Math.max(4, label.length * 0.62));
       nameParts.push(place(this.text(label, size, sc.accent, sc.trim), cx, 1.25 - size * 0.4, fz + 0.04));
       // Pylon by the sidewalk, readable both ways down Main Road.
-      const px = -L.halfW - 0.6, pz = 1.85, bw = 2.6;
-      g.push(box(pal, '#38383D', 0.12, 1.5, 0.12, px - bw / 2 + 0.2, 0, pz), box(pal, '#38383D', 0.12, 1.5, 0.12, px + bw / 2 - 0.2, 0, pz), box(pal, sc.primary, bw, 0.55, 0.12, px, 1.0, pz), box(pal, sc.trim, bw + 0.06, 0.05, 0.16, px, 1.55, pz));
+      const spot = pylonSpot(shape), px = spot.x, pz = spot.z, bw = spot.w;
+      g.push(box(pal, '#38383D', 0.12, 1.5, 0.08, px - bw / 2 + 0.2, 0, pz), box(pal, '#38383D', 0.12, 1.5, 0.08, px + bw / 2 - 0.2, 0, pz), box(pal, sc.primary, bw, 0.55, 0.12, px, 1.0, pz), box(pal, sc.trim, bw + 0.06, 0.05, 0.16, px, 1.55, pz));
       const ps = Math.min(0.26, (bw - 0.35) / Math.max(4, label.length * 0.62));
       for (const yaw of [0, Math.PI]) nameParts.push(place(this.text(label, ps, sc.accent, sc.trim), px, 1.24 - ps * 0.4, pz + (yaw === 0 ? 0.07 : -0.07), yaw));
       // Street dressing on the lawn beside the paths (MegaMart has a trolley shelter with trolleys under it).
-      for (const pr of cornerProps({ ...shape, door: { x: 0, z: f.z1 } }, r.kind === 'chain' ? 2 : 1, { trolleys: r.kind === 'chain' })) {
+      const cprops = cornerProps({ ...shape, door: { x: 0, z: f.z1 } }, r.kind === 'chain' ? 2 : 1, { trolleys: r.kind === 'chain' });
+      // The garden round it: mixed trees, bushes, flowers and grass tufts (its own, from the corner).
+      const garden = cornerGarden({ ...shape, door: { x: 0, z: f.z1 } }, cprops, r.corner.charCodeAt(0) + r.corner.charCodeAt(1) * 3);
+      const gardenParts = garden.items.filter((it) => this.assets.has(it.model)).map((it) => place(this.assets.geometry(it.model).clone(), it.x, 0, it.z, it.yaw, it.scale, it.scale, it.scale));
+      if (gardenParts.length) root.add(Object.assign(mesh(gardenParts), { name: 'rival-garden' }));
+      const tuft = tuftMesh(this.assets, garden.tufts);
+      if (tuft) root.add(tuft);
+      for (const pr of cprops) {
         const geo = pr.model === 'generated/trolley-shelter' ? trolleyShelterGeometry(pal, sc.primary) : this.assets.has(pr.model) ? this.assets.geometry(pr.model).clone() : null;
         if (!geo) continue;
         g.push(place(geo, pr.x, 0, pr.z, pr.yaw, pr.scale ?? 1, pr.scale ?? 1, pr.scale ?? 1));

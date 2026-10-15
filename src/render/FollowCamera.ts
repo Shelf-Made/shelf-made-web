@@ -97,6 +97,15 @@ export class FollowCamera {
     this.clamp();
   }
 
+  /** Drag the ground: move by a world offset at once (no glide), so the spot under the pointer stays under it. */
+  panWorld(dx: number, dz: number): void {
+    const gx = this.goal.x, gz = this.goal.z;
+    this.goal.x += dx; this.goal.z += dz;
+    this.following = false;
+    this.clamp();
+    this.target.x += this.goal.x - gx; this.target.z += this.goal.z - gz;
+  }
+
   /** Back to the manager. Zoomed right out, come back in to the default too. */
   focus(x: number, z: number): void {
     this.following = true;
