@@ -301,6 +301,47 @@ test('click a piece of furniture with empty hands to move it or turn it', async 
   expect(`${f.x},${f.z}`).toBe(`${to!.x},${to!.z}`);
 });
 
+test("the day's log: closes and comes back, gives way to a card, says when Staff opens, and is kept in Stats", async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 8, 'main', 'Logbook', { tutorial: false });
+  await hooks(page, 'quickSetup', true);
+  await hooks(page, 'setSpeed', 0);
+  // Shoppers gave up in the queue today: the fix is Staff, which opens on day 3.
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { today: { complaints: { queue: number } } } } }).__shelf.state().today.complaints.queue = 40; });
+  await hooks(page, 'advance', 900);
+  const log = page.getByRole('dialog', { name: 'Day summary' });
+  await expect(log).toBeVisible({ timeout: 15_000 });
+  const staff = log.getByRole('button', { name: /^staff/i });
+  await expect(staff).toContainText('day 3');
+  await staff.click();
+  await expect(page.locator('.toast')).toContainText('Staff opens on day 3');
+  await expect(page.locator('.card.t-staff')).toHaveCount(0);
+  await expect(log).toBeVisible();
+  // A card opened at night takes the log's place (nothing hides behind it); closing the card brings it back.
+  await page.locator('.dock [data-card="stats"]').click();
+  await expect(page.locator('.card.t-stats')).toBeVisible();
+  await expect(log).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Day 1 log' })).toBeVisible();
+  // Every day's log is kept in Stats.
+  const row = page.getByRole('list', { name: 'Day logs' }).getByRole('button', { name: /day 1/i });
+  await row.click();
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.day-logs .log')).toContainText('Day 1:');
+  await expect(page.locator('.day-logs .log')).toContainText('Waited too long');
+  await page.keyboard.press('Escape');
+  await expect(log).toBeVisible();
+  // × closes it; the bar at the top brings it back; Esc closes it too; Open tomorrow works from the bar.
+  await log.getByRole('button', { name: "Close the day's log" }).click();
+  await expect(log).toHaveCount(0);
+  await page.getByRole('button', { name: 'Day 1 log' }).click();
+  await expect(log).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(log).toHaveCount(0);
+  await page.getByRole('button', { name: /open tomorrow/i }).click();
+  await expect(page.locator('.clock')).toContainText('Day 2');
+  await expect(page.getByRole('button', { name: 'Day 1 log' })).toHaveCount(0);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

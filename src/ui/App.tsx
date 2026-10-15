@@ -5,7 +5,7 @@ import { useSnapshot } from './useRuntime';
 import { Lobby } from './Lobby';
 import { TopBar } from './TopBar';
 import { Cards } from './cards/Cards';
-import { NightCard } from './NightCard';
+import { NightCard, NightBar } from './NightCard';
 import { PlotPicker } from './PlotPicker';
 import { Overlay } from './Overlay';
 import { GameOverCard } from './GameOverCard';
@@ -44,7 +44,7 @@ export function App({ runtime }: { runtime: GameRuntime }) {
           <TopBar runtime={runtime} snap={snap} />
           {snap.phase === 'picking' && <PlotPicker runtime={runtime} />}
           {snap.card && <Cards runtime={runtime} snap={snap} />}
-          {snap.night && !snap.gameOver && <NightCard runtime={runtime} snap={snap} />}
+          {snap.night && !snap.gameOver && (snap.nightLog && !snap.card ? <NightCard runtime={runtime} snap={snap} /> : <NightBar runtime={runtime} snap={snap} />)}
           {snap.gameOver && <GameOverCard runtime={runtime} snap={snap} />}
           {snap.champion && !snap.gameOver && <ChampionCard runtime={runtime} />}
           <Celebration snap={snap} />

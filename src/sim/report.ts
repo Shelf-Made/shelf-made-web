@@ -3,7 +3,7 @@
  * the way it did (the top complaints, each pointing at the card that fixes it), the crossroads'
  * shares, the active goal and what tomorrow brings. Pure: built from the closed day's stats.
  */
-import type { GameState, DayStats, CardId } from './types';
+import type { GameState, DayStats, DayLogNotes, CardId } from './types';
 import { productDef } from './products';
 import { activeGoal, goalProgress } from './goals';
 import { storeScheme, shopScheme } from './schemes';
@@ -20,8 +20,10 @@ export interface NightReport {
   customers: number; served: number; walkedOut: number; turnedAway: number;
   complaints: Complaint[];
   shares: ShareBar[];
-  goal: { title: string; frac: number; delta: number; text: string; reward: string } | null;
-  tomorrow: { weather: string | null; festival: string | null; rumours: string[] } | null;
+  goal: DayLogNotes['goal'];
+  tomorrow: DayLogNotes['tomorrow'];
+  /** The night just closed (Open tomorrow is the way on), or an earlier day read back from Stats. */
+  latest: boolean;
 }
 
 /** Every complaint of the day in plain words, most frequent first. */
@@ -57,20 +59,35 @@ export function shareBars(state: GameState, d: DayStats, prev: DayStats | undefi
   return bars;
 }
 
-export function nightReport(state: GameState): NightReport | null {
-  const d = state.history[state.history.length - 1];
-  if (!d) return null;
-  const prev = state.history[state.history.length - 2];
+/** The goal's progress and tomorrow's plan as the night card shows them tonight (kept with the day's stats at close). */
+export function nightNotes(state: GameState): DayLogNotes {
   const g = activeGoal(state);
   const p = g ? goalProgress(state, g) : null;
   const t = state.tomorrow;
   return {
-    day: d.day, profit: d.profit, revenue: d.revenue, cash: state.cash,
+    goal: g && p ? { title: g.title, frac: p.frac, delta: p.frac - state.goals.dayStart, text: p.text, reward: g.rewardText } : null,
+    tomorrow: t ? { weather: t.weather, festival: t.festival, rumours: [...t.rumours] } : null,
+  };
+}
+
+/**
+ * The night card for a closed day: the last one by default, or any earlier day by number (its log in
+ * Stats). Earlier days show the goal and forecast as they stood that night; saves from before those
+ * were kept leave them out.
+ */
+export function nightReport(state: GameState, day?: number): NightReport | null {
+  const at = day === undefined ? state.history.length - 1 : state.history.findIndex((h) => h.day === day);
+  const d = state.history[at];
+  if (!d) return null;
+  const prev = state.history[at - 1];
+  const latest = at === state.history.length - 1 && state.phase === 'night';
+  const notes = d.log ?? (latest ? nightNotes(state) : { goal: null, tomorrow: null });
+  return {
+    day: d.day, profit: d.profit, revenue: d.revenue, cash: latest ? state.cash : d.endCash,
     costs: { goods: d.cogs, rentPower: d.rent + d.utilities, staff: d.wages + d.tax, other: Math.round((d.theft + d.loans * 0.3) * 100) / 100 },
     customers: d.customers, served: d.served, walkedOut: d.walkedOut, turnedAway: d.turnedAway,
-    complaints: complaintsOf(d).slice(0, 3),
+    complaints: complaintsOf(d).slice(0, latest ? 3 : 5),
     shares: shareBars(state, d, prev),
-    goal: g && p ? { title: g.title, frac: p.frac, delta: p.frac - state.goals.dayStart, text: p.text, reward: g.rewardText } : null,
-    tomorrow: t ? { weather: t.weather, festival: t.festival, rumours: t.rumours } : null,
+    goal: notes.goal, tomorrow: notes.tomorrow, latest,
   };
 }

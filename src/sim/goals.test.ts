@@ -247,6 +247,32 @@ describe('the night card', () => {
     expect(weather).toBeGreaterThan(0);
   });
 
+  it("keeps every day's log: each night card can be read again later, as it was that night", () => {
+    const s = openGame({ seed: 23, plotId: 'main', name: 'Logbook' });
+    const seen: { day: number; profit: number; goal: string | undefined; forecast: string | null | undefined }[] = [];
+    for (let day = 0; day < 6; day++) {
+      playDay(s);
+      const r = nightReport(s)!;
+      expect(r.latest).toBe(true);
+      seen.push({ day: r.day, profit: r.profit, goal: r.goal?.text, forecast: r.tomorrow?.weather });
+      applyCommand(s, { type: 'openTomorrow' });
+    }
+    expect(s.history.length).toBe(6);
+    for (const was of seen) {
+      const r = nightReport(s, was.day)!;
+      expect(r.latest).toBe(false);
+      expect(r.day).toBe(was.day);
+      expect(r.profit).toBe(was.profit);
+      expect(r.goal?.text).toBe(was.goal);
+      expect(r.tomorrow?.weather).toBe(was.forecast);
+      expect(r.cash).toBe(s.history.find((h) => h.day === was.day)!.endCash);
+    }
+    expect(nightReport(s, 99)).toBeNull();
+    // Saves from before the logs were kept still read back: just without the goal and forecast.
+    delete s.history[0]!.log;
+    expect(nightReport(s, 1)).toMatchObject({ day: 1, goal: null, tomorrow: null });
+  });
+
   it('formats money one way, sign before the dollar', () => {
     expect(formatMoney(-140, { cents: false })).toBe('-$140');
     expect(dollars(-140)).toBe('-$140');

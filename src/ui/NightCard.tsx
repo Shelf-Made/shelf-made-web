@@ -1,18 +1,45 @@
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { nightReport } from '@/sim/report';
+import { nightReport, type NightReport } from '@/sim/report';
 import { money } from './useRuntime';
+import { cardUnlocked, openOrSayWhen, UNLOCK_DAYS } from './TopBar';
 
 const CARD_NAMES: Record<string, string> = { stock: 'Stock', staff: 'Staff', prices: 'Prices', build: 'Build', marketing: 'Marketing', stats: 'Stats' };
 
 /**
  * The end of the day: the result in green or red, where the money went, why the day went the way it
  * did (the top complaints, each opening the card that fixes it), the crossroads' shares, the active
- * goal, and what tomorrow brings.
+ * goal, and what tomorrow brings. × or Esc puts it away (the bar at the top brings it back); a card
+ * opened from it takes its place until that card is closed. Every day's log stays in Stats.
  */
 export function NightCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   void snap.stateVersion;
   const r = runtime.state ? nightReport(runtime.state) : null;
   if (!r) return null;
+  return (
+    <div className={`card night report ${r.profit >= 0 ? 'profit' : 'loss'}`} role="dialog" aria-label="Day summary">
+      <button className="night-close" onClick={() => runtime.showNightLog(false)} aria-label="Close the day's log" title="Close (Esc)">✕</button>
+      <DayLog runtime={runtime} snap={snap} r={r} />
+      <div className="row between night-foot">
+        <span className="muted">{snap.saving ? 'Saving…' : 'Autosaved. Every day\'s log is kept in Stats.'}</span>
+        <button className="btn big yellow" onClick={() => runtime.dispatch({ type: 'openTomorrow' })}>Open tomorrow</button>
+      </div>
+    </div>
+  );
+}
+
+/** With the day's log put away (or a card open over it): the way back to it, and on to tomorrow. */
+export function NightBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
+  const day = snap.night?.day;
+  return (
+    <div className="night-bar" role="group" aria-label="Night">
+      <button className="btn ghost" onClick={() => runtime.showNightLog(true)}>Day {day} log</button>
+      <button className="btn yellow" data-card="open" onClick={() => runtime.dispatch({ type: 'openTomorrow' })}>Open tomorrow</button>
+    </div>
+  );
+}
+
+/** One day's log: tonight's on the night card, any earlier one in Stats. */
+export function DayLog({ runtime, snap, r, compact = false }: { runtime: GameRuntime; snap: Snapshot; r: NightReport; compact?: boolean }) {
   const good = r.profit >= 0;
   const costs: [string, number][] = [['Goods sold', r.costs.goods], ['Rent and power', r.costs.rentPower], ['Staff', r.costs.staff]];
   if (r.costs.other > 0) costs.push(['Loans and shoplifting', r.costs.other]);
@@ -20,10 +47,11 @@ export function NightCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const biggest = costs.reduce((a, c) => (c[1] > a[1] ? c : a), costs[0]!)[0];
   const pts = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${Math.abs(Math.round(x * 100))}`;
   return (
-    <div className={`card night report ${good ? 'profit' : 'loss'}`} role="dialog" aria-label="Day summary">
-      <div className="night-body">
-        <div className="col">
-        <h2><span className="sym" aria-hidden="true">{good ? '▲' : '▼'}</span> Day {r.day} done: {money(r.profit, true)}</h2>
+    <div className={`night-body${compact ? ' compact' : ''}`}>
+      <div className="col">
+        {compact
+          ? <h4 className={good ? 'up' : 'down'}><span className="sym" aria-hidden="true">{good ? '▲' : '▼'}</span> Day {r.day}: {money(r.profit, true)}</h4>
+          : <h2><span className="sym" aria-hidden="true">{good ? '▲' : '▼'}</span> Day {r.day} done: {money(r.profit, true)}</h2>}
         <p className="muted">{r.served} of {r.customers} customers served{r.walkedOut ? `, ${r.walkedOut} gave up waiting` : ''}{r.turnedAway ? `, ${r.turnedAway} found the lot full` : ''}.</p>
 
         <section aria-label="Money">
@@ -35,28 +63,33 @@ export function NightCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               <b>{money(-v)}</b>
             </div>
           ))}
-          <div className="stat total"><span>Cash now</span><b>{money(r.cash)}</b></div>
+          <div className="stat total"><span>{r.latest ? 'Cash now' : 'Cash that night'}</span><b>{money(r.cash)}</b></div>
         </section>
 
         {r.complaints.length > 0 && (
           <section aria-label="Why">
             <h3>What shoppers said</h3>
             <ul className="why">
-              {r.complaints.map((c) => (
-                <li key={c.text}>
-                  <span>{c.text} <b>×{c.count}</b></span>
-                  <button className="btn small ghost" onClick={() => runtime.openCard(c.card)}>{CARD_NAMES[c.card]}</button>
-                </li>
-              ))}
+              {r.complaints.map((c) => {
+                const open = cardUnlocked(snap, c.card);
+                return (
+                  <li key={c.text}>
+                    <span>{c.text} <b>×{c.count}</b></span>
+                    <button className={`btn small ghost${open ? '' : ' locked'}`} onClick={() => openOrSayWhen(runtime, snap, c.card)}
+                      title={open ? `Open ${CARD_NAMES[c.card]}` : `${CARD_NAMES[c.card]} opens on day ${UNLOCK_DAYS[c.card] ?? 2}`}>
+                      {CARD_NAMES[c.card]}{!open && <small> · day {UNLOCK_DAYS[c.card] ?? 2}</small>}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
-
-        </div>
-        <div className="col">
+      </div>
+      <div className="col">
         {r.shares.length > 1 && (
-          <section aria-label="The crossroads today">
-            <h3>The crossroads today</h3>
+          <section aria-label={r.latest ? 'The crossroads today' : 'The crossroads that day'}>
+            <h3>{r.latest ? 'The crossroads today' : 'The crossroads that day'}</h3>
             <ul className="shares">
               {r.shares.map((b) => (
                 <li key={b.id} className={`${b.closed ? 'closed' : ''}${b.mine ? ' mine' : ''}`}>
@@ -74,13 +107,13 @@ export function NightCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           <section aria-label="Goal">
             <h3>Goal: {r.goal.title}</h3>
             <div className="bar" role="progressbar" aria-valuenow={Math.round(r.goal.frac * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Goal progress"><div style={{ width: `${Math.round(r.goal.frac * 100)}%` }} /></div>
-            <div className="muted">{r.goal.text}{Math.abs(r.goal.delta) >= 0.01 ? ` · ${r.goal.delta > 0 ? '+' : '−'}${Math.abs(Math.round(r.goal.delta * 100))}% today` : ''} · reward: {r.goal.reward}</div>
+            <div className="muted">{r.goal.text}{Math.abs(r.goal.delta) >= 0.01 ? ` · ${r.goal.delta > 0 ? '+' : '−'}${Math.abs(Math.round(r.goal.delta * 100))}% ${r.latest ? 'today' : 'that day'}` : ''} · reward: {r.goal.reward}</div>
           </section>
         )}
 
         {r.tomorrow && (
-          <section aria-label="Tomorrow">
-            <h3>Tomorrow</h3>
+          <section aria-label={r.latest ? 'Tomorrow' : 'The forecast for the next day'}>
+            <h3>{r.latest ? 'Tomorrow' : 'Forecast for the next day'}</h3>
             <ul className="tomorrow">
               <li>{r.tomorrow.weather ?? 'Fair weather, nothing special forecast.'}</li>
               {r.tomorrow.festival && <li>{r.tomorrow.festival}</li>}
@@ -88,11 +121,6 @@ export function NightCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             </ul>
           </section>
         )}
-        </div>
-      </div>
-      <div className="row between night-foot">
-        <span className="muted">{snap.saving ? 'Saving…' : 'Autosaved.'}</span>
-        <button className="btn big yellow" onClick={() => runtime.dispatch({ type: 'openTomorrow' })}>Open tomorrow</button>
       </div>
     </div>
   );

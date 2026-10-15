@@ -264,6 +264,13 @@ export interface DayStats {
   byType?: Record<CustomerType, number>;
   /** What the rivals watch, recorded at close: the player's price index, share of each type, and reputation. */
   mine?: { priceIndex: number; share: Record<CustomerType, number>; reputation: number };
+  /** What the night card said about the goal and tomorrow, kept so every day's log can be read again in Stats. */
+  log?: DayLogNotes;
+}
+
+export interface DayLogNotes {
+  goal: { title: string; frac: number; delta: number; text: string; reward: string } | null;
+  tomorrow: { weather: string | null; festival: string | null; rumours: string[] } | null;
 }
 
 export interface StoreScores { price: number; availability: number; layout: number; wait: number; parking: number; awareness: number }

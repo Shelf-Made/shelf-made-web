@@ -8,6 +8,8 @@ import { MoneySection } from './MoneySection';
 import { GoalsSection } from '../Goals';
 import { TypeIcon } from '../Inspect';
 import { whoShopsWhere } from '@/sim/inspect';
+import { nightReport } from '@/sim/report';
+import { DayLog } from '../NightCard';
 
 export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
@@ -40,10 +42,37 @@ export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {s.notices.length > 0 && <h3>News</h3>}
       {s.notices.slice(-5).reverse().map((n, i) => <p className="muted" key={i}>Day {n.day}: {n.text}</p>)}
       <MoneySection runtime={runtime} snap={snap} />
-      {s.history.length > 0 && <h3>Past days</h3>}
-      {s.history.slice().reverse().slice(0, 7).map((d) => (
-        <div className="stat" key={d.day}><span>Day {d.day} · {d.served}/{d.customers} served</span><b>{money(d.profit, true)}</b></div>
-      ))}
+      <DayLogs runtime={runtime} snap={snap} />
+    </>
+  );
+}
+
+/** Every closed day's log, newest first: tap a day to read its night card again. */
+function DayLogs({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
+  const s = runtime.state!;
+  const [open, setOpen] = useState<number | null>(null);
+  const [all, setAll] = useState(false);
+  if (!s.history.length) return null;
+  const days = s.history.slice().reverse();
+  const shown = all ? days : days.slice(0, 7);
+  return (
+    <>
+      <h3>Day logs</h3>
+      <div className="day-logs" role="list" aria-label="Day logs">
+        {shown.map((d) => {
+          const r = open === d.day ? nightReport(s, d.day) : null;
+          return (
+            <div role="listitem" key={d.day}>
+              <button className="day-row" aria-expanded={open === d.day} onClick={() => setOpen(open === d.day ? null : d.day)}>
+                <span><span className="chev" aria-hidden="true">›</span> Day {d.day} · {d.served}/{d.customers} served</span>
+                <b className={d.profit >= 0 ? 'up' : 'down'}>{money(d.profit, true)}</b>
+              </button>
+              {r && <div className="log"><DayLog runtime={runtime} snap={snap} r={r} compact /></div>}
+            </div>
+          );
+        })}
+      </div>
+      {days.length > 7 && <button className="btn small ghost" onClick={() => setAll(!all)}>{all ? 'Show the last week' : `Show all ${days.length} days`}</button>}
     </>
   );
 }

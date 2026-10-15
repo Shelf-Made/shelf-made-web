@@ -79,6 +79,8 @@ export interface Snapshot {
   inspect: (InspectInfo & { following: boolean }) | null;
   /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
   fixtureMenu: { id: number; name: string; use: string | null } | null;
+  /** At night, whether the day's log is up (it can be closed, and comes back from the bar at the top). */
+  nightLog: boolean;
 }
 
 export interface BuildUI { active: boolean; placing: FixtureType | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
@@ -184,7 +186,19 @@ export class GameRuntime {
       champion: !!s && s.goals.champion && !s.goals.championSeen,
       inspect: this.inspectInfo(),
       fixtureMenu: this.fixtureMenuInfo(),
+      nightLog: !this.nightLogHidden,
     };
+  }
+
+  // ---- The day's log at night: up when the day closes; × or Esc puts it away, the night bar brings it back.
+  private nightLogHidden = false;
+  showNightLog(open: boolean): void {
+    if (open === !this.nightLogHidden) return;
+    this.nightLogHidden = !open;
+    if (open && this.card) this.card = null;
+    this.audio.play(open ? 'cardOpen' : 'cardClose');
+    this.emit();
+    requestAnimationFrame(() => this.updateSideOffset());
   }
 
   // ---- Furniture: clicked with empty hands, a piece opens a small menu at it: its use, Move and Turn.
@@ -262,6 +276,7 @@ export class GameRuntime {
     if (this.fixtureMenu !== null) { this.openFixtureMenu(null); return; }
     if (this.build.placing || this.build.selectedId !== null) { this.closeCard(); return; }
     if (this.selectedPerson !== null) { this.selectPerson(null); return; }
+    if (!this.card && this.state?.phase === 'night' && !this.nightLogHidden) { this.showNightLog(false); return; }
     this.closeCard();
   }
   /** Each frame while someone is selected: they may have left (or the day ended). */
@@ -474,7 +489,7 @@ export class GameRuntime {
       this.alpha = Math.min(1, this.acc / TICK);
       this.drainSounds(s);
       if (s.phase !== this.lastPhase) {
-        if (s.phase === 'night') { void this.save('auto'); this.speed = 1; analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
+        if (s.phase === 'night') { this.nightLogHidden = false; void this.save('auto'); this.speed = 1; analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
         this.lastPhase = s.phase;
         this.updateSideOffset();
       }
@@ -638,7 +653,7 @@ export class GameRuntime {
   /** Docked cards sit on the right third, so the world slides left while one is open. (Public for the test hooks.) */
   updateSideOffset(): void {
     const r = this.renderer; if (!r) return;
-    const open = this.card !== null || this.state?.phase === 'night';
+    const open = this.card !== null || (this.state?.phase === 'night' && !this.nightLogHidden);
     const w = window.innerWidth, h = window.innerHeight;
     r.camera.sideOffset = open && w > 760 ? 0.55 : 0;
     // The follow camera keeps the manager in the middle of the world you can still see: between a tall

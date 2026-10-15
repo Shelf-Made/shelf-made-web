@@ -14,6 +14,7 @@ import { applyUnlocks } from './progression';
 import { marketingDay, planEvents } from './marketing';
 import { trackGoals, checkGoals, goalsMorning } from './goals';
 import { franchiseDay } from './franchise';
+import { nightNotes } from './report';
 
 export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
 export const SUPPLIERS: Supplier[] = [
@@ -118,6 +119,7 @@ export function closeDay(state: GameState): void {
   checkGoals(state, 'night');
   // Tomorrow is decided tonight, so the night card can say what is coming.
   state.tomorrow = planDay(state, state.day + 1);
+  state.history[state.history.length - 1]!.log = nightNotes(state);
   cue(state, 'night');
 }
 

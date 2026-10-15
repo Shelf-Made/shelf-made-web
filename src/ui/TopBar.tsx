@@ -27,7 +27,13 @@ export const BLURBS: Record<Card | 'help', string> = {
 };
 const DOCK: Card[] = ['build', 'stock', 'prices', 'staff', 'marketing', 'stats'];
 const KEYS: Partial<Record<Card, string>> = { build: 'B', stock: 'Tab' };
-const UNLOCK_DAYS: Partial<Record<Card, number>> = { staff: 3, marketing: 5 };
+export const UNLOCK_DAYS: Partial<Record<Card, number>> = { staff: 3, marketing: 5 };
+/** Whether a card can be opened yet (Build opens on day 2, Staff on day 3, Marketing on day 5). */
+export function cardUnlocked(snap: Snapshot, c: Card): boolean { return c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || !!snap.unlocks[c as keyof Snapshot['unlocks']]; }
+/** Open a card, or say which day it opens on. */
+export function openOrSayWhen(runtime: GameRuntime, snap: Snapshot, c: Card): void {
+  if (cardUnlocked(snap, c)) runtime.openCard(c); else runtime.showToast(`${LABELS[c]} opens on day ${UNLOCK_DAYS[c] ?? 2}.`);
+}
 
 /** Money counter that ticks up toward the real value. */
 function useTicking(value: number): number {
@@ -74,7 +80,7 @@ function logoTint(id: string): string | undefined {
 export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const shown = useTicking(snap.cash);
   const speeds: Speed[] = [0, 1, 2, 4];
-  const unlocked = (c: Card) => c === 'settings' || c === 'stats' || c === 'stock' || c === 'prices' || snap.unlocks[c];
+  const unlocked = (c: Card) => cardUnlocked(snap, c);
   const status = snap.phase === 'setup' ? 'setup' : snap.phase === 'open' ? 'open' : 'closed';
   const night = snap.phase === 'night' || snap.phase === 'closing';
   return (
@@ -115,7 +121,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
           {DOCK.map((c) => {
             const open = unlocked(c);
             return (
-              <button key={c} className={`tile t-${c}${snap.card === c ? ' active' : ''}${open ? '' : ' locked'}${snap.tip?.anchor === `button:${c}` && snap.card !== c ? ' nudge' : ''}`} onClick={() => open ? runtime.openCard(c) : runtime.showToast(`${LABELS[c]} opens on day ${UNLOCK_DAYS[c] ?? 2}.`)} aria-pressed={snap.card === c} data-card={c} title={open ? BLURBS[c] : `${LABELS[c]}: opens on day ${UNLOCK_DAYS[c] ?? 2}`}>
+              <button key={c} className={`tile t-${c}${snap.card === c ? ' active' : ''}${open ? '' : ' locked'}${snap.tip?.anchor === `button:${c}` && snap.card !== c ? ' nudge' : ''}`} onClick={() => openOrSayWhen(runtime, snap, c)} aria-pressed={snap.card === c} data-card={c} title={open ? BLURBS[c] : `${LABELS[c]}: opens on day ${UNLOCK_DAYS[c] ?? 2}`}>
                 <span className="face">{ICONS[c]}{!open && <svg className="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 018 0v2.5" /></svg>}</span>
                 <span className="label">{LABELS[c]}</span>
                 {open && KEYS[c] && <kbd className="key-chip">{KEYS[c]}</kbd>}
