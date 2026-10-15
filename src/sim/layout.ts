@@ -5,7 +5,7 @@
  * the same layout turned half round (their doors face north), so shop-relative coordinates mean
  * the same thing on every corner and only the frame (origin + flip) changes.
  */
-import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle } from './types';
+import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle, WallStyle } from './types';
 
 export const TICK = 0.05;
 /** 12 game hours of 60 real seconds each. */
@@ -242,6 +242,25 @@ export function floorTileCount(shop: FloorShape): number {
 export function tilePriceAt(n: number): number { return Math.round(39.7 + 0.85 * Math.max(0, n - 30)); }
 /** What the next tile of floor costs. */
 export function tilePrice(shop: FloorShape): number { return tilePriceAt(floorTileCount(shop)); }
+/** One stretch of outer wall: the edge of a floor tile with no floor beyond it, which way it faces, its line and its middle. */
+export interface WallSeg { dir: 'front' | 'back' | 'left' | 'right'; nx: number; nz: number; axis: 'x' | 'z'; line: number; t: number; key: string }
+export const wallKey = (dir: string, line: number, t: number): string => `${dir}@${line}@${t}`;
+const SEG_DIRS = [
+  { dir: 'front' as const, nx: 0, nz: 1, axis: 'x' as const }, { dir: 'back' as const, nx: 0, nz: -1, axis: 'x' as const },
+  { dir: 'left' as const, nx: -1, nz: 0, axis: 'z' as const }, { dir: 'right' as const, nx: 1, nz: 0, axis: 'z' as const },
+];
+/** Every stretch of outer wall round the floor. */
+export function wallSegments(shop: FloorShape): WallSeg[] {
+  const out: WallSeg[] = [];
+  for (const t of floorTileList(shop)) for (const d of SEG_DIRS) {
+    if (isFloor(shop, t.x + d.nx, t.z + d.nz)) continue;
+    const line = d.axis === 'x' ? (d.nz > 0 ? t.z + 1 : t.z) : (d.nx > 0 ? t.x + 1 : t.x);
+    const mid = d.axis === 'x' ? t.x + 0.5 : t.z + 0.5;
+    out.push({ ...d, line, t: mid, key: wallKey(d.dir, line, mid) });
+  }
+  return out;
+}
+
 /** The name the old sizes went by, from how much floor there is (goals and reviews still speak of them). */
 export function sizeOfTiles(n: number): 'starter' | 'medium' | 'large' { return n >= 72 ? 'large' : n >= 49 ? 'medium' : 'starter'; }
 
@@ -305,6 +324,16 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
 };
 
 /** Floor finishes: the price per tile, and what each adds to how the shop looks. */
+/** Inside finishes for the outer walls, a stretch (one tile's edge) at a time. Plain plaster comes with the shop. */
+export const WALLS: { id: WallStyle; name: string; perSeg: number; looks: number }[] = [
+  { id: 'plain', name: 'Plain plaster', perSeg: 0, looks: 0 },
+  { id: 'bands', name: 'Painted in your colours', perSeg: 6, looks: 0.12 },
+  { id: 'tiles', name: 'White tiles', perSeg: 8, looks: 0.14 },
+  { id: 'wood', name: 'Wood panelling', perSeg: 10, looks: 0.16 },
+  { id: 'brick', name: 'Bare brick', perSeg: 12, looks: 0.18 },
+];
+/** What a finish gives back when it is replaced or taken off. */
+export const RESALE = 0.6;
 export const FLOORS: { id: FloorStyle; name: string; perTile: number; looks: number }[] = [
   { id: 'lino', name: 'Checker lino', perTile: 0, looks: 0 },
   { id: 'concrete', name: 'Polished concrete', perTile: 3, looks: 0.06 },

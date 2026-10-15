@@ -3,8 +3,8 @@
  * Placement never blocks a path: the door, the back door and every fixture's front must
  * stay reachable after the change.
  */
-import type { GameState, FixtureType, Rot, Fixture, FloorStyle } from './types';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles } from './layout';
+import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, FLOORS, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments } from './layout';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
@@ -99,13 +99,87 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
   return null;
 }
 
-/** Can this tile of floor be given this finish? */
+/**
+ * Can this tile of floor be given this finish? Its price, less what the finish coming up fetches
+ * (laying the cheapest sells the old one back: the price comes out below nothing).
+ */
 export function canPaintFloor(state: GameState, x: number, z: number, style: FloorStyle): PlaceCheck {
-  const price = FLOORS.find((f) => f.id === style)?.perTile ?? 0;
-  if (!isFloor(state.shop, x, z)) return { ok: false, reason: 'Only on the shop floor', price };
-  if (styleAt(state.shop, x, z) === style) return { ok: false, reason: 'That floor is down already', price };
-  if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
+  const now = isFloor(state.shop, x, z) ? styleAt(state.shop, x, z) : null;
+  const price = (FLOORS.find((f) => f.id === style)?.perTile ?? 0) - Math.round(RESALE * (FLOORS.find((f) => f.id === now)?.perTile ?? 0));
+  if (!now) return { ok: false, reason: 'Only on the shop floor', price };
+  if (now === style) return { ok: false, reason: 'That floor is down already', price };
+  if (price > 0 && state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   return { ok: true, reason: FLOORS.find((f) => f.id === style)?.name ?? style, price };
+}
+
+/** The finish on one stretch of outer wall. */
+export function wallStyleAt(shop: GameState['shop'], key: string): WallStyle {
+  return shop.wallStyles?.[key] ?? shop.wallStyle ?? 'bands';
+}
+
+/** Can this stretch of wall be given this finish? Priced as floors are (the old finish sells back). */
+export function canPaintWall(state: GameState, key: string, style: WallStyle): PlaceCheck {
+  const seg = wallSegments(state.shop).find((w) => w.key === key);
+  const now = seg ? wallStyleAt(state.shop, key) : null;
+  const price = (WALLS.find((w) => w.id === style)?.perSeg ?? 0) - Math.round(RESALE * (WALLS.find((w) => w.id === now)?.perSeg ?? 0));
+  if (!now) return { ok: false, reason: 'Point at a wall', price };
+  if (now === style) return { ok: false, reason: 'That wall has it already', price };
+  if (price > 0 && state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
+  return { ok: true, reason: WALLS.find((w) => w.id === style)?.name ?? style, price };
+}
+
+/** Give one stretch of wall a finish. */
+export function paintWall(state: GameState, key: string, style: WallStyle): string | null {
+  const check = canPaintWall(state, key, style);
+  if (!check.ok) return check.reason;
+  state.cash -= check.price;
+  const shop = state.shop;
+  const styles = { ...shop.wallStyles };
+  if (style === (shop.wallStyle ?? 'bands')) delete styles[key]; else styles[key] = style;
+  shop.wallStyles = styles;
+  return null;
+}
+
+/**
+ * Can this tile of floor be sold back? Not the door's tile, the pallet's, one with anything on it or
+ * anyone standing on it, nor one the rest of the floor hangs from (it must stay one room).
+ */
+export function canSellTile(state: GameState, x: number, z: number): PlaceCheck {
+  const shop = state.shop, n = floorTileCount(shop), price = -Math.round(RESALE * tilePriceAt(n - 1));
+  if (!isFloor(shop, x, z)) return { ok: false, reason: 'Point at a tile of floor', price };
+  if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z + 1 === shop.floor.z1) return { ok: false, reason: 'The front door stands here', price };
+  const d = shop.delivery;
+  if (x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
+  if (shop.fixtures.some((f) => f.x === x && f.z === z)) return { ok: false, reason: 'Move or sell what is on it first', price };
+  if (state.people.some((p) => { const l = toLocal(shop, p.x, p.z); return l.x > x && l.x < x + 1 && l.z > z && l.z < z + 1; })) return { ok: false, reason: 'Someone is standing there', price };
+  // The back door's column keeps a tile.
+  if (Math.abs(x + 0.5 - shop.backDoor.x) < 0.6 && !floorTileList(shop).some((t) => t.x === x && t.z !== z)) return { ok: false, reason: 'The back door needs a tile', price };
+  // Still one room: every other tile reachable from the door's.
+  const rest = floorTileList(shop).filter((t) => !(t.x === x && t.z === z));
+  const keys = new Set(rest.map((t) => tileKey(t.x, t.z)));
+  const start = tileKey(shop.door.x - 0.5, shop.floor.z1 - 1), seen = new Set([start]), todo = [start];
+  while (todo.length) {
+    const [tx, tz] = todo.pop()!.split(',').map(Number) as [number, number];
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = tileKey(tx + dx!, tz + dz!); if (keys.has(k) && !seen.has(k)) { seen.add(k); todo.push(k); } }
+  }
+  if (seen.size !== keys.size) return { ok: false, reason: 'The shop would come apart', price };
+  return { ok: true, reason: 'Sell this tile', price };
+}
+
+/** Sell a tile of floor back: the walls come in round it. */
+export function sellTile(state: GameState, x: number, z: number): string | null {
+  const check = canSellTile(state, x, z);
+  if (!check.ok) return check.reason;
+  state.cash -= check.price;
+  const shop = state.shop;
+  const rest = floorTileList(shop).filter((t) => !(t.x === x && t.z === z));
+  setFloorTiles(shop, rest);
+  if (shop.tileStyles?.[tileKey(x, z)]) { const st = { ...shop.tileStyles }; delete st[tileKey(x, z)]; shop.tileStyles = st; }
+  // The back door comes forward to the back edge of its column.
+  const col = rest.filter((t) => Math.abs(t.x + 0.5 - shop.backDoor.x) < 0.01);
+  if (col.length) shop.backDoor = { x: shop.backDoor.x, z: Math.min(...col.map((t) => t.z)) };
+  reshape(state);
+  return null;
 }
 
 /** Lay a finish on one tile. */
@@ -138,18 +212,23 @@ export function buyTile(state: GameState, x: number, z: number): string | null {
   if (!check.ok) return check.reason;
   state.cash -= check.price;
   addFloor(state.shop, [{ x, z }]);
+  // New floor comes with the cheapest finish (lay a better one a tile at a time).
+  if ((state.shop.floorStyle ?? 'lino') !== FLOORS[0]!.id) state.shop.tileStyles = { ...state.shop.tileStyles, [tileKey(x, z)]: FLOORS[0]!.id };
   reshape(state);
   return null;
 }
 
-/** Make tiles floor: the bounding rectangle grows to hold them, the new tiles in it that are not floor become gaps. */
+/** Make tiles floor, on top of what there is. */
 function addFloor(shop: GameState['shop'], tiles: { x: number; z: number }[]): void {
-  const was = new Set(floorTileList(shop).map((t) => tileKey(t.x, t.z)));
-  for (const t of tiles) was.add(tileKey(t.x, t.z));
-  const f = shop.floor;
-  const nf = { x0: Math.min(f.x0, ...tiles.map((t) => t.x)), z0: Math.min(f.z0, ...tiles.map((t) => t.z)), x1: Math.max(f.x1, ...tiles.map((t) => t.x + 1)), z1: Math.max(f.z1, ...tiles.map((t) => t.z + 1)) };
+  setFloorTiles(shop, [...floorTileList(shop), ...tiles]);
+}
+
+/** The floor is exactly these tiles: its bounding rectangle, and the tiles in it that are not floor as gaps. */
+function setFloorTiles(shop: GameState['shop'], tiles: { x: number; z: number }[]): void {
+  const keys = new Set(tiles.map((t) => tileKey(t.x, t.z)));
+  const nf = { x0: Math.min(...tiles.map((t) => t.x)), z0: Math.min(...tiles.map((t) => t.z)), x1: Math.max(...tiles.map((t) => t.x + 1)), z1: Math.max(...tiles.map((t) => t.z + 1)) };
   const gaps: string[] = [];
-  for (let zz = nf.z0; zz < nf.z1 - 1e-6; zz++) for (let xx = nf.x0; xx < nf.x1 - 1e-6; xx++) if (!was.has(tileKey(xx, zz))) gaps.push(tileKey(xx, zz));
+  for (let zz = nf.z0; zz < nf.z1 - 1e-6; zz++) for (let xx = nf.x0; xx < nf.x1 - 1e-6; xx++) if (!keys.has(tileKey(xx, zz))) gaps.push(tileKey(xx, zz));
   shop.floor = nf;
   if (gaps.length) shop.gaps = gaps; else delete shop.gaps;
 }
@@ -167,6 +246,8 @@ function reshape(state: GameState): void {
     const fc = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }][fx.rot & 3]!;
     while (isFloor(shop, fx.x - fc.x, fx.z - fc.z)) { fx.x -= fc.x; fx.z -= fc.z; }
   }
+  // Finishes on stretches of wall that are gone now (built over, or moved out) go with them.
+  if (shop.wallStyles) { const live = new Set(wallSegments(shop).map((w) => w.key)); shop.wallStyles = Object.fromEntries(Object.entries(shop.wallStyles).filter(([k]) => live.has(k))); }
   const n = floorTileCount(shop);
   shop.sizeId = sizeOfTiles(n);
   shop.storageCapacity = 120 + 5 * Math.max(0, n - 30);

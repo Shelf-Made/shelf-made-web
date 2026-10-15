@@ -18,6 +18,8 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
 export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
 export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete';
+/** The inside finish of a stretch of outer wall. */
+export type WallStyle = 'plain' | 'bands' | 'tiles' | 'wood' | 'brick';
 /** The shell walls (old saves put windows in a whole wall at a time; see windowsFromSides). */
 export type WindowSide = 'left' | 'right' | 'back';
 
@@ -278,6 +280,9 @@ export interface Shop {
   scheme: string;
   /** The floor's finish (older saves: the checker lino). */
   floorStyle?: FloorStyle;
+  /** The inside finish of the outer walls, stretch by stretch where it differs from `wallStyle` (keys from wallKey). Old saves: painted bands. */
+  wallStyle?: WallStyle;
+  wallStyles?: Record<string, WallStyle>;
   /** Windows bought for the side and back walls. */
   /** Old saves only: whole walls of windows, turned into Window pieces on load. */
   windows?: Partial<Record<WindowSide, boolean>>;

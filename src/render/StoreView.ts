@@ -7,7 +7,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, toLocal, rectToWorld, isFloor, floorTileList, tileKey } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey } from '@/sim/layout';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
 const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window']);
@@ -22,7 +22,7 @@ import { box, merge, paint, place } from './geometry';
 import { recolor, cutDown, dropTriangles, paintStrips } from './recolor';
 import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOURS, FIXTURE_PAINT, LINO, WALL_BANDS, SKIRTING, RAIL, type SlotBox } from './storeArt';
 import { schemeById, type Scheme } from '@/sim/schemes';
-import type { FloorStyle } from '@/sim/types';
+import type { FloorStyle, WallStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
 import { fittingGeometry, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS } from './fittings';
 import { BlobShadows } from './blobs';
@@ -315,8 +315,9 @@ export class StoreView {
           const a = t - 0.5 + (ends[0] === 'corner' ? 0.12 : ends[0] === 'notch' ? -0.062 : 0);
           const b = t + 0.5 - (ends[1] === 'corner' ? 0.12 : ends[1] === 'notch' ? -0.062 : 0);
           const hole = isWindow && opening ? { a: t + opening.x0, b: t + opening.x1, y0: opening.y0, y1: opening.y1 } : null;
-          full.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole));
-          ledge.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null));
+          const finish = shop.wallStyles?.[wallKey(dir.name, line, t)] ?? shop.wallStyle ?? 'bands';
+          full.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole, finish));
+          ledge.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null, finish));
         }
       }
       if (!full.length) continue;
@@ -474,15 +475,24 @@ export class StoreView {
    * the shop's colour to waist height, a cream rail, a pale tint above. Cut to `top` (the ledge when
    * the wall is cut away) and around a window's pane.
    */
-  private paintPanels(plane: number, axis: 'x' | 'z', a: number, b: number, top: number, hole: { a: number; b: number; y0: number; y1: number } | null): BufferGeometry[] {
+  private paintPanels(plane: number, axis: 'x' | 'z', a: number, b: number, top: number, hole: { a: number; b: number; y0: number; y1: number } | null, style: WallStyle = 'bands'): BufferGeometry[] {
     const pal = this.assets.palette, sc = this.scheme, out: BufferGeometry[] = [];
-    const bands: [readonly [number, number], string][] = [[WALL_BANDS.skirting, SKIRTING], [WALL_BANDS.lower, sc.primary], [WALL_BANDS.rail, RAIL], [WALL_BANDS.upper, sc.light]];
+    // Each finish as bands up the wall; thin lines (grout, mortar, a rail) stand a little proud of it.
+    const lines = (y0: number, y1: number, step: number, hex: string): [readonly [number, number], string, number][] => { const o: [readonly [number, number], string, number][] = []; for (let y = y0 + step; y < y1 - 0.01; y += step) o.push([[y, y + 0.008], hex, 0.024]); return o; };
+    const bands: [readonly [number, number], string, number?][] =
+      style === 'plain' ? [[WALL_BANDS.skirting, '#D8DADF'], [[0.07, 0.97], RAIL]]
+      : style === 'tiles' ? [[WALL_BANDS.skirting, '#D8DADF'], [[0.07, 0.6], '#FFFFFF'], ...lines(0.07, 0.6, 0.09, '#D8DADF'), [[0.6, 0.63], '#D8DADF'], [[0.63, 0.97], '#F4F7FA']]
+      : style === 'wood' ? [[WALL_BANDS.skirting, '#A87B45'], [[0.07, 0.55], '#C99A62'], ...lines(0.07, 0.55, 0.12, '#B8824C'), [[0.55, 0.6], '#A87B45'], [[0.6, 0.97], RAIL]]
+      : style === 'brick' ? [[[0, 0.97], '#B8402E'], ...lines(0, 0.97, 0.08, '#D8DADF')]
+      : [[WALL_BANDS.skirting, SKIRTING], [WALL_BANDS.lower, sc.primary], [WALL_BANDS.rail, RAIL], [WALL_BANDS.upper, sc.light]];
+    let depth = 0.02;
     const piece = (u0: number, u1: number, y0: number, y1: number, hex: string) => {
       if (u1 - u0 < 0.01 || y1 - y0 < 0.005) return;
-      const c = (u0 + u1) / 2, len = u1 - u0, deep = hex === SKIRTING ? 0.03 : 0.02;
+      const c = (u0 + u1) / 2, len = u1 - u0, deep = hex === SKIRTING ? 0.03 : depth;
       out.push(axis === 'x' ? box(pal, hex, len, y1 - y0, deep, c, y0, plane) : box(pal, hex, deep, y1 - y0, len, plane, y0, c));
     };
-    for (const [[y0, y1], hex] of bands) {
+    for (const [[y0, y1], hex, d] of bands) {
+      depth = d ?? 0.02;
       const t0 = y0, t1 = Math.min(y1, top);
       if (t1 <= t0) continue;
       if (!hole || t1 <= hole.y0 || t0 >= hole.y1) { piece(a, b, t0, t1, hex); continue; }
@@ -759,6 +769,17 @@ export class StoreView {
     this.tileGhost.position.set(t.x + 0.5, 0.05, t.z + 0.5);
     this.tileGhost.visible = true;
   }
+  /** A wall tool's stretch of wall under the pointer, lit along its inside face. */
+  private wallGhost: Mesh | null = null;
+  private wallGhostMat = new MeshBasicMaterial({ color: '#3FA87A', transparent: true, opacity: 0.5, depthWrite: false, depthTest: false });
+  setWallGhost(w: { axis: 'x' | 'z'; nx: number; nz: number; line: number; t: number; ok: boolean } | null): void {
+    if (!w) { if (this.wallGhost) this.wallGhost.visible = false; return; }
+    if (!this.wallGhost) { this.wallGhost = new Mesh(box(this.assets.palette, '#FFFFFF', 1, 0.9, 0.06, 0, 0, 0), this.wallGhostMat); this.wallGhost.renderOrder = 6; this.root.add(this.wallGhost); }
+    this.wallGhostMat.color.set(w.ok ? '#3FA87A' : '#E8573F');
+    if (w.axis === 'x') { this.wallGhost.position.set(w.t, 0.05, w.line - w.nz * 0.1); this.wallGhost.rotation.set(0, 0, 0); }
+    else { this.wallGhost.position.set(w.line - w.nx * 0.1, 0.05, w.t); this.wallGhost.rotation.set(0, Math.PI / 2, 0); }
+    this.wallGhost.visible = true;
+  }
   /** Growing the shop: every tile that could be bought, faintly marked on the ground. */
   private growHints: InstancedMesh | null = null;
   setGrowHints(tiles: { x: number; z: number }[]): void {
@@ -816,7 +837,7 @@ function stockKey(shop: Shop): string {
 
 export { mergeGeometries, paint };
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`).join(';')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`).join(';')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
 function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; gap: number; boards?: string[] } {

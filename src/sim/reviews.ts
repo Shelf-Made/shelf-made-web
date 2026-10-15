@@ -14,7 +14,7 @@ import type { GameState, Person, Look, CustomerType } from './types';
 import { withRng } from './state';
 import type { Rng } from './rng';
 import { productDef } from './products';
-import { FIXTURES, FLOORS, DAY_SECONDS, TICK, floorTileList, floorTileCount, tileKey } from './layout';
+import { FIXTURES, FLOORS, WALLS, DAY_SECONDS, TICK, floorTileList, floorTileCount, tileKey, wallSegments } from './layout';
 import { priceIndex } from './customers';
 import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
@@ -110,9 +110,12 @@ export function looksOf(state: GameState): Looks {
   // The floor, tile by tile: what each finish adds, averaged over the shop.
   const tiles = floorTileList(shop);
   const floor = tiles.reduce((a, t) => a + (FLOORS.find((x) => x.id === (shop.tileStyles?.[tileKey(t.x, t.z)] ?? shop.floorStyle ?? 'lino'))?.looks ?? 0), 0) / Math.max(1, tiles.length);
+  // The walls, stretch by stretch, as the floor.
+  const segs = wallSegments(shop);
+  const wallLooks = segs.reduce((a, w) => a + (WALLS.find((x) => x.id === (shop.wallStyles?.[w.key] ?? shop.wallStyle ?? 'bands'))?.looks ?? 0), 0) / Math.max(1, segs.length);
   // Windows: daylight on more of the shop (a few each make a difference; past a dozen, not much).
   const windows = Math.min(count('window'), 15) * 0.016;
-  const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.lotRows > 1 ? 0.15 : 0) + (count('produce') > 0 ? 0.25 : 0) + floor + windows + 0.1, 0, 1);
+  const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.lotRows > 1 ? 0.15 : 0) + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + 0.1, 0, 1);
   // Decor matters most: a clean, full shop with nothing on show is fine, not lovely.
   const score = 0.3 * decor + 0.16 * tidy + 0.18 * shelves + 0.1 * space + 0.14 * outside + 0.12 * extras;
   return { decor, tidy, shelves, space, outside, extras, score };

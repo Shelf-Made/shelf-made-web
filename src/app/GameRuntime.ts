@@ -1,11 +1,11 @@
 import { frontageLitter } from '@/sim/life';
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
-import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle } from '@/sim/types';
+import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle, WallStyle } from '@/sim/types';
 import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
-import { canPlace, facingOffWall, canBuyTile, canPaintFloor } from '@/sim/build';
+import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
-import { PLOTS, FIXTURES, FLOORS, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, type Rect } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, type Rect, type WallSeg } from '@/sim/layout';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -91,7 +91,7 @@ export interface Snapshot {
 }
 
 /** A tile tool in Build: buying floor to grow the shop, or laying a finish on a tile. */
-export type TileTool = { kind: 'grow' } | { kind: 'floor'; style: FloorStyle };
+export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle };
 export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' }
 
 /** Short titles for the tutorial steps (the coach card shows one at a time). */
@@ -139,7 +139,7 @@ export class GameRuntime {
   private lastPhase: GameState['phase'] | null = null;
   private noticesSeen = 0;
   /** Build mode: what is being placed, where the pointer hovers, selection, undo stack. */
-  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, selectedId: null, reason: '', valid: false, price: 0 };
+  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; at: { x: number; z: number } | null; wall: string | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, at: null, wall: null, selectedId: null, reason: '', valid: false, price: 0 };
   /** Placing, moving or using a tile tool: the pointer works on tiles. */
   private get building(): boolean { return !!this.build.placing || this.build.selectedId !== null || !!this.build.tool; }
   overlay: 'none' | 'heat' | 'exposure' | 'paths' = 'none';
@@ -804,12 +804,12 @@ export class GameRuntime {
   /** While growing: the tiles that could be bought, marked on the ground. */
   private showGrowHints(): void {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
-    if (this.build.tool?.kind !== 'grow') { r.setGrowHints([]); return; }
+    if (this.build.tool?.kind !== 'grow') { r.setGrowHints([]); r.setWallGhost(null); return; }
     const out: { x: number; z: number }[] = [];
     for (let z = MAX_FLOOR.z0; z < MAX_FLOOR.z1; z++) for (let x = MAX_FLOOR.x0; x < MAX_FLOOR.x1; x++) { const c = canBuyTile({ ...s, cash: Infinity }, x, z); if (c.ok) out.push({ x, z }); }
     r.setGrowHints(out);
   }
-  stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setGrowHints([]); }
+  stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
@@ -818,7 +818,9 @@ export class GameRuntime {
     // Floor tiles sit on half-integer x (the door is at x = 0) and integer z.
     const l = toLocal(s.shop, wx, wz);
     const x = Math.floor(l.x + 0.5) - 0.5, z = Math.floor(l.z);
-    if (this.build.hover && this.build.hover.x === x && this.build.hover.z === z) return;
+    this.build.at = { x: l.x, z: l.z };
+    // A wall tool follows the pointer within a tile too (which of its edges it is nearest).
+    if (this.build.hover && this.build.hover.x === x && this.build.hover.z === z && this.build.tool?.kind !== 'wall') return;
     this.build.hover = { x, z };
     this.refreshGhost();
   }
@@ -828,7 +830,17 @@ export class GameRuntime {
     if (tool) {
       // A tile tool: the tile under the pointer lit green or red, the price or the reason.
       const { x, z } = this.build.hover;
-      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : canPaintFloor(s, x, z, tool.style);
+      if (tool.kind === 'wall') {
+        const w = this.build.at ? nearestWall(s, this.build.at.x, this.build.at.z) : null;
+        this.build.wall = w?.key ?? null;
+        const check = w ? canPaintWall(s, w.key, tool.style) : { ok: false, reason: 'Point at a wall', price: 0 };
+        this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
+        r.setTileGhost(null);
+        r.setWallGhost(w ? { ...w, ok: check.ok } : null);
+        this.maybeEmit();
+        return;
+      }
+      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : tool.kind === 'sell' ? canSellTile(s, x, z) : canPaintFloor(s, x, z, tool.style);
       this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
       r.setTileGhost({ x, z, ok: check.ok });
       this.maybeEmit();
@@ -850,9 +862,11 @@ export class GameRuntime {
     const tool = this.build.tool;
     if (tool) {
       this.snapshotForUndo();
-      const res = this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : { type: 'paintFloor', x, z, style: tool.style });
+      const res = tool.kind === 'wall'
+        ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style }) : { ok: false, message: 'Point at a wall' })
+        : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : tool.kind === 'sell' ? { type: 'sellTile', x, z } : { type: 'paintFloor', x, z, style: tool.style });
       if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
-      else if (tool.kind === 'grow') this.showGrowHints();
+      else if (tool.kind === 'grow' || tool.kind === 'sell') this.showGrowHints();
       this.refreshGhost();
       return;
     }
@@ -1170,11 +1184,13 @@ export class GameRuntime {
     const useKey = keyLabel(keys.interact), scanKey = keyLabel(keys.scan);
     if (this.build.tool) {
       const tool = this.build.tool;
-      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : 'Point at a floor tile', ok: false }, run: null }; }
+      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : tool.kind === 'wall' ? 'Point at a wall' : 'Point at a floor tile', ok: false }, run: null }; }
       const h = this.build.hover, at = toWorld(s.shop, h.x + 0.5, h.z + 0.5);
       r.marker.set(null);
-      const what = tool.kind === 'grow' ? 'Add this tile' : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
-      return { info: { key: 'Click', text: this.build.valid ? `${what} · ${dollars(this.build.price)}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 0.6, z: at.z } }, run: this.build.valid ? () => this.clickBuild(null) : null };
+      const what = tool.kind === 'grow' ? 'Add this tile' : tool.kind === 'sell' ? 'Sell this tile'
+        : tool.kind === 'wall' ? `Finish the wall: ${WALLS.find((w) => w.id === tool.style)?.name.toLowerCase() ?? ''}` : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
+      const cost = this.build.price > 0 ? dollars(this.build.price) : this.build.price < 0 ? `${dollars(-this.build.price)} back` : 'free';
+      return { info: { key: 'Click', text: this.build.valid ? `${what} · ${cost}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 0.6, z: at.z } }, run: this.build.valid ? () => this.clickBuild(null) : null };
     }
     if (this.build.placing || this.build.selectedId !== null) {
       const type = this.build.placing ?? s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type;
@@ -1268,3 +1284,15 @@ export class GameRuntime {
 }
 
 declare const __APP_VERSION__: string;
+
+/** The stretch of outer wall nearest a shop-relative point on the ground (within reach of it), if any. */
+function nearestWall(s: GameState, x: number, z: number): WallSeg | null {
+  let best: WallSeg | null = null, bd = 0.8;
+  for (const w of wallSegments(s.shop)) {
+    const along = w.axis === 'x' ? Math.abs(x - w.t) : Math.abs(z - w.t);
+    const across = w.axis === 'x' ? Math.abs(z - w.line) : Math.abs(x - w.line);
+    if (along > 0.5 || across >= bd) continue;
+    bd = across; best = w;
+  }
+  return best;
+}

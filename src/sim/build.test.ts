@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, FIXTURES, buildGrid, findPath, type GameState } from './index';
-import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt } from './build';
-import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, lotLayout, FLOORS } from './layout';
+import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt, wallStyleAt, canSellTile } from './build';
+import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, lotLayout, FLOORS, wallSegments } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint } from './people';
 
@@ -214,5 +214,56 @@ describe('growing the shop a tile at a time', () => {
     expect(styleAt(s.shop, f0.x0, -4)).toBe('lino');
     expect(applyCommand(s, { type: 'paintFloor', x: f0.x0, z: -3, style: 'wood' }).ok).toBe(false);
     expect(applyCommand(s, { type: 'paintFloor', x: f0.x0 - 1, z: -3, style: 'wood' }).ok).toBe(false);
+  });
+});
+
+describe('finishes and selling floor', () => {
+  it('a new shop has plain walls; a stretch at a time takes a finish, and swapping it sells the old one back', () => {
+    const s = shop();
+    const segs = wallSegments(s.shop);
+    const w = segs.find((x) => x.dir === 'left')!;
+    expect(wallStyleAt(s.shop, w.key)).toBe('plain');
+    const cash = s.cash;
+    expect(applyCommand(s, { type: 'paintWall', key: w.key, style: 'brick' }).ok).toBe(true);
+    expect(s.cash).toBe(cash - 12);
+    expect(wallStyleAt(s.shop, w.key)).toBe('brick');
+    expect(wallStyleAt(s.shop, segs.find((x) => x.dir === 'left' && x.key !== w.key)!.key)).toBe('plain');
+    // Back to plain: 60% of the brick back.
+    expect(applyCommand(s, { type: 'paintWall', key: w.key, style: 'plain' }).ok).toBe(true);
+    expect(s.cash).toBe(cash - 12 + 7);
+    // A tile laid in wood, then taken back to lino: some of it comes back.
+    const f = s.shop.floor;
+    const c2 = s.cash;
+    expect(applyCommand(s, { type: 'paintFloor', x: f.x0, z: -2, style: 'wood' }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'paintFloor', x: f.x0, z: -2, style: 'lino' }).ok).toBe(true);
+    expect(s.cash).toBe(c2 - 7 + 4);
+  });
+
+  it('new floor comes with the cheapest finish even when the rest of the shop has a better one', () => {
+    const s = shop();
+    expect(applyCommand(s, { type: 'setFloor', style: 'wood' }).ok).toBe(true);
+    const f = { ...s.shop.floor };
+    expect(applyCommand(s, { type: 'buyTile', x: f.x1, z: -3 }).ok).toBe(true);
+    expect(styleAt(s.shop, f.x1, -3)).toBe('lino');
+    expect(styleAt(s.shop, f.x1 - 1, -3)).toBe('wood');
+  });
+
+  it("sells a tile of floor back, never one that would split the shop, the door's, or one with something on it", () => {
+    const s = shop();
+    const f = { ...s.shop.floor };
+    expect(applyCommand(s, { type: 'buyTile', x: f.x1, z: -3 }).ok).toBe(true);
+    const n = floorTileCount(s.shop), cash = s.cash;
+    // The door's tile, the pallet's: no.
+    expect(canSellTile(s, s.shop.door.x - 0.5, f.z1 - 1).ok).toBe(false);
+    expect(canSellTile(s, s.shop.delivery.x0, s.shop.delivery.z0).ok).toBe(false);
+    // The tile just bought: yes, for part of its price.
+    expect(applyCommand(s, { type: 'sellTile', x: f.x1, z: -3 }).ok).toBe(true);
+    expect(floorTileCount(s.shop)).toBe(n - 1);
+    expect(s.cash).toBeGreaterThan(cash);
+    expect(s.shop.floor.x1).toBe(f.x1);
+    // A corner tile of the starter shop: fine; something on a tile: move it first.
+    expect(canSellTile(s, f.x1 - 1, f.z0 + 1).ok).toBe(true);
+    expect(place(s, 'plant', f.x1 - 1, f.z0 + 1).ok).toBe(true);
+    expect(canSellTile(s, f.x1 - 1, f.z0 + 1).reason).toMatch(/first/);
   });
 });

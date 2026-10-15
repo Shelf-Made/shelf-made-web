@@ -41,6 +41,8 @@ export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_
     storageCapacity: 120,
     bays: lotLayout({ floor: STARTER.floor, storeroom: STARTER.storeroom }).bays.map((b) => ({ ...toWorld(fr, b.x, b.z), yaw: yawToWorld(fr, b.yaw), carId: null })),
     reputation: 0.5, awareness: 0.35, cleanliness: 1, layoutVersion: 1, litter: [], sizeId: 'starter', lotRows: 1,
+    // Plain plaster walls come with the shop; finishes go on a stretch at a time.
+    wallStyle: 'plain',
     delivery: deliveryZone(STARTER.floor),
   };
 }

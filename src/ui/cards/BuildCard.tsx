@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, LOT_EXPANSION_COST, CORNERS, FLOORS, PALLET_UNITS, floorTileCount, tilePrice, MAX_FLOOR } from '@/sim/layout';
+import { FIXTURES, LOT_EXPANSION_COST, CORNERS, FLOORS, WALLS, PALLET_UNITS, floorTileCount, tilePrice, MAX_FLOOR } from '@/sim/layout';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
@@ -24,6 +24,17 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   floorLamp: 'Warm light after dark', wallLight: 'On an outside wall', pendant: 'Hangs over the aisle', neon: 'On an outside wall, always lit',
 };
 
+/** The swatch for a wall finish: its bands, bottom to top. */
+function wallSwatch(id: string, sc: { primary: string; light: string }): string {
+  switch (id) {
+    case 'bands': return `linear-gradient(0deg, #C48A52 0 10%, ${sc.primary} 10% 46%, #FFF3DC 46% 52%, ${sc.light} 52%)`;
+    case 'tiles': return 'repeating-linear-gradient(0deg, #FFFFFF 0 7px, #D8DADF 7px 8px)';
+    case 'wood': return 'linear-gradient(0deg, #A87B45 0 10%, #C99A62 10% 56%, #A87B45 56% 62%, #FFF3DC 62%)';
+    case 'brick': return 'repeating-linear-gradient(0deg, #B8402E 0 6px, #D8DADF 6px 7px)';
+    default: return 'linear-gradient(0deg, #D8DADF 0 10%, #FFF3DC 10%)';
+  }
+}
+
 /** The swatch for a floor finish: two tiles of its colours. */
 function floorSwatch(id: string, light: string): string {
   const c: Record<string, [string, string]> = { lino: ['#FFF3DC', '#F3DEC0'], concrete: ['#C4C0B8', '#BBB6AD'], checker: ['#FFFFFF', '#38383D'], colour: ['#FFFFFF', light], stone: ['#F4F7FA', '#E4E6EA'], wood: ['#D9A066', '#B8824C'] };
@@ -45,8 +56,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {b.tool ? (
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
-            <div className="name">{b.tool.kind === 'grow' ? 'Adding floor' : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
-            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : 'Click a tile of floor')}{b.price ? ` · ${money(b.price)} a tile` : ''}</div>
+            <div className="name">{b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
+            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
         </div>
@@ -89,6 +100,23 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           })}
         </div>
       )}
+      {tab === 'walls' && (
+        <>
+          <h3>Finish</h3>
+          <div className="list">
+            {WALLS.map((w) => {
+              const on = b.tool?.kind === 'wall' && b.tool.style === w.id;
+              return (
+                <div className="item" key={w.id}>
+                  <span className="swatch big" style={{ background: wallSwatch(w.id, schemeById(s.shop.scheme)) }} aria-hidden="true" />
+                  <div style={{ flex: 1 }}><div className="name">{w.name}</div><div className="sub">{w.perSeg ? `${money(w.perSeg)} a stretch` : 'Comes with the shop · puts back a finish'}</div></div>
+                  <button className={`btn small${on ? ' ghost' : ''}`} disabled={s.cash < w.perSeg} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'wall', style: w.id }))}>{on ? 'Done' : w.perSeg ? 'Paint' : 'Strip'}</button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
       {tab === 'floors' && (
         <div className="list">
           {FLOORS.map((fl) => {
@@ -96,7 +124,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             return (
               <div className="item" key={fl.id}>
                 <span className="swatch big" style={{ background: floorSwatch(fl.id, schemeById(s.shop.scheme).light) }} aria-hidden="true" />
-                <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{fl.perTile ? `${money(fl.perTile)} a tile` : 'Free'}{fl.id === floor && !s.shop.tileStyles ? ' · down now' : ''}</div></div>
+                <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{fl.perTile ? `${money(fl.perTile)} a tile` : 'Comes with the shop · puts back a finish'}{fl.id === floor && !s.shop.tileStyles ? ' · down now' : ''}</div></div>
                 <button className={`btn small${on ? ' ghost' : ''}`} disabled={s.cash < fl.perTile} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'floor', style: fl.id }))}>{on ? 'Done' : 'Lay'}</button>
               </div>
             );
@@ -111,7 +139,10 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             return (
               <div className="item">
                 <div><div className="name">{n} tiles</div><div className="sub">{n < max ? `Next tile ${money(price)} · room for ${max - n} more` : 'As big as the plot allows'}</div></div>
-                {n < max && <button className={`btn small${on ? ' ghost' : ''}`} disabled={!on && s.cash < price} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'grow' }))}>{on ? 'Done' : 'Add tiles'}</button>}
+                <span className="row">
+                  {n < max && <button className={`btn small${on ? ' ghost' : ''}`} disabled={!on && s.cash < price} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'grow' }))}>{on ? 'Done' : 'Add tiles'}</button>}
+                  <button className={`btn small ghost`} onClick={() => (b.tool?.kind === 'sell' ? runtime.stopPlacing() : runtime.startTool({ kind: 'sell' }))}>{b.tool?.kind === 'sell' ? 'Done' : 'Sell tiles'}</button>
+                </span>
               </div>
             );
           })()}

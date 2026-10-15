@@ -4,7 +4,7 @@
  */
 import { pickUpLitter, moveAlong } from './life';
 import { replyToReview } from './reviews';
-import type { GameState, Rot, FixtureType, FloorStyle } from './types';
+import type { GameState, Rot, FixtureType, FloorStyle, WallStyle } from './types';
 import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock } from './people';
 import { fixtureBackWorld } from './grid';
@@ -15,7 +15,7 @@ import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift } from './staff';
-import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile } from './build';
+import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall } from './build';
 import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
 import { schemeById } from './schemes';
@@ -63,6 +63,9 @@ export type Command =
   /** One tile: lay a finish on it, or buy it to grow the shop. */
   | { type: 'paintFloor'; x: number; z: number; style: FloorStyle }
   | { type: 'buyTile'; x: number; z: number }
+  | { type: 'sellTile'; x: number; z: number }
+  /** One stretch of outer wall (a key from wallKey) given a finish. */
+  | { type: 'paintWall'; key: string; style: WallStyle }
   | { type: 'ackChampion' }
   | { type: 'takeLoan'; offerId: string }
   | { type: 'repayLoan'; loanId: number; amount: number }
@@ -268,6 +271,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'setFloor': { const err = setFloor(state, cmd.style); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintFloor': { const err = paintFloor(state, cmd.x, cmd.z, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'buyTile': { const err = buyTile(state, cmd.x, cmd.z); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'sellTile': { const err = sellTile(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'paintWall': { const err = paintWall(state, cmd.key, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'signStyle': {
       if (cmd.style === 'lit' && !state.goals.unlocked.includes('signLit') && !state.sandbox) return { ok: false, message: 'Reach the Regulars goal to light the sign.' };
       state.shop.signStyle = cmd.style; state.shop.layoutVersion++;
