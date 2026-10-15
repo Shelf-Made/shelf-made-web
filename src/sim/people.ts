@@ -846,10 +846,18 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     if (thief) { p.chase = thief.id; p.state = 'chasing'; chaseStep(state, p, dyn); return; }
   }
   const home = homeOf(state, p);
-  // Stockers look for shelves to fill; anyone with nothing on mops up a spill (cleaners go furthest for one).
+  // Anyone with nothing on finds something to do: shelves to fill (everyone but a cashier, who keeps
+  // to the till), a spill to mop (cleaners see to spills first and go furthest for one), and failing
+  // all that, now and then a shelf to tidy, so nobody just stands about.
   if ((p.state === 'idle' || p.state === 'toRegister') && !p.task) {
-    const stocks = p.kind === 'staff' ? p.role === 'stocker' : !state.shop.fixtures.some((f) => f.type === 'register' && f.staffId);
-    if (stocks && p.kind === 'staff') {
+    const spill = () => (p.state === 'idle' && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null);
+    const mop = (l: { id: number; x: number; z: number }) => {
+      p.state = 'toStock'; p.anim = 'walk'; p.timer = -2; // -2 marks a cleaning trip
+      p.targetFixture = l.id; p.idleFor = 0;
+      setPath(state, p, { x: l.x, z: l.z }, dyn);
+    };
+    if (p.kind === 'staff' && p.role === 'cleaner') { const l = spill(); if (l) { mop(l); return; } }
+    if (p.kind === 'staff' && p.role !== 'cashier' && onShift(p, state.time)) {
       let best: { f: Fixture; ratio: number } | null = null;
       for (const f of state.shop.fixtures) {
         const def = FIXTURES[f.type]; if (!def.slots) continue;
@@ -858,14 +866,23 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         // Any shelf with room for something on the pallet, the emptiest first.
         if (ratio < 1 && (!best || ratio < best.ratio) && pickCarryTask(state, f)) best = { f, ratio };
       }
-      if (best) { const t = pickCarryTask(state, best.f)!; p.task = { type: 'carry', fixtureId: best.f.id, productId: t.productId, qty: t.qty }; }
+      if (best) { const t = pickCarryTask(state, best.f)!; p.task = { type: 'carry', fixtureId: best.f.id, productId: t.productId, qty: t.qty }; p.idleFor = 0; }
     }
-    const l = p.state === 'idle' && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null;
-    if (l) {
-      p.state = 'toStock'; p.anim = 'walk'; p.timer = -2; // -2 marks a cleaning trip
-      p.targetFixture = l.id;
-      setPath(state, p, { x: l.x, z: l.z }, dyn);
-      return;
+    if (!p.task) { const l = spill(); if (l) { mop(l); return; } }
+    // Nothing doing: after a while at their post, off to straighten a shelf (not a cashier).
+    if (!p.task && p.kind === 'staff' && p.role !== 'cashier' && p.state === 'idle' && dist(p, home) <= 0.35 && isFree(state, p)) {
+      p.idleFor = (p.idleFor ?? 0) + dt;
+      if (p.idleFor > 9) {
+        const shelves = state.shop.fixtures.filter((f) => FIXTURES[f.type].slots > 0);
+        const f = shelves.length ? withRng(state, 'tidy', (r) => r.pick(shelves)) : null;
+        p.idleFor = withRng(state, 'tidy', (r) => -r.range(0, 8));
+        if (f) {
+          p.state = 'toStock'; p.anim = 'walk'; p.timer = -3; // -3 marks tidying a shelf
+          p.targetFixture = f.id;
+          setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn);
+          return;
+        }
+      }
     }
   }
   switch (p.state) {
@@ -894,6 +911,13 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
       // A cashier off mopping goes straight back when someone comes to pay.
       if (p.timer === -2 && ((p.role === 'cashier' && !tillIdle(state, p)) || !state.shop.litter.some((x) => x.id === p.targetFixture))) { p.state = 'idle'; p.timer = 0; p.targetFixture = null; p.path = []; p.pathIdx = 0; break; }
       if (followPath(p, p.speed, dt, 12, 0.22)) {
+        if (p.timer === -3) {
+          // Tidying: face the shelf and straighten it for a moment.
+          const f = state.shop.fixtures.find((x) => x.id === p.targetFixture);
+          if (f) { const c = fixtureCentre(state.shop, f); p.yaw = Math.atan2(c.x - p.x, c.z - p.z); }
+          p.state = 'stocking'; p.anim = 'browse'; p.timer = 2.5; p.task = null; p.targetFixture = null;
+          break;
+        }
         if (p.timer === -2) {
           // Cleaning trip: pick up the litter.
           const i = state.shop.litter.findIndex((l) => l.id === p.targetFixture);

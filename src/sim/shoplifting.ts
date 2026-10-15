@@ -35,7 +35,9 @@ export function maybeThief(state: GameState, p: Person): void {
 export function isFree(state: GameState, p: Person): boolean {
   if (p.kind !== 'staff' || !onShift(p, state.time) || p.task || p.carrying) return false;
   if (p.chase !== undefined && p.chase !== null) return false;
-  if (p.state !== 'idle' && p.state !== 'toRegister') return false;
+  // At their post or on the way back, or only tidying a shelf (that can wait).
+  const tidying = (p.state === 'toStock' && p.timer === -3) || (p.state === 'stocking' && !p.task && !p.carrying);
+  if (p.state !== 'idle' && p.state !== 'toRegister' && !tidying) return false;
   return p.role !== 'cashier' || tillIdle(state, p);
 }
 

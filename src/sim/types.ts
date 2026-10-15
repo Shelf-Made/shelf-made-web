@@ -167,6 +167,8 @@ export interface Person {
   busted?: boolean;
   /** Staff: the shoplifter they are after. */
   chase?: number | null;
+  /** Staff: seconds at their post with nothing to do (they go and tidy a shelf after a while). */
+  idleFor?: number;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';

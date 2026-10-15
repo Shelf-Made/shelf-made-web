@@ -52,3 +52,32 @@ describe('stockers', () => {
     expect(slot.qty).toBe(8);
   });
 });
+
+describe('idle staff', () => {
+  it('a cleaner helps fill shelves, and with nothing at all to do goes and tidies one', () => {
+    const s = openGame({ seed: 24, plotId: 'main', name: 'T', tutorial: false });
+    resetGridCache();
+    const cl = s.staffPool.find((c) => c.role === 'cleaner') ?? s.staffPool.find((c) => c.role === 'orderer')!;
+    s.cash = 2000;
+    expect(applyCommand(s, { type: 'hire', candidateId: cl.id }).ok).toBe(true);
+    const worker = s.people.find((p) => p.kind === 'staff')!;
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    const slot = shelf.slots.find((sl) => sl.productId)!;
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = 8;
+    slot.qty = 4;
+    s.shop.storage = [{ productId: slot.productId!, qty: 4, day: s.day }];
+    s.people = s.people.filter((p) => p.kind !== 'customer');
+    for (let i = 0; i < 60 / TICK && slot.qty < 8; i++) tick(s);
+    expect(slot.qty).toBe(8);
+    // Nothing left to stock or mop: within a while they are off tidying a shelf.
+    s.shop.storage = []; s.shop.litter = [];
+    let tidied = false;
+    for (let i = 0; i < 40 / TICK && !tidied; i++) {
+      s.people = s.people.filter((p) => p.kind !== 'customer');
+      tick(s);
+      tidied = worker.state === 'stocking' && !worker.task;
+    }
+    expect(tidied).toBe(true);
+    expect(s.stuckRescues).toBe(0);
+  });
+});
