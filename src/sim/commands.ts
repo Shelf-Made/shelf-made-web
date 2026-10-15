@@ -2,6 +2,7 @@
  * The one command layer: every player, rival and manager action is a Command applied here.
  * Commands are plain data, so they can be recorded for replays and driven by tests.
  */
+import { pickUpLitter, moveAlong } from './life';
 import type { GameState, Rot, FixtureType } from './types';
 import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerStock } from './people';
@@ -66,6 +67,8 @@ export type Command =
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
   | { type: 'clean'; litterId: number }
+  | { type: 'cleanTown'; litterId: number }
+  | { type: 'moveAlong'; hangoutId: number }
   | { type: 'cheat'; cash: number };
 
 export interface CommandResult { ok: boolean; message?: string }
@@ -277,6 +280,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
       cue(state, 'pick');
       return { ok: true };
     }
+    case 'cleanTown': return pickUpLitter(state, cmd.litterId) ? { ok: true } : { ok: false };
+    case 'moveAlong': return moveAlong(state, cmd.hangoutId) ? { ok: true } : { ok: false };
     case 'cheat': {
       if (!state.sandbox && !(globalThis as { __shelfTest?: boolean }).__shelfTest) return { ok: false };
       state.cash += cmd.cash;

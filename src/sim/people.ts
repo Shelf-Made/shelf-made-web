@@ -14,8 +14,9 @@ import { effectivePrice } from './marketing';
 import { cashierMistake, onShift } from './staff';
 import { CARD_FEE } from './money';
 import { formatMoney, dollars } from './money';
+import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './life';
 
-const CUSTOMER_MODELS = 12;
+export const CUSTOMER_MODELS = 12;
 
 export function plotOf(state: GameState) { return PLOTS.find((p) => p.id === state.shop.plotId) ?? PLOTS[0]!; }
 
@@ -207,6 +208,7 @@ export function spawnWalker(state: GameState): void {
     };
     p.yaw = Math.atan2(p.path[0]!.x - p.x, p.path[0]!.z - p.z);
     state.people.push(p);
+    planDogStop(state, p);
     if (family) {
       const back = { x: -Math.sin(p.yaw) * 0.7, z: -Math.cos(p.yaw) * 0.7 };
       state.people.push({ ...p, id: nextId(state), look: { model: r.int(0, CUSTOMER_MODELS - 1), variant: r.int(0, 3), height: r.range(0.6, 0.68) }, x: p.x + back.x, z: p.z + back.z, px: p.x + back.x, pz: p.z + back.z, path: [...p.path], xings: p.xings ? [...p.xings] : undefined });
@@ -580,8 +582,12 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
 
 function tickWalker(state: GameState, p: Person): void {
   if (p.rivalId) { tickRivalShopper(state, p); return; }
+  // Town life: drivers out arguing after a bump, teenagers hanging about, a dog that needs to stop.
+  if (p.life === 'driver') { driverStep(p); return; }
+  if (p.life === 'teen' && teenStep(state, p) === 'stay') return;
+  if (dogWalk(state, p)) return;
   if (p.path.length === 0) return;
-  if (walkStreet(p, p.speed, state.tick)) p.state = 'gone';
+  if (walkStreet(p, p.speed, state.tick) && !arriveAtHangout(p)) p.state = 'gone';
 }
 
 /** Direct steering (WASD): slide along walls and fixtures instead of stopping dead. */

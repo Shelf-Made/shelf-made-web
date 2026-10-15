@@ -9,6 +9,7 @@ import { spawnRivalShopper } from '@/sim/rivalShoppers';
 import { GOALS } from '@/sim/goals';
 import type { Sky } from '@/sim/weather';
 import { WeatherView } from '@/render/Weather';
+import { stageBump } from '@/sim/life';
 
 /** Deterministic hooks for Playwright screenshots and perf runs. Harmless in production. */
 export function installTestHooks(rt: GameRuntime): void {
@@ -89,6 +90,8 @@ export function installTestHooks(rt: GameRuntime): void {
     setSky: (sky: Sky) => { const s = rt.state; if (!s) return; s.sky = sky; rt.bump(); },
     /** A lightning strike now, (dx, dz) from the camera's focus. */
     strike: (dx: number, dz: number) => { const r = rt.renderer; if (!r) return; const f = r.mode === 'play' ? r.follow.target : r.camera.target; r.weather.strike(f.x + dx, f.z + dz, 1, Math.hypot(dx, dz)); },
+    /** Two cars on Main Road bump now (screenshots); false if no pair is placed for it. */
+    bump: () => { const s = rt.state; if (!s) return false; const ok = stageBump(s); rt.bump(); return ok; },
     /** Hold lightning at its brightest (screenshots). */
     freezeStrike: (b: boolean) => { WeatherView.holdStrikes = b; },
     /** How wet the ground is now, and how hard it is raining (render side). */

@@ -39,8 +39,8 @@ export const PEOPLE_MODELS = ['people/female-a', 'people/male-a', 'people/female
  * at the till (and one per item at a self-checkout). Plus a wave, and walking with a box (the walk's
  * legs, the carry's arms).
  */
-type Anim = Exclude<SimAnim, 'browse' | 'pay'> | 'greet' | 'carryWalk' | 'reach' | 'stock' | 'bend';
-const CLIP_FOR: Record<Exclude<Anim, 'carryWalk' | 'stock'>, string> = { idle: 'idle', walk: 'walk', carry: 'holding-both', sit: 'sit', greet: 'emote-yes', reach: 'interact-left', bend: 'pick-up' };
+type Anim = Exclude<SimAnim, 'browse' | 'pay'> | 'greet' | 'carryWalk' | 'reach' | 'stock' | 'bend' | 'argue';
+const CLIP_FOR: Record<Exclude<Anim, 'carryWalk' | 'stock'>, string> = { idle: 'idle', walk: 'walk', carry: 'holding-both', sit: 'sit', greet: 'emote-yes', reach: 'interact-left', bend: 'pick-up', argue: 'emote-no' };
 /** Gestures played once and held, then back to standing: never looped (a looped reach read as a twitch). */
 const ONCE: ReadonlySet<Anim> = new Set<Anim>(['reach', 'bend']);
 /** A shopper starts reaching for an item this long (game seconds) before it is in their hand. */
@@ -354,10 +354,22 @@ export class PeopleView {
     return once;
   }
 
+  /** A teenager hanging about: standing, a drag on the cigarette every few seconds, a flick of the hand when something is dropped. */
+  private teenHands(state: GameState, p: Person, inst: Instance): { anim: Anim; rate: number } {
+    let key = '';
+    if (p.throwTick !== undefined && state.tick - p.throwTick < 20) key = `throw:${p.throwTick}`;
+    else if (p.smoking) { const k = Math.floor((this.frame + p.id * 37) / 380); if ((this.frame + p.id * 37) % 380 < 50) key = `drag:${k}`; }
+    if (!key) return { anim: 'idle', rate: 1 };
+    if (key !== inst.gestureKey) { inst.gestureKey = key; if (inst.current === 'reach') inst.current = null; return { anim: 'reach', rate: key.startsWith('throw') ? 1.6 : 0.8 }; }
+    const a = inst.actions.reach;
+    if (a && inst.current === 'reach' && a.time >= a.getClip().duration - 1e-3) return { anim: 'idle', rate: 1 };
+    return { anim: 'reach', rate: key.startsWith('throw') ? 1.6 : 0.8 };
+  }
+
   private play(inst: Instance, anim: Anim, speed: number): void {
     const action = inst.actions[anim] ?? inst.actions.idle;
     if (!action) return;
-    action.timeScale = anim === 'walk' || anim === 'carryWalk' || anim === 'stock' || ONCE.has(anim) ? speed : 1;
+    action.timeScale = anim === 'walk' || anim === 'carryWalk' || anim === 'stock' || anim === 'argue' || ONCE.has(anim) ? speed : 1;
     if (inst.current === anim) return;
     const prev = inst.current ? inst.actions[inst.current] : undefined;
     action.reset().setEffectiveWeight(1).play();
@@ -409,8 +421,13 @@ export class PeopleView {
   /** The free hand: a reusable bag for bargain hunters, a snack for impulse buyers (kids and teens). */
   private propGeo: Partial<Record<CustomerType, BufferGeometry>> = {};
   private propFor(p: Person): Group | null {
-    if (!(p.kind === 'customer' || p.rivalId) || (p.ctype !== 'bargain' && p.ctype !== 'impulse')) return null;
     const pal = this.assets.palette;
+    if (p.smoking) {
+      // A cigarette between the fingers, its tip glowing.
+      this.cigGeo ??= merge([box(pal, '#F4F1EA', 0.006, 0.006, 0.034, 0, -0.01, 0.02), box(pal, '#E8903F', 0.0065, 0.0065, 0.008, 0, -0.01, 0.04)]);
+      const grp = new Group(); grp.add(new Mesh(this.cigGeo, this.assets.plainMaterial)); return grp;
+    }
+    if (!(p.kind === 'customer' || p.rivalId) || (p.ctype !== 'bargain' && p.ctype !== 'impulse')) return null;
     let g = this.propGeo[p.ctype];
     if (!g) {
       g = p.ctype === 'bargain'
@@ -424,6 +441,7 @@ export class PeopleView {
     grp.add(new Mesh(g, this.assets.plainMaterial));
     return grp;
   }
+  private cigGeo: BufferGeometry | null = null;
   private holdProp(inst: Instance): void {
     if (!inst.prop) return;
     if (!inst.armL) { inst.prop.position.set(0.28, 0.14, 0); return; }
@@ -571,6 +589,9 @@ export class PeopleView {
       if (moving) anim = carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk';
       else if (carryBox) anim = 'carry';
       else if (p.anim === 'browse' || p.anim === 'pay') ({ anim, rate } = this.hands(state, p, inst));
+      // Town life: drivers after a bump shake their heads at each other; teenagers take a drag now and then, or flick something away.
+      else if (p.life === 'driver') { anim = 'argue'; rate = 0.75; }
+      else if (p.life === 'teen' && p.state === 'idle') ({ anim, rate } = this.teenHands(state, p, inst));
       else anim = p.anim === 'walk' || (p.anim === 'carry' && bags) ? 'idle' : p.anim;
       // Regulars greet the staff: a wave the first time they pass someone at work.
       if (p.ctype === 'loyalist' && p.kind === 'customer' && (p.state === 'shopping' || p.state === 'browsing' || p.state === 'toQueue') && this.frame % 10 === 0) {
@@ -590,8 +611,10 @@ export class PeopleView {
       if (inst.dog) {
         const back = { x: -Math.sin(p.yaw) * 0.42 + Math.cos(p.yaw) * 0.3, z: -Math.cos(p.yaw) * 0.42 - Math.sin(p.yaw) * 0.3 };
         inst.dog.visible = true;
-        inst.dog.position.set(x + back.x, moving ? Math.abs(Math.sin(this.frame * 0.35)) * 0.03 : 0, z + back.z);
-        inst.dog.rotation.y = p.yaw;
+        // Stopped for the dog: it squats, back end down.
+        const squat = p.dogStop !== undefined;
+        inst.dog.position.set(x + back.x, moving ? Math.abs(Math.sin(this.frame * 0.35)) * 0.03 : squat ? -0.025 : 0, z + back.z);
+        inst.dog.rotation.set(squat ? -0.28 : 0, p.yaw, 0, 'YXZ');
         this.blobs.add(x + back.x, z + back.z, 0.24, 0.36, p.yaw);
       }
     }

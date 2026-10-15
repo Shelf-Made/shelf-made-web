@@ -30,6 +30,8 @@ export interface InspectInfo {
   whyLabel?: string;
   why?: string[];
   staff?: { role: StaffRole; roleName: string; skill: number; morale: number; wage: number };
+  /** Teenagers hanging about outside your shop: the group, so you can ask them to move along. */
+  moveAlong?: number;
 }
 
 const FIRST = ['Ada', 'Ben', 'Cleo', 'Dev', 'Elsie', 'Femi', 'Gus', 'Hana', 'Ivo', 'Jo', 'Kit', 'Lena', 'Milo', 'Nia', 'Omar', 'Pip', 'Quinn', 'Rosa', 'Sam', 'Tess', 'Uma', 'Vic', 'Wren', 'Yara', 'Zak', 'Ines', 'Theo', 'Maud', 'Ravi', 'Lou'];
@@ -53,6 +55,14 @@ export function moodOf(p: Person): Mood {
 }
 
 function doing(state: GameState, p: Person): string {
+  // Town life first: what makes them more than a passer-by.
+  if (p.life === 'driver') return 'Arguing about a bump';
+  if (p.life === 'teen' && p.hangout !== undefined) {
+    const h = state.life?.hangouts.find((x) => x.id === p.hangout);
+    if (h && p.state === 'idle') return `Hanging about ${h.where}${p.smoking ? ', smoking' : ''}`;
+    return 'Off to meet friends';
+  }
+  if (p.dogStop !== undefined) return 'Waiting for the dog';
   switch (p.state) {
     case 'driving': return 'Driving';
     case 'toDoor': case 'entering': return 'Heading in';
@@ -63,7 +73,7 @@ function doing(state: GameState, p: Person): string {
     case 'toCar': return 'Walking to the car';
     case 'loading': return 'Loading the boot';
     case 'inRival': return 'Inside';
-    case 'walking': return p.rivalId ? `On the way to ${state.rivals.find((r) => r.id === p.rivalId)?.name ?? 'the shops'}` : 'Out for a walk';
+    case 'walking': return p.rivalId ? `On the way to ${state.rivals.find((r) => r.id === p.rivalId)?.name ?? 'the shops'}` : p.look.dog ? 'Walking the dog' : 'Out for a walk';
     default: return p.kind === 'staff' ? 'At work' : 'Standing about';
   }
 }
@@ -103,7 +113,11 @@ export function inspectPerson(state: GameState, id: number): InspectInfo | null 
       why: (p.why ?? []).map((k) => reasonText(k, type ?? 'convenience', { drove, rival: r?.boughtDay === undefined })),
     };
   }
-  return { ...base, kind: 'walker' };
+  if (p.life === 'teen') {
+    const h = state.life?.hangouts.find((x) => x.id === p.hangout);
+    return { ...base, kind: 'walker', mood: 'ok', moveAlong: h && h.mine && p.state === 'idle' ? h.id : undefined };
+  }
+  return { ...base, kind: 'walker', mood: p.life === 'driver' ? 'annoyed' : base.mood };
 }
 
 /**

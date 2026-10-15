@@ -1,4 +1,5 @@
 import type { Sky } from './weather';
+import type { TownLife } from './life';
 import type { Category } from './products';
 
 export interface Vec2 { x: number; z: number }
@@ -114,6 +115,20 @@ export interface Person {
   /** Shoppers: the store they chose ('player' or a rival id) and the two scores that most drove it. */
   store?: string;
   why?: (keyof StoreScores)[];
+  // Town life (walkers): who they are beyond a passer-by, and what they are up to.
+  /** A teenager hanging about with friends, or a driver out of a car after a bump. */
+  life?: 'teen' | 'driver';
+  /** Teenagers: the group they are with (while it lasts). */
+  hangout?: number;
+  /** Teenagers: lights up while hanging about. */
+  smoking?: boolean;
+  /** Teenagers: the tick they last dropped something (the renderer flicks a hand). */
+  throwTick?: number;
+  /** Drivers: the bump they got out of their car for. */
+  bumpId?: number;
+  /** Dog walkers: seconds of walking before the dog needs to stop, and the seconds left of the stop. */
+  poopIn?: number;
+  dogStop?: number;
 }
 
 export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
@@ -341,7 +356,7 @@ export interface Franchise {
 }
 
 /** "Too pricey", "Out of stock", "Long queue", "Great deal", "Love this place". */
-export type ReactionKind = 'pricey' | 'outOfStock' | 'queue' | 'deal' | 'love';
+export type ReactionKind = 'pricey' | 'outOfStock' | 'queue' | 'deal' | 'love' | 'ew';
 export interface Reaction { id: number; personId: number; kind: ReactionKind; tick: number }
 
 export interface Notice { day: number; text: string; kind: 'rival' | 'event' | 'money' | 'staff' | 'info' }
@@ -461,4 +476,6 @@ export interface GameState {
   tomorrow: DayPlan | null;
   /** Today's sky: how the weather moves through the day follows from it (older saves have none: fair). */
   sky?: Sky;
+  /** Town life: litter in the streets, teenagers hanging about, bumps on Main Road (made when first needed). */
+  life?: TownLife;
 }

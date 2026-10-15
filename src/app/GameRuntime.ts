@@ -1,3 +1,4 @@
+import { frontageLitter } from '@/sim/life';
 import { type GameState, type Command, type CommandResult, newGame, tick, applyCommand, TICK, clockLabel, resetGridCache, DAY_SECONDS, quickSetup } from '@/sim/index';
 import type { Difficulty, FixtureType, Rot, CustomerType } from '@/sim/types';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
@@ -39,7 +40,7 @@ export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf
 export interface AimInfo { key: string | null; text: string; ok: boolean; at?: { x: number; y: number; z: number } }
 
 /** Something the manager can use. */
-type Thing = { kind: 'fixture' | 'delivery' | 'spill'; id: number };
+type Thing = { kind: 'fixture' | 'delivery' | 'spill' | 'mess'; id: number };
 
 /** How far in front of the manager a thing may be and still be used. */
 const REACH = 1.2;
@@ -859,7 +860,7 @@ export class GameRuntime {
   private thingRect(s: GameState, t: Thing): Rect {
     if (t.kind === 'fixture') { const f = s.shop.fixtures.find((x) => x.id === t.id)!; return rectToWorld(s.shop, { x0: f.x, z0: f.z, x1: f.x + 1, z1: f.z + 1 }); }
     if (t.kind === 'delivery') return rectToWorld(s.shop, s.shop.delivery);
-    const l = s.shop.litter.find((x) => x.id === t.id)!;
+    const l = t.kind === 'mess' ? s.life!.litter.find((x) => x.id === t.id)! : s.shop.litter.find((x) => x.id === t.id)!;
     return { x0: l.x - 0.25, z0: l.z - 0.25, x1: l.x + 0.25, z1: l.z + 0.25 };
   }
 
@@ -867,6 +868,12 @@ export class GameRuntime {
   private thingAt(px: number, py: number): Thing | null {
     const s = this.state; const r = this.renderer; if (!s || !r) return null;
     const hit = r.pick(px, py, s);
+    // Mess on the frontage, outside: picked against the ground under the pointer.
+    if (s.life?.litter.length) {
+      const g = r.groundAt(px, py);
+      const m = g ? frontageLitter(s).find((l) => Math.hypot(l.x - g.x, l.z - g.z) < 0.4) : undefined;
+      if (m) return { kind: 'mess', id: m.id };
+    }
     if (!hit) return null;
     if (hit.kind === 'fixture') return { kind: 'fixture', id: hit.id };
     if (hit.kind === 'delivery') return { kind: 'delivery', id: 0 };
@@ -896,6 +903,7 @@ export class GameRuntime {
     for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register') consider({ kind: 'fixture', id: f.id });
     consider({ kind: 'delivery', id: 0 });
     for (const l of s.shop.litter) consider({ kind: 'spill', id: l.id });
+    for (const l of frontageLitter(s)) consider({ kind: 'mess', id: l.id });
     return best;
   }
 
@@ -903,6 +911,10 @@ export class GameRuntime {
   private actionFor(s: GameState, t: Thing, near: boolean): { text: string; ok: boolean; key: 'use' | 'scan' | null; run: (() => void) | null } {
     const owner = s.people.find((p) => p.kind === 'owner')!;
     if (t.kind === 'spill') return { text: 'Mop up the spill', ok: true, key: 'use', run: () => { this.dispatch({ type: 'clean', litterId: t.id }); } };
+    if (t.kind === 'mess') {
+      const kind = s.life?.litter.find((l) => l.id === t.id)?.kind;
+      return { text: kind === 'poop' ? 'Clear up after the dog' : 'Pick up the litter', ok: true, key: 'use', run: () => { this.dispatch({ type: 'cleanTown', litterId: t.id }); } };
+    }
     if (t.kind === 'delivery') {
       if (owner.carrying) return { text: 'Put the box back', ok: true, key: 'use', run: () => { this.dispatch({ type: 'pickUp', productId: undefined }); } };
       const pid = neediestInStorage(s);
@@ -972,6 +984,7 @@ export class GameRuntime {
     this.pendingUse = null;
     if (t.kind === 'fixture' && !s.shop.fixtures.some((f) => f.id === t.id)) return;
     if (t.kind === 'spill' && !s.shop.litter.some((l) => l.id === t.id)) return;
+    if (t.kind === 'mess' && !s.life?.litter.some((l) => l.id === t.id)) return;
     // Turn to face it, then act.
     const r = this.thingRect(s, t);
     o.yaw = Math.atan2((r.x0 + r.x1) / 2 - o.x, (r.z0 + r.z1) / 2 - o.z);

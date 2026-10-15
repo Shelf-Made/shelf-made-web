@@ -16,6 +16,7 @@ import { trackGoals, checkGoals, goalsMorning } from './goals';
 import { franchiseDay } from './franchise';
 import { nightNotes } from './report';
 import { skyFor, forecastFor } from './weather';
+import { sweepTown } from './life';
 
 export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
 export const SUPPLIERS: Supplier[] = [
@@ -111,8 +112,9 @@ export function closeDay(state: GameState): void {
   for (const [id, n] of Object.entries(rivals)) shoppers[id] = Math.round(n);
   for (const f of state.franchises) if (f.corner) shoppers[`corner-${f.corner}`] = f.history[f.history.length - 1]?.customers ?? 0;
   t.shoppers = shoppers;
-  // The owner tidies up overnight.
+  // The owner tidies up overnight; the street sweeper does the town.
   state.shop.litter = [];
+  sweepTown(state);
   state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.35);
   state.history.push({ ...t, complaints: structuredClone(t.complaints), shoppers: { ...shoppers } });
   state.phase = 'night';

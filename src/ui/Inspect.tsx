@@ -79,7 +79,7 @@ export function InspectPanel({ runtime, snap }: { runtime: GameRuntime; snap: Sn
 
   if (!info) return null;
   const st = info.staff;
-  const sub = st ? st.roleName : info.typeName ?? (info.kind === 'walker' ? 'Out for a walk' : 'Shopper');
+  const sub = st ? st.roleName : info.typeName ?? (info.kind === 'walker' ? 'Passing by' : 'Shopper');
   return (
     <div ref={ref} className={`inspect k-${info.kind}`} role="dialog" aria-label={`About ${info.name}`} data-testid="inspect">
       <div className="inspect-head">
@@ -130,6 +130,7 @@ export function InspectPanel({ runtime, snap }: { runtime: GameRuntime; snap: Sn
           ? <button className="btn small ghost" onClick={() => runtime.stopFollow()}>Stop following</button>
           : <button className="btn small" onClick={() => runtime.followSelected()}>Follow</button>}
         {st && snap.unlocks.staff && <button className="btn small ghost" onClick={() => { runtime.selectPerson(null); runtime.openCard('staff'); }}>Staff card</button>}
+        {info.moveAlong !== undefined && <button className="btn small ghost" onClick={() => { runtime.dispatch({ type: 'moveAlong', hangoutId: info.moveAlong! }); runtime.selectPerson(null); }}>Ask them to move along</button>}
       </div>
     </div>
   );
