@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { ICONS } from './TopBar';
+import { dollars } from '@/sim/money';
 
 const MOVE = <svg viewBox="0 0 24 24"><path className="fill" d="M9 9h6v6H9z" /><path d="M12 2.5v19M2.5 12h19M12 2.5l-2.5 2.5M12 2.5l2.5 2.5M12 21.5l-2.5-2.5M12 21.5l2.5-2.5M2.5 12l2.5-2.5M2.5 12l2.5 2.5M21.5 12l-2.5-2.5M21.5 12l-2.5 2.5" /></svg>;
 const TURN = <svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 11-2.2-5.3M19.5 3.5v4h-4" /><path className="fill" d="M10 10h4v4h-4z" /></svg>;
+const SELL = <svg viewBox="0 0 24 24"><circle className="fill" cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="8.5" /><path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.6.8-2.6 2s1 1.6 2.6 2 2.7.9 2.7 2.1-1.2 2-2.7 2c-1.2 0-2.2-.5-2.7-1.4M12 6.5v1.5M12 16v1.5" /></svg>;
 const SERVE = <svg viewBox="0 0 24 24"><path className="fill" d="M3 12h18v8H3z" /><path d="M3 12h18v8H3zM6 12V8h8v4M9 8V5h2M16 15.5h2" /></svg>;
 
 /**
@@ -31,7 +33,7 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, [runtime, menu.id]);
-  const act = (a: 'use' | 'move' | 'turn') => (e: React.MouseEvent) => { e.stopPropagation(); runtime.fixtureMenuAction(a); };
+  const act = (a: 'use' | 'move' | 'turn' | 'sell') => (e: React.MouseEvent) => { e.stopPropagation(); runtime.fixtureMenuAction(a); };
   return (
     <div ref={ref} className="fixture-menu" role="menu" aria-label={menu.name} onPointerDown={(e) => e.stopPropagation()}>
       <div className="fm-name">{menu.name}</div>
@@ -52,6 +54,7 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
         )}
         <button type="button" role="menuitem" className="fm-btn" onClick={act('move')}>{MOVE}<span>Move</span></button>
         <button type="button" role="menuitem" className="fm-btn" onClick={act('turn')}>{TURN}<span>Turn</span></button>
+        <button type="button" role="menuitem" className="fm-btn" aria-label={`Sell for ${dollars(menu.refund ?? 0)}`} onClick={act('sell')}>{SELL}<span>Sell {dollars(menu.refund ?? 0)}</span></button>
       </div>}
     </div>
   );

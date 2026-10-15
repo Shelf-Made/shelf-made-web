@@ -268,7 +268,7 @@ test('design your manager in the lobby: the shopkeeper out front changes as you 
   expect((await look()).model).toBe(3);
 });
 
-test('click a piece of furniture with empty hands to move it or turn it', async ({ page }) => {
+test('click a piece of furniture with empty hands to move it, turn it or sell it', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 6, 'main', 'Movers', { tutorial: false });
   await hooks(page, 'quickSetup', false);
@@ -276,11 +276,11 @@ test('click a piece of furniture with empty hands to move it or turn it', async 
   await hooks(page, 'fp', 0.5, -1.0);
   const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
   const stock = JSON.stringify(shelf.slots);
-  // A click opens its menu: Stock, Move, Turn.
+  // A click opens its menu: Stock, Move, Turn, Sell.
   await clickAt(page, shelf.x + 0.5, shelf.z + 0.5, 0.6);
   const menu = page.getByRole('menu', { name: 'Shelf' });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitem')).toHaveText(['Stock', 'Move', 'Turn']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Stock', 'Move', 'Turn', /^Sell \$\d+$/]);
   // Move: it follows the pointer and a click puts it down somewhere free (its stock goes with it).
   await menu.getByRole('menuitem', { name: 'Move' }).click();
   await expect(menu).toHaveCount(0);
@@ -306,6 +306,12 @@ test('click a piece of furniture with empty hands to move it or turn it', async 
   await expect.poll(() => aimText(page)).not.toMatch(/move shelf/i);
   const f = (await state(page)).shop.fixtures.find((x) => x.id === shelf.id)!;
   expect(`${f.x},${f.z}`).toBe(`${to!.x},${to!.z}`);
+  // Sell: gone, for part of what it cost.
+  const cash = (await state(page)).cash;
+  await clickAt(page, to!.x + 0.5, to!.z + 0.5, 0.6);
+  await page.getByRole('menuitem', { name: /^Sell/ }).click();
+  await expect.poll(async () => (await state(page)).shop.fixtures.some((x) => x.id === shelf.id)).toBe(false);
+  expect((await state(page)).cash).toBeGreaterThan(cash);
 });
 
 test("the day's log: closes and comes back, gives way to a card, says when Staff opens, and is kept in Stats", async ({ page }) => {

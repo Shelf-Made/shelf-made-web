@@ -385,7 +385,7 @@ test.describe('screenshots', () => {
     await page.keyboard.press('Escape');
     await hooks(page, 'dispatch', { type: 'skipTutorial' });
     await hooks(page, 'quickSetup', true);
-    // Furniture clicked with empty hands: its menu (Stock, Move, Turn); Move picks it up and the ghost follows the pointer.
+    // Furniture clicked with empty hands: its menu (Stock, Move, Turn, Sell); Move picks it up and the ghost follows the pointer.
     {
       const sh = (await st(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
       await follow(page, 0.5, -1.2, 9, 0, 1200);

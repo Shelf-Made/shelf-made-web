@@ -81,7 +81,7 @@ export interface Snapshot {
   inspect: (InspectInfo & { following: boolean }) | null;
   /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
   /** A piece's menu (id -1: the delivery pallet). A pallet's lists what is on it to pick up; the delivery pallet cannot be moved. */
-  fixtureMenu: { id: number; name: string; use: string | null; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean } | null;
+  fixtureMenu: { id: number; name: string; use: string | null; refund?: number; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean } | null;
   /** At night, whether the day's log is up (it can be closed, and comes back from the bar at the top). */
   nightLog: boolean;
   /** The shop's listing on the map app: how many reviews, the rating, and how many came in since you last looked. */
@@ -284,7 +284,7 @@ export class GameRuntime {
     if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
-    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : null, ...(f.type === 'pallet' ? { picks: picks() } : {}) };
+    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : null, refund: Math.round(def.price * 0.6), ...(f.type === 'pallet' ? { picks: picks() } : {}) };
   }
   /** Picked from a pallet's menu: walk over and pick that box up. */
   palletPick(productId: string): void {
@@ -300,14 +300,20 @@ export class GameRuntime {
   private palletWant: string | null = null;
   private palletAfter: string | null = null;
   /** A choice from the menu: its use (Stock, serve at the till), pick it up to Move it, or Turn it where it stands. */
-  fixtureMenuAction(action: 'use' | 'move' | 'turn'): void {
+  fixtureMenuAction(action: 'use' | 'move' | 'turn' | 'sell'): void {
     const s = this.state, id = this.fixtureMenu;
     this.fixtureMenu = null;
     const f = s?.shop.fixtures.find((x) => x.id === id);
     if (!s || !f) { this.emit(); return; }
     this.audio.start();
     if (action === 'use') this.walkAndUse({ kind: 'fixture', id: f.id });
-    else if (action === 'move') {
+    else if (action === 'sell') {
+      // Sold where it stands, for part of what it cost (its stock goes back on the pallet).
+      this.snapshotForUndo();
+      const res = this.dispatch({ type: 'removeFixture', fixtureId: f.id });
+      if (!res.ok) { this.undoStack.pop(); this.showToast(res.message ?? "That can't be sold.", 1800); }
+      else { this.audio.play('coin'); this.showToast(`Sold the ${FIXTURES[f.type].name.toLowerCase()} for ${dollars(Math.round(FIXTURES[f.type].price * 0.6))}.`, 1800); }
+    } else if (action === 'move') {
       // Picked up: the ghost follows the pointer; a click puts it down, R turns it, Esc puts it back.
       this.build.rot = f.rot; this.build.hover = null;
       this.selectFixture(f.id);
@@ -1158,7 +1164,7 @@ export class GameRuntime {
     // Furniture across the room, hands empty: a click opens its menu.
     if (show.kind === 'fixture' && !owner.carrying) {
       const m = this.fixtureMenuInfo(show.id);
-      const what = m ? [m.use, 'Move', 'Turn'].filter(Boolean).join(', ').replace(/, (?=[^,]*$)/, ' or ') : 'Move or Turn';
+      const what = m ? [m.use, 'Move', 'Turn', 'Sell'].filter(Boolean).join(', ').replace(/, (?=[^,]*$)/, ' or ') : 'Move, Turn or Sell';
       return { info: { key: 'Click', text: `${m?.name ?? 'Furniture'}: ${what}`, ok: true, at }, run: () => this.openFixtureMenu(show.id) };
     }
     // The delivery pallet across the room with several kinds of box on it: a click asks which.
