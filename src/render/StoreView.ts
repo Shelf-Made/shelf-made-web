@@ -219,6 +219,8 @@ export class StoreView {
     const windowGlass = this.assets.glassGeometry('market/wall-window');
     let pane: { x0: number; x1: number; y0: number; y1: number; z1: number } | null = null;
     if (windowGlass) { windowGlass.computeBoundingBox(); const b = windowGlass.boundingBox!; pane = { x0: b.min.x, x1: b.max.x, y0: b.min.y, y1: b.max.y, z1: b.max.z }; }
+    // Where the inside paint stops around a window: its pane, or (Kenney's glass is painted in the atlas) the frame set back in the wall.
+    const opening = pane ?? recessOf(windowG);
     const posters: BufferGeometry[] = [];
     const glassParts: BufferGeometry[] = [], litPanes: BufferGeometry[] = [];
     const side = (tiles: number[], line: number, axis: 'x' | 'z', outward: number, yaw: number, doorAt: number | null, windows: boolean) => {
@@ -232,16 +234,18 @@ export class StoreView {
         const px = axis === 'x' ? ox + t : ox + line + outward * WALL_T / 2;
         const pz = axis === 'x' ? oz + line + outward * WALL_T / 2 : oz + t;
         full.push(place(src.clone(), px, 0, pz, yaw));
-        ledge.push(place(isDoor ? src.clone() : cutDown(src, LEDGE), px, 0, pz, yaw));
+        // Cut down, a window is a plain wall: the opening starts below the ledge, and squashing its frame
+        // and pane onto the cut left a jumble of colours fighting on the sill.
+        ledge.push(place(isDoor ? src.clone() : cutDown(isWindow ? wallG : src, LEDGE), px, 0, pz, yaw));
         if (isWindow && windowGlass) glassParts.push(place(windowGlass.clone(), px, 0, pz, yaw));
         // Offers in every other front window, on the outside of the glass.
         if (isWindow && pane && axis === 'x' && outward > 0 && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + WALL_T / 2 + pane.z1 + 0.006));
         if (isWindow && pane && axis === 'x' && outward > 0) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, pane.y0 + 0.01, line + 0.08));
         if (!isDoor) {
           const a = Math.max(t - 0.5, lo), b = Math.min(t + 0.5, hi);
-          const hole = isWindow && pane ? { a: t + pane.x0, b: t + pane.x1, y0: pane.y0, y1: pane.y1 } : null;
+          const hole = isWindow && opening ? { a: t + opening.x0, b: t + opening.x1, y0: opening.y0, y1: opening.y1 } : null;
           full.push(...this.paintPanels(line - outward * 0.062, axis, a, b, 1, hole));
-          ledge.push(...this.paintPanels(line - outward * 0.062, axis, a, b, LEDGE, hole));
+          ledge.push(...this.paintPanels(line - outward * 0.062, axis, a, b, LEDGE, null));
         }
       }
       const fullMesh = new Mesh(merge(full), this.assets.material);
@@ -603,3 +607,20 @@ function stockKey(shop: Shop): string {
 export { mergeGeometries, paint };
 
 function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${shop.sizeId}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}`; }
+
+/** A window piece's frame, set back inside the wall's thickness (the layer of it nearest the wall faces): its extent on the wall. */
+function recessOf(g: BufferGeometry): { x0: number; x1: number; y0: number; y1: number } | null {
+  const pos = g.getAttribute('position'), idx = g.getIndex();
+  g.computeBoundingBox();
+  const deep = Math.max(-g.boundingBox!.min.z, g.boundingBox!.max.z) * 0.6;
+  const tris = idx ? idx.count / 3 : pos.count / 3;
+  const depth: number[] = [];
+  for (let t = 0; t < tris; t++) depth.push(Math.max(...[0, 1, 2].map((k) => Math.abs(pos.getZ(idx ? idx.getX(t * 3 + k) : t * 3 + k)))));
+  const frame = Math.max(...depth.filter((d) => d <= deep));
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let t = 0; t < tris; t++) {
+    if (Math.abs(depth[t]! - frame) > 0.005) continue;
+    for (let k = 0; k < 3; k++) { const i = idx ? idx.getX(t * 3 + k) : t * 3 + k; x0 = Math.min(x0, pos.getX(i)); x1 = Math.max(x1, pos.getX(i)); y0 = Math.min(y0, pos.getY(i)); y1 = Math.max(y1, pos.getY(i)); }
+  }
+  return x1 > x0 ? { x0, x1, y0, y1 } : null;
+}
