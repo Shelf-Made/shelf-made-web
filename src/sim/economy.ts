@@ -15,6 +15,7 @@ import { marketingDay, planEvents } from './marketing';
 import { trackGoals, checkGoals, goalsMorning } from './goals';
 import { franchiseDay } from './franchise';
 import { nightNotes } from './report';
+import { skyFor, forecastFor } from './weather';
 
 export interface Supplier { id: string; name: string; priceMul: number; minOrder: number; etaSeconds: number; blurb: string; /** Days until the invoice is due (0 = pay now). */ terms: number }
 export const SUPPLIERS: Supplier[] = [
@@ -127,9 +128,13 @@ export function closeDay(state: GameState): void {
 export function planDay(state: GameState, day: number): DayPlan {
   const rv = planRivals(state, day);
   const ev = planEvents(state, day);
+  // The sky: a heavy-rain forecast may be a thunderstorm, a grey one drizzle; the forecast says which.
+  const sky = skyFor(ev.weather, state.seed, day);
+  const said = forecastFor(ev.weather, sky);
+  if (said !== ev.weather) { ev.notices = ev.notices.map((n) => (n === ev.weather ? said! : n)); ev.weather = said; }
   const rumours = [...rv.rumours];
   if (state.marketing.openingEventDay === day) rumours.push('Your opening-day event is tomorrow: bunting, balloons and a crowd.');
-  return { day, ...ev, rivals: rv.rivals, rumours };
+  return { day, ...ev, rivals: rv.rivals, rumours, sky };
 }
 
 /** Start the next day: spoilage, fresh stats, doors open. */
@@ -146,6 +151,7 @@ export function openTomorrow(state: GameState): void {
   // What was decided last night (an old save loaded at night has no plan yet: roll it now).
   const plan = state.tomorrow && state.tomorrow.day === state.day ? state.tomorrow : planDay(state, state.day);
   state.tomorrow = null;
+  state.sky = plan.sky ?? skyFor(plan.weather, state.seed, state.day);
   rivalDay(state, plan);
   marketDay(state);
   applyUnlocks(state);

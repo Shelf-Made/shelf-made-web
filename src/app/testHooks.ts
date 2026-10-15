@@ -7,6 +7,8 @@ import { closeRival, startRivalMove } from '@/sim/rivals';
 import type { RivalMove } from '@/sim/types';
 import { spawnRivalShopper } from '@/sim/rivalShoppers';
 import { GOALS } from '@/sim/goals';
+import type { Sky } from '@/sim/weather';
+import { WeatherView } from '@/render/Weather';
 
 /** Deterministic hooks for Playwright screenshots and perf runs. Harmless in production. */
 export function installTestHooks(rt: GameRuntime): void {
@@ -83,6 +85,16 @@ export function installTestHooks(rt: GameRuntime): void {
     /** Open every rival's doors today (screenshots of a busy crossroads). */
     /** Set the clock (game seconds since opening) for lighting screenshots. */
     setTime: (t: number) => { const s = rt.state; if (!s) return; s.time = t; rt.bump(); },
+    /** Today's sky (for screenshots of the weather). */
+    setSky: (sky: Sky) => { const s = rt.state; if (!s) return; s.sky = sky; rt.bump(); },
+    /** A lightning strike now, (dx, dz) from the camera's focus. */
+    strike: (dx: number, dz: number) => { const r = rt.renderer; if (!r) return; const f = r.mode === 'play' ? r.follow.target : r.camera.target; r.weather.strike(f.x + dx, f.z + dz, 1, Math.hypot(dx, dz)); },
+    /** Hold lightning at its brightest (screenshots). */
+    freezeStrike: (b: boolean) => { WeatherView.holdStrikes = b; },
+    /** How wet the ground is now, and how hard it is raining (render side). */
+    weather: () => ({ wet: rt.renderer?.weather.wet ?? 0, rain: rt.renderer?.weather.rainLevel ?? 0, flash: rt.renderer?.weather.flash ?? 0 }),
+    /** Skip the ground straight to soaked (screenshots). */
+    soak: () => { if (rt.renderer) rt.renderer.weather.wet = 1; },
     openRivals: () => { const s = rt.state; if (!s) return; for (const r of s.rivals) r.open = true; rt.bump(); },
     /** Click (or tap) at a world point given shop-relative, as the player would. */
     clickWorld: (x: number, z: number, y = 0) => {

@@ -115,7 +115,7 @@ export function DayLog({ runtime, snap, r, compact = false }: { runtime: GameRun
           <section aria-label={r.latest ? 'Tomorrow' : 'The forecast for the next day'}>
             <h3>{r.latest ? 'Tomorrow' : 'Forecast for the next day'}</h3>
             <ul className="tomorrow">
-              <li>{r.tomorrow.weather ?? 'Fair weather, nothing special forecast.'}</li>
+              <li className={`sky-${r.tomorrow.sky ?? 'fair'}`}>{r.tomorrow.weather ?? 'Fair weather, nothing special forecast.'}</li>
               {r.tomorrow.festival && <li>{r.tomorrow.festival}</li>}
               {r.tomorrow.rumours.map((t) => <li key={t} className="rumour">{t}</li>)}
             </ul>

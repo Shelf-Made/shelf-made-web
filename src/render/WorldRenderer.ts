@@ -15,11 +15,13 @@ import { StreetView } from './StreetView';
 import { AmbientView } from './Ambient';
 import { Overlays, type OverlayKind } from './Overlays';
 import { GrassField, GRASS_RING } from './grass';
+import { WeatherView } from './Weather';
+import { weatherAt } from '@/sim/weather';
 import { buildTown, type TownPlan } from './town';
 import { renderProductThumbs, renderCharacterThumbs } from './thumbnails';
 import { PRODUCTS } from '@/sim/products';
 import type { GameState, CustomerType } from '@/sim/types';
-import { DAY_SECONDS, toLocal } from '@/sim/layout';
+import { DAY_SECONDS, toLocal, rectToWorld } from '@/sim/layout';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -52,6 +54,8 @@ export class WorldRenderer {
   private ambient: AmbientView;
   /** Short blades all over the lawn round the camera's focus. */
   private readonly grass = new GrassField();
+  /** Rain, wet ground and lightning. */
+  readonly weather = new WeatherView();
   private clock = 0;
   readonly overlays = new Overlays();
   private plan: TownPlan | null = null;
@@ -89,7 +93,7 @@ export class WorldRenderer {
     this.rivals = new RivalsView(this.assets, (t, sz, d, face, side, bevel) => this.store.letters(t, sz, d, face, side, bevel));
     this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
-    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group, this.grass.mesh);
+    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group, this.grass.mesh, this.weather.group);
     // Post passes render several times a frame: count the whole frame, not just the last pass.
     this.renderer.info.autoReset = false;
     this.post = new PostFX(this.renderer, this.scene, this.follow.camera);
@@ -110,6 +114,7 @@ export class WorldRenderer {
     this.characterThumbs = renderCharacterThumbs(this.renderer, this.assets, PEOPLE_MODELS.filter((id) => this.assets.hasCharacter(id)));
     this.cars.init();
     this.scene.add(this.marker.group);
+    this.weather.groundMats.push(this.assets.ground);
     onProgress(1, 'Ready');
   }
 
@@ -153,7 +158,16 @@ export class WorldRenderer {
     // The lights come on at dusk (the last part of the day) and stay on through the night.
     const lights = night || state.time / DAY_SECONDS > 0.86;
     if (lights !== this.night) { this.night = lights; this.statics.setNight(lights); this.store.setNight(lights); this.rivals.setNight(lights); }
-    this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius());
+    // The weather: today's sky, as it is at this time of day (the night keeps the evening's).
+    const wx = weatherAt(state.sky ?? 'fair', state.seed, state.day, night ? 1 : state.time / DAY_SECONDS);
+    const sf = rectToWorld(state.shop, state.shop.floor);
+    this.weather.setShelter(sf.x0 - 0.3, sf.z0 - 0.3, sf.x1 + 0.3, sf.z1 + 0.3);
+    this.weather.update(wx, focus, Math.min(dt, 0.1), state.seed, this.quality === 'low' ? 0.4 : 1);
+    const terrainMat = this.statics.terrainMaterial;
+    if (terrainMat && !this.weather.groundMats.includes(terrainMat)) this.weather.groundMats.push(terrainMat);
+    this.ambient.weather.cloud = wx.cloud; this.ambient.weather.storm = wx.storm; this.ambient.weather.wind = wx.wind; this.ambient.weather.flash = this.weather.flash;
+    this.people.rain = this.weather.rainLevel;
+    this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius(), { cloud: wx.cloud, rain: wx.rain, storm: wx.storm, fog: wx.fog, flash: this.weather.flash });
     // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
     const fog = this.scene.fog as Fog | null;
     if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance, k = this.lighting.fogScale; fog.near = (45 + d * 1.1) * k; fog.far = (160 + d * 1.6) * (0.4 + 0.6 * k); }

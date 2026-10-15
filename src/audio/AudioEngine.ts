@@ -155,10 +155,67 @@ export class AudioEngine {
     const loop = () => {
       if (!this.ctx) return;
       const night = this.mood === 'night';
-      if (night) this.crickets(); else if (Math.random() < 0.85) this.bird(); else this.play('quack', { gain: 0.5, pan: Math.random() * 2 - 1 });
+      // Birds and crickets keep quiet in the rain.
+      if (this.rain > 0.2) { /* only the rain */ } else if (night) this.crickets(); else if (Math.random() < 0.85) this.bird(); else this.play('quack', { gain: 0.5, pan: Math.random() * 2 - 1 });
       this.ambienceTimer = window.setTimeout(loop, (night ? 1400 : 1800) + Math.random() * (night ? 2200 : 4200));
     };
     this.ambienceTimer = window.setTimeout(loop, 1500);
+  }
+
+  // ---- Weather: rain as a patter of drops (never a hiss), and thunder.
+  private rain = 0;
+  private rainTimer: number | null = null;
+  /** How hard it is raining, 0..1: the patter thickens and, in a downpour, a soft roar under it. */
+  setRain(level: number): void {
+    this.rain = Math.max(0, Math.min(1, level));
+    if (!this.ctx || this.rainTimer !== null || this.rain < 0.03) return;
+    const loop = () => {
+      this.rainTimer = null;
+      if (!this.ctx || this.rain < 0.03) return;
+      // A handful of drops on leaves, roofs and the road, each a tiny bright click somewhere round you.
+      const n = 2 + Math.floor(this.rain * 7);
+      for (let i = 0; i < n; i++) this.drop(Math.random() * 0.09);
+      if (this.rain > 0.55 && Math.random() < 0.5) this.ambientNoise(0.5, 0.012 * this.rain, 900, 'lowpass');
+      this.rainTimer = window.setTimeout(loop, 90);
+    };
+    loop();
+  }
+  private drop(when: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when, dur = 0.008 + Math.random() * 0.012;
+    const buf = this.ctx.createBuffer(1, Math.max(1, Math.floor(this.ctx.sampleRate * dur)), this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2500 + Math.random() * 4500; f.Q.value = 1.2;
+    const g = this.ctx.createGain(); g.gain.value = (0.02 + Math.random() * 0.035) * (0.5 + this.rain * 0.6);
+    src.connect(f); f.connect(g); g.connect(this.out(this.ambienceGain, Math.random() * 1.8 - 0.9)); src.start(t);
+  }
+  /** A soft noise wash on the ambience bus (the roar under a downpour, the tail of a rumble). */
+  private ambientNoise(dur: number, gain: number, hz: number, type: BiquadFilterType, when = 0, attack = 0.15): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const buf = this.ctx.createBuffer(1, Math.max(1, Math.floor(this.ctx.sampleRate * dur)), this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let b = 0;
+    for (let i = 0; i < d.length; i++) { b = b * 0.97 + (Math.random() * 2 - 1) * 0.03; d[i] = b * 6; }
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.value = hz;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.ambienceGain); src.start(t);
+  }
+  /**
+   * Thunder from a strike `distance` units away, heard `delay` seconds after the flash: a sharp crack
+   * when it is close, then a long low rumble that rolls and fades (deeper and quieter from further off).
+   */
+  thunder(distance: number, delay: number, strength = 1): void {
+    if (!this.ctx) return;
+    const near = Math.max(0, 1 - distance / 60), loud = Math.min(1, strength * (0.35 + 0.65 * Math.max(0, 1 - distance / 140)));
+    if (near > 0.3) { this.ambientNoise(0.35, 0.22 * near * loud, 3200, 'highpass', delay, 0.005); this.ambientNoise(0.6, 0.3 * near * loud, 700, 'lowpass', delay, 0.01); }
+    const len = 2.5 + Math.random() * 2.5;
+    this.ambientNoise(len, 0.32 * loud, 140 + near * 160, 'lowpass', delay + 0.05, 0.25 + (1 - near) * 0.4);
+    // A second roll a moment later.
+    this.ambientNoise(len * 0.8, 0.2 * loud, 110, 'lowpass', delay + 0.6 + Math.random() * 0.8, 0.4);
   }
 
   private bird(): void {
@@ -221,6 +278,7 @@ export class AudioEngine {
   dispose(): void {
     if (this.musicTimer) clearTimeout(this.musicTimer);
     if (this.ambienceTimer) clearTimeout(this.ambienceTimer);
+    if (this.rainTimer) clearTimeout(this.rainTimer);
     void this.ctx?.close();
     this.ctx = null;
   }

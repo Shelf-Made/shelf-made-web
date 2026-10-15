@@ -1,3 +1,4 @@
+import type { Sky } from './weather';
 import type { Category } from './products';
 
 export interface Vec2 { x: number; z: number }
@@ -270,7 +271,7 @@ export interface DayStats {
 
 export interface DayLogNotes {
   goal: { title: string; frac: number; delta: number; text: string; reward: string } | null;
-  tomorrow: { weather: string | null; festival: string | null; rumours: string[] } | null;
+  tomorrow: { weather: string | null; festival: string | null; rumours: string[]; sky?: Sky } | null;
 }
 
 export interface StoreScores { price: number; availability: number; layout: number; wait: number; parking: number; awareness: number }
@@ -379,6 +380,8 @@ export interface DayPlan {
   rivals: { id: string; opens?: boolean; sale?: number; nextSaleDay?: number; branch?: boolean; move?: RivalMove; site?: string }[];
   /** What the town is saying tonight: "Cheapo is printing flyers...". */
   rumours: string[];
+  /** The kind of sky the day has (from its forecast; older plans have none). */
+  sky?: Sky;
 }
 
 export interface Popup { id: number; x: number; z: number; y: number; text: string; kind: 'money' | 'info' | 'bad'; tick: number }
@@ -456,4 +459,6 @@ export interface GameState {
   goals: GoalState;
   /** Tomorrow, rolled at close (null during the day). */
   tomorrow: DayPlan | null;
+  /** Today's sky: how the weather moves through the day follows from it (older saves have none: fair). */
+  sky?: Sky;
 }

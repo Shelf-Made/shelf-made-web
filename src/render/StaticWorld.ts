@@ -79,6 +79,8 @@ export class StaticWorld {
   readonly group = new Group();
   private readonly meshes: Mesh[] = [];
   private terrain: Mesh | null = null;
+  /** The land's material (the lawn gets wet in the rain too). */
+  get terrainMaterial(): MeshStandardMaterial | null { return (this.terrain?.material as MeshStandardMaterial | undefined) ?? null; }
   private grassMat: Material | null = null;
   constructor(private readonly assets: AssetLibrary) {}
 
@@ -133,7 +135,7 @@ export class StaticWorld {
     for (const [k, parts] of chunks) {
       const merged = mergeGeometries(parts, false);
       for (const g of parts) g.dispose();
-      if (merged) { merged.computeBoundingSphere(); const cm = new Mesh(merged, this.assets.material); cm.name = k.endsWith('|1') ? 'town' : 'paving'; add(cm, k.endsWith('|1')); }
+      if (merged) { merged.computeBoundingSphere(); const cm = new Mesh(merged, k.endsWith('|1') ? this.assets.material : this.assets.ground); cm.name = k.endsWith('|1') ? 'town' : 'paving'; add(cm, k.endsWith('|1')); }
     }
     if (glassParts.length) {
       const g = mergeGeometries(glassParts, false);

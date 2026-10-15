@@ -191,6 +191,9 @@ canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display:
 .tomorrow li { padding-left: 18px; position: relative; line-height: 1.35; }
 .tomorrow li::before { content: '☀'; position: absolute; left: 0; color: var(--honey); }
 .tomorrow li.rumour::before { content: '“'; font-weight: 700; color: var(--slate); }
+.tomorrow li.sky-cloudy::before, .tomorrow li.sky-grey::before { content: '☁'; color: #8E98A6; }
+.tomorrow li.sky-showers::before, .tomorrow li.sky-drizzle::before, .tomorrow li.sky-rain::before { content: '☂'; color: var(--blue, #4F8FE0); }
+.tomorrow li.sky-storm::before { content: '⚡'; color: #E8A33F; }
 
 /* The goal chip under the top bar, and the ladder in Stats. */
 .goal-chip { position: absolute; left: 12px; top: calc(var(--hud-top) - 4px); z-index: 5; display: flex; align-items: center; gap: 8px; max-width: min(420px, calc(100% - 330px)); min-width: 220px; height: calc(40px * var(--ui)); padding: 0 12px 0 6px; border-radius: 12px; background: var(--white); color: var(--slate); box-shadow: 0 3px 0 rgba(56,56,61,0.2), var(--shadow); text-align: left; }

@@ -396,6 +396,45 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('39-lawn-close') });
   });
 
+  test('weather: a grey day, rain and umbrellas, a thunderstorm and its lightning; the lawn up close', async ({ page }) => {
+    test.setTimeout(240_000);
+    await ready(page);
+    await hooks(page, 'newGame', 12, 'main', 'Rainy Days', { tutorial: false });
+    await hooks(page, 'quickSetup', true);
+    await hooks(page, 'crowd', 8);
+    await hooks(page, 'advanceNoScan', 25);
+    await hooks(page, 'setSpeed', 0);
+    // The lawn, still and thick, from low down.
+    await hooks(page, 'camera', 12, -4, 14, 2.4, 0.12);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('42-lawn-up-close') });
+    // Overcast: no hard shadows, a grey sky.
+    await hooks(page, 'setSky', 'grey');
+    await follow(page, 0.5, 2.5, 9, 0.5, 1500, 0.5);
+    await page.screenshot({ path: out('43-grey-day') });
+    // Rain: streaks, splashes, wet roads, umbrellas up.
+    await hooks(page, 'setSky', 'rain');
+    await hooks(page, 'soak');
+    await settle(page, 1500);
+    const wx = await hooks<{ wet: number; rain: number }>(page, 'weather');
+    expect(wx.rain).toBeGreaterThan(0.3);
+    expect(wx.wet).toBeGreaterThan(0.5);
+    await page.screenshot({ path: out('44-rain') });
+    await hooks(page, 'viewWorld', 2, 2, 0.3, 32, 0.55);
+    await settle(page, 1500);
+    await page.screenshot({ path: out('45-rain-umbrellas') });
+    // A storm, and lightning: the bolt held at its brightest for the picture.
+    await hooks(page, 'setSky', 'storm');
+    await hooks(page, 'camera', 12, -4, 16, 2.4, 0.16);
+    await settle(page, 1200);
+    await hooks(page, 'freezeStrike', true);
+    await hooks(page, 'strike', -40, 44);
+    await settle(page, 600);
+    expect((await hooks<{ flash: number }>(page, 'weather')).flash).toBeGreaterThan(0.2);
+    await page.screenshot({ path: out('46-lightning') });
+    await hooks(page, 'freezeStrike', false);
+  });
+
   test('design your manager in the lobby', async ({ page }) => {
     await ready(page);
     await page.getByRole('button', { name: /your manager/i }).click();

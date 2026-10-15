@@ -121,7 +121,7 @@ export class Lighting {
       // The fill: the sky's own colour from above, sunlit grass bouncing up from below. Under cloud the
       // fill takes over from the sun, so it brightens a little as the sun goes.
       this.hemi.color.copy(this.sky); this.hemi.groundColor.copy(this.groundDay);
-      this.hemi.intensity = (0.8 + 0.55 * dull) * (1 - 0.45 * storm);
+      this.hemi.intensity = (0.8 + 0.55 * dull) * (1 - 0.6 * storm) * (1 - 0.15 * w.rain);
       this.ambient.color.set('#FFFFFF'); this.ambient.intensity = 0.12 + 0.1 * dull;
       this.sunVisible = 1 - dull;
     }
@@ -136,10 +136,14 @@ export class Lighting {
     // Haze: rain and fog pull the far side of town into the sky's colour.
     const thick = Math.max(w.rain * 0.7, w.fog);
     this.fog.color.copy(this.sky);
+    this.envStrength = 0.55 * (1 - 0.55 * storm) * (1 - 0.2 * dull);
+    this.scene.environmentIntensity = this.envStrength;
     this.fogScale = 1 - 0.65 * thick;
   }
   /** Rain and mist bring the haze in (the renderer scales its fog distances by this). */
   fogScale = 1;
+  /** How strongly the sky's environment lights the scene (dimmer under a storm). */
+  private envStrength = 0.55;
 
   /** The sky as an environment map, redrawn when it has changed enough to notice (and not more than twice a second). */
   updateEnvironment(renderer: WebGLRenderer, now: number): void {
@@ -155,7 +159,7 @@ export class Lighting {
     this.envTarget = this.pmrem.fromScene(this.envScene, 0.04);
     this.scene.environment = this.envTarget.texture as Texture;
     // The sky lights gently: most of the fill still comes from the hemisphere light above.
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = this.envStrength;
     prev?.dispose();
   }
 }

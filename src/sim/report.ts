@@ -66,7 +66,7 @@ export function nightNotes(state: GameState): DayLogNotes {
   const t = state.tomorrow;
   return {
     goal: g && p ? { title: g.title, frac: p.frac, delta: p.frac - state.goals.dayStart, text: p.text, reward: g.rewardText } : null,
-    tomorrow: t ? { weather: t.weather, festival: t.festival, rumours: [...t.rumours] } : null,
+    tomorrow: t ? { weather: t.weather, festival: t.festival, rumours: [...t.rumours], sky: t.sky } : null,
   };
 }
 

@@ -1,4 +1,4 @@
-import { Group, Mesh, Object3D, IcosahedronGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, Vector3, type BufferGeometry, type Camera } from 'three';
+import { Group, Mesh, Object3D, IcosahedronGeometry, SphereGeometry, ShaderMaterial, BackSide, Color, Vector2, Vector3, type BufferGeometry, type Camera } from 'three';
 import type { AssetLibrary } from './assets';
 import type { TownPlan, AnimalHome, AnimalKind } from './town';
 import { box, merge, paint } from './geometry';
@@ -19,20 +19,39 @@ export class AmbientView {
   private sky: Mesh;
   private skyMat: ShaderMaterial;
   private readonly dummy = new Object3D();
+  /** The sky's weather (set each frame by the renderer): cloud cover, storm, wind and a lightning flash. */
+  weather = { cloud: 0.15, storm: 0, wind: 0.2, flash: 0 };
   constructor(private readonly assets: AssetLibrary) {
     this.skyMat = new ShaderMaterial({
       side: BackSide, depthWrite: false, fog: false,
-      uniforms: { top: { value: new Color('#5FA8E8') }, bottom: { value: new Color('#CFE8FF') }, sunDir: { value: new Vector3(0, 1, 0) }, sunCol: { value: new Color(0, 0, 0) } },
+      uniforms: { top: { value: new Color('#5FA8E8') }, bottom: { value: new Color('#CFE8FF') }, sunDir: { value: new Vector3(0, 1, 0) }, sunCol: { value: new Color(0, 0, 0) }, cloud: { value: 0 }, storm: { value: 0 }, drift: { value: new Vector2() }, flash: { value: 0 } },
       vertexShader: 'varying vec3 vP; void main() { vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       // The gradient, and the sun: a bright disc in a soft halo that widens and warms near the horizon.
-      fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunCol; varying vec3 vP;
+      // Then the cloud deck: noise on a plane high overhead, thickening with the cover, its underside
+      // darkening in a storm, lit up by lightning, thinning out towards the horizon into the haze.
+      fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunCol; uniform float cloud; uniform float storm; uniform vec2 drift; uniform float flash; varying vec3 vP;
+        float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + 1.0), f.x), f.y); }
+        float fbm(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
         void main() {
           vec3 d = normalize(vP);
           float t = clamp(d.y * 1.6 + 0.05, 0.0, 1.0);
           vec3 c = mix(bottom, top, pow(t, 0.8));
           float s = max(dot(d, sunDir), 0.0);
-          c += sunCol * (smoothstep(0.9993, 0.9997, s) * 3.0 + pow(s, 64.0) * 0.6 + pow(s, 6.0) * 0.18);
-          gl_FragColor = vec4(c, 1.0);
+          vec3 sun = sunCol * (smoothstep(0.9993, 0.9997, s) * 3.0 + pow(s, 64.0) * 0.6 + pow(s, 6.0) * 0.18);
+          if (cloud > 0.01 && d.y > 0.0) {
+            vec2 uv = d.xz / (d.y + 0.035) * 0.55 + drift;
+            float n = fbm(uv);
+            float cov = smoothstep(1.02 - cloud, 1.25 - cloud * 0.9, n);
+            float thick = smoothstep(0.3, 0.9, n + cloud * 0.4);
+            vec3 lit = mix(vec3(1.0), vec3(0.62, 0.66, 0.72), clamp((cloud - 0.45) * 1.4, 0.0, 1.0));
+            vec3 base = mix(lit, vec3(0.22, 0.25, 0.3), storm * 0.85) * mix(1.0, 0.72, thick);
+            base += vec3(0.85, 0.9, 1.0) * flash * 1.2;
+            float fade = smoothstep(0.0, 0.035, d.y) * (1.0 - 0.35 * smoothstep(0.25, 0.0, d.y) * (1.0 - cloud));
+            c = mix(c, base * mix(bottom, vec3(1.0), 0.35) * 1.05, cov * fade);
+            sun *= 1.0 - cov * fade;
+          }
+          gl_FragColor = vec4(c + sun, 1.0);
         }`,
     });
     this.sky = new Mesh(new SphereGeometry(200, 24, 12), this.skyMat);
@@ -128,6 +147,11 @@ export class AmbientView {
     this.skyMat.uniforms.top!.value.copy(skyTop);
     this.skyMat.uniforms.bottom!.value.copy(skyBottom);
     if (sun) { this.skyMat.uniforms.sunDir!.value.copy(sun.sunDir); this.skyMat.uniforms.sunCol!.value.copy(sun.sun.color).multiplyScalar(sun.sunVisible); }
+    // The cloud deck drifts with the wind; the puffy fair-weather clouds give way to it as the sky closes over.
+    const u = this.skyMat.uniforms;
+    u.cloud!.value = this.weather.cloud; u.storm!.value = this.weather.storm; u.flash!.value = this.weather.flash;
+    u.drift!.value.set(t * 0.012 * (1 + this.weather.wind * 3), t * 0.007);
+    if (this.clouds) this.clouds.visible = this.weather.cloud < 0.6;
     // Animals far from the camera are too small to see and cost a draw call per part: skip them.
     const cp = camera.position;
     for (const c of this.critters) {

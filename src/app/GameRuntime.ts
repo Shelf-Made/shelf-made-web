@@ -504,6 +504,9 @@ export class GameRuntime {
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
+      // The weather's sounds: the rain's patter, and thunder after each flash (later the further away).
+      this.audio.setRain(this.screen === 'game' ? r.weather.rainLevel : 0);
+      for (const th of r.weather.thunder.splice(0)) this.audio.thunder(th.distance, th.delay, th.strength);
       if (r.mode === 'play') {
         // The build ghost sits on the tile under the mouse.
         if ((this.build.placing || this.build.selectedId !== null) && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y); if (g) this.hoverWorld(g.x, g.z); }

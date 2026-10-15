@@ -23,6 +23,8 @@ export class AssetLibrary {
   atlas!: Texture;
   palette!: PaletteMap;
   material!: MeshStandardMaterial;
+  /** The town's roads and pavements: the same, but its own, so the rain can wet it (darker, glossier). */
+  ground!: MeshStandardMaterial;
   /** Without surface detail: for people, cars, products and the pictures of them. */
   plainMaterial!: MeshStandardMaterial;
   glass!: MeshStandardMaterial;
@@ -48,7 +50,9 @@ export class AssetLibrary {
     // The town and the shops wear surface detail (grain, slab joints, asphalt specks); people, cars and
     // the products on the shelves keep the clean material.
     this.plainMaterial = new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false });
-    this.material = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detailTexture());
+    const detail = detailTexture();
+    this.material = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail);
+    this.ground = addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail);
     this.glass = new MeshStandardMaterial({ color: new Color('#CFE9F7'), roughness: 0.2, metalness: 0, transparent: true, opacity: 0.45, depthWrite: false });
     this.unlit = new MeshBasicMaterial({ map: atlas });
     // The town's trees are our own detailed ones under Kenney's ids (their GLBs are then never fetched).

@@ -5,7 +5,8 @@ import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim as SimAnim, CustomerType } from '@/sim/types';
-import { box, merge } from './geometry';
+import { box, merge, paint } from './geometry';
+import { rectToWorld } from '@/sim/layout';
 import { bagsGeometry, basketGeometry, BAG_HEIGHT } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
@@ -76,6 +77,8 @@ interface Instance {
   arm: Object3D | null;
   /** The other hand: a reusable bag (bargain hunters) or a snack (impulse buyers). */
   prop: Group | null;
+  /** Up over their head when it rains and they are out in it. */
+  umbrella: Mesh | null;
   armL: Object3D | null;
   /** Regulars wave at the staff once as they pass. */
   greetUntil: number;
@@ -293,7 +296,7 @@ export class PeopleView {
     const derived = this.derivedClips(asset.clips);
     if (derived.carryWalk) { const a = mixer.clipAction(derived.carryWalk); a.setLoop(LoopRepeat, Infinity); actions.carryWalk = a; }
     if (derived.stock) { const a = mixer.clipAction(derived.stock); a.setLoop(LoopRepeat, Infinity); actions.stock = a; }
-    const inst: Instance = { lookKey: p.kind === 'owner' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, gestureKey: '', dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
+    const inst: Instance = { lookKey: p.kind === 'owner' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, gestureKey: '', dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, umbrella: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
     const pg = this.propFor(p);
     if (pg) { inst.prop = pg; root.add(pg); }
     if (p.kind === 'owner') root.add(this.badge());
@@ -362,6 +365,27 @@ export class PeopleView {
     inst.current = anim;
   }
 
+
+  /** How hard it is raining (0..1, set each frame): above a shower, people out in it put their umbrellas up. */
+  rain = 0;
+  private umbrellaGeo = new Map<string, BufferGeometry>();
+  /** An umbrella held up over the head: a ribbed eight-panel canopy in a colour, a dark tip and a pole down to the hand. */
+  private umbrellaMesh(id: number): Mesh {
+    const hex = ['#E8573F', '#4F8FE0', '#FFC044', '#3FA87A', '#38383D', '#9B6FE0', '#F27CC1', '#1F6FB2'][id % 8]!;
+    let g = this.umbrellaGeo.get(hex);
+    if (!g) {
+      const pal = this.assets.palette;
+      const canopy = paint(new ConeGeometry(0.36, 0.13, 8, 1, true), pal, hex);
+      canopy.translate(0, 1.13, 0);
+      const under = paint(new ConeGeometry(0.355, 0.125, 8, 1, true), pal, '#2B2B30');
+      under.rotateX(Math.PI); under.translate(0, 1.13, 0);
+      g = merge([canopy, under, box(pal, '#38383D', 0.016, 0.62, 0.016, 0, 0.56, 0), box(pal, '#38383D', 0.03, 0.04, 0.03, 0, 1.19, 0)]);
+      this.umbrellaGeo.set(hex, g);
+    }
+    const m = new Mesh(g, this.assets.plainMaterial);
+    m.position.set(-0.12, 0, 0.06);
+    return m;
+  }
 
   /** The manager's name badge and clipboard, so you can always tell which one is you. */
   private badge(): Group {
@@ -496,6 +520,7 @@ export class PeopleView {
     this.blobs.begin();
     this.pawnN = 0; this.pawnBagN = 0; this.markN = 0;
     const hl = this.highlight && performance.now() < this.highlight.until ? this.highlight.type : null;
+    const sf = rectToWorld(state.shop, state.shop.floor), shelter = { x0: sf.x0 - 0.3, z0: sf.z0 - 0.3, x1: sf.x1 + 0.3, z1: sf.z1 + 0.3 };
     if (this.highlight && !hl) this.highlight = null;
     for (const p of state.people) {
       let inst = this.live.get(p.id);
@@ -557,6 +582,10 @@ export class PeopleView {
       if (d < 30 && !PeopleView.freeze) inst.mixer.update(dt);
       if (inst.bags) this.hangBags(inst);
       if (inst.prop) this.holdProp(inst);
+      // Out in the rain: an umbrella (shoppers and passers-by; never inside the shop).
+      const wantsUmbrella = this.rain > 0.22 && p.kind !== 'staff' && p.kind !== 'owner' && !carryBox && !(x > shelter.x0 && x < shelter.x1 && z > shelter.z0 && z < shelter.z1);
+      if (wantsUmbrella && !inst.umbrella) { inst.umbrella = this.umbrellaMesh(p.id); inst.root.add(inst.umbrella); }
+      if (inst.umbrella) inst.umbrella.visible = wantsUmbrella;
       if (p.id === this.selectedId) this.attachOutline(inst);
       if (inst.dog) {
         const back = { x: -Math.sin(p.yaw) * 0.42 + Math.cos(p.yaw) * 0.3, z: -Math.cos(p.yaw) * 0.42 - Math.sin(p.yaw) * 0.3 };

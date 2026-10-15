@@ -1,3 +1,4 @@
+import { skyFor } from './weather';
 import type { GameState, Difficulty, Shop, Fixture, Person, DayStats, Slot } from './types';
 import { DEFAULT_SCHEME, schemeById } from './schemes';
 import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeFrame, lotLayout, deliveryZone, toWorld, yawToWorld, STREET_BAYS } from './layout';
@@ -74,7 +75,7 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
     spawn: { customer: 0, traffic: 0, walker: 0 }, townAvgIndex: 1,
     rivals: makeRivals(opts.plotId ?? 'main'), streetBays: STREET_BAYS.map((b) => ({ ...b, carId: null })), rivalSpawn: 0, scores: { avgWait: 20, waitSum: 0, waitSamples: 0, last: null }, notices: [], demandBase: 48, eventDemand: 1,
     market: makeMarket(), bills: [], loans: [], brokeDays: 0, rescueOffered: false, gameOver: false,
-    staffPool: [], rules: { ...DEFAULT_RULES }, marketing: makeMarketing(), franchises: [], goals: makeGoals(), tomorrow: null,
+    staffPool: [], rules: { ...DEFAULT_RULES }, marketing: makeMarketing(), franchises: [], goals: makeGoals(), tomorrow: null, sky: skyFor(null, opts.seed, 1),
   };
   state.people.push(makeOwner(state.nextId++, shop, rng));
   refreshPool(state);
