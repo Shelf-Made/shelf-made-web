@@ -855,7 +855,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         const def = FIXTURES[f.type]; if (!def.slots) continue;
         const cap = def.slots * def.capacity; const have = f.slots.reduce((a, sl) => a + sl.qty, 0);
         const ratio = have / cap;
-        if (ratio < 0.5 && pickCarryTask(state, f) && (!best || ratio < best.ratio)) best = { f, ratio };
+        // Any shelf with room for something on the pallet, the emptiest first.
+        if (ratio < 1 && (!best || ratio < best.ratio) && pickCarryTask(state, f)) best = { f, ratio };
       }
       if (best) { const t = pickCarryTask(state, best.f)!; p.task = { type: 'carry', fixtureId: best.f.id, productId: t.productId, qty: t.qty }; }
     }

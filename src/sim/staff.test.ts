@@ -33,3 +33,22 @@ describe('staff', () => {
     expect(s.unlocks.newBadges).not.toContain('staff');
   });
 });
+
+describe('stockers', () => {
+  it('top up a shelf that has room, not only one that is half empty', () => {
+    const s = openGame({ seed: 23, plotId: 'main', name: 'T', tutorial: false });
+    resetGridCache();
+    const st = s.staffPool.find((c) => c.role === 'stocker')!;
+    s.cash = 2000;
+    expect(applyCommand(s, { type: 'hire', candidateId: st.id }).ok).toBe(true);
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    const slot = shelf.slots.find((sl) => sl.productId)!;
+    // Every slot full but one, which is three short; three of its product wait on the pallet.
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = 8;
+    slot.qty = 5;
+    s.shop.storage = [{ productId: slot.productId!, qty: 3, day: s.day }];
+    s.people = s.people.filter((p) => p.kind !== 'customer');
+    for (let i = 0; i < 60 / TICK && slot.qty < 8; i++) tick(s);
+    expect(slot.qty).toBe(8);
+  });
+});
