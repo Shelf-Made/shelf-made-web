@@ -1,5 +1,5 @@
 import type { GameState, Order, DayPlan } from './types';
-import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME } from './layout';
+import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME, storageCap } from './layout';
 import { productDef } from './products';
 import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
@@ -46,7 +46,8 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   if (!onTerms && total > state.cash) return `Not enough cash (${formatMoney(total)}).`;
   const units = clean.reduce((a, l) => a + l.qty, 0);
   const inStorage = state.shop.storage.reduce((a, s) => a + s.qty, 0);
-  if (inStorage + units > state.shop.storageCapacity) return `The pallet only has room for ${state.shop.storageCapacity - inStorage} more units.`;
+  const cap = storageCap(state.shop);
+  if (inStorage + units > cap) return `The pallets only have room for ${Math.max(0, cap - inStorage)} more units.`;
   if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold

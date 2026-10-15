@@ -3,7 +3,7 @@ import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
 import { cellOf, isBlocked, fixtureAccessWorld } from './grid';
-import { spawnCustomer } from './people';
+import { spawnCustomer, palletChoices, neediestInStorage, wrongFixture } from './people';
 import { canPlace } from './build';
 import { toWorld, toLocal } from './layout';
 import { deliveryStatus } from './economy';
@@ -204,6 +204,21 @@ describe('simulation', () => {
     expect(applyCommand(s, { type: 'putBack' }).ok).toBe(true);
     expect(o.carrying).toBeNull();
     expect(s.shop.storage.reduce((a, e) => a + e.qty, 0)).toBe(20);
+  });
+  it('after a box goes back, the next one offered is another product; milk is not offered to a dry shelf', () => {
+    const s = newGame({ seed: 12, plotId: 'main', name: 'Next' });
+    s.shop.storage = [{ productId: 'beans', qty: 8, day: s.day }, { productId: 'soup', qty: 8, day: s.day }, { productId: 'milk', qty: 8, day: s.day }];
+    const all = palletChoices(s).map((c) => c.productId);
+    expect(all.sort()).toEqual(['beans', 'milk', 'soup']);
+    const first = neediestInStorage(s)!;
+    const next = neediestInStorage(s, first)!;
+    expect(next).not.toBe(first);
+    // Round the pallet and back to the start.
+    expect(neediestInStorage(s, neediestInStorage(s, next))).toBe(first);
+    expect(wrongFixture('milk', 'shelf')).toMatch(/chiller/);
+    expect(wrongFixture('milk', 'fridge')).toBeNull();
+    expect(wrongFixture('beans', 'shelf')).toBeNull();
+    expect(wrongFixture('beans', 'produce')).toMatch(/does not go/);
   });
   it('a box goes on a shelf with room even when its own slot is full', () => {
     const s = newGame({ seed: 11, plotId: 'main', name: 'Room' });

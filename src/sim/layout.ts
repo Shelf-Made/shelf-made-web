@@ -159,6 +159,12 @@ export const STARTER = {
   serviceLane: { x0: -5.4, z0: -8.2, x1: -3.6, z1: 1.5 },
 };
 
+/** Units of stock an extra Pallet holds. */
+export const PALLET_UNITS = 60;
+/** Room for deliveries: the pallet by the back door, and every extra Pallet on the floor. */
+export function storageCap(shop: { storageCapacity: number; fixtures: { type: FixtureType }[] }): number {
+  return shop.storageCapacity + PALLET_UNITS * shop.fixtures.filter((f) => f.type === 'pallet').length;
+}
 /** The delivery zone for any floor: two tiles in the back-left corner beside the back door. */
 export function deliveryZone(floor: Rect): Rect { return { x0: floor.x0, z0: floor.z0, x1: floor.x0 + 2, z1: floor.z0 + 1 }; }
 
@@ -215,6 +221,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   shelf: { type: 'shelf', name: 'Shelf', price: 85, w: 1, d: 1, slots: 4, capacity: 8, chilled: false, upkeep: 0, category: 'shelves' },
   endcap: { type: 'endcap', name: 'End cap', price: 70, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0, category: 'shelves' },
   produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'], category: 'shelves' },
+  /** More room for deliveries, on the shop floor wherever you put it. */
+  pallet: { type: 'pallet', name: 'Pallet', price: 60, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'shelves' },
   fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, slots: 4, capacity: 6, chilled: true, upkeep: 6, category: 'shelves' },
   freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'], category: 'shelves' },
   // Furniture.

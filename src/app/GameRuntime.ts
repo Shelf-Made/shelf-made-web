@@ -9,7 +9,7 @@ import { PLOTS, FIXTURES, toLocal, toWorld, storeFrame, rectToWorld, type Rect }
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
-import { ownerAt, neediestInStorage, storeroomPoint, roomOnFixture } from '@/sim/people';
+import { ownerAt, neediestInStorage, palletChoices, wrongFixture, storeroomPoint, roomOnFixture } from '@/sim/people';
 import { MathUtils } from 'three';
 import { WorldRenderer } from '@/render/WorldRenderer';
 import { FollowCamera } from '@/render/FollowCamera';
@@ -80,7 +80,8 @@ export interface Snapshot {
   /** The person clicked on, for the inspect panel (null when nobody is selected), and whether the camera follows them. */
   inspect: (InspectInfo & { following: boolean }) | null;
   /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
-  fixtureMenu: { id: number; name: string; use: string | null } | null;
+  /** A piece's menu (id -1: the delivery pallet). A pallet's lists what is on it to pick up; the delivery pallet cannot be moved. */
+  fixtureMenu: { id: number; name: string; use: string | null; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean } | null;
   /** At night, whether the day's log is up (it can be closed, and comes back from the bar at the top). */
   nightLog: boolean;
   /** The shop's listing on the map app: how many reviews, the rating, and how many came in since you last looked. */
@@ -279,10 +280,25 @@ export class GameRuntime {
   private fixtureMenuInfo(id = this.fixtureMenu): Snapshot['fixtureMenu'] {
     const s = this.state;
     if (!s || id === null || !this.inPlay || s.phase === 'night' || this.card === 'build') return null;
+    const picks = () => palletChoices(s).slice(0, 8).map((c) => ({ productId: c.productId, name: productDef(c.productId).name, qty: c.qty }));
+    if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
-    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : null };
+    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : null, ...(f.type === 'pallet' ? { picks: picks() } : {}) };
   }
+  /** Picked from a pallet's menu: walk over and pick that box up. */
+  palletPick(productId: string): void {
+    const id = this.fixtureMenu;
+    this.fixtureMenu = null;
+    this.palletWant = productId;
+    this.audio.start();
+    if (id === -1 || id === null) this.walkAndUse({ kind: 'delivery', id: 0 });
+    else this.walkAndUse({ kind: 'fixture', id });
+    this.emit();
+  }
+  /** The box asked for from a pallet's menu, and the one just put back (the next pick-up offers the one after it). */
+  private palletWant: string | null = null;
+  private palletAfter: string | null = null;
   /** A choice from the menu: its use (Stock, serve at the till), pick it up to Move it, or Turn it where it stands. */
   fixtureMenuAction(action: 'use' | 'move' | 'turn'): void {
     const s = this.state, id = this.fixtureMenu;
@@ -921,6 +937,8 @@ export class GameRuntime {
       // Empty-handed, furniture opens its menu (use it, move it, turn it); carrying a box, a click stocks the shelf.
       const carrying = !!s.people.find((p) => p.kind === 'owner')?.carrying;
       if (t.kind === 'fixture' && !carrying) { if (hadMenu !== t.id) this.openFixtureMenu(t.id); return; }
+      // The delivery pallet with more than one kind of box on it: a menu to pick which.
+      if (t.kind === 'delivery' && !carrying && palletChoices(s).length > 1) { if (hadMenu !== -1) this.openFixtureMenu(-1); return; }
       this.walkAndUse(t); return;
     }
     const g = r.groundAt(px, py);
@@ -991,7 +1009,7 @@ export class GameRuntime {
       const score = d - (this.actionFor(s, t, true).ok ? 0.3 : 0);
       if (score < bestD) { bestD = score; best = t; }
     };
-    for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register') consider({ kind: 'fixture', id: f.id });
+    for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet') consider({ kind: 'fixture', id: f.id });
     consider({ kind: 'delivery', id: 0 });
     for (const l of s.shop.litter) consider({ kind: 'spill', id: l.id });
     for (const l of frontageLitter(s)) consider({ kind: 'mess', id: l.id });
@@ -1007,15 +1025,21 @@ export class GameRuntime {
       return { text: kind === 'poop' ? 'Clear up after the dog' : 'Pick up the litter', ok: true, key: 'use', run: () => { this.dispatch({ type: 'cleanTown', litterId: t.id }); } };
     }
     if (t.kind === 'delivery') {
-      if (owner.carrying) return { text: `Put the ${productDef(owner.carrying.productId).name} back`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'putBack' }); } };
-      const pid = neediestInStorage(s);
+      if (owner.carrying) {
+        const back = owner.carrying.productId;
+        return { text: `Put the ${productDef(back).name} back`, ok: true, key: 'use', run: () => { if (this.dispatch({ type: 'putBack' }).ok) { this.palletAfter = back; this.palletWant = null; } } };
+      }
+      const want = this.palletWant && s.shop.storage.some((e) => e.productId === this.palletWant && e.qty > 0) ? this.palletWant : null;
+      const pid = want ?? neediestInStorage(s, this.palletAfter);
       if (!pid) return { text: 'No boxes yet: order stock', ok: false, key: null, run: null };
       const qty = Math.min(8, s.shop.storage.filter((e) => e.productId === pid).reduce((a, e) => a + e.qty, 0));
-      return { text: `Pick up ${productDef(pid).name} ×${qty}`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'pickUp', productId: pid }); } };
+      return { text: `Pick up ${productDef(pid).name} ×${qty}`, ok: true, key: 'use', run: () => { if (this.dispatch({ type: 'pickUp', productId: pid }).ok) { this.palletAfter = null; this.palletWant = null; } } };
     }
     const f = s.shop.fixtures.find((x) => x.id === t.id);
     if (!f) return { text: '', ok: false, key: null, run: null };
     const def = FIXTURES[f.type];
+    // An extra pallet: its boxes are the delivery's, picked up and put back the same way.
+    if (f.type === 'pallet') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
     if (f.type === 'register') {
       if (near && !ownerAt(s, f)) return { text: 'Walk round behind the counter to scan', ok: false, key: null, run: null };
       const waiting = !!f.serving;
@@ -1025,6 +1049,9 @@ export class GameRuntime {
       if (owner.carrying) {
         // Say how many will actually go on (the rest stays in your hands), or that none will.
         const c = owner.carrying, name = productDef(c.productId).name, fit = Math.min(c.qty, roomOnFixture(f, c.productId));
+        // Milk to a dry shelf: say where it goes instead of offering to stock it.
+        const wrong = wrongFixture(c.productId, f.type);
+        if (wrong) return { text: wrong, ok: false, key: null, run: null };
         if (fit === 0) return { text: `No room for ${name} here`, ok: false, key: null, run: null };
         return { text: `Stock ${name} ×${fit}`, ok: true, key: 'use', run: () => { this.dispatch({ type: 'stockFixture', fixtureId: f.id }); } };
       }
@@ -1126,6 +1153,8 @@ export class GameRuntime {
       const what = m ? [m.use, 'Move', 'Turn'].filter(Boolean).join(', ').replace(/, (?=[^,]*$)/, ' or ') : 'Move or Turn';
       return { info: { key: 'Click', text: `${m?.name ?? 'Furniture'}: ${what}`, ok: true, at }, run: () => this.openFixtureMenu(show.id) };
     }
+    // The delivery pallet across the room with several kinds of box on it: a click asks which.
+    if (show.kind === 'delivery' && !owner.carrying && palletChoices(s).length > 1) return { info: { key: 'Click', text: 'Delivery pallet: choose a box', ok: true, at }, run: () => this.openFixtureMenu(-1) };
     // Across the room: a click walks over and does it.
     return { info: { key: a.ok ? 'Click' : null, text: a.text, ok: a.ok, at }, run: a.ok ? () => this.walkAndUse(show) : null };
   }
@@ -1160,6 +1189,7 @@ export class GameRuntime {
 
   fixtureAnchor(id: number): { x: number; y: number; z: number } | null {
     const s = this.state; if (!s) return null;
+    if (id === -1) { const d = s.shop.delivery; const w = toWorld(s.shop, (d.x0 + d.x1) / 2, (d.z0 + d.z1) / 2); return { x: w.x, y: 0.8, z: w.z }; }
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const c = fixtureCentre(s.shop, f);
     return { x: c.x, y: 1.05, z: c.z };

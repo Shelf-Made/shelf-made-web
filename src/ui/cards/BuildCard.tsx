@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS, FLOORS } from '@/sim/layout';
+import { FIXTURES, SHOP_SIZES, LOT_EXPANSION_COST, CORNERS, FLOORS, PALLET_UNITS } from '@/sim/layout';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { floorCost } from '@/sim/build';
 import { schemeById } from '@/sim/schemes';
@@ -17,7 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
 /** A word on what each piece is for (the tile's tooltip). */
 const NOTES: Partial<Record<FixtureType, string>> = {
   register: 'Where shoppers pay. You need one to open', kiosk: 'Shoppers scan their own: no cashier', rack: 'Snacks and sweets by the till',
-  shelf: '4 slots, both sides', endcap: 'Impulse buys sell here', produce: 'Fruit and veg', fridge: '4 chilled slots', freezer: '2 big slots of dairy and meat',
+  pallet: `Room for ${PALLET_UNITS} more units of deliveries`, shelf: '4 slots, both sides', endcap: 'Impulse buys sell here', produce: 'Fruit and veg', fridge: '4 chilled slots', freezer: '2 big slots of dairy and meat',
   bench: 'A seat by the door', sofa: 'A comfier seat', cafe: 'A table and two chairs', desk: 'Questions answered here', basketStack: 'Baskets by the door',
   trolleys: 'Trolleys for big shops', bin: 'Keeps the floor cleaner', speaker: 'Music in the aisles', screen: 'Shows your offers', bookcase: 'Magazines and papers',
   plant: 'Shoppers like plants', flowers: 'Pots of herbs and flowers', sign: 'Shoppers find things faster', rug: 'Walk on it', doormat: 'Just inside the door',

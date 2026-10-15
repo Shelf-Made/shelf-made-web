@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/products';
 import { SUPPLIERS, unitCost, deliveryStatus } from '@/sim/economy';
-import { FIXTURES } from '@/sim/layout';
+import { FIXTURES, storageCap } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
 
 export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
@@ -32,7 +32,7 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
 
   return (
     <>
-      <div className="row between"><h3>On the delivery pallet</h3><span className="tag">{storageUnits} / {s.shop.storageCapacity} units</span></div>
+      <div className="row between"><h3>On the delivery pallet</h3><span className="tag">{storageUnits} / {storageCap(s.shop)} units</span></div>
       <p className="muted">Boxes wait on the pallet by the back door: F to pick one up, F at a shelf to stock it.</p>
       {pending.length > 0 && (
         <div className="list">

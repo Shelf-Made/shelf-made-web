@@ -9,7 +9,7 @@ import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
-import { PLOTS, FIXTURES } from './layout';
+import { PLOTS, FIXTURES, PALLET_UNITS, storageCap } from './layout';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
@@ -243,6 +243,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const f = state.shop.fixtures[i]!;
       if (f.type === 'register' && state.shop.fixtures.filter((x) => x.type === 'register').length === 1) return { ok: false, message: 'You need one register.' };
       if ((f.type === 'register' || f.type === 'kiosk') && (f.serving || (f.queue?.length ?? 0) > 0)) return { ok: false, message: 'Wait until the line is served.' };
+      if (f.type === 'pallet') { const units = state.shop.storage.reduce((a, e) => a + e.qty, 0); if (units > storageCap(state.shop) - PALLET_UNITS) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
       const refund = Math.round(FIXTURES[f.type].price * 0.6);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });
       state.shop.fixtures.splice(i, 1);

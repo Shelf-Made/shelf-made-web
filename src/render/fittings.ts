@@ -24,7 +24,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   sofa: 'furniture/bench-cushion', cafe: 'gen:cafe', desk: 'gen:desk', bin: 'furniture/trashcan', trolleys: 'gen:trolleys', speaker: 'furniture/speaker',
   screen: 'gen:screen', bookcase: 'gen:bookcase', flowers: 'gen:flowers', rug: 'gen:rug', doormat: 'gen:doormat',
   wall: 'gen:wall', wallWindow: 'gen:wallWindow', doorway: 'gen:doorway', railing: 'gen:railing', gate: 'market/fence-door',
-  floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim',
+  floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim', pallet: 'gen:pallet',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
@@ -88,6 +88,18 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:pendant': return merge([box(pal, '#38383D', 0.008, 0.2, 0.008, 0, 0.8, 0), m('furniture/lamp-square-ceiling', 0, 0.64, 0, 0, 1.6)]);
     case 'gen:neon': return merge([box(pal, '#222226', 0.56, 0.3, 0.02, 0, 0.52, WALL_FACE + 0.01)]);
     case 'gen:windowTrim': return windowTrim(assets);
+    case 'gen:pallet': {
+      // Like the delivery pallet by the back door: a hazard border on the floor round a wooden pallet.
+      const parts: BufferGeometry[] = [];
+      for (let i = 0; i < 10; i++) {
+        const c = i % 2 ? '#38383D' : '#FFC044', a = -0.5 + (i + 0.5) / 10;
+        parts.push(box(pal, c, 0.1, 0.006, 0.05, a, ON_FLOOR, 0.465), box(pal, c, 0.1, 0.006, 0.05, a, ON_FLOOR, -0.465));
+        parts.push(box(pal, c, 0.05, 0.006, 0.1, 0.465, ON_FLOOR, a), box(pal, c, 0.05, 0.006, 0.1, -0.465, ON_FLOOR, a));
+      }
+      for (const x of [-0.33, 0, 0.33]) parts.push(box(pal, '#A87B45', 0.1, 0.06, 0.8, x, ON_FLOOR, 0));
+      for (const z of [-0.32, -0.16, 0, 0.16, 0.32]) parts.push(box(pal, '#C99A62', 0.82, 0.025, 0.11, 0, ON_FLOOR + 0.06, z));
+      return merge(parts);
+    }
   }
   return assets.geometry('market/column');
 }

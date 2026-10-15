@@ -6,7 +6,10 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, toLocal, rectToWorld } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, toLocal, rectToWorld } from '@/sim/layout';
+
+/** Delivery boxes drawn at most (about four units each). */
+const BOX_MAX = 220;
 
 /** The z of a north corner's shop origin: frontage maths is done as if every shop faced south. */
 const NORTH_Z = -1.6;
@@ -92,7 +95,7 @@ export class StoreView {
       this.productMeshes.set(p.id, { mesh, w: b.max.x - b.min.x, h: b.max.y - b.min.y, d: b.max.z - b.min.z, minY: b.min.y });
     }
     const boxGeo = this.assets.geometry('furniture/cardboard-box-closed').clone().scale(1.5, 1.5, 1.5);
-    this.boxes = new InstancedMesh(boxGeo, this.assets.material, 72);
+    this.boxes = new InstancedMesh(boxGeo, this.assets.material, BOX_MAX);
     this.boxes.castShadow = true; this.boxes.count = 0; this.boxes.frustumCulled = false;
     const spill = new CircleGeometry(0.22, 12); spill.rotateX(-Math.PI / 2);
     this.spills = new InstancedMesh(spill, this.spillMat, 8); this.spills.count = 0; this.spills.frustumCulled = false;
@@ -614,7 +617,23 @@ export class StoreView {
 
   private rebuildBoxes(shop: Shop): void {
     const units = shop.storage.reduce((a, e) => a + e.qty, 0);
-    const n = Math.min(72, Math.ceil(units / 4));
+    // A box is about four units. The delivery pallet fills first, the extra Pallets take the overflow.
+    const all = Math.min(BOX_MAX, Math.ceil(units / 4));
+    const n = Math.min(all, Math.ceil(shop.storageCapacity / 4));
+    let k = n;
+    const m = new Matrix4();
+    for (const f of shop.fixtures) {
+      if (f.type !== 'pallet' || k >= all) continue;
+      this.fixtureMatrix(shop, f, m);
+      for (let j = 0; j < PALLET_UNITS / 4 && k < all; j++, k++) {
+        const layer = Math.floor(j / 9), c = j % 9;
+        this.dummy.position.set(-0.28 + (c % 3) * 0.28, 0.1 + layer * 0.34, -0.28 + Math.floor(c / 3) * 0.28).applyMatrix4(m);
+        this.dummy.rotation.set(0, f.rot * Math.PI / 2 + ((k * 13) % 7 - 3) * 0.04, 0);
+        this.dummy.scale.set(1, 1, 1);
+        this.dummy.updateMatrix();
+        this.boxes.setMatrixAt(k, this.dummy.matrix);
+      }
+    }
     const d = shop.delivery;
     const ox = 0, oz = 0;
     const cols = Math.max(1, Math.floor((d.x1 - d.x0 - 0.2) / 0.3)), rows = Math.max(1, Math.floor((d.z1 - d.z0 - 0.2) / 0.3));
@@ -628,12 +647,17 @@ export class StoreView {
       this.dummy.updateMatrix();
       this.boxes.setMatrixAt(i, this.dummy.matrix);
     }
-    this.boxes.count = n; this.boxes.instanceMatrix.needsUpdate = true;
+    this.boxes.count = k; this.boxes.instanceMatrix.needsUpdate = true;
   }
 
   /** A piece as the Build card pictures it: its model, and a lamp's bulb. */
   pictureGeometry(type: FixtureType): BufferGeometry {
     // A window is pictured as it looks from outside: a stretch of the shop's wall with the window in it.
+    // A pallet is pictured with a few boxes on it.
+    if (type === 'pallet') {
+      const bx = this.assets.geometry('furniture/cardboard-box-closed');
+      return merge([this.fixtureGeometry('gen:pallet').clone(), ...[[-0.28, -0.28], [0, -0.28], [0.28, -0.28], [-0.28, 0], [0, 0], [-0.28, 0.28]].map(([x, z]) => place(bx.clone(), x!, 0.1, z!, 0, 1.5))]);
+    }
     if (type === 'window') return paintStrips(recolor(this.assets.geometry('market/wall-window'), WALL_COLOURS), this.assets.palette, { '2:1': this.scheme.primary });
     const g = this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : FIXTURE_MODEL[type]);
     const glow = glowGeometry(type, this.assets.palette);

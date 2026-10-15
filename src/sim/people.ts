@@ -656,17 +656,42 @@ export function ownerDist(state: GameState, to: Vec2): number {
 }
 
 /** The product the shelves most need, of those waiting in the delivery zone. */
-export function neediestInStorage(state: GameState): string | null {
+/**
+ * What is on the pallets, product by product, the most needed first: the emptiest shelf slot it
+ * fills, then the ones not on a shelf yet.
+ */
+export function palletChoices(state: GameState): { productId: string; qty: number }[] {
   const have = new Map<string, number>();
   for (const e of state.shop.storage) if (e.qty > 0) have.set(e.productId, (have.get(e.productId) ?? 0) + e.qty);
-  if (!have.size) return null;
-  let best: string | null = null, bestGap = -1;
+  // Ties go to the shelf slot met first, the way the shop is laid out.
+  const gap = new Map<string, { gap: number; first: number }>();
+  let k = 0;
   for (const f of state.shop.fixtures) for (const sl of f.slots) {
+    k++;
     if (!sl.productId || !have.has(sl.productId)) continue;
-    const gap = FIXTURES[f.type].capacity - sl.qty;
-    if (gap > bestGap) { bestGap = gap; best = sl.productId; }
+    const g = FIXTURES[f.type].capacity - sl.qty, cur = gap.get(sl.productId);
+    if (!cur || g > cur.gap) gap.set(sl.productId, { gap: g, first: cur && g <= cur.gap ? cur.first : k });
   }
-  return best ?? [...have.keys()][0]!;
+  const key = (id: string) => gap.get(id) ?? { gap: -2, first: Infinity };
+  return [...have.entries()].map(([productId, qty]) => ({ productId, qty })).sort((a, b) => (key(b.productId).gap - key(a.productId).gap) || (key(a.productId).first - key(b.productId).first));
+}
+
+/** The box to pick up next: the most needed, or (just after putting one back) the next product along. */
+export function neediestInStorage(state: GameState, after?: string | null): string | null {
+  const list = palletChoices(state);
+  if (!list.length) return null;
+  const i = after ? list.findIndex((c) => c.productId === after) : -1;
+  return list[i >= 0 ? (i + 1) % list.length : 0]!.productId;
+}
+
+/** Why a product cannot go on a kind of fixture, in a few words (null when it can). */
+export function wrongFixture(productId: string, type: Fixture['type']): string | null {
+  const def = productDef(productId), fdef = FIXTURES[type];
+  if (!fdef.slots) return 'That does not hold stock.';
+  if (def.chilled && !fdef.chilled) return `${def.name} needs a chiller`;
+  if (!def.chilled && fdef.chilled) return `${def.name} does not go in the chiller`;
+  if (fdef.accepts && !fdef.accepts.includes(def.category)) return `${def.name} does not go on the ${fdef.name.toLowerCase()}`;
+  return null;
 }
 
 /** Is someone close enough to the delivery pallet to reach it? */
@@ -674,7 +699,9 @@ function atPallet(state: GameState, p: Person): boolean {
   const d = state.shop.delivery;
   const lo = toLocal(state.shop, p.x, p.z);
   const zone = toWorld(state.shop, Math.max(d.x0, Math.min(d.x1, lo.x)), Math.max(d.z0, Math.min(d.z1, lo.z)));
-  return Math.hypot(p.x - zone.x, p.z - zone.z) <= 1.4;
+  if (Math.hypot(p.x - zone.x, p.z - zone.z) <= 1.4) return true;
+  // Or by any of the extra pallets (the stock on them is one pool).
+  return state.shop.fixtures.some((f) => f.type === 'pallet' && Math.max(Math.abs(lo.x - (f.x + 0.5)), Math.abs(lo.z - (f.z + 0.5))) <= 1.3);
 }
 
 /** Put the box you are holding back on the pallet (in person: next to it), hands empty after. */
@@ -725,10 +752,8 @@ export function ownerStock(state: GameState, fixtureId: number): string | null {
   if (Math.hypot(o.x - c.x, o.z - c.z) > 1.5) return 'Step closer to the shelf.';
   const def = productDef(o.carrying.productId);
   const fdef = FIXTURES[f.type];
-  if (!fdef.slots) return 'That does not hold stock.';
-  if (def.chilled && !fdef.chilled) return `${def.name} needs a chiller.`;
-  if (!def.chilled && fdef.chilled) return `${def.name} does not go in the chiller.`;
-  if (fdef.accepts && !fdef.accepts.includes(def.category)) return `${def.name} does not fit there.`;
+  const wrong = wrongFixture(o.carrying.productId, f.type);
+  if (wrong) return `${wrong}.`;
   const left = placeOnFixture(state, f, o.carrying.productId, o.carrying.qty);
   if (left === o.carrying.qty) {
     // Nothing went on: either every slot is full, or the room left is all in slots of other products.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, FIXTURES, buildGrid, findPath, type GameState } from './index';
 import { canPlace, floorCost, windowsFromSides } from './build';
-import { toWorld } from './layout';
+import { toWorld, storageCap, PALLET_UNITS } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint } from './people';
 
@@ -121,5 +121,32 @@ describe('building: walls, doors, lights, floors and windows', () => {
     for (const [x, z] of spots) expect(place(s, 'plant', x, z).ok, `plant at ${x},${z}`).toBe(true);
     expect(s.shop.fixtures.filter((x) => x.type === 'plant').length).toBeGreaterThan(4);
     expect(looksOf(s).decor).toBeCloseTo(Math.min(1, d1 + 4 * FIXTURES.plant.looks!));
+  });
+});
+
+describe('pallets', () => {
+  it('an extra pallet on the floor holds more deliveries, and is not sold while its boxes need it', () => {
+    const s = shop();
+    const cap = storageCap(s.shop);
+    expect(place(s, 'pallet', -0.5, -3).ok).toBe(true);
+    expect(storageCap(s.shop)).toBe(cap + PALLET_UNITS);
+    const pallet = s.shop.fixtures.find((f) => f.type === 'pallet')!;
+    // It takes up its tile like anything else on the floor.
+    expect(canPlace(s, 'shelf', -0.5, -3, 0).ok).toBe(false);
+    s.shop.storage = [{ productId: 'beans', qty: cap + 10, day: s.day }];
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: pallet.id }).ok).toBe(false);
+    s.shop.storage = [{ productId: 'beans', qty: cap - 10, day: s.day }];
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: pallet.id }).ok).toBe(true);
+  });
+
+  it('the manager can pick a box up at an extra pallet', () => {
+    const s = shop();
+    expect(place(s, 'pallet', 0.5, -2).ok).toBe(true);
+    s.shop.storage = [{ productId: 'beans', qty: 12, day: s.day }];
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    const at = toWorld(s.shop, 1.0, -0.5);
+    o.x = o.px = at.x; o.z = o.pz = at.z;
+    expect(applyCommand(s, { type: 'pickUp', productId: 'beans' }).ok).toBe(true);
+    expect(o.carrying).toEqual({ productId: 'beans', qty: 8 });
   });
 });

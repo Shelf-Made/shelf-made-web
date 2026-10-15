@@ -8,7 +8,7 @@ export interface Vec2 { x: number; z: number }
 /** Rotation in quarter turns, 0 = facing +z (south, toward the camera). */
 export type Rot = 0 | 1 | 2 | 3;
 
-export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack'
+export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window'
@@ -254,6 +254,7 @@ export interface Shop {
   backDoor: Vec2;
   fixtures: Fixture[];
   storage: StockEntry[];
+  /** Room on the delivery pallet the shop came with (each extra Pallet adds PALLET_UNITS; see storageCap). */
   storageCapacity: number;
   bays: ParkingBay[];
   reputation: number;

@@ -35,7 +35,16 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
   return (
     <div ref={ref} className="fixture-menu" role="menu" aria-label={menu.name} onPointerDown={(e) => e.stopPropagation()}>
       <div className="fm-name">{menu.name}</div>
-      <div className="fm-actions">
+      {menu.picks && menu.picks.length > 0 && (
+        <div className="fm-picks">
+          {menu.picks.map((p) => (
+            <button key={p.productId} type="button" role="menuitem" className="fm-pick" onClick={(e) => { e.stopPropagation(); runtime.palletPick(p.productId); }}>
+              <span>{p.name}</span><b>{p.qty}</b>
+            </button>
+          ))}
+        </div>
+      )}
+      {!menu.fixed && <div className="fm-actions">
         {menu.use && (
           <button type="button" role="menuitem" className="fm-btn primary" onClick={act('use')}>
             {menu.use === 'Stock' ? ICONS.stock : SERVE}<span>{menu.use}</span>
@@ -43,7 +52,7 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
         )}
         <button type="button" role="menuitem" className="fm-btn" onClick={act('move')}>{MOVE}<span>Move</span></button>
         <button type="button" role="menuitem" className="fm-btn" onClick={act('turn')}>{TURN}<span>Turn</span></button>
-      </div>
+      </div>}
     </div>
   );
 }
