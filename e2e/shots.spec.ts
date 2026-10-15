@@ -14,6 +14,8 @@ async function follow(page: Page, x: number, z: number, dist = 12, yaw = 0, ms =
 
 test.describe('screenshots', () => {
   test('lobby, picker, the bare shell, building, stocking, trading, the zooms, the crossroads, night', async ({ page }) => {
+    // Some thirty views: the longest test by far (about 1.5 minutes here, over 2 on CI runners).
+    test.setTimeout(420_000);
     await ready(page);
     await settle(page, 2500);
     await page.screenshot({ path: out('01-lobby') });
@@ -342,6 +344,45 @@ test.describe('screenshots', () => {
     await table.getByRole('button', { name: new RegExp(names[most]!) }).click();
     await settle(page, 1500);
     await page.screenshot({ path: out('34-who-shops-where') });
+  });
+
+  test('a gentler first day, product pictures, your own manager, and a greener town', async ({ page }) => {
+    test.setTimeout(240_000);
+    await ready(page);
+    await hooks(page, 'newGame', 5, 'main', 'Corner Fresh', { tutorial: true });
+    await hooks(page, 'setSpeed', 0);
+    await follow(page, 0.5, -2.0, 12, 0, 1500);
+    // One step at a time: the coach says what to do next, and the tool it means pulses.
+    await expect(page.locator('.tip.coach')).toContainText('Place a checkout counter');
+    await page.screenshot({ path: out('35-tutorial-coach') });
+    // The Stock card shows each product as it stands on the shelves.
+    await hooks(page, 'openCard', 'stock');
+    await expect(page.locator('.card img.product-pic').first()).toBeVisible();
+    await settle(page, 800);
+    await page.screenshot({ path: out('36-stock-pictures') });
+    await page.keyboard.press('Escape');
+    await hooks(page, 'dispatch', { type: 'skipTutorial' });
+    await hooks(page, 'quickSetup', true);
+    // A greener town: textured lawns with grass and flowers, a mix of trees round every corner, softer zebras.
+    await hooks(page, 'openRivals');
+    await hooks(page, 'viewWorld', 2, 2, 0.3, 40, 0.92);
+    await settle(page, 2000);
+    await page.screenshot({ path: out('38-town-trees') });
+    await hooks(page, 'view', 4, 1.5, -0.5, 9, 0.75);
+    await settle(page, 1800);
+    await page.screenshot({ path: out('39-lawn-close') });
+  });
+
+  test('design your manager in the lobby', async ({ page }) => {
+    await ready(page);
+    await page.getByRole('button', { name: /your manager/i }).click();
+    const panel = page.getByRole('group', { name: 'Your manager' });
+    await panel.getByRole('radio', { name: 'Girl 3' }).click();
+    await panel.getByRole('radiogroup', { name: 'Top' }).getByRole('radio', { name: 'Purple' }).click();
+    await panel.getByRole('radiogroup', { name: 'Hair' }).getByRole('radio', { name: 'Pink' }).click();
+    await panel.getByRole('radiogroup', { name: 'Trousers' }).getByRole('radio', { name: 'Denim' }).click();
+    await settle(page, 2500);
+    await page.screenshot({ path: out('37-manager-designer') });
   });
 
   test('playing on a phone', async ({ browser }) => {

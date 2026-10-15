@@ -3,7 +3,59 @@
 Build log for the unattended build session (October 14, 2026). Everything below was built from
 an empty repository in this session.
 
-## Rivals answer back, and click anyone to see why (latest)
+## Feedback round: first day, controls, the town, your manager (latest)
+
+- [x] **Product pictures.** The Stock and Prices cards show each product as it stands on the
+  shelves (rendered from the shelf models at load), and "not on a shelf" is gone.
+- [x] **A shelf opens Stock.** Empty-handed, clicking a shelf opens the Stock card at the products
+  that go on it; carrying a box, it still walks over and stocks it.
+- [x] **A gentler tutorial.** One step at a time with a short title and one line, progress dots, and
+  a bouncing arrow on the tool to press. The goal chip and the controls card wait until it is over.
+- [x] **Camera.** The wheel zooms in proportion to the scroll (far less jumpy on a trackpad);
+  click-and-drag pans (one finger on a phone, two fingers twist); walking brings the camera back.
+- [x] **Cars ease** into and out of their speed and slow before turning into a lot.
+- [x] **Feet move while carrying a box.**
+- [x] **Signs and props.** The pylon sign stands on the lawn, not the lane; its flickering post
+  faces are gone; no prop stands on the lane or in a post.
+- [x] **Zebras** are painted alike on all four arms, slimmer and softer.
+- [x] **Shoppers stay inside.** A shelf against the wall is browsed from the room side; nobody
+  stands in the wall any more, nor in a corner sealed off behind other fixtures. Counters must face
+  into the shop.
+- [x] **A greener town.** Textured grass with tufts and wild flowers; every corner has a garden of
+  mixed trees (fifteen kinds, different sizes, some dark, some autumn), bushes, flowers and rocks;
+  clumps of trees round the edge of town.
+- [x] **Continue works mid-day.** Autosave every 30 seconds, after picking a plot, and when the
+  tab is hidden or closed (it used to save only at night).
+- [x] **Design your manager, in the lobby.** A guy or a girl first (six characters each), then
+  skin, hair, top, trousers and height, shown live on the shopkeeper out front; worn in every game
+  you start or continue.
+- [x] **Texture on every surface.** Pavements show slab joints and grain, roads and lots a speckle of
+  aggregate, flat roofs their sheet seams, and walls, kerbs and paint a soft grain, with broad
+  weathering that keeps long roads from reading as flat colour from afar. People, cars and products
+  stay clean.
+- [x] **Traffic never gridlocks.** The eased pull-away is brisk enough to keep the lights flowing,
+  only a car turning off the road brakes for its turn, and no through traffic joins a queue that
+  already reaches the edge of town (a busy day used to pile up hundreds of cars late in a game). Cars
+  brake steadily up to a queue or a red light instead of snapping to a stop, and never roll past a red.
+- [x] **Deploys.** Every model and texture fetch carries the build id, so Vercel can cache them for
+  good while each deploy still loads its own; the page itself is never cached stale. CI gives the
+  long screenshot run enough time on its slower runners.
+
+Checks on the latest run:
+
+| Check | Result |
+|---|---|
+| `npm run lint` | clean |
+| `npm test` | 92 passed; new: a shelf against the wall shopped from inside (and a counter facing the wall refused), nobody sent into a corner sealed off behind a fridge, designing the manager (and the look surviving a save), every parked car seen nose-in |
+| `npm run e2e` | 15 passed in 7.7 min: the coach's first step, a shelf tapped on a phone opens Stock with pictures, designing a guy in the lobby and finding him again after closing the tab mid-day (Continue), plus all earlier flows |
+| `npm run audit:art` | passed |
+| `npm run balance -- --check` | passed in 316 s: nobody stuck in any strategy (a forty-day run used to rescue a boxed-in manager 24 times and pile up over 400 cars); rivals take 18% of a guided player's week one; Cheapo price-matches the undercutter on day 6–7, its gap 6–7 → 2 points; guided ≈ $100/day in week one; goal 5 on day 14 on every seed |
+| Perf (`npm run perf`) | default zoom 104 draw calls / 158k triangles; busy 118 / 194k; someone selected 129 / 214k; mid zoom 130 / 217k; overview 169 / 303k (budget 250 / 900k). The gardens and grass tufts add about 30k triangles at the default zoom. The surface detail costs three texture reads a pixel. |
+
+New screenshots: `35-tutorial-coach`, `36-stock-pictures`, `37-manager-designer`,
+`38-town-trees`, `39-lawn-close`.
+
+## Rivals answer back, and click anyone to see why
 
 - [x] **Rivals react to you.** Each night every rival reads your last three days (prices, which
   shoppers you are winning, reputation) and at most one of them makes a move the next day, with a

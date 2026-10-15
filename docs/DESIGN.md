@@ -52,15 +52,18 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - Plain three.js (`WebGLRenderer`, sRGB output, PCF shadow map 2048 from one sun, distance fog).
 - **Follow camera.** A narrow lens (FOV 30) looking down at the manager from behind and above
   (`FollowCamera`: pitch 52° by default, 35–70° by right-drag; 12 units back by default, 7 to 68 on
-  the wheel, + / −, or a pinch). It glides after the manager; past 30 units it lets go and pans
-  freely (WASD, optional screen-edge pan, a one-finger drag), drifting toward the middle of the
-  crossroads as you pull out, and C brings it back. Q / E turn it in 45° steps. A docked card or
-  the jobs list pushes the manager to the middle of the world you can still see, and opening Build
+  the wheel, + / −, or a pinch). The wheel zooms in proportion to how far it scrolls (a trackpad
+  flick is a nudge, a mouse notch about 12%). A left-drag (one finger on a phone) grabs the ground
+  and pans; a two-finger twist turns. Walking again (WASD or a click) brings the camera back to the
+  manager. Past 30 units it lets go and pans freely (WASD, optional screen-edge pan), drifting toward
+  the middle of the crossroads as you pull out, and C brings it back. Q / E turn it in 45° steps. A
+  docked card pushes the manager to the middle of the world you can still see, and opening Build
   pulls back until the whole floor fits beside the card. No pointer lock.
 - **Moving and using.** WASD walks the manager relative to the camera (a `moveDir` command; the
   manager walks in real time at any clock speed). A click or tap on the floor walks there; on a
   fixture, the pallet or a spill it walks over and uses it (a shelf is reached from whichever free
-  side is nearest). F uses the nearest usable thing within 1.2 in front of the manager, Space scans
+  side is nearest). Empty-handed, a click on a shelf opens the Stock card at the products that go on
+  it; carrying a box, it stocks the shelf. F uses the nearest usable thing within 1.2 in front of the manager, Space scans
   behind a counter. What F or a click would do is outlined on the floor in yellow, with the key and
   the action in a label over it. In Build the ghost sits on the tile under the mouse or the tap.
 - **The crossroads.** One intersection on an empty, level plain: Main Road east–west and Elm Street
@@ -76,7 +79,28 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   between the camera and the manager drop to stubs; from outside and zoomed out the shop wears its
   roof. A rival's building that hides the manager drops to stubs the same way.
 - Stock is Kenney Food Kit and Mini Market models, scaled uniformly to fit each slot box measured
-  from the fixture, front rows first, so nothing clips into shelves or neighbours.
+  from the fixture, front rows first, so nothing clips into shelves or neighbours. The same models
+  are rendered once at load into small pictures for the Stock and Prices cards (and the characters
+  into portraits for the manager designer), so a card shows exactly what goes on the shelf.
+- **Land.** The ground carries a tileable grass texture (blades, clover, soft patches; drawn on a
+  canvas at load) over its mottled greens. Every corner has a garden from one pure function
+  (`cornerGarden`): a mix of fifteen tree kinds (round, oak, conifer, tall, darker and autumn ones)
+  at different sizes, bushes, flower patches, rocks, and grass tufts all over the lawn in one swaying
+  mesh, never on paving, a path, a bay or a prop. Clumps of mixed trees stand round the corners'
+  outer edges; past the edge of town only the roads run on. The zebras are painted, all four alike.
+- **Traffic feel.** Cars ease toward the speed they want (pulling away at 5 units/s², braking at
+  12), and a car turning off the road slows before its bend rather than in it, so turning into a lot
+  reads as easing off and rolling in. Coming up to a queue or a red light a car brakes steadily
+  (a square-root profile, about 6–10 units/s² from road speed) rather than snapping to a stop at the
+  last moment, never passes a stop line that holds it, and on amber goes on through only if it is too
+  close to stop. Through traffic (and a turned-away car, which is only for show)
+  does not join a queue that already reaches the edge of town, so the busiest day's jam drains.
+- **Surfaces.** Nothing in the town is flat colour. The world material samples a small tileable
+  noise texture in world space along each surface's main axis (no UVs needed, three texture reads a
+  pixel) and decides by colour what a surface is: light greys are concrete (grain and slab joints a tile apart), dark greys are asphalt (grain and
+  specks of aggregate), mid greys up on the roofline are roofing sheets with seams, everything else a
+  soft grain, with broad weathering a few tiles across. People, cars and products keep a clean
+  material so they read crisply against it.
 
 ### 2.3 UI
 
@@ -85,8 +109,16 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   they unlock. Everything else is a card that closes with Esc and never covers the store
   (cards dock to the right third of the screen).
 - Play HUD: the yellow outline and key label on whatever F or a click would act on (no crosshair),
-  a small controls card bottom left, a Use button bottom right that mirrors the label, and the
-  first day's jobs as a checklist. Skip always.
+  a small controls card bottom left, and a Use button bottom right that mirrors the label.
+- **Tutorial as a coach.** One step at a time: "Step 3 of 8", a short title and one line of what to
+  do, dots for progress, and the tool it means pulses on the shelf with a bouncing arrow. While it
+  runs the goal chip and the controls card stay hidden, so the first screen has one thing to read.
+  Skip always.
+- **Design your manager** (in the lobby, "Your manager"): a guy or a girl, one of six characters
+  each from portraits, then skin, hair, top and trousers from swatches (every colour from the baked palette; "Own" keeps
+  the character's), and a height. The demo shop's shopkeeper steps out front and the camera comes in
+  close; every click shows at once. The design is kept with your settings and worn in every game,
+  new or continued.
 - Lobby: a shop front (striped awning, the manager's head as the logo, the name with the shelf
   bracket, a price-tag beta badge, menu items as shelf-edge labels under a swinging OPEN sign, an
   LED ticker) over a live demo shop at golden hour.
@@ -105,7 +137,9 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 ### 2.4 Save
 
 - `SaveFile v1 = { version, createdAt, savedAt, seed, name, day, state }`.
-- Autosave each night to slot `auto`; three manual slots; export/import JSON.
+- Autosave to slot `auto` every night, every 30 seconds of play, after picking a plot, and whenever
+  the page is hidden or closed, so Continue always picks up where you left off; three manual slots;
+  export/import JSON.
 - Migrations are an ordered array `[fromVersion → toVersion]`, applied on load.
 
 ## 3. Numbers

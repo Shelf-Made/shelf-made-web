@@ -41,7 +41,7 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   await ready(page);
   await hooks(page, 'newGame', 5, 'main', 'E2E Mart', { tutorial: true });
   await hooks(page, 'setSpeed', 0);
-  await expect(page.locator('.tip')).toContainText(/empty shell/i);
+  await expect(page.locator('.tip.coach')).toContainText(/checkout counter/i);
   await expect(page.getByRole('button', { name: /open shop/i })).toBeVisible();
   // Opening with nothing inside is refused.
   await page.getByRole('button', { name: /open shop/i }).click();
@@ -221,10 +221,49 @@ test('click a customer: the panel says who they are and why they came; Follow tr
   await expect.poll(gapToOwner, { timeout: 20_000 }).toBeLessThan(0.3);
 });
 
+test('design your manager in the lobby: the shopkeeper out front changes as you click, and every game wears it', async ({ page }) => {
+  await ready(page);
+  await page.getByRole('button', { name: /your manager/i }).click();
+  const panel = page.getByRole('group', { name: 'Your manager' });
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.char-grid img').first()).toBeVisible();
+  // A guy or a girl first, then one of six of them.
+  await panel.getByRole('radiogroup', { name: 'Guy or girl' }).getByRole('radio', { name: 'Guy' }).click();
+  await expect(panel.getByRole('radio', { name: 'Girl 1' })).toHaveCount(0);
+  await panel.getByRole('radio', { name: 'Guy 2' }).click();
+  await panel.getByRole('radiogroup', { name: 'Top' }).getByRole('radio', { name: 'Purple' }).click();
+  await panel.getByRole('radiogroup', { name: 'Hair' }).getByRole('radio', { name: 'Ginger' }).click();
+  await panel.getByRole('radiogroup', { name: 'Height' }).getByRole('radio', { name: 'Taller' }).click();
+  // "Own" puts the hair back.
+  await panel.getByRole('radiogroup', { name: 'Hair' }).getByRole('radio', { name: 'Own', exact: true }).click();
+  // The lobby's shopkeeper wears it straight away.
+  const lobbyLook = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { lobbyState: { people: { kind: string; look: Record<string, unknown> }[] } | null } } }).__shelf.runtime.lobbyState?.people.find((p) => p.kind === 'owner')?.look ?? {});
+  expect(await lobbyLook()).toMatchObject({ model: 3, top: '#7E57C2', height: 1.1 });
+  expect((await lobbyLook()).hair).toBeUndefined();
+  await panel.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  // A new shop's manager wears the design, and so does one after a reload (it is kept with your settings).
+  const look = () => page.evaluate(() => (window as unknown as { __shelf: { state: () => { people: { kind: string; look: Record<string, unknown> }[] } | null } }).__shelf.state()?.people.find((p) => p.kind === 'owner')?.look ?? {});
+  await hooks(page, 'newGame', 14, 'main', 'Looks Mart', { tutorial: false });
+  expect(await look()).toMatchObject({ model: 3, top: '#7E57C2', height: 1.1 });
+  await hooks(page, 'quickSetup', true);
+  await hooks(page, 'setSpeed', 0);
+  // Leave mid-morning: the page saves on its way out, and Continue brings the same shop back.
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  await settle(page, 800);
+  await page.reload();
+  await page.waitForFunction(() => (window as unknown as { __shelf?: { ready: () => boolean } }).__shelf?.ready() === true, null, { timeout: 90_000 });
+  const cont = page.getByRole('button', { name: /continue/i });
+  await expect(cont).toContainText(/Looks Mart/);
+  await cont.click();
+  await expect.poll(async () => (await look()).top).toBe('#7E57C2');
+  expect((await look()).model).toBe(3);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('tap the floor to walk there, tap a shelf to use it', async ({ page }) => {
+  test('tap the floor to walk there, tap a shelf to see its stock', async ({ page }) => {
     await ready(page);
     await hooks(page, 'newGame', 8, 'main', 'Pocket Mart', { tutorial: false });
     await hooks(page, 'quickSetup', false);
@@ -235,12 +274,15 @@ test.describe('on a phone', () => {
     const p = await screenAt(page, to.x, to.z);
     await page.touchscreen.tap(p.x, p.y);
     await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - to.x, o.z - to.z); }, { timeout: 20_000 }).toBeLessThan(0.6);
-    // Tapping a shelf walks over to it and tells you what is on it.
+    // Tapping a shelf empty-handed opens the Stock card at what goes on it, with the products' pictures;
+    // the manager stays put.
     const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
+    const before = await owner(page);
     const q = await screenAt(page, shelf.x + 0.5, shelf.z + 0.5, 0.6);
     await page.touchscreen.tap(q.x, q.y);
-    await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - shelf.x - 0.5, o.z - shelf.z - 0.5); }, { timeout: 20_000 }).toBeLessThan(1.3);
-    await expect(page.locator('.toast')).toContainText(/shelf/i);
+    await expect(page.locator('.card img.product-pic').first()).toBeVisible();
+    const after = await owner(page);
+    expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(0.3);
   });
 
   test('tap a customer to see who they are: the panel docks above the tool shelf', async ({ page }) => {
