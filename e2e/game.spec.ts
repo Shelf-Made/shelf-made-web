@@ -533,6 +533,12 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await clickAt(page, 3.5, 2.0);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'flowerBed').map((f) => `${f.x},${f.z}`)).toEqual(['3,1.5']);
   await page.keyboard.press('Escape');
+  // Selling tiles from the first floor works on the ground floor too, like adding them.
+  await build.getByRole('tab', { name: 'Shop' }).click();
+  await build.getByRole('button', { name: 'Sell tiles' }).click();
+  await pointAt(page, 2.0, -0.5);
+  await expect.poll(() => aimText(page)).toMatch(/^Sell this tile/);
+  await page.keyboard.press('Escape');
   // The stairs sold: the first floor closes, and the floor picker comes down to the ground floor.
   const stairs = (await state(page)).shop.fixtures.find((f) => f.type === 'stairs')!;
   await hooks(page, 'fp', -0.5, -0.5);

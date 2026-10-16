@@ -622,7 +622,7 @@ export class GameRuntime {
       for (const th of r.weather.thunder.splice(0)) this.audio.thunder(th.distance, th.delay, th.strength);
       if (r.mode === 'play') {
         // The build ghost sits on the tile under the mouse.
-        if (this.building && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y, this.onLot ? 0 : undefined); if (g) this.hoverWorld(g.x, g.z); }
+        if (this.building && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y, this.onGround ? 0 : undefined); if (g) this.hoverWorld(g.x, g.z); }
         this.runPendingUse(s);
         this.aimCache = this.resolveAim();
       } else { this.aimCache = { info: null, run: null }; r.marker.set(null); }
@@ -844,10 +844,10 @@ export class GameRuntime {
   stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); this.renderer?.setPanelHints([], 0); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
-  /** Working out on the lot (a piece for outside, a lot tool, more floor): the pointer is on the ground, whichever floor is picked. */
-  private get onLot(): boolean {
+  /** Working on the ground (a piece for outside, a lot tool, adding or selling floor): the pointer is on it, whichever floor is picked. */
+  private get onGround(): boolean {
     const type = this.build.placing ?? (this.build.selectedId !== null ? this.state?.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type : undefined);
-    return (!!type && !!FIXTURES[type].outdoor) || (!!this.build.tool && (LOT_TOOLS.has(this.build.tool.kind) || this.build.tool.kind === 'grow'));
+    return (!!type && !!FIXTURES[type].outdoor) || (!!this.build.tool && (LOT_TOOLS.has(this.build.tool.kind) || this.build.tool.kind === 'grow' || this.build.tool.kind === 'sell'));
   }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {
@@ -1034,7 +1034,7 @@ export class GameRuntime {
     // At night the shop is shut but the manager can still fit it out for tomorrow: only the build tools work.
     if (s.phase === 'night' && !building) return;
     if (building) {
-      const g = r.groundAt(px, py, this.onLot ? 0 : undefined);
+      const g = r.groundAt(px, py, this.onGround ? 0 : undefined);
       if (g && this.building) { this.hoverWorld(g.x, g.z); this.clickBuild(null); return; }
       const hit = r.pick(px, py, s);
       if (hit?.kind === 'fixture') { this.clickBuild(hit); return; }
