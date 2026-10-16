@@ -926,6 +926,22 @@ test("a shopper's panel fades once they are under the floor in view", async ({ p
   await expect(panel).toHaveClass(/offscreen/);
 });
 
+test('the heat, exposure or paths view goes with the Build card, however it is closed', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  await hooks(page, 'fp', 0, -1.5);
+  const kinds = () => page.evaluate(() => { const rt = (window as unknown as { __shelf: { runtime: { overlay: string; renderer: { overlays: { kind: string } } } } }).__shelf.runtime; return [rt.overlay, rt.renderer.overlays.kind]; });
+  for (const close of ['Escape', 'B'] as const) {
+    await page.keyboard.press('KeyB');
+    await expect(page.locator('.card.t-build')).toHaveCount(1);
+    await page.evaluate(() => (window as unknown as { __shelf: { runtime: { setOverlay: (k: string) => void } } }).__shelf.runtime.setOverlay('paths'));
+    expect(await kinds()).toEqual(['paths', 'paths']);
+    await page.keyboard.press(close === 'B' ? 'KeyB' : 'Escape');
+    await expect(page.locator('.card.t-build')).toHaveCount(0);
+    expect(await kinds(), close).toEqual(['none', 'none']);
+  }
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);

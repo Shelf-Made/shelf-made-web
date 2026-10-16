@@ -743,7 +743,11 @@ export class GameRuntime {
     this.updateSideOffset();
     this.emit();
   }
-  closeCard(): void { if (this.building) { this.stopPlacing(); this.emit(); return; } if (this.card) { this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); } }
+  closeCard(): void {
+    if (this.building) { this.stopPlacing(); this.emit(); return; }
+    // (The heat, exposure or paths view goes with the Build card, as when it is toggled shut.)
+    if (this.card) { if (this.card === 'build') this.setOverlay('none'); this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); }
+  }
   // ---- Your manager, designed in the lobby: kept with your settings, worn in every game you play.
   /** The look you designed, or the default shop worker. */
   get managerLook(): ManagerLook { return this.settings.managerLook ?? { model: MANAGER_DEFAULT_MODEL, height: 1.04 }; }
