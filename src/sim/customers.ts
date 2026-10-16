@@ -3,7 +3,7 @@
  * GameState; the tick uses them to decide who walks in.
  */
 import type { GameState, CustomerType, RivalState, StoreScores } from './types';
-import { PRODUCTS, productDef } from './products';
+import { PRODUCTS, productDef, holidayOn } from './products';
 import { plotDef, PLOTS, DIFFICULTY, FIXTURES, shopArea } from './layout';
 import { bikePull, lotAppeal } from './lot';
 
@@ -172,9 +172,12 @@ export function expectedByType(state: GameState): Record<CustomerType, number> {
 }
 
 /** Products a type is drawn to when building a shopping list. */
-export function listWeight(type: CustomerType, productId: string, stocked: boolean): number {
+export function listWeight(type: CustomerType, productId: string, stocked: boolean, day = 1): number {
   const p = productDef(productId);
-  let w = p.demand * (stocked ? 4 : 0.25);
+  // Beyond the first range, shoppers only want what you sell; a holiday's goods only around it (and then all the more).
+  if (p.extra && !stocked) return 0;
+  if (p.season) { if (holidayOn(day) !== p.season) return 0; }
+  let w = p.demand * (stocked ? 4 : 0.25) * (p.season ? 1.5 : 1);
   if (type === 'loyalist' && p.brand) w *= 2.8;
   if (type === 'impulse' && p.impulse) w *= 2.2;
   if (type === 'bargain' && p.basePrice < 1.5) w *= 1.4;

@@ -6,14 +6,20 @@ import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
-import { PRODUCTS } from '@/sim/products';
+import { PRODUCTS, productDef } from '@/sim/products';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { doubleHeight } from '@/sim/storeys';
 import { underFloors, spillMark } from './levels';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
-const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack']);
+/** Shelves that take a department's board, and each department's colour. */
+const HEADER_ON: ReadonlySet<FixtureType> = new Set<FixtureType>(['shelf', 'endcap', 'displayTable', 'glassCase']);
+const DEPT_COLOURS: Partial<Record<string, string>> = {
+  bakery: '#D9A066', frozen: '#4F8FE0', pets: '#C8423A', toys: '#FFC044', clothing: '#9B6FE0', electronics: '#38383D', home: '#3FA87A',
+  books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
+};
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending']);
 
 /** Delivery boxes drawn at most (about four units each). */
 const BOX_MAX = 220;
@@ -61,6 +67,7 @@ export class StoreView {
   private spillMarkMats: SpriteMaterial[] = [];
   private wells!: InstancedMesh;
   private stickers!: InstancedMesh;
+  private headers!: InstancedMesh;
   private layoutVersion = -1;
   private stockKey = '';
   private shellKey = '';
@@ -130,6 +137,10 @@ export class StoreView {
     const sticker = box(pal, '#FFFFFF', 0.12, 0.12, 0.01, 0, 0, 0);
     this.stickers = new InstancedMesh(sticker, new MeshBasicMaterial({ color: 0xffffff }), 48); this.stickers.count = 0; this.stickers.frustumCulled = false;
     this.root.add(this.boxes, this.spills, this.wells, this.stickers);
+    // A department's board over a shelf given over to it (toys, the bakery...): the shelf turns into that department's.
+    const header = merge([box(pal, '#FFFFFF', 0.72, 0.13, 0.03, 0, 0, 0), box(pal, '#FFFFFF', 0.025, 0.12, 0.025, -0.3, -0.12, 0), box(pal, '#FFFFFF', 0.025, 0.12, 0.025, 0.3, -0.12, 0)]);
+    this.headers = new InstancedMesh(header, this.assets.plainMaterial, 64); this.headers.count = 0; this.headers.frustumCulled = false;
+    this.root.add(this.headers);
     try { this.font = await new FontLoader().loadAsync('/fonts/fredoka-bold.typeface.json'); } catch { this.font = null; }
   }
 
@@ -880,6 +891,22 @@ export class StoreView {
         }, f.id * 7 + si);
       });
     }
+    // Department boards: over a shelf most of whose stock is one department beyond groceries.
+    let hi = 0;
+    for (const f of shop.fixtures) {
+      if (!this.shown(f) || !HEADER_ON.has(f.type) || hi >= 64) continue;
+      const by = new Map<string, number>();
+      for (const sl of f.slots) if (sl.productId && sl.qty > 0) { const c = productDef(sl.productId).category; by.set(c, (by.get(c) ?? 0) + sl.qty); }
+      const top = [...by.entries()].sort((a, b) => b[1] - a[1])[0];
+      const colour = top && DEPT_COLOURS[top[0]];
+      if (!colour || top[1] < f.slots.reduce((a, sl) => a + sl.qty, 0) * 0.6) continue;
+      this.fixtureMatrix(shop, f, m, 0, true);
+      this.dummy.position.set(0, f.type === 'displayTable' ? 0.78 : 0.9, f.type === 'displayTable' ? -0.3 : 0).applyMatrix4(m);
+      this.dummy.rotation.set(0, f.rot * Math.PI / 2, 0); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix();
+      this.headers.setMatrixAt(hi, this.dummy.matrix); this.headers.setColorAt(hi, this.color.set(colour)); hi++;
+    }
+    this.headers.count = hi; this.headers.instanceMatrix.needsUpdate = true;
+    if (this.headers.instanceColor) this.headers.instanceColor.needsUpdate = true;
     for (const [id, pm] of this.productMeshes) {
       const c = counts.get(id) ?? 0;
       pm.mesh.count = c; pm.mesh.visible = c > 0; pm.mesh.instanceMatrix.needsUpdate = true;

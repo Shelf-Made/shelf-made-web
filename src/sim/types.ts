@@ -14,6 +14,8 @@ export interface Waypoint extends Vec2 { ride?: number; via?: number; yaw?: numb
 export type Rot = 0 | 1 | 2 | 3;
 
 export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet' | 'storeRack'
+  /** More displays: an ice-cream chest, chilled produce, a wall shelf, a glass counter, a display table, a bakery case, a clothes rail, a vending machine. */
+  | 'iceChest' | 'coolProduce' | 'wallShelf' | 'glassCase' | 'displayTable' | 'bakeryCase' | 'clothesRail' | 'vending'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'
@@ -58,6 +60,8 @@ export interface FixtureDef {
   onWall?: boolean;
   /** Hangs from the ceiling: it shares its tile with whatever stands on the floor under it. */
   overhead?: boolean;
+  /** Chilled, but takes goods that need no fridge too (fruit and veg on the chilled stand, crisps in the vending machine). */
+  mixed?: boolean;
   /** What it adds to how the shop looks (decor, 0..1 in all), for up to `looksCap` of them. */
   looks?: number; looksCap?: number;
   /**
@@ -200,6 +204,8 @@ export interface Person {
   /** A shoplifter held still a moment by a smart camera (seconds left), and whether one has already (it works once). */
   frozen?: number;
   zapped?: boolean;
+  /** Bought something at the vending machine (paid there): served, even with nothing for the till. */
+  vended?: boolean;
   /** A shoplifter who has run through the tag gates (they sound once). */
   gated?: boolean;
   /** Staff: experience from the job (scans, boxes shelved, spills, arrests); it sets their level, 1 to 5. */

@@ -4,15 +4,17 @@
  */
 import type { GameState } from './types';
 import type { Category } from './products';
-import { CATEGORY_NAMES, PRODUCTS } from './products';
+import { CATEGORY_NAMES, CORE_PRODUCTS } from './products';
 import { withRng } from './state';
 
 export const CATEGORIES: Category[] = ['produce', 'dairy', 'meat', 'dry', 'drinks', 'household'];
+/** The aisles and departments beyond the first six: their prices drift on their own stream (so the first six roll as before). */
+export const MORE_CATEGORIES: Category[] = ['bakery', 'frozen', 'pets', 'toys', 'clothing', 'electronics', 'home', 'books', 'sports', 'beauty', 'seasonal'];
 
 export interface MarketState { priceMul: Record<Category, number>; shortages: Record<string, number> }
 
 export function makeMarket(): MarketState {
-  return { priceMul: { produce: 1, dairy: 1, meat: 1, dry: 1, drinks: 1, household: 1 }, shortages: {} };
+  return { priceMul: Object.fromEntries([...CATEGORIES, ...MORE_CATEGORIES].map((c) => [c, 1])) as Record<Category, number>, shortages: {} };
 }
 
 /** Roll the day's wholesale prices and shortages. Writes notices for anything a shopkeeper would notice. */
@@ -29,11 +31,18 @@ export function marketDay(state: GameState): void {
     }
     for (const id of Object.keys(m.shortages)) { m.shortages[id] = (m.shortages[id] ?? 1) - 1; if (m.shortages[id]! <= 0) delete m.shortages[id]; }
     if (state.day >= 3 && r.chance(0.18)) {
-      const p = r.pick(PRODUCTS);
+      const p = r.pick(CORE_PRODUCTS);
       if (!m.shortages[p.id]) {
         m.shortages[p.id] = r.int(2, 4);
         state.notices.push({ day: state.day, text: `Shortage: no ${p.name.toLowerCase()} from any supplier for ${m.shortages[p.id]} days.`, kind: 'event' });
       }
+    }
+  });
+  // The rest drift gently (an older save starts them level).
+  withRng(state, 'departments', (r) => {
+    for (const c of MORE_CATEGORIES) {
+      const was = m.priceMul[c] ?? 1;
+      m.priceMul[c] = Math.max(0.8, Math.min(1.3, Math.round((was + (1 - was) * 0.4 + r.normal(0, 0.04)) * 100) / 100));
     }
   });
 }

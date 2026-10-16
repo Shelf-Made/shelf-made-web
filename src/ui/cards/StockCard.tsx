@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/products';
+import { PRODUCTS, CATEGORY_NAMES, GROCERY_CATEGORIES, DEPARTMENTS, HOLIDAYS, YEAR_DAYS, productDef, holidayOn, holidayName, inSeason, type Category } from '@/sim/products';
 import { SUPPLIERS, unitCost, deliveryStatus, INSTANT_MUL } from '@/sim/economy';
 import { RECYCLE_BACK } from '@/sim/stocking';
 import { keyLabel } from '@/save/settings';
-import { FIXTURES, storageCap } from '@/sim/layout';
+import { FIXTURES, storageCap, storageUsed } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
 import { savedOrderCost, ruleText, MAX_SAVED } from '@/sim/savedOrders';
 import type { OrderRule, SavedOrder } from '@/sim/types';
@@ -35,9 +35,10 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
     return m;
   }, [s.shop.fixtures, snap.stateVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const inStore = (id: string) => s.shop.storage.filter((e) => e.productId === id).reduce((a, e) => a + e.qty, 0);
-  const storageUnits = s.shop.storage.reduce((a, e) => a + e.qty, 0);
+  const storageUnits = storageUsed(s.shop);
   const pending = s.orders.filter((o) => o.state !== 'delivered');
-  const visible = PRODUCTS.filter((p) => cat === 'all' ? (onShelf.has(p.id) || inStore(p.id) > 0 || (qty[p.id] ?? 0) > 0 || p.demand >= 1.2) : p.category === cat);
+  const visible = PRODUCTS.filter((p) => cat === 'all' ? (onShelf.has(p.id) || inStore(p.id) > 0 || (qty[p.id] ?? 0) > 0 || (p.demand >= 1.2 && !p.extra)) : p.category === cat);
+  const soon = holidayOn(s.day, 2);
   const units = lines.reduce((a, l) => a + l.qty, 0);
   // In setup the trucks come at once (the clock stands still until you open).
   const etaOf = (sid: string) => s.phase === 'setup' ? Math.min(SUPPLIERS.find((x) => x.id === sid)!.etaSeconds, 20) : SUPPLIERS.find((x) => x.id === sid)!.etaSeconds;
@@ -47,22 +48,31 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <section className="stock-goods">
         <div className="row cats" role="tablist" aria-label="Products">
           <button role="tab" aria-selected={cat === 'all'} className={`btn small ${cat === 'all' ? '' : 'ghost'}`} onClick={() => setCat('all')}>Popular</button>
-          {(Object.keys(CATEGORY_NAMES) as Category[]).map((c) => <button key={c} role="tab" aria-selected={cat === c} className={`btn small ${cat === c ? '' : 'ghost'}`} onClick={() => setCat(c)}>{CATEGORY_NAMES[c]}</button>)}
+          {GROCERY_CATEGORIES.map((c) => <button key={c} role="tab" aria-selected={cat === c} className={`btn small ${cat === c ? '' : 'ghost'}`} onClick={() => setCat(c)}>{CATEGORY_NAMES[c]}</button>)}
         </div>
+        <div className="row cats depts" role="tablist" aria-label="Departments">
+          <span className="muted">Departments</span>
+          {DEPARTMENTS.map((c) => <button key={c} role="tab" aria-selected={cat === c} className={`btn small ${cat === c ? '' : 'ghost'}${c === 'seasonal' && soon ? ' hot' : ''}`} onClick={() => setCat(c)}>{CATEGORY_NAMES[c]}{c === 'seasonal' && soon ? ` · ${holidayName(soon)}` : ''}</button>)}
+        </div>
+        {(DEPARTMENTS.includes(cat as Category) || cat === 'bakery' || cat === 'frozen' || cat === 'pets') && (
+          <p className="muted dept-note">{cat === 'seasonal'
+            ? (soon ? `${holidayName(soon)} goods sell only around ${holidayName(soon)}: order them now.` : `Holiday goods come round with each holiday (every ${YEAR_DAYS / HOLIDAYS.length} days). The next: ${nextHoliday(s.day)}.`)
+            : 'Shoppers come in for these once you sell them (and bring the money for them). Any shelf takes them.'}</p>
+        )}
         <div className="list goods">
           {visible.map((p) => {
             const shelf = onShelf.get(p.id), n = qty[p.id] ?? 0;
             return (
-              <div className={`item${n > 0 ? ' picked' : ''}`} key={p.id}>
+              <div className={`item${n > 0 ? ' picked' : ''}${inSeason(p, s.day) ? '' : ' off-season'}`} key={p.id}>
                 <div className="what">
-                  <div className="name"><ProductPic runtime={runtime} id={p.id} color={p.color} /><span>{p.name}</span>{p.chilled && <span className="tag cold">fridge</span>}</div>
+                  <div className="name"><ProductPic runtime={runtime} id={p.id} color={p.color} /><span>{p.name}</span>{p.chilled && <span className="tag cold">fridge</span>}{(p.size ?? 1) > 1 && <span className="tag bulky" title={`Takes ${p.size} units of room on the pallet`}>bulky</span>}{p.season && <span className="tag season">{holidayName(p.season)}</span>}</div>
                   <div className="sub">{money(unitCost(p.id, supplierId, s))} each · sells {money(s.prices[p.id] ?? p.basePrice)}</div>
                   {(shelf || inStore(p.id) > 0) && <div className="sub">{shelf ? `${shelf.qty} on your shelves` : ''}{shelf && inStore(p.id) ? ' · ' : ''}{inStore(p.id) ? `${inStore(p.id)} on the pallet` : ''}</div>}
                 </div>
                 <div className="stepper">
                   <button onClick={() => setQty({ ...qty, [p.id]: Math.max(0, n - 6) })} aria-label={`Fewer ${p.name}`}>−</button>
                   <span className="val">{n}</span>
-                  <button onClick={() => setQty({ ...qty, [p.id]: n + 6 })} aria-label={`More ${p.name}`}>+</button>
+                  <button onClick={() => setQty({ ...qty, [p.id]: n + 6 })} aria-label={`More ${p.name}`} disabled={!inSeason(p, s.day)} title={inSeason(p, s.day) ? undefined : `Only sold around ${holidayName(p.season!)}`}>+</button>
                 </div>
               </div>
             );
@@ -132,6 +142,12 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       </aside>
     </div>
   );
+}
+
+/** The next holiday and how soon (for the Holidays tab out of season). */
+function nextHoliday(day: number): string {
+  for (let d = day + 1; d < day + YEAR_DAYS + 1; d++) { const h = holidayOn(d, 2); if (h) return `${holidayName(h)}, ordering opens in ${d - day} day${d - day === 1 ? '' : 's'}`; }
+  return HOLIDAYS[0]!.name;
 }
 
 /** What each supplier is for, at a glance. */

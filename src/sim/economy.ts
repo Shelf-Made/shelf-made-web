@@ -1,7 +1,7 @@
 import type { GameState, Order, DayPlan } from './types';
 import { managerSavedOrders } from './savedOrders';
-import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME, storageCap } from './layout';
-import { productDef } from './products';
+import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME, storageCap, storageUsed } from './layout';
+import { PRODUCTS, productDef, inSeason, holidayName, holidayOn, sizeOf, HOLIDAY_DAYS, type Holiday } from './products';
 import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
 import { spawnDeliveryTruck, deliverOrder } from './cars';
@@ -31,7 +31,7 @@ export function supplier(id: string): Supplier { return SUPPLIERS.find((s) => s.
 
 export function unitCost(productId: string, supplierId: string, state?: GameState): number {
   const def = productDef(productId);
-  const market = state ? state.market.priceMul[def.category] : 1;
+  const market = state ? state.market.priceMul[def.category] ?? 1 : 1;
   return Math.round(def.cost * supplier(supplierId).priceMul * market * 100) / 100;
 }
 
@@ -40,6 +40,8 @@ export const INSTANT_MUL = 1.25;
 
 export function placeOrder(state: GameState, supplierId: string, lines: { productId: string; qty: number }[], instant = false): Order | string {
   const sup = supplier(supplierId);
+  const offSeason = lines.find((l) => l.qty > 0 && !inSeason(productDef(l.productId), state.day));
+  if (offSeason) { const d = productDef(offSeason.productId); return `${d.name} is only sold around ${holidayName(d.season!)}.`; }
   const shortLines = lines.filter((l) => l.qty > 0 && inShortage(state, l.productId));
   const clean = lines.filter((l) => l.qty > 0 && !inShortage(state, l.productId)).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: Math.round(unitCost(l.productId, sup.id, state) * (instant ? INSTANT_MUL : 1) * 100) / 100 }));
   if (clean.length === 0) return shortLines.length ? `${productDef(shortLines[0]!.productId).name} is in shortage: no supplier has it this week.` : 'Nothing to order.';
@@ -48,10 +50,11 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   if (total < sup.minOrder) return `${sup.name} needs a ${dollars(sup.minOrder)} minimum.`;
   const onTerms = sup.terms > 0;
   if (!onTerms && total > state.cash) return `Not enough cash (${formatMoney(total)}).`;
-  const units = clean.reduce((a, l) => a + l.qty, 0);
-  const inStorage = state.shop.storage.reduce((a, s) => a + s.qty, 0);
+  // Room on the pallets by size: a watermelon or a Christmas tree takes more than a tin.
+  const units = clean.reduce((a, l) => a + l.qty * sizeOf(l.productId), 0);
+  const inStorage = storageUsed(state.shop);
   const cap = storageCap(state.shop);
-  if (inStorage + units > cap) return `The pallets only have room for ${Math.max(0, cap - inStorage)} more units.`;
+  if (inStorage + units > cap) return `The pallets only have room for ${Math.max(0, cap - inStorage)} more units${clean.some((l) => sizeOf(l.productId) > 1) ? ' (bulky goods take more room)' : ''}.`;
   if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold
@@ -166,6 +169,15 @@ export function planDay(state: GameState, day: number): DayPlan {
 }
 
 /** Start the next day: spoilage, fresh stats, doors open. */
+/** The holidays coming round: a word two days ahead (time to order), on the day, and when it is over. */
+export function holidayNotices(state: GameState): void {
+  const d = state.day, today = holidayOn(d), soon = holidayOn(d, 2), was = holidayOn(d - 1);
+  const goods = (h: Holiday) => PRODUCTS.filter((p) => p.season === h).map((p) => p.name.toLowerCase()).join(', ');
+  if (soon && !today && holidayOn(d - 1, 2) !== soon) state.notices.push({ day: d, text: `${holidayName(soon)} in two days: order its goods now (Stock → Holidays: ${goods(soon)}).`, kind: 'event' });
+  if (today && was !== today) state.notices.push({ day: d, text: `${holidayName(today)} starts today! Its goods sell fast for ${HOLIDAY_DAYS} days.`, kind: 'event' });
+  if (was && !today) state.notices.push({ day: d, text: `${holidayName(was)} is over: nobody wants its goods now (recycle what is left in the Stock card).`, kind: 'event' });
+}
+
 export function openTomorrow(state: GameState): void {
   if (state.phase !== 'night') return;
   state.day++;
@@ -182,6 +194,7 @@ export function openTomorrow(state: GameState): void {
   state.sky = plan.sky ?? skyFor(plan.weather, state.seed, state.day);
   rivalDay(state, plan);
   marketDay(state);
+  holidayNotices(state);
   applyUnlocks(state);
   marketingDay(state, plan);
   dailyAutomation(state);

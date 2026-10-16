@@ -5,6 +5,7 @@
  * the same layout turned half round (their doors face north), so shop-relative coordinates mean
  * the same thing on every corner and only the frame (origin + flip) changes.
  */
+import { sizeOf } from './products';
 import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle, WallStyle, LotSurface } from './types';
 
 export const TICK = 0.05;
@@ -167,6 +168,10 @@ export const STARTER = {
 /** Units of stock an extra Pallet holds. */
 export const PALLET_UNITS = 60;
 /** Room for deliveries: the pallet by the back door, and every extra Pallet on the floor. */
+/** Room the pallet's stock takes (bulky goods take more than one unit's room each). */
+export function storageUsed(shop: { storage: { productId: string; qty: number }[] }): number {
+  return shop.storage.reduce((a, e) => a + e.qty * sizeOf(e.productId), 0);
+}
 /** Room a storage rack adds. */
 export const STORE_RACK_UNITS = 200;
 export function storageCap(shop: { storageCapacity: number; fixtures: { type: FixtureType }[] }): number {
@@ -543,6 +548,16 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, depth: 0.61, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'], category: 'shelves' },
   /** More room for deliveries, on the shop floor wherever you put it. */
   pallet: { type: 'pallet', name: 'Pallet', price: 60, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'shelves' },
+  // More displays (any shelf takes most goods; these hold more of their kind, and look the part).
+  iceChest: { type: 'iceChest', name: 'Ice-cream chest', price: 260, w: 1, d: 1, depth: 0.61, slots: 4, capacity: 10, chilled: true, upkeep: 7, accepts: ['frozen', 'dairy'], category: 'shelves' },
+  coolProduce: { type: 'coolProduce', name: 'Chilled produce', price: 220, w: 1, d: 1, depth: 0.61, slots: 3, capacity: 12, chilled: true, mixed: true, upkeep: 5, accepts: ['produce'], category: 'shelves' },
+  wallShelf: { type: 'wallShelf', name: 'Wall shelf', price: 50, w: 1, d: 1, slots: 2, capacity: 6, chilled: false, upkeep: 0, category: 'shelves', walkable: true, onWall: true },
+  glassCase: { type: 'glassCase', name: 'Glass counter', price: 240, w: 1, d: 1, depth: 0.61, slots: 2, capacity: 8, chilled: false, upkeep: 1, accepts: ['beauty', 'electronics', 'clothing', 'toys'], category: 'shelves' },
+  displayTable: { type: 'displayTable', name: 'Display table', price: 180, w: 2, d: 1, slots: 4, capacity: 10, chilled: false, upkeep: 0, accepts: ['toys', 'electronics', 'home', 'books', 'sports', 'clothing', 'beauty', 'seasonal'], category: 'shelves' },
+  bakeryCase: { type: 'bakeryCase', name: 'Bakery case', price: 190, w: 1, d: 1, depth: 0.61, slots: 3, capacity: 10, chilled: false, upkeep: 2, accepts: ['bakery'], category: 'shelves' },
+  clothesRail: { type: 'clothesRail', name: 'Clothes rail', price: 90, w: 1, d: 1, slots: 2, capacity: 12, chilled: false, upkeep: 0, accepts: ['clothing'], category: 'shelves' },
+  /** Shoppers pay at the machine: no till. */
+  vending: { type: 'vending', name: 'Vending machine', price: 700, w: 1, d: 1, depth: 0.61, slots: 4, capacity: 8, chilled: true, mixed: true, upkeep: 4, accepts: ['drinks', 'dry'], category: 'checkout' },
   /** Tall metal racking two tiles long: a lot more room for deliveries. */
   storeRack: { type: 'storeRack', name: 'Storage rack', price: 400, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'shelves' },
   fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, depth: 0.61, slots: 4, capacity: 6, chilled: true, upkeep: 6, category: 'shelves' },

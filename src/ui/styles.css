@@ -742,3 +742,12 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .stock-bar .sb-chip.on { background: var(--slate); color: #fff; }
 .stock-bar .sb-find { flex: 1 1 100%; min-width: 140px; padding: 6px 10px; border-radius: 10px; border: 2px solid #E5E2DC; font: inherit; font-size: 14px; }
 .pallet-list .item { padding: 6px 10px; }
+
+/* Stock card: the departments' row, the holiday's tab lit up, bulky and holiday tags, goods out of season. */
+.stock-goods .cats.depts { position: static; margin-top: -4px; flex-wrap: wrap; align-items: center; gap: 4px; }
+.stock-goods .cats.depts .muted { font-size: 12px; margin-right: 2px; }
+.stock-goods .cats .btn.hot { background: #E8573F; color: #fff; }
+.stock-goods .dept-note { margin: 4px 2px 8px; font-size: 13px; }
+.tag.bulky { background: #EFE7DA; color: #8B5A3C; }
+.tag.season { background: #FDE1E8; color: #B5235A; }
+.list.goods .item.off-season { opacity: 0.55; }

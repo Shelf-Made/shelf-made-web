@@ -30,6 +30,8 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
   camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
+  iceChest: 'gen:iceChest', coolProduce: 'gen:coolProduce', wallShelf: 'gen:wallShelf', glassCase: 'gen:glassCase', displayTable: 'gen:displayTable',
+  bakeryCase: 'gen:bakeryCase', clothesRail: 'gen:clothesRail', vending: 'gen:vending',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
@@ -125,6 +127,57 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       return merge(parts);
     }
     case 'gen:tallWall': return place(wall('market/wall'), 0, 0, 0, 0, 1, 2, 1);
+    // The displays (tile space, the back against the tile's back edge at z −0.45; their stock goes in SLOT_BOXES).
+    // An ice-cream chest: a white well with a sky-blue rim and glass edge, open on top.
+    case 'gen:iceChest': return merge([
+      box(pal, '#F7F7F5', 0.86, 0.2, 0.6, 0, 0, -0.15), box(pal, '#F7F7F5', 0.86, 0.22, 0.04, 0, 0.2, 0.13), box(pal, '#F7F7F5', 0.86, 0.22, 0.04, 0, 0.2, -0.43),
+      box(pal, '#F7F7F5', 0.04, 0.22, 0.6, -0.41, 0.2, -0.15), box(pal, '#F7F7F5', 0.04, 0.22, 0.6, 0.41, 0.2, -0.15), box(pal, '#4F8FE0', 0.87, 0.05, 0.61, 0, 0.12, -0.15),
+      box(pal, '#BFEFFF', 0.87, 0.02, 0.05, 0, 0.42, 0.13), box(pal, '#BFEFFF', 0.87, 0.02, 0.05, 0, 0.42, -0.43), box(pal, '#9AA0A8', 0.82, 0.01, 0.56, 0, 0.19, -0.15),
+    ]);
+    // Chilled produce: a stepped stand of crates under a canopy with a light bar, misted greens on the back board.
+    case 'gen:coolProduce': return merge([
+      box(pal, '#F7F7F5', 0.88, 0.28, 0.6, 0, 0, -0.15), box(pal, '#3FA87A', 0.89, 0.04, 0.61, 0, 0.26, -0.15),
+      ...[-0.29, 0, 0.29].map((x) => box(pal, '#C8925A', 0.27, 0.06, 0.5, x, 0.3, -0.17)),
+      box(pal, '#F7F7F5', 0.88, 0.6, 0.06, 0, 0.3, -0.45), box(pal, '#3FA87A', 0.92, 0.04, 0.24, 0, 0.88, -0.34), box(pal, '#FFFFFF', 0.8, 0.02, 0.05, 0, 0.86, -0.3),
+    ]);
+    // A wall shelf: two boards on brackets against the wall.
+    case 'gen:wallShelf': return merge([
+      box(pal, '#D9A066', 0.82, 0.03, 0.22, 0, 0.33, WALL_FACE + 0.11), box(pal, '#D9A066', 0.82, 0.03, 0.22, 0, 0.6, WALL_FACE + 0.11),
+      ...[-0.36, 0.36].flatMap((x) => [box(pal, '#38383D', 0.02, 0.36, 0.02, x, 0.28, WALL_FACE + 0.01), box(pal, '#38383D', 0.02, 0.02, 0.18, x, 0.31, WALL_FACE + 0.1), box(pal, '#38383D', 0.02, 0.02, 0.18, x, 0.58, WALL_FACE + 0.1)]),
+    ]);
+    // A glass counter: a wooden base, a shelf of goods behind the glass, the glass top and corner posts.
+    case 'gen:glassCase': return merge([
+      box(pal, '#B8824C', 0.86, 0.28, 0.56, 0, 0, -0.17), box(pal, '#E9DCC4', 0.84, 0.02, 0.54, 0, 0.28, -0.17),
+      ...[[-0.42, 0.1], [0.42, 0.1], [-0.42, -0.44], [0.42, -0.44]].map(([x, z]) => box(pal, '#D8D8DC', 0.02, 0.2, 0.02, x!, 0.3, z!)),
+      box(pal, '#CFEFFF', 0.86, 0.015, 0.56, 0, 0.5, -0.17), box(pal, '#FFC044', 0.86, 0.02, 0.01, 0, 0.26, 0.115),
+    ]);
+    // A display table two tiles long: a pale top on four legs, a skirt in the shop's colour.
+    case 'gen:displayTable': return merge([
+      box(pal, '#F3E6CF', 1.86, 0.04, 0.74, 0, 0.32, 0), box(pal, sc.primary, 1.86, 0.06, 0.745, 0, 0.27, 0),
+      ...[[-0.88, 0.32], [0.88, 0.32], [-0.88, -0.32], [0.88, -0.32]].map(([x, z]) => box(pal, '#B8824C', 0.05, 0.27, 0.05, x!, 0, z!)),
+    ]);
+    // A bakery case: a cream base, a stepped shelf behind a curved glass front, a striped awning.
+    case 'gen:bakeryCase': return merge([
+      box(pal, '#F3E6CF', 0.88, 0.3, 0.58, 0, 0, -0.16), box(pal, '#B8824C', 0.89, 0.03, 0.59, 0, 0.3, -0.16),
+      box(pal, '#CFEFFF', 0.88, 0.2, 0.015, 0, 0.32, 0.12), box(pal, '#CFEFFF', 0.88, 0.015, 0.3, 0, 0.53, -0.02),
+      ...[-0.43, 0.43].map((x) => box(pal, '#B8824C', 0.02, 0.24, 0.58, x, 0.3, -0.16)),
+      box(pal, '#E8573F', 0.9, 0.05, 0.16, 0, 0.62, -0.38), box(pal, '#FFFFFF', 0.3, 0.051, 0.161, 0, 0.62, -0.38),
+    ]);
+    // A clothes rail: a bar between two uprights, shirts hanging on it, folded ones on the base.
+    case 'gen:clothesRail': {
+      const parts: BufferGeometry[] = [box(pal, '#D9A066', 0.86, 0.03, 0.4, 0, 0.08, -0.2), ...[-0.42, 0.42].flatMap((x) => [box(pal, '#9AA0A8', 0.03, 0.72, 0.03, x, 0.08, -0.2), box(pal, '#9AA0A8', 0.04, 0.02, 0.4, x, 0, -0.2)]), box(pal, '#9AA0A8', 0.86, 0.02, 0.02, 0, 0.78, -0.2)];
+      const tops = ['#E8573F', '#4F8FE0', '#FFFFFF', '#3FA87A', '#FFC044', '#9B6FE0'];
+      tops.forEach((c, i) => { const x = -0.33 + i * 0.13; parts.push(box(pal, c, 0.03, 0.28, 0.24, x, 0.48, -0.2), box(pal, c, 0.032, 0.05, 0.3, x, 0.71, -0.2), box(pal, '#38383D', 0.008, 0.04, 0.008, x, 0.76, -0.2)); });
+      return merge(parts);
+    }
+    // A vending machine: a tall red-and-white cabinet, a window onto four shelves, a keypad, a lit header and a tray at the bottom.
+    case 'gen:vending': return merge([
+      box(pal, '#F7F7F5', 0.74, 0.04, 0.56, 0, 0, -0.17), box(pal, sc.primary, 0.74, 0.92, 0.04, 0, 0.04, -0.43),
+      box(pal, sc.primary, 0.05, 0.92, 0.56, -0.345, 0.04, -0.17), box(pal, sc.primary, 0.17, 0.92, 0.56, 0.285, 0.04, -0.17), box(pal, sc.primary, 0.74, 0.06, 0.56, 0, 0.9, -0.17),
+      box(pal, sc.primary, 0.58, 0.16, 0.56, -0.06, 0.04, -0.17), box(pal, '#222226', 0.4, 0.06, 0.02, -0.06, 0.08, 0.11),
+      ...[0.2, 0.38, 0.56, 0.74].map((y) => box(pal, '#D8D8DC', 0.52, 0.012, 0.5, -0.06, y, -0.17)),
+      box(pal, '#38383D', 0.1, 0.18, 0.012, 0.285, 0.55, 0.112), box(pal, '#FFFFFF', 0.13, 0.08, 0.02, 0.285, 0.8, 0.112), box(pal, '#FFC044', 0.58, 0.04, 0.012, -0.06, 0.92, 0.112),
+    ]);
     // Grey steel racking two tiles long, three shelves of brown boxes and the odd shrink-wrapped pallet load.
     case 'gen:storeRack': {
       const parts: BufferGeometry[] = [];

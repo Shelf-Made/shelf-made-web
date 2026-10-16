@@ -120,7 +120,8 @@ export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(sho
     const L = levelOf(f), till = f.type === 'register' || f.type === 'kiosk';
     if (out.rides.has(f.id)) out.floors.add(L + 1);
     // (A way up downstairs is in `rides`; a plant or a wall down there may be shut in.)
-    if (FIXTURES[f.type].walkable || (!L && (VERTICAL.has(f.type) || (!till && !FIXTURES[f.type].slots)))) continue;
+    // (A wall shelf is walked up to though nothing bumps into it: it holds stock.)
+    if ((FIXTURES[f.type].walkable && !FIXTURES[f.type].slots) || (!L && (VERTICAL.has(f.type) || (!till && !FIXTURES[f.type].slots)))) continue;
     const front = fixtureFront(f);
     if (VERTICAL.has(f.type) ? out.rides.has(f.id) : till ? clear(front) : !!fixtureStandWorld(shop, f, undefined, grid)) out.pieces.add(f.id);
     if (f.type === 'register' && clear({ x: 2 * f.x + 1 - front.x, z: 2 * f.z + 1 - front.z })) out.behind.add(f.id);

@@ -70,6 +70,8 @@ export function fixtureStandWorld(shop: Shop, f: Fixture, from?: Vec2, grid: Gri
   const cx = f.x + 0.5, cz = f.z + 0.5;
   const front = fixtureFront(f);
   const tiles = [front, { x: 2 * cx - front.x, z: 2 * cz - front.z }, { x: cx + (front.z - cz), z: cz + (front.x - cx) }, { x: cx - (front.z - cz), z: cz - (front.x - cx) }];
+  // A piece nobody bumps into (a wall shelf) is stood at on its own tile, just in front of its boards.
+  if (FIXTURES[f.type].walkable) tiles.unshift({ x: cx, z: cz });
   // Reachable cells are already off the walls, the pallet and every fixture; the floor keeps it indoors.
   const reach = reachableCells(shop, grid);
   let best: Vec2 | null = null, bestD = Infinity;

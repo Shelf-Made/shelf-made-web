@@ -124,7 +124,7 @@ function makeList(state: GameState, ctype: CustomerType): { productId: string; q
   const expo = exposure(state);
   return withRng(state, 'customers', (r) => {
     const n = r.pick([2, 2, 3, 3, 3, 4]);
-    const pool = PRODUCTS.map((p) => ({ id: p.id, w: listWeight(ctype, p.id, stocked.has(p.id)) * (expo.get(p.id) ?? 1) }));
+    const pool = PRODUCTS.map((p) => ({ id: p.id, w: listWeight(ctype, p.id, stocked.has(p.id), state.day) * (expo.get(p.id) ?? 1) }));
     const list: { productId: string; qty: number }[] = [];
     for (let i = 0; i < n; i++) {
       const total = pool.reduce((a, b) => a + b.w, 0);
@@ -161,6 +161,9 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
     ctype, list: makeList(state, ctype), basket: [], listIdx: 0, missed: 0, patience, maxPatience: patience, carId: null, registerId: null, mood: 1, arrivedTick: state.tick, stuckTicks: 0,
     budget: budgetFor(ctype, withRng(state, 'customers', (r) => r.next())),
   };
+  // Come for something beyond the first range (a teddy, a T-shirt): with the money for it too.
+  const extra = (p.list ?? []).reduce((a, it) => { const d = productDef(it.productId); return a + (d.extra ? d.basePrice * it.qty : 0); }, 0);
+  if (extra) p.budget = (p.budget ?? 0) + extra;
   state.today.customers++;
   const bt = (state.today.byType ??= { bargain: 0, convenience: 0, loyalist: 0, impulse: 0 });
   bt[ctype]++;
@@ -293,8 +296,26 @@ function chooseRegister(state: GameState, ctype?: CustomerType): Fixture | null 
   return best;
 }
 
+/** Paid at the vending machine, card in, can out: the sale is made there and then. */
+function vend(state: GameState, p: Person, f: Fixture, productId: string, qty: number, price: number): void {
+  const total = Math.round(price * qty * 100) / 100;
+  state.cash = Math.round((state.cash + total) * 100) / 100;
+  state.today.revenue += total; state.today.cogs += productDef(productId).cost * qty; state.today.itemsSold += qty;
+  p.vended = true;
+  popup(state, fixtureCentre(state.shop, f), `${formatMoney(total, { sign: true })} vend`, 'money', 1.1);
+  cue(state, 'coin');
+}
+
 function finishShopping(state: GameState, p: Person): void {
-  if (!p.basket || p.basket.length === 0) { startLeaving(state, p, false); return; }
+  if (!p.basket || p.basket.length === 0) {
+    // Only the vending machine today: paid there, served, off home.
+    if (p.vended && !p.thief) {
+      state.today.served++; p.paid = true;
+      state.today.satisfaction += Math.max(0, Math.min(1, 1 - (p.missed ?? 0) * 0.15)); state.today.satisfactionN++;
+      startLeaving(state, p, true); return;
+    }
+    startLeaving(state, p, false); return;
+  }
   if (p.thief) { bolt(state, p); return; }
   const reg = chooseRegister(state, p.ctype);
   if (!reg) { startLeaving(state, p, false); return; }
@@ -572,8 +593,8 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
           const want = promo && promo.kind === 'buyTwo' && promo.productId === item.productId ? Math.max(2, item.qty) : item.qty;
           const take = Math.min(slot.qty, want, Math.max(1, Math.floor(((p.budget ?? 999) - spent) / price)));
           slot.qty -= take;
-          p.basket!.push({ productId: item.productId, qty: take, price });
-          cue(state, 'pick');
+          if (f!.type === 'vending') vend(state, p, f!, item.productId, take, price);
+          else { p.basket!.push({ productId: item.productId, qty: take, price }); cue(state, 'pick'); }
         } else if (!slot) { p.missed = (p.missed ?? 0) + 1; noteId(p, 'missedIds', item.productId); state.today.missedItems++; complain(state, 'outOfStock', item.productId); react(state, p.id, 'outOfStock'); }
         p.listIdx = (p.listIdx ?? 0) + 1;
         p.state = 'shopping'; p.anim = p.basket!.length ? 'carry' : 'walk';
@@ -849,7 +870,7 @@ export function wrongFixture(productId: string, type: Fixture['type']): string |
   const def = productDef(productId), fdef = FIXTURES[type];
   if (!fdef.slots) return 'That does not hold stock.';
   if (def.chilled && !fdef.chilled) return `${def.name} needs a chiller`;
-  if (!def.chilled && fdef.chilled) return `${def.name} does not go in the chiller`;
+  if (!def.chilled && fdef.chilled && !fdef.mixed) return `${def.name} does not go in the chiller`;
   if (fdef.accepts && !fdef.accepts.includes(def.category)) return `${def.name} does not go on the ${fdef.name.toLowerCase()}`;
   return null;
 }
@@ -861,7 +882,8 @@ function atPallet(state: GameState, p: Person): boolean {
   const zone = toWorld(state.shop, Math.max(d.x0, Math.min(d.x1, lo.x)), Math.max(d.z0, Math.min(d.z1, lo.z)));
   if (Math.hypot(p.x - zone.x, p.z - zone.z) <= 1.4) return true;
   // Or by any of the extra pallets (the stock on them is one pool).
-  return state.shop.fixtures.some((f) => f.type === 'pallet' && Math.max(Math.abs(lo.x - (f.x + 0.5)), Math.abs(lo.z - (f.z + 0.5))) <= 1.3);
+  return state.shop.fixtures.some((f) => (f.type === 'pallet' && Math.max(Math.abs(lo.x - (f.x + 0.5)), Math.abs(lo.z - (f.z + 0.5))) <= 1.3)
+    || (f.type === 'storeRack' && (() => { const r = footprintOf(f.type, f.x, f.z, f.rot); return lo.x > r.x0 - 1.3 && lo.x < r.x1 + 1.3 && lo.z > r.z0 - 1.3 && lo.z < r.z1 + 1.3; })()));
 }
 
 /** Put the box you are holding back on the pallet (in person: next to it), hands empty after. */
@@ -1249,7 +1271,7 @@ export function pickCarryTask(state: GameState, f: Fixture): { productId: string
   const fits = (pid: string) => {
     const p = productDef(pid);
     if (p.chilled && !def.chilled) return false;
-    if (!p.chilled && def.chilled && f.type !== 'fridge') return false;
+    if (!p.chilled && def.chilled && f.type !== 'fridge' && !def.mixed) return false;
     if (def.accepts && !def.accepts.includes(p.category)) return false;
     return true;
   };
