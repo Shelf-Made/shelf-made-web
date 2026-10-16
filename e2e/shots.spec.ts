@@ -12,6 +12,15 @@ async function follow(page: Page, x: number, z: number, dist = 12, yaw = 0, ms =
   await settle(page, ms);
 }
 
+/** A new game on Main Road, paused in the same breath (not a tick of the street run, however slow the page is). */
+async function newPaused(page: Page, seed: number, name: string): Promise<void> {
+  await page.evaluate(({ seed, name }) => {
+    const h = (window as unknown as { __shelf: { newGame: (seed: number, plotId: string, name: string, opts: { tutorial: boolean }) => void; setSpeed: (s: number) => void } }).__shelf;
+    h.newGame(seed, 'main', name, { tutorial: false });
+    h.setSpeed(0);
+  }, { seed, name });
+}
+
 test.describe('screenshots', () => {
   test('lobby, picker, the bare shell, building, stocking, trading, the zooms, the crossroads, night', async ({ page }) => {
     // Fourteen views (about three minutes on a fast CI runner, five on a slow one).
@@ -239,10 +248,10 @@ test.describe('screenshots', () => {
   test('goals, a good night and a bad one, a corner for sale and a corner bought', async ({ page }) => {
     test.setTimeout(240_000);
     await ready(page);
-    await hooks(page, 'newGame', 11, 'main', 'Corner Fresh', { tutorial: false });
+    // Paused as it starts: the street runs while the page settles, so how long that took (the machine's load) changed it.
+    await newPaused(page, 11, 'Corner Fresh');
     await settle(page, 1500);
     await hooks(page, 'quickSetup', true);
-    await hooks(page, 'setSpeed', 0);
     await hooks(page, 'openRivals');
     await hooks(page, 'goalAt', 'cheapo');
     await hooks(page, 'crowd', 6);
@@ -296,10 +305,10 @@ test.describe('screenshots', () => {
   test('rivals answer back: a price match, a renovation; who is who and who shops where', async ({ page }) => {
     test.setTimeout(240_000);
     await ready(page);
-    await hooks(page, 'newGame', 11, 'main', 'Corner Fresh', { tutorial: false });
+    // Paused as it starts: the street runs while the page settles, so how long that took (the machine's load) changed it.
+    await newPaused(page, 11, 'Corner Fresh');
     await settle(page, 1500);
     await hooks(page, 'quickSetup', true);
-    await hooks(page, 'setSpeed', 0);
     await hooks(page, 'openRivals');
     await hooks(page, 'setTime', 300);
     await hooks(page, 'crowd', 6);
@@ -330,17 +339,27 @@ test.describe('screenshots', () => {
     await hooks(page, 'rivalShoppers', 'discount', 8);
     const [cx, cz, facing] = front('discount');
     type P = { people: { id: number; rivalId?: string; bags?: boolean; x: number; z: number; state: string }[] };
-    let who: P['people'][number] | undefined;
-    for (let i = 0; i < 200 && !who; i++) {
-      who = (await hooks<P>(page, 'state')).people.find((p) => p.rivalId === 'discount' && p.bags && (p.state === 'leaving' || p.state === 'toCar')
-        && Math.hypot(p.x - cx, p.z - (cz + 2 * facing)) < 7 && (p.z - cz) * facing > 2.2);
-      if (!who) await hooks(page, 'advanceScan', 1, 2);
+    let who: P['people'][number] | undefined, at: { x: number; y: number } | undefined, clear = false;
+    // One the click can only mean: nobody else (a passer-by, a dog walker) between them and the camera there.
+    for (let tries = 0; tries < 20 && !clear; tries++) {
+      who = undefined;
+      for (let i = 0; i < 200 && !who; i++) {
+        who = (await hooks<P>(page, 'state')).people.find((p) => p.rivalId === 'discount' && p.bags && (p.state === 'leaving' || p.state === 'toCar')
+          && Math.hypot(p.x - cx, p.z - (cz + 2 * facing)) < 7 && (p.z - cz) * facing > 2.2);
+        if (!who) await hooks(page, 'advanceScan', 1, 2);
+      }
+      expect(who, 'a Cheapo shopper on the pavement').toBeTruthy();
+      await hooks(page, 'viewWorld', who!.x, who!.z, facing > 0 ? 0.8 : Math.PI + 0.8, 9, 0.8);
+      await settle(page, 1500);
+      at = await hooks<{ x: number; y: number }>(page, 'personScreen', who!.id);
+      clear = await page.evaluate(({ x, y, id }) => {
+        const h = (window as unknown as { __shelf: { runtime: { renderer: { personAt: (x: number, y: number, s: unknown) => number | null } }; state: () => unknown } }).__shelf;
+        return h.runtime.renderer.personAt(x, y, h.state()) === id;
+      }, { x: at.x, y: at.y, id: who!.id });
+      if (!clear) await hooks(page, 'advanceScan', 1, 2);
     }
-    expect(who, 'a Cheapo shopper on the pavement').toBeTruthy();
-    await hooks(page, 'viewWorld', who!.x, who!.z, facing > 0 ? 0.8 : Math.PI + 0.8, 9, 0.8);
-    await settle(page, 1500);
-    const at = await hooks<{ x: number; y: number }>(page, 'personScreen', who!.id);
-    await page.mouse.click(at.x, at.y);
+    expect(clear, 'the Cheapo shopper is the one under the click').toBe(true);
+    await page.mouse.click(at!.x, at!.y);
     const panel = page.getByTestId('inspect');
     await expect(panel).toBeVisible();
     await expect(panel.locator('.why-label')).toContainText('Cheapo because');
