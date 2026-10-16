@@ -347,13 +347,14 @@ function replan(state: GameState, p: Person): void {
  * After any change to the building (a piece put down, moved or sold, a panel, a tile; applyCommand runs it after
  * each): everyone whose way is gone (a ride not there now, or up to a floor that has closed, a stretch upstairs
  * over a gap) sets off another way from where they stand; halfway up a flight, on from where they step off, and
- * with nowhere left to go they stop at the top. A spill nobody can get to now (on a floor that has shut) goes with
- * it: no cleaner sets off for it. (Each tick checks the rides again for anyone on the move: see rideStep.)
+ * with nowhere left to go they stop at the top. A spill nobody can get to now (on a floor that has shut), or with no
+ * floor under it now (a panel or a tile sold), goes with it: no cleaner sets off for it, nor is it left in mid-air. (Each tick checks the rides again for anyone on the move: see rideStep.)
  */
 export function repathAfterBuild(state: GameState): void {
   for (const p of state.people) if (p.kind !== 'walker' && wayGone(state, p, true)) replan(state, p);
+  // (On floor still, its own cell: a cell by a gap, or by a tile sold, is next to one of floor.)
   const g = gridFor(state), reach = reachableCells(state.shop, g);
-  state.shop.litter = state.shop.litter.filter((l) => { const [cx, cz] = cellOf(g, nearestWalkable(g, l, undefined, 1)); return inBounds(g, cx, cz) && !!reach[cellIndex(g, cx, cz)]; });
+  state.shop.litter = state.shop.litter.filter((l) => { const [ox, oz] = cellOf(g, l), [cx, cz] = cellOf(g, nearestWalkable(g, l, undefined, 1)); return inBounds(g, ox, oz) && !!g.inside[cellIndex(g, ox, oz)] && inBounds(g, cx, cz) && !!reach[cellIndex(g, cx, cz)]; });
 }
 
 /**

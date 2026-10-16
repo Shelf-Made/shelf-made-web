@@ -491,6 +491,25 @@ describe('building up: nobody caught halfway, nothing left behind', () => {
   });
 });
 
+describe('spills on floor that goes', () => {
+  it('takes a spill away with the panel or the tile under it, never leaving it hanging over a gap or out on the lawn', () => {
+    const s = shop(99); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // Anywhere on the tile, not only its middle (every cell of a tile is next to its neighbour's).
+    for (const [dx, dz] of [[0.5, 0.5], [0.3, 0.3], [0.7, 0.2]] as const) {
+      const at = toWorld(s.shop, -1.5 + dx, zOnLevel(-4 + dz, 1));
+      expect(addSpill(s, at.x, at.z)).toBe(true);
+    }
+    const down = toWorld(s.shop, -2, -0.5);
+    expect(addSpill(s, down.x, down.z)).toBe(true);
+    const n = s.shop.litter.length;
+    expect(applyCommand(s, { type: 'removePanel', x: -1.5, z: -4 }).ok).toBe(true);
+    expect(s.shop.litter.length).toBe(n - 3);
+    expect(applyCommand(s, { type: 'sellTile', x: -2.5, z: -1 }).ok).toBe(true);
+    expect(s.shop.litter.length).toBe(n - 4);
+  });
+});
+
 describe('building up: a counter keeps its queue and its back, and what is cut off already stops nobody', () => {
   it('will not take the floor from in front of or behind a counter upstairs', () => {
     const s = shop(96); aside(s);
