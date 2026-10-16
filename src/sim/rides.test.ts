@@ -549,6 +549,35 @@ describe('everyone rides every way up', () => {
       expect(s.stuckRescues, type).toBe(0);
     }
   });
+
+  // Upstairs the landing is where everyone comes off and gets on, so the way from it to a shelf and back is one
+  // line: shoppers going each way along it step round each other (they never stand nose to nose till closing,
+  // holding the front of the till's line from up there).
+  for (const type of ['stairs', 'escalator'] as const) it(`shoppers to and from a shelf upstairs pass each other between it and the ${type}`, () => {
+    for (const seed of [811, 812, 813, 814]) {
+      const s = quiet(seed, type);
+      const shelf = riceUpstairs(s, 1);
+      s.shop.storage = [];
+      shelf.slots = shelf.slots.map(() => ({ productId: 'rice', qty: 30 }));
+      const mark = new Map<number, { x: number; z: number; t: number }>();
+      let worst = 0;
+      for (let i = 0; i < 240 / TICK; i++) {
+        if (i % 60 === 0 && s.people.filter((p) => p.kind === 'customer').length < 6) { const p = spawnCustomer(s, true); if (p) p.list = [{ productId: 'rice', qty: 1 }]; }
+        tick(s);
+        if (i % 4 === 0) applyCommand(s, { type: 'scan' });
+        for (const p of s.people) {
+          if (p.kind !== 'customer') continue;
+          const going = ['browsing', 'toQueue', 'leaving', 'shopping'].includes(p.state) && !(p.state === 'browsing' && p.timer >= 0) && p.climb === undefined;
+          const m = mark.get(p.id);
+          if (!going || !m || Math.hypot(m.x - p.x, m.z - p.z) > 0.3) mark.set(p.id, { x: p.x, z: p.z, t: s.tick });
+          else worst = Math.max(worst, (s.tick - m.t) * TICK);
+        }
+      }
+      expect(worst, `seed ${seed}`).toBeLessThan(8);
+      expect(s.today.served, `seed ${seed}`).toBeGreaterThanOrEqual(12);
+      expect(s.today.walkedOut, `seed ${seed}`).toBe(0);
+    }
+  });
 });
 
 describe('the manager off a ride', () => {

@@ -1217,6 +1217,14 @@ function shelvedAnywhere(state: GameState, productId: string): boolean {
 /** How far everyone keeps off the manager (who is never shoved). */
 export const MANAGER_ROOM = 0.48;
 
+/** Which way someone is walking this floor (a unit step), or null: standing, or about to get on a ride. */
+function heading(p: Person): Vec2 | null {
+  const w = p.path[p.pathIdx];
+  if (!w || w.ride !== undefined) return null;
+  const dx = w.x - p.x, dz = w.z - p.z, d = Math.hypot(dx, dz);
+  return d > 1e-3 ? { x: dx / d, z: dz / d } : null;
+}
+
 function separate(state: GameState, dyn: Set<number>): void {
   const g = gridFor(state);
   const movers = state.people.filter((p) => p.kind !== 'walker' && p.state !== 'driving' && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'gone' && !(p.state === 'resting' && p.timer > 0) && p.climb === undefined);
@@ -1227,7 +1235,8 @@ function separate(state: GameState, dyn: Set<number>): void {
     // where the manager stands: they squeeze past, never held off it for ever (where they stop, they wait).
     if (a.kind === 'owner') continue;
     const w = a.path[a.pathIdx], past = !!owner && !!w && a.pathIdx < a.path.length - 1 && Math.hypot(w.x - owner.x, w.z - owner.z) < MANAGER_ROOM;
-    let fx = 0, fz = 0;
+    const h = heading(a), end = a.path[a.path.length - 1];
+    let fx = 0, fz = 0, sx = 0, sz = 0;
     for (let j = 0; j < movers.length; j++) {
       if (i === j) continue;
       const b = movers[j]!;
@@ -1237,11 +1246,21 @@ function separate(state: GameState, dyn: Set<number>): void {
       const reach = b.kind === 'owner' ? MANAGER_ROOM : 0.42;
       if (d < reach && d > 1e-4) { const push = (reach - d) * (b.kind === 'owner' ? 1 : 0.5); fx += (dx / d) * push; fz += (dz / d) * push; }
       else if (d <= 1e-4) { fx += (i < j ? 0.02 : -0.02); }
+      // Someone in the way, coming the other way or standing (not where this one is going: that is shoved, as ever):
+      // a step aside, away from them, both to the same hand when nose to nose. A push alone only holds two in line
+      // apart (a landing upstairs is where everyone gets off and on, so the way to a shelf and back is one line).
+      if (!h || d > 0.9 || (end && Math.hypot(b.x - end.x, b.z - end.z) < 0.42)) continue;
+      const along = -(dx * h.x + dz * h.z), lat = -(dx * h.z - dz * h.x), hb = heading(b);
+      if (along <= 0 || Math.abs(lat) >= 0.42 || (hb && hb.x * h.x + hb.z * h.z > -0.5)) continue;
+      const side = Math.abs(lat) < 0.02 ? 1 : -Math.sign(lat), step = a.speed * TICK * 0.5;
+      sx += h.z * side * step; sz -= h.x * side * step;
     }
-    if (fx === 0 && fz === 0) continue;
-    const nx = a.x + fx, nz = a.z + fz;
-    const [cx, cz] = cellOf(g, { x: nx, z: nz });
-    if (!isBlocked(g, cx, cz, dyn)) { a.x = nx; a.z = nz; }
+    if (fx === 0 && fz === 0 && sx === 0 && sz === 0) continue;
+    // (Not into a wall: then only the push.)
+    for (const [nx, nz] of [[a.x + fx + sx, a.z + fz + sz], [a.x + fx, a.z + fz]] as const) {
+      const [cx, cz] = cellOf(g, { x: nx, z: nz });
+      if (!isBlocked(g, cx, cz, dyn)) { a.x = nx; a.z = nz; break; }
+    }
   }
 }
 
