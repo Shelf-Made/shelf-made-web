@@ -750,6 +750,38 @@ test('from outside, every floor drawn: a brisk drag off the top boards pans as f
   expect(Math.abs(last.z - was.z)).toBeLessThan(1.5);
 });
 
+type Up = { runtime: { build: { selectedId: number | null }; renderer: { marker: { group: { visible: boolean } }; follow: { target: { y: number } }; store: { fixtureMeshes: Map<string, { mesh: { computeBoundingBox: () => void; boundingBox: { max: { y: number } } | null } }> } } }; state: () => { tick: number; cash: number; shop: { originX: number; originZ: number; flip?: boolean }; popups: { id: number; x: number; z: number; y: number; text: string; kind: string; tick: number }[]; people: { id: number; kind: string; x: number; z: number; px: number; pz: number; path: unknown[]; state: string; timer: number }[] }; crowd: (n: number) => void; selectPerson: (id: number | null) => void; photo: (kind: string, seed?: number) => string | null };
+/** The starter shop fitted out, the clock stopped, money to spend and stairs up to a first floor. */
+async function upstairs(page: Page): Promise<void> {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: Up }).__shelf.state().cash = 20000; });
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+}
+const UPS = -16;
+
+test('a popup from a floor out of view is not drawn over the floor in view', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  // A sale's money popup at the till downstairs (under the first floor's boards), and one up on the first floor.
+  await page.evaluate((UP) => {
+    const s = (window as unknown as { __shelf: Up }).__shelf.state(), f = s.shop.flip ? -1 : 1;
+    const at = (x: number, z: number) => ({ x: s.shop.originX + x * f, z: s.shop.originZ + z * f });
+    s.popups.push({ id: 99101, ...at(-1.5, -3.5), y: 1.1, text: 'down-pop', kind: 'money', tick: s.tick }, { id: 99102, ...at(-1.5, -3.5 + UP), y: 1.1, text: 'up-pop', kind: 'money', tick: s.tick });
+  }, UPS);
+  const shown = (text: string) => page.evaluate((text) => [...document.querySelectorAll<HTMLElement>('.popup')].some((e) => e.textContent === text && e.style.display !== 'none'), text);
+  // Upstairs: the first floor's in view, the till's under its boards not.
+  await hooks(page, 'fp', -0.5, -1.5 + UPS);
+  await expect.poll(() => shown('up-pop')).toBe(true);
+  await expect.poll(() => shown('down-pop')).toBe(false);
+  // Downstairs: the first floor lifted off, its popup with it; the till's in view.
+  await hooks(page, 'fp', -0.5, -1.5);
+  await expect.poll(() => shown('down-pop')).toBe(true);
+  await expect.poll(() => shown('up-pop')).toBe(false);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });

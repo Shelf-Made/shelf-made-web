@@ -36,7 +36,8 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
           host.appendChild(el); nodes.set(p.id, el);
         }
         r.project(p.x, p.y, p.z, proj);
-        el.style.display = proj.visible ? '' : 'none';
+        // Only over what made it in sight: not from a floor lifted off, nor from under the boards of the floor in view.
+        el.style.display = proj.visible && r.inSight(s, p.x, 0.5, p.z) ? '' : 'none';
         el.style.left = `${proj.x}px`; el.style.top = `${proj.y}px`;
       }
       for (const [id, el] of nodes) if (!seen.has(id)) { el.remove(); nodes.delete(id); }
