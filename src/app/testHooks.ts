@@ -118,6 +118,8 @@ export function installTestHooks(rt: GameRuntime): void {
     interact: () => rt.interact(),
     zoom: (f: number) => rt.zoom(f),
     firstPerson: () => rt.firstPerson,
+    /** Jump, held `at` of the way through (null lets it play out). */
+    jump: (at: number | null = null) => { rt.hopFreeze = at; rt.jump(); },
     /** Through the manager's eyes (or not), facing `yaw`, looking `down` radians below level. */
     eyes: (on: boolean, yaw?: number, down?: number) => {
       rt.setFirstPerson(on); const f = rt.renderer?.follow; if (!f) return false;

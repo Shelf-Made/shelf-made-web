@@ -123,7 +123,7 @@ export function Overlay({ runtime, snap }: { runtime: GameRuntime; snap: Snapsho
         <div className="look-hint" aria-label="Controls">
           <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.forward)}</kbd><kbd>{keyLabel(keys.left)}</kbd><kbd>{keyLabel(keys.back)}</kbd><kbd>{keyLabel(keys.right)}</kbd></span>Walk</span>
           <span className="ctl"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v6" /></svg>Click to walk or use · drag to look around</span>
-          <span className="ctl"><kbd>{keyLabel(keys.interact)}</kbd>Use</span>
+          <span className="ctl"><kbd>{keyLabel(keys.interact)}</kbd>Use <kbd>{keyLabel(keys.scan)}</kbd>Scan at a till · jump</span>
           <span className="ctl"><span className="keys"><kbd>{keyLabel(keys.turnLeft)}</kbd><kbd>{keyLabel(keys.turnRight)}</kbd></span>Turn · scroll to zoom</span>
           <span className="ctl"><kbd>{keyLabel(keys.firstPerson)}</kbd>{snap.firstPerson ? 'Back to the camera behind you' : 'Through your own eyes'}</span>
         </div>

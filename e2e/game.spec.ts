@@ -1092,7 +1092,7 @@ test('a spill beside a shelf: F mops it rather than stocking the shelf, and clic
   await expect.poll(async () => (await state(page)).shop.litter.length).toBe(0);
 });
 
-test('first person: V looks through the manager\'s eyes, F uses what you look at, a drag looks round, scrolling out or Build goes back', async ({ page }) => {
+test('first person: V looks through the manager\'s eyes, F uses what you look at, a drag looks round, scrolling out or Build goes back, Space jumps', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Eye Level', { tutorial: false });
   await hooks(page, 'quickSetup', false);
@@ -1137,6 +1137,14 @@ test('first person: V looks through the manager\'s eyes, F uses what you look at
   // The eye button does it too.
   await page.locator('button[aria-label="First person"]').click();
   await expect.poll(async () => (await hooks<boolean>(page, 'firstPerson'))).toBe(true);
+  // Space away from the tills jumps (held halfway up here): the eyes go up with the manager.
+  const eyeY = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { follow: { camera: { position: { y: number } } } } } } }).__shelf.runtime.renderer.follow.camera.position.y);
+  const standing = await eyeY();
+  await page.evaluate(() => { (window as unknown as { __shelf: { runtime: { hopFreeze: number | null } } }).__shelf.runtime.hopFreeze = 0.5; });
+  await page.keyboard.press('Space');
+  await expect.poll(eyeY).toBeGreaterThan(standing + 0.2);
+  await page.evaluate(() => { (window as unknown as { __shelf: { runtime: { hopFreeze: number | null } } }).__shelf.runtime.hopFreeze = null; });
+  await expect.poll(eyeY).toBeLessThan(standing + 0.01);
 });
 
 test("the shop's business profile: reviews come in, the badge counts them, photos develop, and the owner replies", async ({ page }) => {

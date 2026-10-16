@@ -87,6 +87,8 @@ export class WorldRenderer {
   /** Who the camera tracks instead of the manager (the inspect panel's Follow), or nobody. */
   followId: number | null = null;
   private lastAlpha = 0;
+  /** The manager in the air: who, how high and how stretched (see PeopleView.hop). */
+  get hop(): { id: number; y: number; stretch: number } { return this.people.hop; }
   /** The floor being built on (the Build card's floor picker), or null to follow the manager's. */
   buildLevel: number | null = null;
   /** The floor in view this frame (null: every floor, from outside). */
@@ -176,7 +178,7 @@ export class WorldRenderer {
     const eyes = fp && this.follow.firstPerson && !!owner && tracked === owner;
     if (fp && tracked && pose) {
       // At the height of the floor they are on, or of the one the Build card builds on.
-      if (eyes) this.follow.eye = EYE * tracked.look.height;
+      if (eyes) this.follow.eye = EYE * tracked.look.height + (this.people.hop.id === tracked.id ? this.people.hop.y : 0);
       this.follow.follow(pose.x, pose.z, this.buildLevel !== null ? this.buildLevel * STOREY : pose.y);
       this.follow.update(dt);
       focus = this.tmpFocus.set(this.follow.target.x, 0, this.follow.target.z);

@@ -4,7 +4,7 @@
  * has birdsong by day and crickets at night, each call a few short tones.
  */
 export type Cue = 'beep' | 'cash' | 'chime' | 'click' | 'pick' | 'stock' | 'truck' | 'boxes' | 'reward' | 'night' | 'open' | 'order' | 'build' | 'bad' | 'engine'
-  | 'step' | 'place' | 'sell' | 'tick' | 'hire' | 'thud' | 'paper' | 'coin' | 'hover' | 'tap' | 'cardOpen' | 'cardClose' | 'whoosh' | 'spill' | 'grumble' | 'alarm' | 'caught' | 'quack' | 'rotate' | 'speed';
+  | 'step' | 'place' | 'sell' | 'tick' | 'hire' | 'thud' | 'paper' | 'coin' | 'hover' | 'tap' | 'cardOpen' | 'cardClose' | 'whoosh' | 'spill' | 'grumble' | 'alarm' | 'caught' | 'quack' | 'rotate' | 'speed' | 'hop' | 'land';
 
 /** Per-play tweaks: loudness 0..1 and stereo position -1..1. */
 export interface CueOpts { gain?: number; pan?: number }
@@ -130,6 +130,9 @@ export class AudioEngine {
       case 'paper': this.noise(0.18, 0.16, 0, 3500, 'highpass'); this.noise(0.1, 0.1, 0.16, 5000, 'highpass'); break;
       case 'coin': this.tone(1568, 0.07, 'sine', 0.16); this.tone(2093, 0.16, 'sine', 0.14, 0.06); break;
       case 'hover': this.tone(1900, 0.018, 'sine', 0.035); break;
+      // A jump: a springy rising boing; landing, a soft double-footed pat.
+      case 'hop': this.tone(260, 0.18, 'sine', 0.13, 0, this.sfxGain, 620); this.tone(520, 0.12, 'triangle', 0.04, 0.02, this.sfxGain, 1240); break;
+      case 'land': this.tone(110, 0.08, 'sine', 0.18, 0, this.sfxGain, 70); this.noise(0.05, 0.07, 0, 800); break;
       case 'tap': this.tone(520, 0.06, 'sine', 0.14, 0, this.sfxGain, 900); this.tone(1040, 0.04, 'triangle', 0.05, 0.02); break;
       case 'cardOpen': this.noise(0.16, 0.09, 0, 500, 'bandpass', 3200); this.tone(660, 0.1, 'sine', 0.08, 0.06, this.sfxGain, 990); break;
       case 'cardClose': this.noise(0.14, 0.08, 0, 3000, 'bandpass', 450); this.tone(800, 0.08, 'sine', 0.06, 0.02, this.sfxGain, 520); break;

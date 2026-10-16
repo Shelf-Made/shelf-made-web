@@ -590,6 +590,8 @@ export class PeopleView {
   viewLevel: number | null = null;
 
   /** far: people beyond this distance from the focus are not drawn; nor is anyone outside the camera's view. */
+  /** Someone in the air (the manager jumping): how high, and how stretched (squashed under 1 on landing). */
+  hop = { id: -1, y: 0, stretch: 1 };
   update(state: GameState, alpha: number, dt: number, focus: Vector3, hideId = -1, nearHide = 0, far = 48, view: Frustum | null = null, eye: Vector3 | null = null): void {
     this.frame++;
     // A different game (new, loaded, or the lobby's demo): ids start again, so nothing carries over.
@@ -613,14 +615,17 @@ export class PeopleView {
       if (hidden) { if (inst.dog) inst.dog.visible = false; continue; }
       // Riding: sat up on the saddle, the bike under them.
       const riding = !!p.riding && p.kind === 'customer';
-      inst.root.position.set(x, y + (riding ? RIDE_SEAT : 0), z);
+      const hop = p.id === this.hop.id ? this.hop : null;
+      inst.root.position.set(x, y + (riding ? RIDE_SEAT : 0) + (hop?.y ?? 0), z);
       inst.root.rotation.y = p.yaw;
+      // Stretched in the air, squashed landing (a toy's jump); everyone else as they are.
+      { const h = p.look.height, k = hop?.stretch ?? 1, w = h / Math.sqrt(k); inst.root.scale.set(w, h * k, w); }
       if (riding && !inst.bike) { inst.bike = this.bikeMesh(p.id); inst.root.add(inst.bike); }
       if (inst.bike) { inst.bike.visible = riding; inst.bike.scale.setScalar(1 / p.look.height); inst.bike.position.set(0, -RIDE_SEAT / p.look.height, 0); }
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d > far || d < nearHide) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; }
       if (view) { this.sphere.center.set(x, y + 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }
-      if (!y) this.blobs.add(x, z, 0.62 * p.look.height);
+      if (!y) this.blobs.add(x, z, 0.62 * p.look.height * (1 - Math.min(0.5, (hop?.y ?? 0) * 1.4)));
       if (hl && p.ctype === hl && (p.kind === 'customer' || p.rivalId)) this.mark(x, y + 0.95 * p.look.height + 0.16, z, TYPE_COLOURS[hl], eye);
       if (eye && Math.hypot(x - eye.x, eye.y - y, z - eye.z) > PeopleView.FAR) {
         inst.root.visible = false; if (inst.dog) inst.dog.visible = false;

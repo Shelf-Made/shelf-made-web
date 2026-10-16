@@ -37,6 +37,9 @@ const goalKey = (s: GameState) => { const g = goalInfo(s); return `${s.goals.ind
 export type Speed = 0 | 1 | 2 | 4;
 export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | 'reviews' | null;
 /** Cards that take the whole screen and stop the clock while open: ordering stock wants your full attention. */
+/** A jump: how long it lasts (ms) and how high it goes (times the manager's height). */
+const HOP_MS = 520, HOP_HEIGHT = 0.3;
+
 export const MODAL_CARDS: ReadonlySet<CardId> = new Set<CardId>(['stock']);
 
 export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'delivery' | 'button:prices' | 'button:stock' | 'button:build' | 'button:open' | 'night'; fixtureId?: number }
@@ -622,6 +625,7 @@ export class GameRuntime {
       // Building upstairs: that floor in view, the ones over it lifted off (back down to the top one when it closes).
       if (this.buildLevel > storeysOf(s.shop).top) this.setBuildLevel(this.buildLevel);
       r.buildLevel = this.card === 'build' && this.inPlay ? this.buildLevel : null;
+      this.updateHop(r, s);
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
       // The weather's sounds: the rain's patter, and thunder after each flash (later the further away).
@@ -1158,12 +1162,45 @@ export class GameRuntime {
   /** Right click: cancel placing or moving. */
   secondary(): void { if (this.building) { this.stopPlacing(); this.emit(); } }
 
+  /** A jump (Space away from the tills): just for fun, no use in the shop; never on a ride. */
+  private hopAt = -1;
+  jump(): void {
+    const s = this.state; if (!s || !this.inPlay) return;
+    const o = s.people.find((p) => p.kind === 'owner'); if (!o || o.climb !== undefined) return;
+    const now = performance.now();
+    if (this.hopAt >= 0 && now - this.hopAt < HOP_MS) return;
+    this.hopAt = now; this.landed = false;
+    this.audio.play('hop');
+  }
+  private landed = true;
+  /** Screenshots and tests: hold a jump this far through (0..1), or null to let it play. */
+  hopFreeze: number | null = null;
+  /** Where the jump is: up and down in a parabola, stretching on the way up and squashing as the feet land. */
+  private updateHop(r: WorldRenderer, s: GameState): void {
+    const hop = r.hop, o = s.people.find((p) => p.kind === 'owner');
+    const t = this.hopAt < 0 || !o ? 1 : this.hopFreeze ?? (performance.now() - this.hopAt) / HOP_MS;
+    if (t >= 1 || !o || o.climb !== undefined) {
+      if (!this.landed) { this.landed = true; this.audio.play('land', { gain: 0.8 }); }
+      hop.id = -1; hop.y = 0; hop.stretch = 1; this.hopAt = -1; return;
+    }
+    hop.id = o.id;
+    hop.y = 4 * HOP_HEIGHT * o.look.height * t * (1 - t);
+    hop.stretch = t < 0.82 ? 1 + 0.08 * Math.sin(Math.PI * t / 0.82) : 1 - 0.12 * Math.sin(Math.PI * (t - 0.82) / 0.18);
+  }
+
   /** Space: scan the next item if you stand behind a till. */
   scanHere(repeat = false): void {
     const s = this.state; if (!s) return;
     this.audio.start();
     const reg = s.shop.fixtures.find((f) => f.type === 'register' && ownerAt(s, f));
-    if (!reg) { if (!repeat) this.showToast('Stand behind a checkout counter to scan.', 1800); return; }
+    // Away from the tills, Space jumps (saying where to scan if someone is waiting at a counter nobody is behind).
+    if (!reg) {
+      if (repeat) return;
+      this.jump();
+      if (s.phase === 'open' && s.shop.fixtures.some((f) => f.type === 'register' && (f.serving != null || (f.queue?.length ?? 0) > 0) && f.staffId == null))
+        this.showToast('Someone is waiting: stand behind the checkout counter and press Space to scan.', 2400);
+      return;
+    }
     const res = applyCommand(s, { type: 'scanHere', registerId: reg.id });
     if (!res.ok && !repeat && res.message) this.showToast(res.message, 1400);
     this.maybeEmit();
