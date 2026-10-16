@@ -16,7 +16,7 @@ import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift } from './staff';
-import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts } from './build';
+import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall } from './build';
 import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild, keepFinishes } from './storeys';
 import { pave, paintBay, eraseBay } from './lot';
 import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
@@ -74,6 +74,8 @@ export type Command =
   | { type: 'removePanel'; x: number; z: number }
   /** One stretch of outer wall (a key from wallKey) given a finish. */
   | { type: 'paintWall'; key: string; style: WallStyle }
+  | { type: 'pushWall'; key: string }
+  | { type: 'pullWall'; key: string }
   /** One tile of the lot laid with a surface (null: back to grass). */
   | { type: 'pave'; x: number; z: number; surface: LotSurface | null }
   /** One parking bay (a slot id from baySlots) painted, or painted out. */
@@ -117,7 +119,7 @@ export const MANAGER_DEFAULT_MODEL = 0;
  * Commands that change the building: after each, new floor comes bare and floor out of use keeps its finish
  * (keepFinishes), and anyone whose way it took away goes another (repathAfterBuild).
  */
-const REBUILDS = new Set<Command['type']>(['placeFixture', 'removeFixture', 'moveFixture', 'expandShop', 'buyTile', 'sellTile', 'addPanel', 'removePanel']);
+const REBUILDS = new Set<Command['type']>(['placeFixture', 'removeFixture', 'moveFixture', 'expandShop', 'buyTile', 'sellTile', 'pushWall', 'pullWall', 'addPanel', 'removePanel']);
 
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
   const before = state.sounds.length, was = REBUILDS.has(cmd.type) ? storeysOf(state.shop) : null;
@@ -324,6 +326,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'addPanel': { const err = addPanel(state, cmd.x, cmd.z); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'removePanel': { const err = removePanel(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintWall': { const err = paintWall(state, cmd.key, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'pushWall': { const err = pushWall(state, cmd.key); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'pullWall': { const err = pullWall(state, cmd.key); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'pave': { const err = pave(state, cmd.x, cmd.z, cmd.surface); if (!err) cue(state, cmd.surface ? 'place' : 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintBay': { const err = paintBay(state, cmd.slot); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'saveOrder': { const err = saveOrder(state, cmd.name, cmd.supplierId, cmd.lines); return err ? { ok: false, message: err } : { ok: true }; }

@@ -3,7 +3,7 @@ import { type GameState, type Command, type CommandResult, newGame, tick, applyC
 import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle, WallStyle, LotSurface } from '@/sim/types';
 import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
-import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile } from '@/sim/build';
+import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile, canPushWall, canPullWall, wallRun } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
@@ -95,7 +95,7 @@ export interface Snapshot {
 }
 
 /** A tile tool in Build: buying floor to grow the shop, or laying a finish on a tile. */
-export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle }
+export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle } | { kind: 'push' } | { kind: 'pull' }
   /** Out on the lot: lay a surface (null takes it up), paint a parking bay, or paint one out. */
   | { kind: 'pave'; surface: LotSurface | null } | { kind: 'bay' } | { kind: 'unbay' }
   /** A ceiling panel over a tile (the floor of the storey above), or one taken down for a double-height space. */
@@ -906,6 +906,21 @@ export class GameRuntime {
         this.maybeEmit();
         return;
       }
+      if (tool.kind === 'push' || tool.kind === 'pull') {
+        // Moving a wall: its whole straight run lit, and the row of floor it would buy (out) or sell back (in).
+        const w = this.build.at ? nearestWall(s, this.build.at.x, this.build.at.z) : null;
+        this.build.wall = w?.key ?? null;
+        const check = w ? (tool.kind === 'push' ? canPushWall(s, w.key) : canPullWall(s, w.key)) : { ok: false, reason: 'Point at an outer wall', price: 0 };
+        this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
+        const run = w ? wallRun(s.shop, w.key) : null, cells = run ? (tool.kind === 'push' ? run.outside : run.inside) : [];
+        if (cells.length) {
+          const x0 = Math.min(...cells.map((c) => c.x)), z0 = Math.min(...cells.map((c) => c.z));
+          r.setTileGhost({ x: x0, z: z0, w: Math.max(...cells.map((c) => c.x)) + 1 - x0, d: Math.max(...cells.map((c) => c.z)) + 1 - z0, ok: check.ok });
+        } else r.setTileGhost(null);
+        r.setWallGhost(w ? { ...w, ok: check.ok } : null);
+        this.maybeEmit();
+        return;
+      }
       if (tool.kind === 'bay' || tool.kind === 'unbay') {
         const sl = this.build.at ? nearestSlot(s.shop, this.build.at.x, this.build.at.z) : null;
         this.build.slot = sl?.id ?? null;
@@ -944,12 +959,14 @@ export class GameRuntime {
       this.snapshotForUndo();
       const res = tool.kind === 'wall'
         ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style }) : { ok: false, message: 'Point at a wall' })
+        : tool.kind === 'push' || tool.kind === 'pull'
+          ? (this.build.wall ? this.dispatch({ type: tool.kind === 'push' ? 'pushWall' : 'pullWall', key: this.build.wall }) : { ok: false, message: 'Point at an outer wall' })
         : tool.kind === 'bay' || tool.kind === 'unbay'
           ? (this.build.slot !== null ? this.dispatch({ type: tool.kind === 'bay' ? 'paintBay' : 'eraseBay', slot: this.build.slot }) : { ok: false, message: 'Point at the car park' })
           : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z: groundZ(z) } : tool.kind === 'sell' ? { type: 'sellTile', x, z: groundZ(z) } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface }
             : tool.kind === 'panel' ? { type: 'addPanel', x, z } : tool.kind === 'unpanel' ? { type: 'removePanel', x, z } : { type: 'paintFloor', x, z, style: tool.style });
       if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
-      else if (tool.kind === 'grow' || tool.kind === 'sell' || tool.kind === 'panel' || tool.kind === 'unpanel') this.showGrowHints();
+      else if (tool.kind === 'grow' || tool.kind === 'sell' || tool.kind === 'push' || tool.kind === 'pull' || tool.kind === 'panel' || tool.kind === 'unpanel') this.showGrowHints();
       this.refreshGhost();
       return;
     }
@@ -1305,7 +1322,7 @@ export class GameRuntime {
     const useKey = keyLabel(keys.interact), scanKey = keyLabel(keys.scan);
     if (this.build.tool) {
       const tool = this.build.tool;
-      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : tool.kind === 'wall' ? 'Point at a wall' : tool.kind === 'pave' ? 'Point at the grass' : tool.kind === 'bay' || tool.kind === 'unbay' ? 'Point at the car park' : 'Point at a floor tile', ok: false }, run: null }; }
+      if (!this.build.hover) { r.marker.set(null); return { info: { key: null, text: tool.kind === 'grow' ? 'Point at a tile next to the shop' : tool.kind === 'wall' ? 'Point at a wall' : tool.kind === 'push' || tool.kind === 'pull' ? 'Point at an outer wall' : tool.kind === 'pave' ? 'Point at the grass' : tool.kind === 'bay' || tool.kind === 'unbay' ? 'Point at the car park' : 'Point at a floor tile', ok: false }, run: null }; }
       const h = this.build.hover, at = toWorld(s.shop, h.x + 0.5, h.z + 0.5);
       r.marker.set(null);
       const what = tool.kind === 'grow' ? 'Add this tile' : tool.kind === 'sell' ? 'Sell this tile'
@@ -1313,6 +1330,7 @@ export class GameRuntime {
         : tool.kind === 'pave' ? (tool.surface ? `Lay ${SURFACES.find((x) => x.id === tool.surface)?.name.toLowerCase() ?? ''}` : 'Back to grass')
         : tool.kind === 'bay' ? 'Paint a parking bay' : tool.kind === 'unbay' ? 'Paint out this bay'
         : tool.kind === 'panel' ? 'Put up a ceiling panel' : tool.kind === 'unpanel' ? 'Take the panel down: double height'
+        : tool.kind === 'push' || tool.kind === 'pull' ? this.build.reason
         : `Lay ${FLOORS.find((f) => f.id === tool.style)?.name.toLowerCase() ?? 'floor'}`;
       const cost = this.build.price > 0 ? dollars(this.build.price) : this.build.price < 0 ? `${dollars(-this.build.price)} back` : 'free';
       return { info: { key: 'Click', text: this.build.valid ? `${what} · ${cost}` : this.build.reason, ok: this.build.valid, at: { x: at.x, y: 0.6, z: at.z } }, run: this.build.valid ? () => this.clickBuild(null) : null };

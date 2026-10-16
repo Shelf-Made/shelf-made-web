@@ -78,8 +78,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {b.tool ? (
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
-            <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'panel' ? 'Putting up ceiling panels' : b.tool.kind === 'unpanel' ? 'Taking down ceiling panels' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
-            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : b.tool.kind === 'bay' || b.tool.kind === 'unbay' ? 'Click a bay beside the shop' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
+            <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'push' ? 'Pushing a wall out' : b.tool.kind === 'pull' ? 'Pulling a wall in' : b.tool.kind === 'panel' ? 'Putting up ceiling panels' : b.tool.kind === 'unpanel' ? 'Taking down ceiling panels' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
+            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'push' || b.tool.kind === 'pull' ? 'Point at an outer wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : b.tool.kind === 'bay' || b.tool.kind === 'unbay' ? 'Click a bay beside the shop' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
         </div>
@@ -155,6 +155,12 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       )}
       {tab === 'walls' && (
         <>
+          <h3>Move a wall</h3>
+          <p className="muted">Point at an outer wall: push it out a row to make the shop bigger, or pull it in to sell that row of floor back. Inside walls you put up sell from their own menu.</p>
+          <div className="row wall-move">
+            <button className={`btn small${b.tool?.kind === 'push' ? ' ghost' : ''}`} onClick={() => (b.tool?.kind === 'push' ? runtime.stopPlacing() : runtime.startTool({ kind: 'push' }))}>{b.tool?.kind === 'push' ? 'Done' : 'Push a wall out'}</button>
+            <button className={`btn small ghost`} onClick={() => (b.tool?.kind === 'pull' ? runtime.stopPlacing() : runtime.startTool({ kind: 'pull' }))}>{b.tool?.kind === 'pull' ? 'Done' : 'Pull a wall in'}</button>
+          </div>
           <h3>Finish</h3>
           <div className="list">
             {WALLS.map((w) => {
@@ -218,13 +224,15 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       )}
       {tab === 'shop' && (
         <>
-          <h3>Floor</h3>
+          <h3>Make the shop bigger</h3>
+          <p className="muted">Push a wall out a whole row at a time, or add floor a tile at a time, up to {MAX_FLOOR.x1 - MAX_FLOOR.x0} × {MAX_FLOOR.z1 - MAX_FLOOR.z0} tiles on this plot. Then build up: stairs open a floor above (Upstairs tab).</p>
           {(() => {
             const n = floorTileCount(s.shop), max = (MAX_FLOOR.x1 - MAX_FLOOR.x0) * (MAX_FLOOR.z1 - MAX_FLOOR.z0), price = tileCost(s.shop), up = grownCeilings(s.shop).length, on = b.tool?.kind === 'grow';
             return (
               <div className="item">
                 <div><div className="name">{n} tiles</div><div className="sub">{n < max ? `Next tile ${money(price)}${up ? ` with its panel${up > 1 ? 's' : ''} upstairs` : ''} · room for ${max - n} more` : 'As big as the plot allows'}</div></div>
                 <span className="row">
+                  {n < max && <button className={`btn small${b.tool?.kind === 'push' ? ' ghost' : ''}`} disabled={b.tool?.kind !== 'push' && s.cash < price} onClick={() => (b.tool?.kind === 'push' ? runtime.stopPlacing() : runtime.startTool({ kind: 'push' }))}>{b.tool?.kind === 'push' ? 'Done' : 'Push a wall'}</button>}
                   {n < max && <button className={`btn small${on ? ' ghost' : ''}`} disabled={!on && s.cash < price} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'grow' }))}>{on ? 'Done' : 'Add tiles'}</button>}
                   <button className={`btn small ghost`} onClick={() => (b.tool?.kind === 'sell' ? runtime.stopPlacing() : runtime.startTool({ kind: 'sell' }))}>{b.tool?.kind === 'sell' ? 'Done' : 'Sell tiles'}</button>
                 </span>

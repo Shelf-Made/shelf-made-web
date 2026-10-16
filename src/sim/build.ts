@@ -329,6 +329,62 @@ export function buyTile(state: GameState, x: number, z: number): string | null {
   return null;
 }
 
+// ---- Moving a wall: the straight run of outer wall a stretch is part of, pushed out a row (the floor bought
+// beyond it) or pulled in a row (the floor inside it sold back). The walls follow the floor, as ever.
+
+/** The ground-floor tiles either side of the straight run of outer wall the stretch `key` is part of, the stretch pointed at first. */
+export function wallRun(shop: Shop, key: string): { inside: { x: number; z: number }[]; outside: { x: number; z: number }[]; dir: string } | null {
+  const segs = wallSegments(shop), seg = segs.find((w) => w.key === key);
+  if (!seg || levelOfZ(seg.axis === 'x' ? seg.line - 0.5 : seg.t) > 0) return null;
+  const on = new Map(segs.filter((w) => w.dir === seg.dir && w.line === seg.line).map((w) => [w.t, w]));
+  // Out along the wall from the stretch pointed at, nearest first, while the run goes on.
+  const ts = [seg.t];
+  for (const step of [1, -1]) for (let t = seg.t + step; on.has(t); t += step) ts.push(t);
+  ts.sort((a, b) => Math.abs(a - seg.t) - Math.abs(b - seg.t));
+  const inside = ts.map((t) => seg.axis === 'x' ? { x: t - 0.5, z: seg.nz > 0 ? seg.line - 1 : seg.line } : { x: seg.nx > 0 ? seg.line - 1 : seg.line, z: t - 0.5 });
+  return { inside, outside: inside.map((c) => ({ x: c.x + seg.nx, z: c.z + seg.nz })), dir: seg.dir };
+}
+
+/** Can this wall be pushed out? Its price is every tile of the row beyond it; at least the first must be buyable. */
+export function canPushWall(state: GameState, key: string): PlaceCheck & { tiles: number } {
+  const run = wallRun(state.shop, key);
+  if (!run) return { ok: false, reason: 'Point at an outer wall', price: 0, tiles: 0 };
+  if (run.dir === 'front') return { ok: false, reason: 'The front wall stays where it is', price: 0, tiles: 0 };
+  const first = canBuyTile(state, run.outside[0]!.x, run.outside[0]!.z);
+  if (!first.ok) return { ...first, tiles: 0 };
+  // The whole row at the price each tile will be (floor dearer as the shop grows), and its panels upstairs.
+  const n = floorTileCount(state.shop), up = grownCeilings(state.shop).length * PANEL_PRICE;
+  let price = 0;
+  for (let k = 0; k < run.outside.length; k++) price += tilePriceAt(n + k) + up;
+  return { ok: true, reason: `Push the wall out: ${run.outside.length} tile${run.outside.length > 1 ? 's' : ''} of floor`, price, tiles: run.outside.length };
+}
+
+/** Push a wall out a row: tile by tile from the one pointed at, as far as the row can go (and the money lasts). */
+export function pushWall(state: GameState, key: string): string | null {
+  const check = canPushWall(state, key);
+  if (!check.ok) return check.reason;
+  for (const t of wallRun(state.shop, key)!.outside) if (buyTile(state, t.x, t.z)) break;
+  return null;
+}
+
+/** Can this wall be pulled in? The row inside it is sold back; at least the first tile must be sellable. */
+export function canPullWall(state: GameState, key: string): PlaceCheck & { tiles: number } {
+  const run = wallRun(state.shop, key);
+  if (!run) return { ok: false, reason: 'Point at an outer wall', price: 0, tiles: 0 };
+  if (run.dir === 'front') return { ok: false, reason: 'The front wall stays where it is', price: 0, tiles: 0 };
+  const first = canSellTile(state, run.inside[0]!.x, run.inside[0]!.z);
+  if (!first.ok) return { ...first, tiles: 0 };
+  return { ok: true, reason: `Pull the wall in: up to ${run.inside.length} tile${run.inside.length > 1 ? 's' : ''} sold back`, price: first.price * run.inside.length, tiles: run.inside.length };
+}
+
+/** Pull a wall in a row: the floor inside it sold back tile by tile, as far as nothing needs it. */
+export function pullWall(state: GameState, key: string): string | null {
+  const check = canPullWall(state, key);
+  if (!check.ok) return check.reason;
+  for (const t of wallRun(state.shop, key)!.inside) if (sellTile(state, t.x, t.z)) break;
+  return null;
+}
+
 /** Make tiles floor, on top of what there is. */
 function addFloor(shop: GameState['shop'], tiles: { x: number; z: number }[]): void {
   setFloorTiles(shop, [...floorTileList(shop), ...tiles]);
