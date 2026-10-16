@@ -589,6 +589,54 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await expect(build.locator('.item', { hasText: 'over the ground floor' })).toHaveCount(1);
 });
 
+/** Let the game draw a few frames (each one runs what the manager was sent to use): SwiftShader can take a while over one. */
+const drawFrames = async (page: Page, n = 4) => { for (let i = 0; i < n; i++) await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null)))); };
+type Shelf = { runtime: { renderer: { reactions: { group: { children: { visible: boolean }[] } }; store: { levelGroups: ({ visible: boolean; children: unknown[] } | null)[]; debugFixtures: () => { ids: number[] }[] }; booth: { shoot: (...a: unknown[]) => unknown } | null }; walkAndUse: (t: { kind: string; id: number }) => void }; state: () => { tick: number; shop: { originX: number; originZ: number; flip?: boolean; litter: { id: number; x: number; z: number }[]; fixtures: Fx[] }; people: { id: number; kind: string; x: number; z: number; px: number; pz: number; path: { x: number; z: number }[]; state: string; timer: number; climb?: number }[]; reactions: { id: number; personId: number; kind: string; tick: number }[] }; crowd: (n: number) => void; photo: (kind: string, seed?: number) => string | null };
+
+test('a card opened on the way to use something lets it go: never done from the stairs, nor from where the walk stopped', async ({ page }) => {
+  const UP = -16;
+  test.setTimeout(300_000);
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'setSpeed', 0);
+  await hooks(page, 'quickSetup', false);
+  await page.evaluate(() => { (window as unknown as { __shelf: Shelf }).__shelf.state().shop.litter.length = 0; });
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  // A spill downstairs by the front wall; the manager upstairs, sent to mop it: down the stairs first.
+  await page.evaluate(() => {
+    const s = (window as unknown as { __shelf: Shelf }).__shelf.state(), f = s.shop.flip ? -1 : 1;
+    s.shop.litter.push({ id: 9901, x: s.shop.originX - 2.0 * f, z: s.shop.originZ - 1.0 * f });
+  });
+  await hooks(page, 'fp', -0.5, -2.5 + UP);
+  const mop = () => page.evaluate(() => (window as unknown as { __shelf: Shelf }).__shelf.runtime.walkAndUse({ kind: 'spill', id: 9901 }));
+  const spilt = async () => (await page.evaluate(() => (window as unknown as { __shelf: Shelf }).__shelf.state().shop.litter.map((l) => l.id))).includes(9901);
+  const me = () => page.evaluate(() => { const s = (window as unknown as { __shelf: Shelf }).__shelf.state(), o = s.people.find((p) => p.kind === 'owner')!, f = s.shop.flip ? -1 : 1; return { riding: o.climb !== undefined, z: (o.z - s.shop.originZ) * f, state: o.state }; });
+  await mop();
+  for (let i = 0; i < 300 && !(await me()).riding; i++) await hooks(page, 'advanceNoScan', 0.1);
+  expect((await me()).riding).toBe(true);
+  // Halfway down, a card opened (Tab): the ride carries on, and nothing is mopped from the stairs...
+  await hooks(page, 'openCard', 'stock');
+  await drawFrames(page);
+  expect(await spilt()).toBe(true);
+  // ...nor from the foot, where the ride ends: the walk was let go, and what it was for with it.
+  await hooks(page, 'advanceNoScan', 8);
+  await drawFrames(page);
+  expect(await me()).toMatchObject({ riding: false, state: 'idle' });
+  expect((await me()).z).toBeGreaterThan(-12);
+  expect(await spilt()).toBe(true);
+  await hooks(page, 'openCard', 'stock');
+  // On one floor the same: a walk to it stopped by a card does nothing from where it stopped.
+  await hooks(page, 'fp', 1.0, -5.0);
+  await mop();
+  await hooks(page, 'advanceNoScan', 0.5);
+  expect((await me()).state).toBe('walking');
+  await hooks(page, 'openCard', 'stock');
+  await drawFrames(page);
+  expect((await me()).state).toBe('idle');
+  expect(await spilt()).toBe(true);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });

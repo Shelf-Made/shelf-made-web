@@ -1005,10 +1005,13 @@ export class GameRuntime {
   /** Walk direction on the ground (unit vector, or zero to stop). Sent straight to the sim. */
   move(x: number, z: number): void {
     const s = this.state; if (!s || !this.inPlay) return;
-    if (x || z) this.pendingUse = null;
     // Walking yourself while the camera follows someone: it comes back to you.
     if ((x || z) && this.followingPerson) this.stopFollow();
+    const o = s.people.find((p) => p.kind === 'owner'), walking = o?.state === 'walking';
     applyCommand(s, { type: 'moveDir', x, z });
+    // The keys take over from a walk clicked for, and so does letting go when that stops it (a card opened): what it
+    // was going to use goes with it, never done from wherever they stopped (or from the stairs, a ride under way).
+    if (x || z || (walking && o?.state !== 'walking')) this.pendingUse = null;
   }
 
   /** Where the mouse is over the world (null when it leaves the canvas). */
@@ -1252,7 +1255,8 @@ export class GameRuntime {
     const t = this.pendingUse; if (!t) return;
     const o = s.people.find((p) => p.kind === 'owner');
     if (!o || o.moveDir) { this.pendingUse = null; return; }
-    if (o.state === 'walking' || o.state === 'carrying') return;
+    // Not there yet: on the way, or partway up (or down) a ride.
+    if (o.state === 'walking' || o.state === 'carrying' || o.climb !== undefined) return;
     this.pendingUse = null;
     if (t.kind === 'fixture' && !s.shop.fixtures.some((f) => f.id === t.id)) return;
     if (t.kind === 'spill' && !s.shop.litter.some((l) => l.id === t.id)) return;
