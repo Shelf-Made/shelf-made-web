@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, FIXTURES, type GameState, type FixtureType } from './index';
 import { openGame } from './testUtil';
 import { FURNITURE_USE, queueDrain, thiefFactor, grimeFactor, tillExtras } from './furniture';
-import { spawnCustomer } from './people';
+import { spawnCustomer, setPath } from './people';
 import { PRODUCTS } from './products';
 import { gridFor } from './state';
 import { cellOf, cellIndex, isBlocked, reachableCells, nearestWalkable } from './grid';
@@ -118,6 +118,45 @@ describe('furniture earns its place', () => {
     }
     expect(lost).toBe('');
     expect(sat).toBeGreaterThan(0);
+  });
+
+  // How far each has walked is counted as they go (nobody sets it by hand here): a long way round sits them down. A
+  // ride up or down carries them, it is not walked.
+  it('shoppers who have walked a long way round sit on a bench of their own accord', () => {
+    const s = shop(3);
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).ok).toBe(true);
+    // What they want at either end of the market hall, a bench between.
+    const ends: [number, string][] = [[-4.5, 'rice'], [3.5, 'flour'], [-4.5, 'sugar'], [3.5, 'coffee']];
+    for (const [x, id] of ends) {
+      if (!s.shop.fixtures.some((f) => f.x === x && f.z === -5)) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x, z: -5, rot: x < 0 ? 1 : 3 }).ok).toBe(true);
+      const sl = s.shop.fixtures.find((f) => f.x === x && f.z === -5)!.slots.find((q) => !q.productId)!;
+      sl.productId = id; sl.qty = 8;
+    }
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'bench', x: -0.5, z: -5, rot: 0 }).ok).toBe(true);
+    s.people = s.people.filter((p) => p.kind === 'owner');
+    s.phase = 'open';
+    const p = spawnCustomer(s, true)!;
+    p.list = ends.map(([, productId]) => ({ productId, qty: 1 }));
+    let sat = false;
+    for (let i = 0; i < 180 / TICK && !sat; i++) { tick(s); sat = p.rest?.kind === 'seat' && p.state === 'resting' && p.timer > 0; }
+    expect(p.walked).toBeGreaterThan(16);
+    expect(sat).toBe(true);
+  });
+
+  it('a ride up the stairs is not walked', () => {
+    const s = shop(41);
+    s.cash = 50000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+    s.people = s.people.filter((p) => p.kind === 'owner');
+    s.phase = 'open';
+    const p = spawnCustomer(s, true)!, at = nearestWalkable(gridFor(s), toWorld(s.shop, 1, -0.5));
+    p.x = p.px = at.x; p.z = p.pz = at.z; p.xings = undefined; p.state = 'browsing'; p.timer = -1; p.list = [{ productId: 'bread', qty: 1 }]; p.listIdx = 0;
+    setPath(s, p, nearestWalkable(gridFor(s), toWorld(s.shop, -1, zOnLevel(-2.5, 1))));
+    let went = 0;
+    for (let i = 0; i < 30 / TICK && p.state === 'browsing' && p.timer < 0; i++) { const x = p.x, z = p.z, up = p.climb !== undefined; tick(s); if (!up && p.climb === undefined) went += Math.hypot(p.x - x, p.z - z); }
+    expect(p.timer).toBeGreaterThanOrEqual(0);
+    expect(p.walked).toBeGreaterThan(0);
+    expect(p.walked!).toBeLessThan(went + 0.5);
   });
 
   it('nobody asks at a help desk walled in where nobody can get to it', () => {

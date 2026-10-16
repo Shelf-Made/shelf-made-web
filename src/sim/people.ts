@@ -1345,8 +1345,11 @@ function watchdog(state: GameState, p: Person, dyn: Set<number>): void {
 export function tickPeople(state: GameState): void {
   const dyn = dynamicBlockers(state);
   for (const p of state.people) {
+    // How far a shopper has walked round the shop, last tick's step (before it is forgotten): a ride carries them, a
+    // step off one is a floor's length at once, never walked.
+    const step = Math.hypot(p.x - p.px, p.z - p.pz);
+    if (p.kind === 'customer' && (p.state === 'shopping' || p.state === 'browsing') && step < 0.5) p.walked = (p.walked ?? 0) + step;
     p.px = p.x; p.pz = p.z;
-    if (p.kind === 'customer' && (p.state === 'shopping' || p.state === 'browsing')) p.walked = (p.walked ?? 0) + Math.hypot(p.x - p.px, p.z - p.pz);
     if (!rideStep(state, p)) switch (p.kind) {
       case 'customer': tickCustomer(state, p, dyn); break;
       case 'walker': tickWalker(state, p); break;
