@@ -17,7 +17,7 @@ import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift } from './staff';
 import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall } from './build';
-import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild } from './storeys';
+import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild, keepFinishes } from './storeys';
 import { pave, paintBay, eraseBay } from './lot';
 import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
@@ -113,15 +113,18 @@ export const MANAGER_MODELS = 12;
 /** Who you are until you design your own: the first of the women. */
 export const MANAGER_DEFAULT_MODEL = 0;
 
-/** Commands that change the building: after each, anyone whose way it took away goes another (repathAfterBuild). */
+/**
+ * Commands that change the building: after each, new floor comes bare and floor out of use keeps its finish
+ * (keepFinishes), and anyone whose way it took away goes another (repathAfterBuild).
+ */
 const REBUILDS = new Set<Command['type']>(['placeFixture', 'removeFixture', 'moveFixture', 'expandShop', 'buyTile', 'sellTile', 'addPanel', 'removePanel']);
 
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
-  const before = state.sounds.length;
+  const before = state.sounds.length, was = REBUILDS.has(cmd.type) ? storeysOf(state.shop) : null;
   const res = apply(state, cmd);
   const c = COMMAND_CUES[cmd.type];
   if (res.ok && c && state.sounds.length === before) cue(state, c);
-  if (res.ok && REBUILDS.has(cmd.type)) repathAfterBuild(state);
+  if (res.ok && was) { keepFinishes(state.shop, was); repathAfterBuild(state); }
   return res;
 }
 

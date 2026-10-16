@@ -3,8 +3,8 @@
  * the rules for what stands upstairs, and riding the stairs with the walking keys. The floors themselves (which
  * are open, their shapes, how upstairs is walked) live with the rest of the floor in layout.ts.
  */
-import type { GameState, FixtureType, Person, Rot, Vec2, Waypoint, Shop } from './types';
-import { FIXTURES, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect } from './layout';
+import type { GameState, FixtureType, FloorStyle, Person, Rot, Vec2, Waypoint, Shop } from './types';
+import { FIXTURES, FLOORS, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
 import { buildGrid, fixtureStandWorld, fixtureFrontWorld, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
 import { followPath } from './movement';
 import { dynamicBlockers, setPath } from './people';
@@ -194,6 +194,9 @@ export function removePanel(state: GameState, x: number, z: number): string | nu
   state.cash -= check.price;
   const rows = ensureCeilings(state.shop), level = levelOfZ(z + 0.5), k = tileKey(x, groundZ(z));
   rows[level] = rows[level]!.filter((t) => t !== k);
+  // The finish on it upstairs goes with it, as a tile sold takes its own (put back, it is bare again).
+  const up = tileKey(x, zOnLevel(groundZ(z), level + 1));
+  if (state.shop.tileStyles?.[up]) { const st = { ...state.shop.tileStyles }; delete st[up]; state.shop.tileStyles = st; }
   state.shop.layoutVersion++;
   return null;
 }
@@ -213,6 +216,25 @@ export function ceilingPrice(shop: Shop, after: Shop): number { return opening(a
 /** After a piece went in or moved: the ceilings over the floors it opened (paid for with it). */
 export function ceilFloorsOpened(shop: Shop, before: boolean[]): void {
   for (const [L, tiles] of opening(shop, before)) { ensureCeilings(shop)[L] = tiles; shop.layoutVersion++; }
+}
+
+/**
+ * After a change to the building (`was`: its floors before): floor that was not there comes bare, in lino, whatever
+ * the shop-wide finish (as a tile bought does): a floor opened, a panel put up, a tile the stairs moved off. Floor
+ * out of use but still there (its floor shut, a flight come up through it) keeps its finish for when it is back,
+ * written down if it was the shop-wide one. A panel or a tile sold takes its finish with it (removePanel, sellTile).
+ */
+export function keepFinishes(shop: Shop, was: Storeys): void {
+  const all = shop.floorStyle ?? FLOORS[0]!.id;
+  if (all === FLOORS[0]!.id) return;
+  const st = storeysOf(shop), set: Record<string, FloorStyle> = {};
+  for (let L = 0; L < MAX_LEVELS; L++) {
+    const now = st.floors[L]!, then = was.floors[L] ?? new Set<string>(), panels = L ? panelsOver(shop, L - 1) : now;
+    const at = (k: string) => { const [x, z] = k.split(',').map(Number) as [number, number]; return tileKey(x, zOnLevel(z, L)); };
+    for (const k of now) if (!then.has(k) && !shop.tileStyles?.[at(k)]) set[at(k)] = FLOORS[0]!.id;
+    for (const k of then) if (!now.has(k) && panels.has(k) && !shop.tileStyles?.[at(k)]) set[at(k)] = all;
+  }
+  if (Object.keys(set).length) shop.tileStyles = { ...shop.tileStyles, ...set };
 }
 
 /** Can this piece be taken away (sold)? Not from under anyone on it, nor the last way up to a floor with anything or anyone on it. */

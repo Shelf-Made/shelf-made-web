@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, type GameState } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, tileKey, highCeilings, tilePrice, tilePriceAt, floorTileCount, RESALE } from './layout';
-import { canBuyTile, canSellTile } from './build';
+import { storeysOf, zOnLevel, tileKey, highCeilings, tilePrice, tilePriceAt, floorTileCount, levelTileList, RESALE } from './layout';
+import { canBuyTile, canSellTile, canPaintFloor, floorCost, styleAt } from './build';
 import { PANEL_PRICE } from './storeys';
 
 function shop(seed: number): GameState {
@@ -10,7 +10,7 @@ function shop(seed: number): GameState {
   s.cash = 50000;
   return s;
 }
-const place = (s: GameState, fixtureType: 'stairs' | 'wallLight', x: number, z: number, rot: 0 | 1 | 2 | 3 = 0) => applyCommand(s, { type: 'placeFixture', fixtureType, x, z, rot });
+const place = (s: GameState, fixtureType: 'stairs' | 'wallLight' | 'elevator', x: number, z: number, rot: 0 | 1 | 2 | 3 = 0) => applyCommand(s, { type: 'placeFixture', fixtureType, x, z, rot });
 
 describe('upstairs as the shop grows', () => {
   it('grows every open floor with a tile bought, and the lights on its walls move out with them', () => {
@@ -64,5 +64,50 @@ describe('upstairs as the shop grows', () => {
     expect(storeysOf(s.shop).floors[1]!.has(tileKey(-3.5, -2))).toBe(true);
     expect(s.shop.ceilings![1]!).toContain(tileKey(-3.5, -2));
     expect(highCeilings(s.shop)).toBe(0);
+  });
+});
+
+describe('finishes upstairs', () => {
+  it('lays new floor up there bare, whatever the shop-wide finish, and a shut floor keeps what it had', () => {
+    const s = shop(83);
+    expect(applyCommand(s, { type: 'setFloor', style: 'wood' }).ok).toBe(true);
+    expect(place(s, 'stairs', 0.5, -2, 0).ok).toBe(true);
+    // The floor the stairs open comes in lino, as a tile bought does: no boards for nothing (to sell back as lino is laid).
+    const up = levelTileList(s.shop, 1);
+    expect(up.every((t) => styleAt(s.shop, t.x, t.z) === 'lino')).toBe(true);
+    expect(canPaintFloor(s, up[0]!.x, up[0]!.z, 'lino').ok).toBe(false);
+    // Stone laid on two tiles up there; one of them has its panel taken down and put back: bare again.
+    const kept = { x: -2.5, z: zOnLevel(-6, 1) }, gone = { x: 1.5, z: zOnLevel(-1, 1) };
+    for (const t of [kept, gone]) expect(applyCommand(s, { type: 'paintFloor', ...t, style: 'stone' }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removePanel', x: 1.5, z: -1 }).ok).toBe(true);
+    expect(s.shop.tileStyles?.[tileKey(gone.x, gone.z)]).toBeUndefined();
+    expect(applyCommand(s, { type: 'addPanel', x: 1.5, z: -1 }).ok).toBe(true);
+    expect(styleAt(s.shop, gone.x, gone.z)).toBe('lino');
+    // A tile bought: lino downstairs and up.
+    expect(applyCommand(s, { type: 'buyTile', x: -3.5, z: -2 }).ok).toBe(true);
+    expect(styleAt(s.shop, -3.5, -2)).toBe('lino');
+    expect(styleAt(s.shop, -3.5, zOnLevel(-2, 1))).toBe('lino');
+    // The floor shut, a whole-shop floor laid meanwhile (paid for downstairs only), and open again: as it was left.
+    const stairs = s.shop.fixtures.find((f) => f.type === 'stairs')!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: stairs.id }).ok).toBe(true);
+    const cash = s.cash, cost = floorCost(s, 'checker');
+    expect(cost).toBe(5 * floorTileCount(s.shop));
+    expect(applyCommand(s, { type: 'setFloor', style: 'checker' }).ok).toBe(true);
+    expect(s.cash).toBe(cash - cost);
+    expect(place(s, 'stairs', 0.5, -2, 0).ok).toBe(true);
+    expect(styleAt(s.shop, kept.x, kept.z)).toBe('stone');
+    expect(levelTileList(s.shop, 1).filter((t) => styleAt(s.shop, t.x, t.z) !== 'lino').length).toBe(1);
+  });
+
+  it('will not grow the shop with its delivery pallet where someone gets on a lift', () => {
+    const s = shop(84);
+    // Floor round to the back-left corner of the market hall, and a lift there stepped into from that corner.
+    for (const [x, z] of [[-0.5, -7], [-1.5, -7], [-2.5, -7], [-3.5, -7], [-3.5, -8], [-2.5, -8]] as const) expect(applyCommand(s, { type: 'buyTile', x, z }).ok, `${x},${z}`).toBe(true);
+    expect(place(s, 'elevator', -2.5, -8, 3).ok).toBe(true);
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).message).toBe('The delivery pallet would go where you get on the lift: move it first.');
+    // Turned to be got on from the floor in front of it, it is out of the way.
+    const lift = s.shop.fixtures.find((f) => f.type === 'elevator')!;
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: lift.id, x: -2.5, z: -8, rot: 0 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).ok).toBe(true);
   });
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds } from './layout';
+import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey } from './layout';
 import { fixtureFacingWorld, lineClear, isBlocked, cellOf } from './grid';
-import { canPlace, canSellTile, floorCost, grownCeilings } from './build';
+import { canPlace, canSellTile, floorCost, grownCeilings, styleAt } from './build';
 import { spawnCustomer, setPath, doorInside, addSpill } from './people';
 import { levelOfPerson, canAddPanel, canRemovePanel, ensureCeilings, PANEL_PRICE } from './storeys';
 import { looksOf } from './reviews';
@@ -321,11 +321,17 @@ describe('building up: nothing cut off, nothing for free', () => {
       let w = s.cash + s.shop.fixtures.reduce((a, f) => a + Math.round(FIXTURES[f.type].price * RESALE), 0);
       w += ensureCeilings(s.shop).reduce((a, r) => a + r.length, 0) * Math.round(RESALE * PANEL_PRICE);
       for (let m = 1; m <= floorTileCount(s.shop); m++) w += Math.round(RESALE * tilePriceAt(m - 1));
+      // The finishes, on every tile in use and those kept for when they are back (a floor shut, a flight over them).
+      const st = storeysOf(s.shop), resale = (id?: string) => Math.round(RESALE * (FLOORS.find((f) => f.id === id)?.perTile ?? 0));
+      for (let L = 0; L < MAX_LEVELS; L++) for (const k of L ? panelsOver(s.shop, L - 1) : st.floors[0]!) {
+        const [x, z] = k.split(',').map(Number) as [number, number], at = { x, z: zOnLevel(z, L) };
+        w += resale(st.floors[L]!.has(k) ? styleAt(s.shop, at.x, at.z) : s.shop.tileStyles?.[tileKey(at.x, at.z)]);
+      }
       return w;
     };
     // Floors opened along the way, the most open at once, and the shop grown and sold with floors up there, over
     // every run: it has to be tried, not just pass.
-    let done = 0, top = 0, opened = 0, grownUp = 0, soldUp = 0, ups = 0;
+    let done = 0, top = 0, opened = 0, grownUp = 0, soldUp = 0, ups = 0, laid = 0;
     for (const seed of [81, 82, 83, 84]) {
       const s = shop(seed); aside(s);
       const r = new Rng(seed);
@@ -344,7 +350,7 @@ describe('building up: nothing cut off, nothing for free', () => {
       const plot = () => ({ x: MAX_FLOOR.x0 + r.int(0, 8), z: MAX_FLOOR.z0 + r.int(0, 7) });
       let was = worth(s);
       for (let i = 0; i < 160; i++) {
-        const a = r.int(0, 10), f = flights().length ? r.pick(flights()) : null, type = r.pick(['stairs', 'stairs', 'escalator', 'elevator'] as const);
+        const a = r.int(0, 12), f = flights().length ? r.pick(flights()) : null, type = r.pick(['stairs', 'stairs', 'escalator', 'elevator'] as const);
         const before = storeysOf(s.shop).top, upRows = grownCeilings(s.shop).length;
         let ok = false;
         if (a <= 2) { const at = spot(type); ok = place(s, type, at.x, at.z, at.rot).ok; }
@@ -357,7 +363,10 @@ describe('building up: nothing cut off, nothing for free', () => {
         else if (a === 8) { const at = plot(); ok = applyCommand(s, { type: 'buyTile', x: at.x, z: at.z }).ok; if (ok && upRows) grownUp++; }
         else if (a === 9) { const at = plot(), over = s.shop.ceilings?.slice(1).some((row) => row.includes(`${at.x},${at.z}`)); ok = applyCommand(s, { type: 'sellTile', x: at.x, z: at.z }).ok; if (ok && over) soldUp++; }
         // The whole shop grown at once (the older shortcut), panels upstairs and all.
-        else { ok = applyCommand(s, { type: 'expandShop', sizeId: r.pick(['medium', 'large']) }).ok; if (ok && upRows) grownUp++; }
+        else if (a === 10) { ok = applyCommand(s, { type: 'expandShop', sizeId: r.pick(['medium', 'large']) }).ok; if (ok && upRows) grownUp++; }
+        // A finish laid on a tile, or over the whole shop (what new floor comes in, and what a shut floor keeps).
+        else if (a === 11) { const at = r.pick(levelTileList(s.shop, r.int(0, storeysOf(s.shop).top))); ok = applyCommand(s, { type: 'paintFloor', x: at.x, z: at.z, style: r.pick(FLOORS).id }).ok; if (ok) laid++; }
+        else { ok = applyCommand(s, { type: 'setFloor', style: r.pick(FLOORS).id }).ok; if (ok) laid++; }
         if (ok) done++;
         if (ok && a <= 4) ups++;
         const st = storeysOf(s.shop);
@@ -375,7 +384,8 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(opened).toBeGreaterThanOrEqual(8);
     expect(ups).toBeGreaterThanOrEqual(100);
     expect(grownUp).toBeGreaterThanOrEqual(8);
-    expect(soldUp).toBeGreaterThanOrEqual(6);
+    expect(soldUp).toBeGreaterThanOrEqual(5);
+    expect(laid).toBeGreaterThanOrEqual(20);
   });
 
   it('counts the finish upstairs toward how the shop looks, and prices it in a whole-shop floor', () => {

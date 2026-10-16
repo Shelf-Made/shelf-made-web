@@ -117,8 +117,10 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
   if (!shopTileList(state.shop).some((t) => styleAt(state.shop, t.x, t.z) !== style)) return 'That floor is down already.';
   if (state.cash < cost) return `Need ${dollars(cost)}`;
   state.cash -= cost;
+  // Over every tile in use (a floor shut, or under a flight, keeps its own for when it is back).
+  const open = new Set(shopTileList(state.shop).map((t) => tileKey(t.x, t.z)));
   state.shop.floorStyle = style;
-  delete state.shop.tileStyles;
+  state.shop.tileStyles = Object.fromEntries(Object.entries(state.shop.tileStyles ?? {}).filter(([k]) => !open.has(k)));
   return null;
 }
 
@@ -280,8 +282,7 @@ export function buyTile(state: GameState, x: number, z: number): string | null {
   const rows = ensureCeilings(state.shop);
   for (const L of [0, ...grownCeilings(state.shop)]) rows[L] = [...rows[L]!, tileKey(x, z)];
   addFloor(state.shop, [{ x, z }]);
-  // New floor comes with the cheapest finish (lay a better one a tile at a time).
-  if ((state.shop.floorStyle ?? 'lino') !== FLOORS[0]!.id) state.shop.tileStyles = { ...state.shop.tileStyles, [tileKey(x, z)]: FLOORS[0]!.id };
+  // (New floor comes with the cheapest finish, up there too: lay a better one a tile at a time. See keepFinishes.)
   reshape(state);
   return null;
 }
@@ -373,7 +374,18 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const want: { x: number; z: number }[] = [];
   for (let z = size.floor.z0; z < size.floor.z1; z++) for (let x = size.floor.x0; x < size.floor.x1; x++) if (!isFloor(shop, x, z)) want.push({ x, z });
   if (!want.length) return 'The shop is already that big.';
-  { const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash; }
+  {
+    const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash;
+    // The delivery pallet goes to the new back corner: nothing may stand there, nor a way up be stepped onto from
+    // it, nor anything upstairs be cut off by it.
+    const zone = deliveryZone(trial.floor);
+    if (shop.fixtures.some((fx) => !FIXTURES[fx.type].outdoor && !FIXTURES[fx.type].onWall && levelOf(fx) === 0 && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), zone))) return 'Clear the back corner first: the delivery pallet goes there.';
+    const foot = shop.fixtures.find((fx) => VERTICAL.has(fx.type) && (() => { const b = rideEnds(fx).bottom; return overlaps({ x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, zone); })());
+    if (foot) return `The delivery pallet would go where you get on the ${FIXTURES[foot.type].name.toLowerCase()}: move it first.`;
+    trial.delivery = zone; trial.backDoor = { x: shop.backDoor.x, z: trial.floor.z0 };
+    const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
+    if (why) return `${why}: the delivery pallet goes to the new back corner.`;
+  }
   // Each tile at the tile price as it goes in, and its panels upstairs (as a tile bought).
   const up = grownCeilings(shop);
   let n = floorTileCount(shop), cost = 0;
