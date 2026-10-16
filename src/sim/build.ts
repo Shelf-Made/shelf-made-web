@@ -100,6 +100,8 @@ function waysShut(state: GameState, shop: Shop, inside: Grid, open = buildGrid(s
   if ([-0.25, 0.25].some((dx) => [0.25, 0.75].some((dz) => { const [cx, cz] = cellOf(inside, toWorld(shop, shop.backDoor.x + dx, shop.backDoor.z + dz)); return isBlocked(inside, cx, cz); }))) out.push('Keep the back door clear');
   if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) out.push('Would cut the shop in two');
   if (!findPath(inside, from, storeroomPoint(at))) out.push('Would block the way to the delivery pallet');
+  // Where boxes are picked up itself, or the way there is judged by the nearest free floor to it (a pocket, maybe).
+  if (isBlocked(inside, ...cellOf(inside, storeroomPoint(at)))) out.push('Keep the way to the delivery pallet clear');
   return out;
 }
 /** Why a change (making the shop `trial`, `inside` its grid with the back door shut) would shut one of those ways that is open now, or null. What is shut already (an older save's) stops nobody. */
@@ -108,6 +110,12 @@ function shuts(state: GameState, trial: Shop, inside: Grid, open?: Grid): string
   if (!now.length) return null;
   const was = waysShut(state, state.shop, buildGrid(state.shop, -1, true), gridFor(state));
   return now.find((r) => !was.includes(r)) ?? null;
+}
+
+/** Why taking this piece away would shut a way that is open now (where it is judged to go moving into a pocket), or null. */
+export function removalShuts(state: GameState, id: number): string | null {
+  const trial = { ...state.shop, fixtures: state.shop.fixtures.filter((f) => f.id !== id) };
+  return shuts(state, trial, buildGrid(trial, -1, true));
 }
 
 /**

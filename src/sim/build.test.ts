@@ -116,7 +116,7 @@ describe('building: walls, doors, lights, floors and windows', () => {
     const f = s.shop.floor;
     const d0 = looksOf(s).decor;
     expect(place(s, 'cafe', f.x0, -5).ok).toBe(true);
-    expect(place(s, 'floorLamp', f.x0 + 1, -5).ok).toBe(true);
+    expect(place(s, 'floorLamp', f.x0 + 3, -5).ok).toBe(true);
     expect(place(s, 'flowers', f.x0 + 2, -5).ok).toBe(true);
     const d1 = looksOf(s).decor;
     expect(d1).toBeCloseTo(d0 + FIXTURES.cafe.looks! + FIXTURES.floorLamp.looks! + FIXTURES.flowers.looks!);
@@ -141,6 +141,24 @@ describe('pallets', () => {
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: pallet.id }).ok).toBe(false);
     s.shop.storage = [{ productId: 'beans', qty: cap - 10, day: s.day }];
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: pallet.id }).ok).toBe(true);
+  });
+
+  // Where boxes are picked up was judged by the nearest free cell to it, so a piece could stand on it; taking a piece
+  // away (never judged at all) then moved that cell into a pocket, and stockers walked to it through the sign.
+  it('nothing stands where boxes are picked up, and taking a piece away never cuts the pallet off', () => {
+    const s = openGame({ seed: 138, plotId: 'main', name: 'Pallet', tutorial: false });
+    s.cash = 20000;
+    const o = s.people.find((p) => p.kind === 'owner')!, out = toWorld(s.shop, 0, 1);
+    o.x = o.px = out.x; o.z = o.pz = out.z;
+    s.people = [o];
+    expect(place(s, 'pallet', -2.5, -5, 3).ok).toBe(true);
+    expect(place(s, 'sign', -1.5, -5, 0).message).toBe('Keep the way to the delivery pallet clear');
+    // As an older save could have it: then the pallet does not go.
+    s.shop.fixtures.push({ id: s.nextId++, type: 'sign', x: -1.5, z: -5, rot: 0, slots: [] });
+    s.shop.layoutVersion++;
+    const extra = s.shop.fixtures.find((f) => f.type === 'pallet')!;
+    expect(findPath(buildGrid(s.shop, -1, true), doorInside(s), storeroomPoint(s))).not.toBeNull();
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: extra.id }).message).toBe('Would block the way to the delivery pallet.');
   });
 
   it('the manager can pick a box up at an extra pallet', () => {
