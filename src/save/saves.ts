@@ -8,7 +8,8 @@ import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
 import { windowsFromSides, stepOnInside, bandsWrittenDown } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
-import { letOwnerOut } from '@/sim/people';
+import { letOwnerOut, letOthersOut } from '@/sim/people';
+import { pruneLitter } from '@/sim/storeys';
 import { resetGridCache } from '@/sim/state';
 import type { StorageBackend } from './storage';
 
@@ -125,8 +126,11 @@ export function migrate(file: SaveFile): SaveFile {
   // Stairs put facing out through a wall (the first build of floors let that by) are turned to step on from inside.
   stepOnInside(st);
   // The manager walled in, or out past the walking grid (a click refused once still walked them there): back inside.
+  // Anyone else left where the door does not reach, too; and a spill nobody can get to goes.
   resetGridCache();
   letOwnerOut(st);
+  letOthersOut(st);
+  pruneLitter(st);
   return { ...file, version: v, state: st };
 }
 

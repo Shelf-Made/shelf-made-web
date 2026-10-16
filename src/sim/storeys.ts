@@ -350,7 +350,7 @@ function stepClear(state: GameState, p: Person): void {
  * crossings: only the way to the first kerb, all the grid covers, is planned again). With no way there any more
  * (it was up on a floor that has closed) they stop: at the end of the ride they are on, if they are on one.
  */
-function replan(state: GameState, p: Person): void {
+export function replan(state: GameState, p: Person): void {
   const w = p.path[p.pathIdx];
   if (p.climb !== undefined && w?.ride !== undefined && !rideStands(state, p, w, true)) { p.climb = undefined; stepClear(state, p); }
   // (Crossings that do not fit the path, an old route's, are dropped with it.)
@@ -369,6 +369,11 @@ function replan(state: GameState, p: Person): void {
  */
 export function repathAfterBuild(state: GameState): void {
   for (const p of state.people) if (p.kind !== 'walker' && wayGone(state, p, true)) replan(state, p);
+  pruneLitter(state);
+}
+
+/** Spills only on floor still, that someone can get to (an older save's on a floor it shut, too). */
+export function pruneLitter(state: GameState): void {
   // (On floor still, its own cell: a cell by a gap, or by a tile sold, is next to one of floor.)
   const g = gridFor(state), reach = reachableCells(state.shop, g);
   state.shop.litter = state.shop.litter.filter((l) => { const [ox, oz] = cellOf(g, l), [cx, cz] = cellOf(g, nearestWalkable(g, l, undefined, 1)); return inBounds(g, ox, oz) && !!g.inside[cellIndex(g, ox, oz)] && inBounds(g, cx, cz) && !!reach[cellIndex(g, cx, cz)]; });

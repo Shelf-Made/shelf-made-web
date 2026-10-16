@@ -2,12 +2,14 @@ import { openGame } from '@/sim/testUtil';
 import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
-import { tick, SAVE_VERSION, gridFor, findPath, applyCommand, type GameState } from '@/sim/index';
+import { tick, SAVE_VERSION, TICK, gridFor, findPath, applyCommand, type GameState, type Person } from '@/sim/index';
 import { toWorld, toLocal, zOnLevel, rideEnds, isFloor, wallSegments } from '@/sim/layout';
 import { wallStyleAt } from '@/sim/build';
 import { looksOf } from '@/sim/reviews';
-import { ensureCeilings } from '@/sim/storeys';
-import { doorInside } from '@/sim/people';
+import { ensureCeilings, levelOfPerson } from '@/sim/storeys';
+import { cellOf, cellIndex, inBounds, isBlocked, reachableCells } from '@/sim/grid';
+import { makeCandidate } from '@/sim/staff';
+import { doorInside, spawnCustomer, addSpill } from '@/sim/people';
 
 describe('saves', () => {
   it('round-trips a game through the backend and keeps determinism', async () => {
@@ -162,6 +164,52 @@ describe('saves', () => {
       expect(findPath(gridFor(t), p, doorInside(t)), where).toBeTruthy();
       expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).message, where).toBeUndefined();
     }
+  });
+  it('loads an older save with people or a spill where the door does not reach, and nobody walks through the walls after', () => {
+    const fresh = (seed: number) => {
+      const s = openGame({ seed, plotId: 'main', name: 'Upstairs', tutorial: false });
+      s.cash = 50000;
+      const o = s.people.find((p) => p.kind === 'owner')!, by = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+      o.x = o.px = by.x; o.z = o.pz = by.z;
+      s.people = [o];
+      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+      return s;
+    };
+    const put = (p: Person, at: { x: number; z: number }) => { p.x = p.px = at.x; p.z = p.pz = at.z; };
+    /** Anyone in a wall, a piece or the void, or up on floor the door does not reach (the manager and riders aside). */
+    const stray = (t: GameState) => {
+      const g = gridFor(t), reach = reachableCells(t.shop, g);
+      for (const p of t.people) {
+        const [cx, cz] = cellOf(g, p), l = toLocal(t.shop, p.x, p.z);
+        if (p.kind === 'walker' || p.kind === 'owner' || p.climb !== undefined || p.state === 'driving' || !inBounds(g, cx, cz)) continue;
+        if ((isBlocked(g, cx, cz) && Math.abs(l.x) < 6 && l.z < 0) || (levelOfPerson(t.shop, p) > 0 && !reach[cellIndex(g, cx, cz)])) return `${p.kind} ${p.state} at ${JSON.stringify(l)}`;
+      }
+      return '';
+    };
+    // A shopper done shopping on a tile of the first floor left on its own (the panels round it sold), and a stocker
+    // in a wall put down over them.
+    const s = fresh(62);
+    for (const [x, z] of [[-1.5, -6], [-2.5, -5]] as const) expect(applyCommand(s, { type: 'removePanel', x, z }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'wall', x: -1.5, z: -1, rot: 0 }).ok).toBe(true);
+    const c = spawnCustomer(s, true)!;
+    put(c, toWorld(s.shop, -2, zOnLevel(-5.5, 1))); c.xings = undefined; c.path = []; c.pathIdx = 0;
+    c.state = 'shopping'; c.list = [{ productId: 'bread', qty: 1 }]; c.listIdx = 1; c.basket = [{ productId: 'bread', qty: 1, price: 2.5 }];
+    const k = makeCandidate(s, 'stocker'); s.staffPool.push(k);
+    expect(applyCommand(s, { type: 'hire', candidateId: k.id }).ok).toBe(true);
+    put(s.people.find((p) => p.id === k.id)!, toWorld(s.shop, -1, -0.5));
+    s.phase = 'open';
+    expect(stray(s)).not.toBe('');
+    const t = parse(serialize(s)).state;
+    let lost = stray(t);
+    for (let i = 0; i < 30 / TICK; i++) { tick(t); if (i % 2 === 0) applyCommand(t, { type: 'scan' }); lost ||= stray(t); }
+    expect(lost).toBe('');
+    // A spill on a floor an older save shut (its stairs taken away, as the first build of floors let them be): gone.
+    const w = fresh(64), at = toWorld(w.shop, -1, zOnLevel(-2.5, 1));
+    expect(addSpill(w, at.x, at.z)).toBe(true);
+    w.shop.fixtures = w.shop.fixtures.filter((f) => f.type !== 'stairs');
+    w.shop.layoutVersion++;
+    const u = parse(serialize(w)).state;
+    expect(u.shop.litter.some((l) => Math.abs(l.z - at.z) < 0.01 && Math.abs(l.x - at.x) < 0.01)).toBe(false);
   });
   it("keeps an older save's painted walls, and walls it gains come plain, never paint to sell back", () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'Bands', tutorial: false });

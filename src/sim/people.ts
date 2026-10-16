@@ -18,7 +18,7 @@ import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './l
 import { noteVisit } from './reviews';
 import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './shoplifting';
 import { freeStand, standPoint, freeStands } from './lot';
-import { RIDE_REACH, rideAt, rideStep, startRide, stepOff } from './storeys';
+import { RIDE_REACH, rideAt, rideStep, startRide, stepOff, levelOfPerson, replan } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
 import { RACK_STANDS } from './layout';
 
@@ -1297,6 +1297,24 @@ export function letOwnerOut(state: GameState): void {
   if (!o || o.climb !== undefined || doorReaches(state, o)) return;
   const at = doorInside(state);
   o.x = o.px = at.x; o.z = o.pz = at.z; o.path = []; o.pathIdx = 0; o.moveDir = null; o.task = null; o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle';
+}
+
+/**
+ * Anyone else an older save left where the door does not reach (on a scrap of floor upstairs, in the void behind a
+ * floor, in a piece put down over them): onto the floor beside them, or else in just inside the front door, and on
+ * from there to wherever they were going. Out in the town, sitting down or on a ride: left be.
+ */
+export function letOthersOut(state: GameState): void {
+  const g = gridFor(state), reach = reachableCells(state.shop, g);
+  const reached = (q: Vec2) => { const [cx, cz] = cellOf(g, q); return inBounds(g, cx, cz) && !isBlocked(g, cx, cz) && !!reach[cellIndex(g, cx, cz)]; };
+  for (const p of state.people) {
+    if (p.kind === 'walker' || p.kind === 'owner' || p.climb !== undefined || p.state === 'driving' || p.state === 'walking' || p.xings?.length || (p.state === 'resting' && p.timer > 0)) continue;
+    const [cx, cz] = cellOf(g, p);
+    if ((!inBounds(g, cx, cz) && !levelOfPerson(state.shop, p)) || reached(p)) continue;
+    const near = nearestWalkable(g, p, undefined, 1), at = reached(near) ? near : doorInside(state, p.id);
+    p.x = p.px = at.x; p.z = p.pz = at.z;
+    if (p.pathIdx < p.path.length) replan(state, p);
+  }
 }
 
 /** Nobody stays stuck: a person who has not moved toward a path target for 8 s is placed on the nearest walkable cell and re-pathed. */
