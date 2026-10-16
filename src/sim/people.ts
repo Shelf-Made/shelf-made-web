@@ -1,6 +1,7 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, dirToWorld, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
+import { offTheBus } from './frontage';
 import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, cellCentre, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
@@ -193,7 +194,9 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
       p.bike = { rackId: stand.rack.id, slot: stand.slot }; p.riding = true; p.speed *= BIKE_SPEED; p.anim = 'sit';
     }
     // On foot: off the bus at rush hour, otherwise along one of the streets, far enough out that nobody pops into view.
-    const from = streetStart(state, 'customers', false, !!stand);
+    let from = streetStart(state, 'customers', false, !!stand);
+    // Your own bus stop: some get off right outside (more of them at rush hour).
+    if (!stand) from = offTheBus(state, busRush(state.time)) ?? from;
     const entry = frontageEntry(state, from);
     const r = route(from, entry, withRng(state, 'customers', (rr) => rr.chance(0.5)));
     p.x = from.x; p.z = from.z;

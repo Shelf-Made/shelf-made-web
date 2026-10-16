@@ -57,6 +57,7 @@ export function DayLog({ runtime, snap, r, compact = false }: { runtime: GameRun
         <section aria-label="Money">
           {!compact && <div className={`stat result ${good ? 'up' : 'down'}`}><span>{good ? 'Profit' : 'Loss'}</span><b>{money(r.profit, true)}</b></div>}
           <div className="stat"><span>Sales</span><b>{money(r.revenue)}</b></div>
+          {r.charging > 0 && <div className="stat"><span>Car charging</span><b>{money(r.charging)}</b></div>}
           {costs.map(([k, v]) => (
             <div className={`stat cost${k === biggest && v > 0 ? ' biggest' : ''}`} key={k}>
               <span>{k}</span>

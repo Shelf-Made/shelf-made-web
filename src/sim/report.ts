@@ -15,6 +15,8 @@ export interface NightReport {
   day: number;
   profit: number;
   revenue: number;
+  /** Paid at the car chargers (on top of sales). */
+  charging: number;
   costs: { goods: number; rentPower: number; staff: number; other: number };
   cash: number;
   customers: number; served: number; walkedOut: number; turnedAway: number;
@@ -83,7 +85,7 @@ export function nightReport(state: GameState, day?: number): NightReport | null 
   const latest = at === state.history.length - 1 && state.phase === 'night';
   const notes = d.log ?? (latest ? nightNotes(state) : { goal: null, tomorrow: null });
   return {
-    day: d.day, profit: d.profit, revenue: d.revenue, cash: latest ? state.cash : d.endCash,
+    day: d.day, profit: d.profit, revenue: d.revenue, charging: d.charging ?? 0, cash: latest ? state.cash : d.endCash,
     costs: { goods: d.cogs, rentPower: d.rent + d.utilities, staff: d.wages + d.tax, other: Math.round((d.theft + d.loans * 0.3) * 100) / 100 },
     customers: d.customers, served: d.served, walkedOut: d.walkedOut, turnedAway: d.turnedAway,
     complaints: complaintsOf(d).slice(0, latest ? 3 : 5),

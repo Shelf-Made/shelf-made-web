@@ -1,4 +1,5 @@
 import type { GameState, Car, Vec2, Order, ParkingBay, RivalState } from './types';
+import { BAY_UNLOAD } from './frontage';
 import {
   ROAD_Z, LANE_EAST_Z, LANE_WEST_Z, LANE_NORTH_X, LANE_SOUTH_X, SIDE_HALF, STOP_LINE, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK, ROAD_FAR,
   lotLayout, toWorld, toLocal, greenFor, type Frame, type LotLayout,
@@ -591,13 +592,13 @@ export function tickCars(state: GameState): void {
       case 'parked': break;
       case 'delivering': {
         if (lotSpeed(car)) car.speed = CAR_LOT_SPEED;
-        if (drive(state, car, car.speed, 5)) { car.state = 'unloading'; car.timer = 6; cue(state, 'truck'); }
+        if (drive(state, car, car.speed, 5)) { car.state = 'unloading'; car.timer = 6 * unloadK(state); cue(state, 'truck'); }
         break;
       }
       case 'unloading': {
         car.timer -= TICK;
         const order = state.orders.find((o) => o.id === car.orderId);
-        if (order && order.state !== 'delivered' && car.timer < 4) {
+        if (order && order.state !== 'delivered' && car.timer < 4 * unloadK(state)) {
           deliverOrder(state, order);
         }
         if (car.timer <= 0) truckLeave(state, car);
@@ -608,6 +609,9 @@ export function tickCars(state: GameState): void {
   }
   if (state.cars.some((c) => c.state === 'gone')) state.cars = state.cars.filter((c) => c.state !== 'gone');
 }
+
+/** A loading bay unloads the truck in half the time. */
+function unloadK(state: GameState): number { return state.shop.loadingBay ? BAY_UNLOAD : 1; }
 
 export function deliverOrder(state: GameState, order: Order): void {
   order.state = 'delivered';

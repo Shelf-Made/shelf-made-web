@@ -10,6 +10,7 @@ import { StoresSection } from './StoresSection';
 import { forSale, CORNER_PRICE } from '@/sim/rivals';
 import { managerCandidates } from '@/sim/franchise';
 import { FURNITURE_USE } from '@/sim/furniture';
+import { SIGN_TIERS, SLOGAN_MAX, LOADING_BAY_PRICE, CHARGE_FEE, BUS_PULL, BAY_ETA, signTier, signPrice } from '@/sim/frontage';
 
 type Tab = BuildCategory | 'floors' | 'shop';
 const TABS: { id: Tab; label: string }[] = [
@@ -36,6 +37,10 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   dome: 'On the ceiling, watching all round it (over a shelf too)',
   smartCam: 'Watches all round, further, and freezes a running thief for a moment',
   tagGate: 'Just inside the door: beeps at a thief running out, and stops most of them', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
+  fountain: 'Two tiers of stone and a pool: the frontage at its finest', statue: 'On a plinth by the car park (two kinds)', lampPost: 'Lights the lot after dark',
+  bollard: 'A pair of posts to line a path', balloons: 'A bunch on a string: it looks like a party', hedge: 'Tile by tile: a row makes one hedge',
+  evCharger: `Electric cars parked within reach plug in: ${money(CHARGE_FEE)} a charge, and a few more drivers come`,
+  busStop: `Your own stop on the bus route, by the sidewalk: ${Math.round((BUS_PULL - 1) * 100)}% more shoppers, and the rush-hour crowd gets off at your door`,
 };
 
 /** The paint's colour (any at all) and the eyedropper, to take one off a tile or wall you point at next. */
@@ -316,15 +321,49 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               </div>
             );
           })()}
-          <h3>Sign letters</h3>
-          <div className="item">
-            <div><div className="name">{s.shop.signStyle === 'lit' ? 'Lit letters' : 'Painted letters'}</div><div className="sub">{s.goals.unlocked.includes('signLit') || s.sandbox ? 'Lit letters glow after dark' : 'Unlocks with the Regulars goal'}</div></div>
-            {(s.goals.unlocked.includes('signLit') || s.sandbox) && <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'signStyle', style: s.shop.signStyle === 'lit' ? 'classic' : 'lit' })}>{s.shop.signStyle === 'lit' ? 'Paint' : 'Light up'}</button>}
-          </div>
+          <ShopFront runtime={runtime} />
           <CornerForSale runtime={runtime} />
           <StoresSection runtime={runtime} snap={snap} />
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * The front of the shop: the sign (each one up gets the shop noticed by more of the people going past), a
+ * slogan for the pylon, and a loading bay at the back door.
+ */
+function ShopFront({ runtime }: { runtime: GameRuntime }) {
+  const s = runtime.state!;
+  const tier = signTier(s.shop);
+  const [slogan, setSlogan] = useState(s.shop.slogan ?? '');
+  const save = () => { if ((s.shop.slogan ?? '') !== slogan.trim()) runtime.dispatch({ type: 'setSlogan', text: slogan }); };
+  return (
+    <>
+      <h3>Shop sign</h3>
+      <p className="muted">A brighter sign gets the shop noticed: more of the people going past come in.</p>
+      {SIGN_TIERS.map((t, i) => {
+        const price = signPrice(s, t.id), up = i === tier;
+        return (
+          <div className={`item${up ? ' current' : ''}`} key={t.id}>
+            <div><div className="name">{t.name}{up && <span className="tag">Up now</span>}</div><div className="sub">{t.blurb}{t.id === 'lit' && !s.goals.unlocked.includes('signLit') && !s.sandbox && !s.shop.signBought ? ' Free with the Regulars goal.' : ''}</div></div>
+            {!up && <button className={`btn small${price ? '' : ' ghost'}`} disabled={price > s.cash} onClick={() => runtime.dispatch({ type: 'signStyle', style: t.id })}>{price ? `Buy ${money(price)}` : 'Put up'}</button>}
+          </div>
+        );
+      })}
+      <div className="item slogan">
+        <div style={{ flex: 1 }}>
+          <div className="name">Slogan</div>
+          <div className="sub">On a panel under the pylon's board{tier >= 3 ? ', running across the LED board' : ''}.</div>
+          <input className="text-in" type="text" maxLength={SLOGAN_MAX} placeholder="Fresh every day" value={slogan} onChange={(e) => setSlogan(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter') { save(); (e.target as HTMLInputElement).blur(); } e.stopPropagation(); }} aria-label="Shop slogan" />
+        </div>
+      </div>
+      <h3>Loading bay</h3>
+      <div className="item">
+        <div><div className="name">{s.shop.loadingBay ? 'Loading bay built' : `Loading bay · ${money(LOADING_BAY_PRICE)}`}</div><div className="sub">A dock at the back door: trucks come {Math.round((1 - BAY_ETA) * 100)}% sooner and unload in half the time.</div></div>
+        {!s.shop.loadingBay && <button className="btn small" disabled={s.cash < LOADING_BAY_PRICE} onClick={() => runtime.dispatch({ type: 'buyLoadingBay' })}>Build</button>}
+      </div>
     </>
   );
 }

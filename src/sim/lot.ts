@@ -9,6 +9,7 @@ import {
   toWorld, yawToWorld, type Rect,
 } from './layout';
 import { dollars } from './money';
+import { busStopRule, chargerReachesBay } from './frontage';
 
 export interface LotCheck { ok: boolean; reason: string; price: number }
 
@@ -33,6 +34,8 @@ export function canPlaceOutside(state: GameState, type: FixtureType, x: number, 
   const others = lotPieces(shop).filter((f) => f.id !== ignoreId);
   if (others.some((f) => overlaps(footprintOf(f.type, f.x, f.z, f.rot), r))) return { ok: false, reason: 'Something is already there', price };
   if (others.some((f) => f.type === 'bikeRack' && overlaps(frontTile(f), r))) return { ok: false, reason: 'Leave room in front of the bike rack', price };
+  if (type === 'busStop') { const why = busStopRule(r, rot); if (why) return { ok: false, reason: why, price }; }
+  if (type === 'evCharger' && !chargerReachesBay(shop, x, z)) return { ok: false, reason: 'Put it beside the car park, where a bay is in reach', price };
   if (type === 'bikeRack') {
     const ft = frontTile({ x, z, rot });
     if (!inLot(ft) || onBuilding(shop, ft) || others.some((f) => overlaps(footprintOf(f.type, f.x, f.z, f.rot), ft))) return { ok: false, reason: 'Needs room in front to wheel a bike in (R turns it)', price };

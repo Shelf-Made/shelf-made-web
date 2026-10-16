@@ -2,7 +2,7 @@ import type { BufferGeometry } from 'three';
 import type { AssetLibrary } from './assets';
 import type { FixtureType } from '@/sim/types';
 import type { Scheme } from '@/sim/schemes';
-import { box, cylinder, merge, place } from './geometry';
+import { box, cylinder, sphere, merge, place } from './geometry';
 import { recolor, paintStrips } from './recolor';
 import { WALL_COLOURS } from './storeArt';
 
@@ -28,6 +28,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim', pallet: 'gen:pallet',
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
+  fountain: 'gen:fountain', statue: 'gen:statue', lampPost: 'gen:lampPost', bollard: 'gen:bollard', balloons: 'gen:balloons', hedge: 'gen:hedge', evCharger: 'gen:evCharger', busStop: 'gen:busStop',
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
   camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
   iceChest: 'gen:iceChest', coolProduce: 'gen:coolProduce', wallShelf: 'gen:wallShelf', glassCase: 'gen:glassCase', displayTable: 'gen:displayTable',
@@ -38,6 +39,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
 export const VARIANT_MODEL: Partial<Record<FixtureType, string[]>> = {
   tree: ['gen:tree', 'gen:treeRound', 'gen:treePine', 'gen:treeAutumn'], plant: ['gen:plant', 'gen:plantFern', 'gen:plantBush'], rug: ['gen:rug', 'gen:rugBlue', 'gen:rugGreen'],
   flowerBed: ['gen:flowerBed', 'gen:flowerBedPurple', 'gen:flowerBedYellow'], parkBench: ['gen:parkBench', 'gen:parkBenchPainted'], sign: ['market/column', 'gen:signShop'],
+  statue: ['gen:statue', 'gen:statueArt'], lampPost: ['gen:lampPost', 'gen:lampPostModern'], balloons: ['gen:balloons', 'gen:balloonsRainbow'], hedge: ['gen:hedge', 'gen:hedgeFlower'],
 };
 /** The model a piece is drawn with, for the look it has. */
 export function modelOf(type: FixtureType, variant: number | undefined, base: string): string { return (variant && VARIANT_MODEL[type]?.[variant]) || base; }
@@ -127,6 +129,79 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       for (let i = 0; i < 3; i++) { const x = (i - 1) * 0.28; parts.push(box(pal, '#9AA0A8', 0.025, 0.24, 0.025, x, 0, -0.22), box(pal, '#9AA0A8', 0.025, 0.24, 0.025, x, 0, 0.02), box(pal, '#9AA0A8', 0.025, 0.025, 0.27, x, 0.23, -0.1)); }
       return merge(parts);
     }
+    // ---- More for the lot.
+    case 'gen:fountain': {
+      // Two tiers of stone over a round pool (the spray and its sparkle are drawn live).
+      const stone = '#B9BCC4', water = '#5BB8E8';
+      const parts = [cylinder(pal, stone, 0.86, 0.22, 0, 0, 0, 28), cylinder(pal, '#9AA0A8', 0.9, 0.04, 0, 0.2, 0, 28), cylinder(pal, water, 0.76, 0.02, 0, 0.2, 0, 28),
+        cylinder(pal, stone, 0.1, 0.5, 0, 0.2, 0, 12, 0.08), cylinder(pal, stone, 0.2, 0.08, 0, 0.66, 0, 18, 0.36), cylinder(pal, water, 0.32, 0.015, 0, 0.735, 0, 18),
+        cylinder(pal, stone, 0.05, 0.16, 0, 0.74, 0, 8, 0.035), sphere(pal, stone, 0.055, 0, 0.93, 0)];
+      return merge(parts);
+    }
+    case 'gen:statue': case 'gen:statueArt': {
+      const parts = [box(pal, '#B9BCC4', 0.5, 0.42, 0.5, 0, 0, 0), box(pal, '#9AA0A8', 0.58, 0.05, 0.58, 0, 0.42, 0), box(pal, '#F4F7FA', 0.36, 0.05, 0.01, 0, 0.2, 0.255)];
+      if (id === 'gen:statue') {
+        // The founder in bronze, waving from the plinth.
+        const bronze = '#8A6A3A';
+        parts.push(box(pal, bronze, 0.08, 0.32, 0.1, -0.06, 0.47, 0), box(pal, bronze, 0.08, 0.32, 0.1, 0.06, 0.47, 0), box(pal, bronze, 0.26, 0.34, 0.15, 0, 0.78, 0), sphere(pal, bronze, 0.085, 0, 1.22, 0, 10, 8));
+        const arm = box(pal, bronze, 0.06, 0.3, 0.06, 0, 0, 0); arm.rotateZ(-0.55); arm.translate(0.2, 1.12, 0); parts.push(arm);
+        const down = box(pal, bronze, 0.06, 0.28, 0.06, 0, 0, 0); down.rotateZ(0.12); down.translate(-0.16, 0.82, 0); parts.push(down);
+      } else {
+        // Modern art: three cubes in the shop's colours, stacked at angles.
+        parts.push(box(pal, sc.primary, 0.3, 0.3, 0.3, 0, 0.47, 0, 0.3), box(pal, sc.accent, 0.24, 0.24, 0.24, 0.02, 0.77, 0, 0.9), box(pal, sc.trim, 0.17, 0.17, 0.17, -0.01, 1.01, 0, 1.5));
+      }
+      return merge(parts);
+    }
+    case 'gen:lampPost': return merge([
+      // A Victorian post: a fluted base, the post, and a lantern (its glass lights up after dark).
+      cylinder(pal, '#2E3A35', 0.1, 0.16, 0, 0, 0, 10, 0.07), cylinder(pal, '#2E3A35', 0.035, 1.3, 0, 0.16, 0, 8), cylinder(pal, '#2E3A35', 0.06, 0.05, 0, 1.4, 0, 8),
+      box(pal, '#2E3A35', 0.17, 0.03, 0.17, 0, 1.42, 0), box(pal, '#FFF2C0', 0.14, 0.14, 0.14, 0, 1.45, 0), cylinder(pal, '#2E3A35', 0.12, 0.08, 0, 1.59, 0, 4, 0.02),
+    ]);
+    case 'gen:lampPostModern': return merge([
+      box(pal, '#9AA0A8', 0.12, 0.04, 0.12, 0, 0, 0), box(pal, '#9AA0A8', 0.05, 1.55, 0.05, 0, 0.04, 0), box(pal, '#9AA0A8', 0.2, 0.05, 0.2, 0, 1.59, 0), box(pal, '#FFF2C0', 0.16, 0.02, 0.16, 0, 1.57, 0),
+    ]);
+    case 'gen:bollard': {
+      // Two to a tile, dark with a yellow band.
+      const parts: BufferGeometry[] = [];
+      for (const x of [-0.25, 0.25]) parts.push(cylinder(pal, '#38383D', 0.06, 0.4, x, 0, 0, 10), cylinder(pal, '#FFC844', 0.062, 0.05, x, 0.3, 0, 10), sphere(pal, '#38383D', 0.06, x, 0.4, 0, 10, 6));
+      return merge(parts);
+    }
+    case 'gen:balloons': case 'gen:balloonsRainbow': {
+      // A bunch of balloons on strings, tied to a weight.
+      const cols = id === 'gen:balloons' ? [sc.primary, sc.accent, '#FFFFFF', sc.trim, sc.primary] : ['#E8305A', '#FF8A3D', '#FFD84A', '#3FA87A', '#4F8FE0'];
+      const tops = [{ x: 0, y: 1.42, z: 0 }, { x: -0.16, y: 1.26, z: 0.05 }, { x: 0.16, y: 1.3, z: -0.04 }, { x: -0.06, y: 1.12, z: -0.12 }, { x: 0.09, y: 1.1, z: 0.13 }];
+      const parts: BufferGeometry[] = [box(pal, '#9AA0A8', 0.12, 0.08, 0.12, 0, 0, 0)];
+      tops.forEach((t, i) => {
+        parts.push(place(sphere(pal, cols[i]!, 0.13, 0, 0, 0, 12, 10), t.x, t.y, t.z, 0, 1, 1.18, 1), cylinder(pal, cols[i]!, 0.025, 0.04, t.x, t.y - 0.19, t.z, 6, 0.005));
+        // The string: from the knot down to the weight.
+        const len = Math.hypot(t.x, t.y - 0.2, t.z), s0 = box(pal, '#F4F7FA', 0.006, len, 0.006, 0, 0, 0);
+        s0.rotateX(Math.atan2(t.z, t.y - 0.2)); s0.rotateZ(-Math.atan2(t.x, t.y - 0.2)); s0.translate(0, 0.08, 0); parts.push(s0);
+      });
+      return merge(parts);
+    }
+    case 'gen:hedge': case 'gen:hedgeFlower': {
+      // Tile-wide, so a row of them makes one hedge.
+      const parts = [box(pal, '#2F7A3E', 1, 0.5, 0.56, 0, 0, 0), box(pal, '#3F8F4A', 0.96, 0.08, 0.5, 0, 0.5, 0)];
+      if (id === 'gen:hedgeFlower') for (let i = 0; i < 9; i++) parts.push(box(pal, i % 3 === 0 ? '#FFFFFF' : '#F28CB8', 0.06, 0.04, 0.06, -0.42 + (i * 0.37) % 0.84, 0.56, -0.2 + ((i * 0.23) % 0.42)));
+      return merge(parts);
+    }
+    case 'gen:evCharger': return merge([
+      // A white post with a dark screen and a green stripe; the light on top shows whether a car is plugged in.
+      box(pal, '#9AA0A8', 0.32, 0.04, 0.24, 0, 0, 0), box(pal, '#F4F7FA', 0.26, 0.92, 0.16, 0, 0.04, 0), box(pal, '#3FA87A', 0.265, 0.06, 0.165, 0, 0.82, 0),
+      box(pal, '#222226', 0.16, 0.18, 0.01, 0, 0.56, 0.08), box(pal, '#38383D', 0.08, 0.12, 0.06, 0.1, 0.35, 0.1), box(pal, '#38383D', 0.03, 0.3, 0.03, 0.1, 0.1, 0.12),
+    ]);
+    case 'gen:busStop': {
+      // A shelter in the shop's colour, facing the street: posts, glass back, canopy, a bench, the stop sign and a timetable.
+      const parts: BufferGeometry[] = [];
+      for (const x of [-0.85, 0.85]) parts.push(box(pal, '#38383D', 0.06, 1.15, 0.06, x, 0, -0.32), box(pal, '#38383D', 0.06, 1.15, 0.06, x, 0, 0.12));
+      parts.push(box(pal, '#38383D', 1.86, 0.05, 0.62, 0, 1.15, -0.1), box(pal, sc.primary, 1.9, 0.08, 0.66, 0, 1.2, -0.1), box(pal, '#CFE9F7', 1.64, 0.88, 0.02, 0, 0.2, -0.33));
+      parts.push(box(pal, '#D9A066', 1.2, 0.05, 0.22, 0, 0.28, -0.2), box(pal, '#38383D', 0.05, 0.28, 0.05, -0.5, 0, -0.2), box(pal, '#38383D', 0.05, 0.28, 0.05, 0.5, 0, -0.2));
+      parts.push(box(pal, '#F4F7FA', 0.3, 0.42, 0.02, -0.6, 0.42, -0.31), box(pal, '#38383D', 0.22, 0.03, 0.022, -0.6, 0.72, -0.31), box(pal, '#9AA0A8', 0.22, 0.02, 0.022, -0.6, 0.62, -0.31), box(pal, '#9AA0A8', 0.22, 0.02, 0.022, -0.6, 0.55, -0.31));
+      parts.push(box(pal, '#9AA0A8', 0.05, 1.5, 0.05, 0.98, 0, 0.3), cylinder(pal, '#4F8FE0', 0.17, 0.04, 0, 0, 0, 16), box(pal, '#FFFFFF', 0.2, 0.05, 0.01, 0.98, 1.545, 0.345));
+      // (The disc stands upright, facing the street.)
+      const disc = parts[parts.length - 2]!; disc.rotateX(Math.PI / 2); disc.translate(0.98, 1.57, 0.3);
+      return merge(parts);
+    }
     case 'gen:billboard': {
       // Two legs and a board across both tiles, in the shop's colours (the name goes on in the store view).
       const parts: BufferGeometry[] = [];
@@ -146,6 +221,8 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:flowerBedPurple': return flowerBed(['nature/flower-purplea', 'nature/flower-purplea', 'nature/flower-redb']);
     case 'gen:flowerBedYellow': return flowerBed(['nature/flower-yellowa', 'nature/flower-yellowb', 'nature/flower-yellowa']);
     case 'gen:parkBenchPainted': return recolor(m('furniture/bench', 0, 0, 0, 0, 2.6, 1.35, 2.4), (from) => (from.row === 3 ? { row: 2, strip: 1 } : null));
+    // An aisle sign with your own words on it: a wider board (the words go on both faces in the store view).
+    case 'gen:signText': return merge([box(pal, '#38383D', 0.05, 0.62, 0.05, 0, 0, 0), box(pal, sc.primary, 0.76, 0.27, 0.05, 0, 0.595, 0), box(pal, sc.dark, 0.78, 0.025, 0.06, 0, 0.865, 0)]);
     case 'gen:signShop': return merge([box(pal, '#38383D', 0.05, 0.62, 0.05, 0, 0, 0), box(pal, sc.primary, 0.62, 0.22, 0.05, 0, 0.6, 0), box(pal, '#FFFFFF', 0.5, 0.04, 0.052, 0, 0.69, 0)]);
     // The displays (tile space, the back against the tile's back edge at z −0.45; their stock goes in SLOT_BOXES).
     // An ice-cream chest: a white well with a sky-blue rim and glass edge, open on top.
@@ -314,6 +391,8 @@ export function glowGeometry(type: FixtureType, pal: AssetLibrary['palette']): B
     case 'floorLamp': return cylinder(pal, '#FFFFFF', 0.094, 0.126, 0, 0.497, 0, 14, 0.069);
     case 'wallLight': return box(pal, '#FFFFFF', 0.3, 0.13, 0.2, 0, 0.615, WALL_FACE + 0.06);
     case 'pendant': return box(pal, '#FFFFFF', 0.165, 0.3, 0.165, 0, 0.635, 0);
+    // Either look's lantern (the modern one's flat light sits inside the same box).
+    case 'lampPost': return box(pal, '#FFFFFF', 0.15, 0.15, 0.15, 0, 1.445, 0);
     case 'neon': {
       // A heart and "OPEN" are too fine for the tubes at this size: a bright frame and a zigzag.
       const t = 0.024, z = WALL_FACE + 0.03, y0 = 0.4, y1 = 0.64, x0 = -0.24, x1 = 0.24;

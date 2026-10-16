@@ -20,6 +20,7 @@ import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
 import { onFrontage } from './life';
 import { lotAppeal } from './lot';
+import { SIGN_TIERS, signTier } from './frontage';
 import { weatherAt } from './weather';
 
 export type PhotoKind = 'outside' | 'aisle' | 'haul' | 'selfie';
@@ -122,7 +123,7 @@ export function looksOf(state: GameState): Looks {
   const windows = Math.min(count('window'), 15) * 0.016;
   // A double-height space or two (panels taken down): light and air.
   const lofty = Math.min(highCeilings(shop), 6) * 0.02;
-  const extras = clamp((shop.signStyle === 'lit' ? 0.3 : 0) + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.bays.length >= 8 ? 0.15 : 0) + 0.25 * curb + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + lofty + 0.1, 0, 1);
+  const extras = clamp(SIGN_TIERS[signTier(shop)]!.looks + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.bays.length >= 8 ? 0.15 : 0) + 0.25 * curb + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + lofty + 0.1, 0, 1);
   // Decor matters most: a clean, full shop with nothing on show is fine, not lovely.
   const score = 0.3 * decor + 0.16 * tidy + 0.18 * shelves + 0.1 * space + 0.14 * outside + 0.12 * extras;
   return { decor, tidy, shelves, space, outside, curb, extras, score };

@@ -13,6 +13,8 @@ export interface Waypoint extends Vec2 { ride?: number; via?: number; yaw?: numb
 /** Rotation in quarter turns, 0 = facing +z (south, toward the camera). */
 export type Rot = 0 | 1 | 2 | 3;
 
+/** The shop's sign, from painted letters up. */
+export type SignStyle = 'classic' | 'lit' | 'neon' | 'led';
 export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet' | 'storeRack'
   /** More displays: an ice-cream chest, chilled produce, a wall shelf, a glass counter, a display table, a bakery case, a clothes rail, a vending machine. */
   | 'iceChest' | 'coolProduce' | 'wallShelf' | 'glassCase' | 'displayTable' | 'bakeryCase' | 'clothesRail' | 'vending'
@@ -26,6 +28,8 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'camera' | 'dome' | 'smartCam' | 'tagGate'
   /** Out on the lot. */
   | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard'
+  /** More for the lot: a fountain, a statue, lamp posts, bollards, balloons, hedges, a car charger and your own bus stop. */
+  | 'fountain' | 'statue' | 'lampPost' | 'bollard' | 'balloons' | 'hedge' | 'evCharger' | 'busStop'
   /** Up to the next floor. */
   | 'stairs' | 'escalator' | 'elevator';
 
@@ -102,6 +106,8 @@ export interface Fixture {
   variant?: number;
   /** Bike rack only: who has a bike in each stand (a person id), or null. */
   bikes?: (number | null)[];
+  /** Aisle sign only: your own words on it. */
+  text?: string;
 }
 
 export type CustomerType = 'bargain' | 'convenience' | 'loyalist' | 'impulse';
@@ -298,6 +304,8 @@ export interface Car {
   timer: number;
   /** Delivery trucks: the order they carry. */
   orderId?: number;
+  /** An electric car plugged in at a charger on the lot: the charger's id. */
+  charging?: number;
   /** Backing out of a bay: the car moves along its path facing the other way. */
   reversing?: boolean;
   /** Backing out: the heading at each point of the path (the back-out arc, worked out on the rear axle). */
@@ -374,8 +382,14 @@ export interface Shop {
   reputation: number;
   awareness: number;
   cleanliness: number;
-  /** Sign lettering: plain, or lit after dark (a goal reward). */
-  signStyle?: 'classic' | 'lit';
+  /** Sign lettering: painted, lit after dark, neon, or an LED board on the pylon (see SIGN_TIERS). */
+  signStyle?: SignStyle;
+  /** The best sign bought so far (any up to it can be put back up for free). */
+  signBought?: SignStyle;
+  /** A line under the name on the pylon (and across the LED board). */
+  slogan?: string;
+  /** A loading bay at the back door: trucks come sooner and unload faster. */
+  loadingBay?: boolean;
   /** Bumped whenever fixtures or walls change, so the pathfinding grid is rebuilt. */
   layoutVersion: number;
   /** Abandoned baskets and mess on the floor. */
@@ -433,6 +447,8 @@ export interface DayStats {
   bills: number;
   /** What shoplifters got away with today, at cost (the shop paid for it, nobody paid it back). */
   theft: number;
+  /** What drivers paid at the car chargers today (on top of sales). */
+  charging?: number;
   /** Shoplifters caught today, and the ones who got away. */
   caught?: number;
   escaped?: number;

@@ -1,4 +1,5 @@
 import { tickLife } from './life';
+import { tickChargers } from './frontage';
 import { managerSavedOrders } from './savedOrders';
 import { tickReviews } from './reviews';
 import type { GameState } from './types';
@@ -68,6 +69,7 @@ export function tick(state: GameState): void {
   ambient(state, 1);
   tickOrders(state, TICK);
   tickCars(state);
+  tickChargers(state);
   tickPeople(state);
   tickLife(state);
   tickReviews(state);

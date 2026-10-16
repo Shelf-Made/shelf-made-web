@@ -1,4 +1,4 @@
-import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, CircleGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Box3, PointLight, Sprite, SpriteMaterial, BoxGeometry, TextureLoader, SRGBColorSpace, type BufferGeometry, type Raycaster } from 'three';
+import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, CircleGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Box3, PointLight, Sprite, SpriteMaterial, BoxGeometry, PlaneGeometry, SphereGeometry, TextureLoader, SRGBColorSpace, type BufferGeometry, type Raycaster, type CanvasTexture } from 'three';
 import { icon } from './Reactions';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BufferGeometry as BoxGeometryEmpty, Float32BufferAttribute } from 'three';
@@ -10,6 +10,8 @@ import { PRODUCTS, productDef } from '@/sim/products';
 import { DEFAULT_PAINT } from '@/sim/layout';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
+import { signTier, chargersInUse } from '@/sim/frontage';
+import { wordsTexture, tickerTexture } from './labels';
 import { doubleHeight } from '@/sim/storeys';
 import { underFloors, spillMark } from './levels';
 
@@ -20,8 +22,11 @@ const DEPT_COLOURS: Partial<Record<string, string>> = {
   bakery: '#D9A066', frozen: '#4F8FE0', pets: '#C8423A', toys: '#FFC044', clothing: '#9B6FE0', electronics: '#38383D', home: '#3FA87A',
   books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
 };
-const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail']);
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
+  'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger']);
 
+/** Drops of spray over each fountain. */
+const SPRAY = 36;
 /** Delivery boxes drawn at most (about four units each). */
 const BOX_MAX = 220;
 
@@ -148,6 +153,11 @@ export class StoreView {
       box(pal, '#FFC044', 0.3, 0.022, 0.03, -0.24, 0.262, 0.06), ...[-0.24, -0.08, 0.08, 0.22].map((z) => box(pal, '#38383D', 0.3, 0.004, 0.012, -0.24, 0.262, z))]);
     this.belts = new InstancedMesh(belt, this.assets.material, 24); this.belts.count = 0; this.belts.frustumCulled = false; this.belts.castShadow = true;
     this.root.add(this.belts);
+    this.chargerLights = new InstancedMesh(box(pal, '#FFFFFF', 0.08, 0.035, 0.08, 0, 0, 0), new MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), 8);
+    this.chargerLights.count = 0; this.chargerLights.frustumCulled = false;
+    this.spray = new InstancedMesh(new SphereGeometry(0.022, 6, 4), new MeshBasicMaterial({ color: new Color('#D8F2FF'), transparent: true, opacity: 0.85 }), SPRAY * 2);
+    this.spray.count = 0; this.spray.frustumCulled = false;
+    this.root.add(this.chargerLights, this.spray, this.signLabels);
     this.root.add(this.headers);
     try { this.font = await new FontLoader().loadAsync('/fonts/fredoka-bold.typeface.json'); } catch { this.font = null; }
   }
@@ -167,6 +177,28 @@ export class StoreView {
   private lampPools: InstancedMesh | null = null;
   private wallCut: { full: InstancedMesh; cut: InstancedMesh }[] = [];
   private readonly neonMat = new MeshBasicMaterial({ color: new Color(2.6, 0.9, 1.8) });
+  /** The shop's neon sign tubes. */
+  private readonly signNeon = new MeshBasicMaterial({ color: new Color(2.4, 0.75, 1.7) });
+  /** The LED board's running line (its texture scrolls), if the shop has one. */
+  private ticker: CanvasTexture | null = null;
+  /** Words on signs (an aisle sign's own, the slogan), by texture. */
+  private readonly labelMats = new Map<string, MeshStandardMaterial | MeshBasicMaterial>();
+  private labelMat(tex: CanvasTexture, glow: boolean): MeshStandardMaterial | MeshBasicMaterial {
+    const key = `${tex.uuid}|${glow}`;
+    let m = this.labelMats.get(key);
+    if (!m) {
+      m = glow ? new MeshBasicMaterial({ map: tex, color: new Color(1.6, 1.6, 1.6), toneMapped: false }) : new MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.9, metalness: 0, depthWrite: false });
+      this.labelMats.set(key, m);
+    }
+    return m;
+  }
+  /** Car chargers' status lights (green: a car plugged in) and the fountains' spray, moved every frame. */
+  private chargerLights: InstancedMesh | null = null;
+  private chargerIds: number[] = [];
+  private spray: InstancedMesh | null = null;
+  private fountainSpots: { x: number; y: number; z: number; seed: number }[] = [];
+  /** Aisle signs' own words. */
+  private readonly signLabels = new Group();
   private night = false;
   private bunting: Mesh | null = null;
   /** Lit windows, the strip light under the fascia and the pool of light on the apron, shown at night. */
@@ -508,6 +540,41 @@ export class StoreView {
     const pylonMesh = new Mesh(merge(pylon), this.assets.material);
     pylonMesh.castShadow = true;
     this.shell.add(pylonMesh);
+    // The sign's tier: neon tubes round the fascia and the pylon's board (neon and up); the slogan on a panel under
+    // the pylon's board, or on the top sign an LED board there with the slogan running across it.
+    this.ticker = null;
+    { const tier = signTier(shop), slogan = shop.slogan ?? '';
+      if (tier >= 2) {
+        const tubes: BufferGeometry[] = [];
+        const frame = (w: number, h: number, x: number, y: number, z: number, t = 0.024) => {
+          tubes.push(box(pal, '#FFFFFF', w, t, t, x, y, z), box(pal, '#FFFFFF', w, t, t, x, y + h - t, z), box(pal, '#FFFFFF', t, h, t, x - w / 2 + t / 2, y, z), box(pal, '#FFFFFF', t, h, t, x + w / 2 - t / 2, y, z));
+        };
+        frame(width + 0.4, 0.44, ox + (fr.x0 + fr.x1) / 2, 1.025, fz + 0.045);
+        for (const s of [1, -1]) frame(boardW - 0.06, 0.49, px, 1.03, pz + s * 0.074);
+        this.shell.add(new Mesh(merge(tubes), this.signNeon));
+      }
+      if (slogan || tier >= 3) {
+        const w = Math.max(0.6, boardW - 0.58), h = 0.24, y = 0.66;
+        this.shell.add(Object.assign(new Mesh(box(pal, tier >= 3 ? '#222226' : '#FFF6E0', w + 0.05, h + 0.05, 0.07, px, y - 0.025, pz), this.assets.material), { castShadow: true }));
+        const tex = tier >= 3 ? tickerTexture(`${slogan || 'Open every day'}   •   ${name}`) : wordsTexture(slogan, 512, Math.round(512 * h / w), sc.dark, null);
+        if (tex) {
+          const mat = this.labelMat(tex, tier >= 3);
+          for (const s of [1, -1]) { const face = new Mesh(new PlaneGeometry(w, h), mat); face.position.set(px, y + h / 2, pz + s * 0.0365); face.rotation.y = s > 0 ? 0 : Math.PI; this.shell.add(face); }
+          if (tier >= 3) this.ticker = tex;
+        }
+      }
+    }
+    // A loading bay: hatching where the truck stands, and a dock with rubber bumpers by the back door.
+    if (shop.loadingBay) {
+      const ts = lotLayout(shop).truckStop, bay: BufferGeometry[] = [];
+      const len = 2.8, wid = 1.25, wallOut = backZ - WALL_T;
+      for (const s of [-1, 1]) bay.push(box(pal, '#FFC844', len, 0.012, 0.07, ts.x, 0.018, ts.z + s * wid / 2));
+      for (let i = 0; i < 8; i++) bay.push(box(pal, i % 2 ? '#38383D' : '#FFC844', 0.16, 0.012, wid - 0.1, ts.x + len / 2 - 0.12 - i * 0.16, 0.018, ts.z));
+      const dx = shop.backDoor.x;
+      bay.push(box(pal, '#B9BCC4', 1.4, 0.12, 0.42, dx, 0, wallOut - 0.21), box(pal, '#FFC844', 1.4, 0.03, 0.04, dx, 0.1, wallOut - 0.42));
+      for (const s of [-1, 1]) bay.push(box(pal, '#222226', 0.1, 0.18, 0.07, dx + s * 0.55, 0.06, wallOut - 0.46));
+      this.shell.add(Object.assign(new Mesh(merge(bay), this.assets.material), { receiveShadow: true }));
+    }
     // Roof: a flat deck with a parapet in the shop's green, worn when you are outside and pulled back.
     { // Over the floor and its walls, tile by tile, on top of however many storeys stand there, with the parapet round each outline.
       const roof: BufferGeometry[] = [];
@@ -559,7 +626,7 @@ export class StoreView {
       if (litPanes.length) g.add(new Mesh(merge(litPanes), WINDOW_GLOW));
       g.add(new Mesh(box(pal, '#FFE6A8', width + 0.3, 0.025, 0.03, ox + (f.x0 + f.x1) / 2, 0.735, fz + 0.03), SIGN_GLOW));
       // Lit letters (a goal reward): the name on the fascia and the pylon shines after dark.
-      if (shop.signStyle === 'lit') {
+      if (signTier(shop) >= 1) {
         const lit = [place(this.letters(name, size, 0.05, CREAM, sc.trim), ox + (f.x0 + f.x1) / 2, 1.25 - size * 0.4, fz + 0.046)];
         for (const yaw of [0, Math.PI]) lit.push(place(this.letters(name, psize, 0.04, CREAM, sc.trim, false), px, 1.24 - psize * 0.4, pz + (yaw === 0 ? 0.076 : -0.076), yaw));
         g.add(Object.assign(new Mesh(merge(lit), SIGN_GLOW), { name: 'lit-sign' }));
@@ -721,6 +788,30 @@ export class StoreView {
     for (const [hex, mesh] of this.parked) { mesh.count = n.get(hex) ?? 0; mesh.instanceMatrix.needsUpdate = true; }
   }
 
+  /** Every frame: the LED board's line runs, the chargers show who is plugged in, and the fountains play. */
+  private animateLot(state: GameState): void {
+    const t = performance.now() / 1000;
+    if (this.ticker) this.ticker.offset.x = (t * 0.05) % 1;
+    if (this.chargerLights && this.chargerIds.length) {
+      const busy = chargersInUse(state);
+      this.chargerIds.forEach((id, i) => this.chargerLights!.setColorAt(i, this.color.set(busy.has(id) ? '#3FE07A' : '#4FA8FF')));
+      if (this.chargerLights.instanceColor) this.chargerLights.instanceColor.needsUpdate = true;
+    }
+    if (this.spray && this.fountainSpots.length) {
+      let k = 0;
+      for (const c of this.fountainSpots) for (let i = 0; i < SPRAY; i++) {
+        // Up out of the top spout in a ring of arcs, and down into the pool.
+        const ph = (t * 0.8 + i / SPRAY + (c.seed % 7) * 0.13) % 1, a = ((i % 12) / 12) * Math.PI * 2 + c.seed;
+        const r = 0.08 + ph * 0.55, y = 0.95 + 0.45 * ph - 1.2 * ph * ph;
+        const s = 1 - ph * 0.45;
+        this.dummy.position.set(c.x + Math.cos(a) * r, c.y + y, c.z + Math.sin(a) * r);
+        this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(s, s, s); this.dummy.updateMatrix();
+        this.spray.setMatrixAt(k++, this.dummy.matrix);
+      }
+      this.spray.count = k; this.spray.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   /** A fixture model painted for the warm shop (cached per model). */
   private fixtureGeometry(model: string): BufferGeometry {
     let g = this.painted.get(model);
@@ -759,6 +850,7 @@ export class StoreView {
     if (this.bunting) this.bunting.visible = (state.day === 1 || state.marketing.openingEventDay === state.day) && state.phase !== 'night' && state.phase !== 'picking';
     if (shop.layoutVersion !== this.layoutVersion) { this.rebuildFixtures(shop); this.layoutVersion = shop.layoutVersion; this.stockKey = ''; }
     this.updateBikes(state);
+    this.animateLot(state);
     const key = `${stockKey(shop)}|${this.viewLevel}`;
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }
     const n = Math.min(8, shop.litter.length);
@@ -825,7 +917,7 @@ export class StoreView {
     if (this.lampPools) { this.root.remove(this.lampPools); this.lampPools.dispose(); this.lampPools = null; }
     const byModel = new Map<string, Fixture[]>();
     const shown = shop.fixtures.filter((f) => this.shown(f));
-    for (const f of shown) { const id = f.type === 'fridge' ? 'chiller' : modelOf(f.type, f.variant, FIXTURE_MODEL[f.type]); const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
+    for (const f of shown) { const id = f.type === 'fridge' ? 'chiller' : f.type === 'sign' && f.text ? 'gen:signText' : modelOf(f.type, f.variant, FIXTURE_MODEL[f.type]); const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
     const m = new Matrix4();
     for (const [model, list] of byModel) {
       // A piece whose model is missing is skipped, never the rest of the shop with it.
@@ -878,11 +970,11 @@ export class StoreView {
       this.root.add(gm);
       this.glows.set(type, gm);
     }
-    const lamps = lit.filter((f) => LAMPS.has(f.type));
+    const lamps = lit.filter((f) => LAMPS.has(f.type) || f.type === 'lampPost');
     if (lamps.length) {
       this.lampPools = new InstancedMesh(spillGeometry(0.95, 0.95, 0, 0.02, 0, 0.5), SPILL, lamps.length);
       // On the floor: a hanging light under a double-height ceiling hangs a storey up, its pool does not.
-      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, f.type === 'pendant' && doubleHeight(shop, f.x, f.z) ? -STOREY : 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); this.lampPools!.setMatrixAt(i, m); });
+      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, f.type === 'pendant' && doubleHeight(shop, f.x, f.z) ? -STOREY : 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); if (f.type === 'lampPost') m.multiply(this.tmpM.makeScale(2.2, 1, 2.2)); this.lampPools!.setMatrixAt(i, m); });
       this.lampPools.renderOrder = 1;
       this.root.add(this.lampPools);
     }
@@ -897,6 +989,28 @@ export class StoreView {
     }
     for (const f of shown) if (f.type === 'fridge') { this.wells.setMatrixAt(wi++, this.fixtureMatrix(shop, f, m, 0, true)); }
     this.wells.count = wi; this.wells.instanceMatrix.needsUpdate = true;
+    // Car chargers' lights (coloured every frame by whether a car is plugged in), and where each fountain sprays.
+    this.chargerIds = [];
+    if (this.chargerLights) {
+      for (const f of shown) if (f.type === 'evCharger' && this.chargerIds.length < 8) { this.fixtureMatrix(shop, f, m, 0.96, true); this.chargerLights.setMatrixAt(this.chargerIds.length, m); this.chargerIds.push(f.id); }
+      this.chargerLights.count = this.chargerIds.length; this.chargerLights.instanceMatrix.needsUpdate = true;
+    }
+    this.fountainSpots = shown.filter((f) => f.type === 'fountain').slice(0, 2).map((f) => { const r = footprintOf(f.type, f.x, f.z, f.rot); return { x: (r.x0 + r.x1) / 2, y: 0, z: (r.z0 + r.z1) / 2, seed: f.id }; });
+    if (this.spray) this.spray.count = 0;
+    // Aisle signs with your own words on them, both faces.
+    for (const c of [...this.signLabels.children]) { this.signLabels.remove(c); (c as Mesh).geometry.dispose(); }
+    for (const f of shown) {
+      if (f.type !== 'sign' || !f.text) continue;
+      const tex = wordsTexture(f.text, 512, 160, '#FFFFFF', null);
+      if (!tex) continue;
+      this.fixtureMatrix(shop, f, m, 0, true);
+      for (const s of [1, -1]) {
+        const face = new Mesh(new PlaneGeometry(0.68, 0.21), this.labelMat(tex, false));
+        face.matrixAutoUpdate = false;
+        face.matrix.copy(m).multiply(this.tmpM.makeTranslation(0, 0.73, s * 0.0265)).multiply(new Matrix4().makeRotationY(s > 0 ? 0 : Math.PI));
+        this.signLabels.add(face);
+      }
+    }
   }
 
   /** Stock: each slot's units laid out in a grid that fits the slot box, scaled down if needed, so nothing clips. */
@@ -1147,7 +1261,7 @@ function stockKey(shop: Shop): string {
 
 export { mergeGeometries, paint };
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${JSON.stringify(shop.wallColors ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${JSON.stringify(shop.wallColors ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.loadingBay ? 'bay' : ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
 function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean; cross?: boolean; veins?: string } {

@@ -764,3 +764,10 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .variant-pick .v-name { min-width: 110px; text-align: center; font-weight: 700; font-size: 13px; }
 .variant-pick .btn { min-width: 30px; font-size: 18px; line-height: 1; }
 .build-tools .btn.on { background: var(--slate); color: #fff; }
+/* The shop front: the sign up now stands out; the slogan box sits under its label. */
+.item.current { background: #eaf6ef; box-shadow: inset 0 0 0 2px #bfe3cf; }
+.item .name .tag { margin-left: 6px; background: #dff5ea; color: var(--green-dark); vertical-align: 1px; }
+.item.slogan { grid-template-columns: 1fr; }
+.item .text-in { margin-top: 6px; padding: 7px 10px; font-size: 14px; }
+.sign-words { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.sign-words input { padding: 6px 9px; font-size: 14px; }

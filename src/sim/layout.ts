@@ -610,6 +610,17 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   bikeRack: { type: 'bikeRack', name: 'Bike rack', price: 50, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.02, looksCap: 2 },
   /** Your own board on your own lot: no rent, and drivers on Main Road see it every day. */
   billboard: { type: 'billboard', name: 'Billboard', price: 300, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true },
+  fountain: { type: 'fountain', name: 'Fountain', price: 900, w: 2, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'outside', outdoor: true, curb: 0.12, looksCap: 1 },
+  statue: { type: 'statue', name: 'Statue', price: 600, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.08, looksCap: 2 },
+  /** Lit after dark. */
+  lampPost: { type: 'lampPost', name: 'Lamp post', price: 80, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'outside', outdoor: true, curb: 0.025, looksCap: 6 },
+  bollard: { type: 'bollard', name: 'Bollard', price: 15, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.006, looksCap: 8 },
+  balloons: { type: 'balloons', name: 'Balloons', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.03, looksCap: 4 },
+  hedge: { type: 'hedge', name: 'Hedge', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.02, looksCap: 10 },
+  /** Electric cars parked near it plug in, and their drivers pay to charge. */
+  evCharger: { type: 'evCharger', name: 'Car charger', price: 1200, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'outside', outdoor: true, curb: 0.02, looksCap: 2 },
+  /** Your own stop on the bus route, by the sidewalk: more shoppers, and the rush-hour crowd gets off at your door. */
+  busStop: { type: 'busStop', name: 'Bus stop', price: 2500, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3, category: 'outside', outdoor: true },
   // Up to the next floor: each runs back from its front tile and comes up through the floor above.
   stairs: { type: 'stairs', name: 'Stairs', price: 450, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'storeys' },
   escalator: { type: 'escalator', name: 'Escalator', price: 1600, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 5, category: 'storeys' },
@@ -661,7 +672,7 @@ export function solidRect(f: { type: FixtureType; x: number; z: number; rot: num
 }
 
 /** Most of each that the lot takes. */
-export const LOT_MAX: Partial<Record<FixtureType, number>> = { billboard: 2, bikeRack: 4 };
+export const LOT_MAX: Partial<Record<FixtureType, number>> = { billboard: 2, bikeRack: 4, fountain: 2, evCharger: 4, busStop: 1 };
 /** Bikes a rack holds. */
 export const RACK_STANDS = 3;
 
@@ -696,6 +707,7 @@ export const FLOORS: { id: FloorStyle; name: string; perTile: number; looks: num
 export const VARIANTS: Partial<Record<FixtureType, string[]>> = {
   tree: ['Oak', 'Round tree', 'Pine', 'Autumn oak'], plant: ['Potted plant', 'Fern', 'Tall bush'], rug: ['Red rug', 'Blue rug', 'Green rug'],
   flowerBed: ['Red and yellow', 'Purple', 'All yellow'], parkBench: ['Wooden', 'Painted'], sign: ['Classic', 'Shop colour'],
+  statue: ['The founder', 'Modern art'], lampPost: ['Classic', 'Modern'], balloons: ['Shop colours', 'Rainbow'], hedge: ['Box hedge', 'In flower'],
 };
 /** What a piece fetches back when sold: all it cost the day it was bought, 60% after. */
 export function refundOf(f: { type: FixtureType; bought?: number; conveyor?: boolean }, day: number, conveyorPrice = 0): number {

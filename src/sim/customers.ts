@@ -6,6 +6,7 @@ import type { GameState, CustomerType, RivalState, StoreScores } from './types';
 import { PRODUCTS, productDef, holidayOn } from './products';
 import { plotDef, PLOTS, DIFFICULTY, FIXTURES, shopArea } from './layout';
 import { bikePull, lotAppeal } from './lot';
+import { frontagePull } from './frontage';
 
 export const TYPE_WEIGHTS: Record<CustomerType, StoreScores> = {
   bargain: { price: 0.45, availability: 0.15, layout: 0.05, wait: 0.1, parking: 0.05, awareness: 0.2 },
@@ -164,7 +165,7 @@ export function expectedByType(state: GameState): Record<CustomerType, number> {
   const plot = plotDef(state.shop.plotId);
   const base = state.demandBase;
   const openRivals = state.rivals.filter((r) => r.open).length;
-  const pool = base * plot.traffic * (1 + 0.75 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand * bikePull(state.shop);
+  const pool = base * plot.traffic * (1 + 0.75 * openRivals) * (0.55 + 0.45 * state.shop.awareness) * (0.7 + 0.6 * state.shop.reputation) * state.eventDemand * bikePull(state.shop) * frontagePull(state.shop);
   const share = playerShare(state);
   const out = {} as Record<CustomerType, number>;
   for (const type of Object.keys(TYPE_BASE) as CustomerType[]) out[type] = pool * TYPE_BASE[type] * plot.mix[type] * share[type];

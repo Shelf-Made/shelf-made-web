@@ -5,6 +5,7 @@ import { PRODUCTS, productDef, inSeason, holidayName, holidayOn, sizeOf, HOLIDAY
 import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
 import { spawnDeliveryTruck, deliverOrder } from './cars';
+import { BAY_ETA } from './frontage';
 import { doorOutside } from './people';
 import { rivalDay, rivalsNight, planRivals } from './rivals';
 import { computeScores, priceIndex, playerShare } from './customers';
@@ -59,7 +60,7 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold
   // While the shop is still being fitted out the truck is quick, so the first five minutes keep moving.
-  const eta = state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds;
+  const eta = (state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds) * (state.shop.loadingBay ? BAY_ETA : 1);
   const order: Order = { id: state.nextId++, supplierId: sup.id, lines: clean, total, placedDay: state.day, placedTime: state.time, eta, state: 'pending' };
   state.orders.push(order);
   cue(state, 'order');
@@ -118,7 +119,7 @@ export function closeDay(state: GameState): void {
   state.cash -= bills;
   const extra = closingCharges(state);
   t.loans = extra.loans; t.bills = extra.bills; t.theft = extra.theft;
-  t.profit = Math.round((t.revenue - t.cogs - bills - extra.theft - extra.loans * 0.3) * 100) / 100;
+  t.profit = Math.round((t.revenue + (t.charging ?? 0) - t.cogs - bills - extra.theft - extra.loans * 0.3) * 100) / 100;
   checkFailState(state);
   t.endCash = state.cash;
   t.satisfaction = t.satisfactionN ? t.satisfaction / t.satisfactionN : 0.5;

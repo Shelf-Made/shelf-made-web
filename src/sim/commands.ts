@@ -3,8 +3,9 @@
  * Commands are plain data, so they can be recorded for replays and driven by tests.
  */
 import { pickUpLitter, moveAlong } from './life';
+import { setSign, setSlogan, buyLoadingBay, cleanSignText } from './frontage';
 import { replyToReview } from './reviews';
-import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder } from './types';
+import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder, SignStyle } from './types';
 import { saveOrder, editSavedOrder, deleteSavedOrder, placeSaved } from './savedOrders';
 import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE } from './people';
@@ -63,7 +64,10 @@ export type Command =
   | { type: 'replaceManager'; franchiseId: number; managerId: number }
   | { type: 'buyCorner'; rivalId: string; managerId: number }
   | { type: 'openingEvent' }
-  | { type: 'signStyle'; style: 'classic' | 'lit' }
+  | { type: 'signStyle'; style: SignStyle }
+  | { type: 'setSlogan'; text: string }
+  | { type: 'buyLoadingBay' }
+  | { type: 'setSignText'; fixtureId: number; text: string }
   | { type: 'setFloor'; style: FloorStyle }
   /** One tile: lay a finish on it, or buy it to grow the shop. */
   | { type: 'paintFloor'; x: number; z: number; style: FloorStyle; colour?: string }
@@ -119,7 +123,7 @@ export const GRAB_REACH = 1.3;
 /** The sound a command makes when it works and has not already made its own. */
 const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
   removeFixture: 'sell', moveFixture: 'place', setPrice: 'tick', flyers: 'paper', billboard: 'build', promotion: 'order', ad: 'order',
-  outsideSign: 'build', signStyle: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
+  outsideSign: 'build', signStyle: 'build', buyLoadingBay: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
   setShift: 'tick', setBreak: 'tick', restyleStaff: 'tap', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
 };
 
@@ -349,9 +353,15 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'placeSavedOrder': { const err = placeSaved(state, cmd.id); if (!err) cue(state, 'order'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'deleteSavedOrder': { const err = deleteSavedOrder(state, cmd.id); return err ? { ok: false, message: err } : { ok: true }; }
     case 'eraseBay': { const err = eraseBay(state, cmd.slot); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
-    case 'signStyle': {
-      if (cmd.style === 'lit' && !state.goals.unlocked.includes('signLit') && !state.sandbox) return { ok: false, message: 'Reach the Regulars goal to light the sign.' };
-      state.shop.signStyle = cmd.style; state.shop.layoutVersion++;
+    case 'signStyle': { const err = setSign(state, cmd.style); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'setSlogan': { setSlogan(state, cmd.text); return { ok: true }; }
+    case 'buyLoadingBay': { const err = buyLoadingBay(state); if (!err) { const o = state.people.find((p) => p.kind === 'owner'); if (o) popup(state, o, 'Loading bay built!', 'info', 1.4); } return err ? { ok: false, message: err } : { ok: true }; }
+    case 'setSignText': {
+      const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId);
+      if (!f || f.type !== 'sign') return { ok: false, message: 'That is not an aisle sign.' };
+      const t = cleanSignText(cmd.text);
+      if (t) f.text = t; else delete f.text;
+      state.shop.layoutVersion++;
       return { ok: true };
     }
     case 'ackChampion': { state.goals.championSeen = true; return { ok: true }; }

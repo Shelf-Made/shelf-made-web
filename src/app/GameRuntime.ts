@@ -100,7 +100,7 @@ export interface Snapshot {
   inspect: (InspectInfo & { following: boolean }) | null;
   /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
   /** A piece's menu (id -1: the delivery pallet). A pallet's lists what is on it to pick up; the delivery pallet cannot be moved. */
-  fixtureMenu: { id: number; name: string; use: string | null; refund?: number; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean; upgrade?: { label: string; price: number } } | null;
+  fixtureMenu: { id: number; name: string; use: string | null; refund?: number; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean; upgrade?: { label: string; price: number }; words?: string } | null;
   /** At night, whether the day's log is up (it can be closed, and comes back from the bar at the top). */
   nightLog: boolean;
   /** The shop's listing on the map app: how many reviews, the rating, and how many came in since you last looked. */
@@ -317,7 +317,7 @@ export class GameRuntime {
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
     return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: refundOf(f, s.day, CONVEYOR_PRICE), ...(f.type === 'pallet' ? { picks: picks() } : {}),
-      ...(f.type === 'register' && !f.conveyor ? { upgrade: { label: 'Conveyor belt', price: CONVEYOR_PRICE } } : {}) };
+      ...(f.type === 'register' && !f.conveyor ? { upgrade: { label: 'Conveyor belt', price: CONVEYOR_PRICE } } : {}), ...(f.type === 'sign' ? { words: f.text ?? '' } : {}) };
   }
   /** Picked from a pallet's menu: walk over and pick that box up. */
   palletPick(productId: string): void {

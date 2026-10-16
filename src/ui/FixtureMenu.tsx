@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { SIGN_TEXT_MAX } from '@/sim/frontage';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { ICONS } from './TopBar';
 import { dollars } from '@/sim/money';
@@ -9,6 +10,18 @@ const SELL = <svg viewBox="0 0 24 24"><circle className="fill" cx="12" cy="12" r
 const SERVE = <svg viewBox="0 0 24 24"><path className="fill" d="M3 12h18v8H3z" /><path d="M3 12h18v8H3zM6 12V8h8v4M9 8V5h2M16 15.5h2" /></svg>;
 const BELT = <svg viewBox="0 0 24 24"><path className="fill" d="M3 13h18v4H3z" /><path d="M3 13h18v4H3zM6 13v4M10 13v4M14 13v4M18 13v4M7 13V9h4v4M13 13v-3h4v3" /></svg>;
 const RIDE = <svg viewBox="0 0 24 24"><path className="fill" d="M3 20.5V16h4.5v-4.5H12V7h4.5V3.5H21v17z" /><path d="M3 20.5V16h4.5v-4.5H12V7h4.5V3.5H21v17z" /></svg>;
+
+/** An aisle sign's own words: typed here, up on both faces of its board (empty: the plain sign). */
+function SignWords({ runtime, id, words }: { runtime: GameRuntime; id: number; words: string }) {
+  const [text, setText] = useState(words);
+  const save = () => { if (text.trim() !== words) runtime.dispatch({ type: 'setSignText', fixtureId: id, text }); };
+  return (
+    <div className="sign-words">
+      <input type="text" maxLength={SIGN_TEXT_MAX} value={text} placeholder="Words on the sign" aria-label="Words on the sign" onChange={(e) => setText(e.target.value)} onBlur={save} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') save(); }} />
+      <button type="button" className="btn small" onClick={(e) => { e.stopPropagation(); save(); }}>Put up</button>
+    </div>
+  );
+}
 
 /**
  * The menu over a piece of furniture clicked with empty hands: what it is for (Stock, serve at the
@@ -48,6 +61,7 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
           ))}
         </div>
       )}
+      {menu.words !== undefined && <SignWords runtime={runtime} id={menu.id} words={menu.words} />}
       {!menu.fixed && <div className="fm-actions">
         {menu.use && (
           <button type="button" role="menuitem" className="fm-btn primary" onClick={act('use')}>
