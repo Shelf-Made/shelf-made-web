@@ -3,7 +3,7 @@ import { applyCommand, tick, TICK, type GameState, type FixtureType } from './in
 import { openGame } from './testUtil';
 import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds } from './layout';
 import { fixtureFacingWorld, lineClear, isBlocked, cellOf } from './grid';
-import { canPlace, canSellTile, floorCost } from './build';
+import { canPlace, canSellTile, floorCost, grownCeilings } from './build';
 import { spawnCustomer, setPath, doorInside, addSpill } from './people';
 import { levelOfPerson, canAddPanel, canRemovePanel, ensureCeilings, PANEL_PRICE } from './storeys';
 import { looksOf } from './reviews';
@@ -323,12 +323,13 @@ describe('building up: nothing cut off, nothing for free', () => {
       for (let m = 1; m <= floorTileCount(s.shop); m++) w += Math.round(RESALE * tilePriceAt(m - 1));
       return w;
     };
-    // Floors opened along the way, and the most open at once, over every run: it has to be tried, not just pass.
-    let done = 0, top = 0, opened = 0;
+    // Floors opened along the way, the most open at once, and the shop grown and sold with floors up there, over
+    // every run: it has to be tried, not just pass.
+    let done = 0, top = 0, opened = 0, grownUp = 0, soldUp = 0, ups = 0;
     for (const seed of [81, 82, 83, 84]) {
       const s = shop(seed); aside(s);
       const r = new Rng(seed);
-      const ups = () => s.shop.fixtures.filter((f) => VERTICAL.has(f.type));
+      const flights = () => s.shop.fixtures.filter((f) => VERTICAL.has(f.type));
       // Somewhere on an open floor a piece will go (or the last place tried), a panel there is, a tile of the plot.
       const spot = (type: FixtureType, id?: number) => {
         let at = { x: 0, z: 0, rot: 0 as 0 | 1 | 2 | 3 };
@@ -343,8 +344,8 @@ describe('building up: nothing cut off, nothing for free', () => {
       const plot = () => ({ x: MAX_FLOOR.x0 + r.int(0, 8), z: MAX_FLOOR.z0 + r.int(0, 7) });
       let was = worth(s);
       for (let i = 0; i < 160; i++) {
-        const a = r.int(0, 9), f = ups().length ? r.pick(ups()) : null, type = r.pick(['stairs', 'stairs', 'escalator', 'elevator'] as const);
-        const before = storeysOf(s.shop).top;
+        const a = r.int(0, 10), f = flights().length ? r.pick(flights()) : null, type = r.pick(['stairs', 'stairs', 'escalator', 'elevator'] as const);
+        const before = storeysOf(s.shop).top, upRows = grownCeilings(s.shop).length;
         let ok = false;
         if (a <= 2) { const at = spot(type); ok = place(s, type, at.x, at.z, at.rot).ok; }
         else if (a === 3 && f) ok = applyCommand(s, { type: 'removeFixture', fixtureId: f.id }).ok;
@@ -353,9 +354,12 @@ describe('building up: nothing cut off, nothing for free', () => {
         else if (a === 6) { const row = panels(r.int(0, MAX_LEVELS - 2)); if (row.length) { const at = r.pick(row); ok = applyCommand(s, { type: 'removePanel', x: at.x, z: at.z }).ok; } }
         // A whole ceiling over a floor above sold (the free-money loop sold them all).
         else if (a === 7) for (const at of panels(r.int(1, MAX_LEVELS - 2))) ok = applyCommand(s, { type: 'removePanel', x: at.x, z: at.z }).ok || ok;
-        else if (a === 8) { const at = plot(); ok = applyCommand(s, { type: 'buyTile', x: at.x, z: at.z }).ok; }
-        else { const at = plot(); ok = applyCommand(s, { type: 'sellTile', x: at.x, z: at.z }).ok; }
+        else if (a === 8) { const at = plot(); ok = applyCommand(s, { type: 'buyTile', x: at.x, z: at.z }).ok; if (ok && upRows) grownUp++; }
+        else if (a === 9) { const at = plot(), over = s.shop.ceilings?.slice(1).some((row) => row.includes(`${at.x},${at.z}`)); ok = applyCommand(s, { type: 'sellTile', x: at.x, z: at.z }).ok; if (ok && over) soldUp++; }
+        // The whole shop grown at once (the older shortcut), panels upstairs and all.
+        else { ok = applyCommand(s, { type: 'expandShop', sizeId: r.pick(['medium', 'large']) }).ok; if (ok && upRows) grownUp++; }
         if (ok) done++;
+        if (ok && a <= 4) ups++;
         const st = storeysOf(s.shop);
         if (st.top > before) opened++;
         top = Math.max(top, st.top);
@@ -363,12 +367,15 @@ describe('building up: nothing cut off, nothing for free', () => {
         expect(now, `seed ${seed}, step ${i}, action ${a}`).toBeLessThanOrEqual(was);
         was = now;
         // Nor is any floor that is open ever left with no way up to it from the door.
-        for (let L = 1; L <= st.top; L++) expect(ups().some((u) => levelOf(u) === L - 1 && !!findPath(gridFor(s), doorInside(s), toWorld(s.shop, rideEnds(u).top.x, rideEnds(u).top.z))), `seed ${seed}, step ${i}, floor ${L}`).toBe(true);
+        for (let L = 1; L <= st.top; L++) expect(flights().some((u) => levelOf(u) === L - 1 && !!findPath(gridFor(s), doorInside(s), toWorld(s.shop, rideEnds(u).top.x, rideEnds(u).top.z))), `seed ${seed}, step ${i}, floor ${L}`).toBe(true);
       }
     }
     expect(done).toBeGreaterThan(120);
     expect(top).toBeGreaterThanOrEqual(3);
     expect(opened).toBeGreaterThanOrEqual(8);
+    expect(ups).toBeGreaterThanOrEqual(100);
+    expect(grownUp).toBeGreaterThanOrEqual(8);
+    expect(soldUp).toBeGreaterThanOrEqual(6);
   });
 
   it('counts the finish upstairs toward how the shop looks, and prices it in a whole-shop floor', () => {

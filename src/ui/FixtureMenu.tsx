@@ -7,10 +7,11 @@ const MOVE = <svg viewBox="0 0 24 24"><path className="fill" d="M9 9h6v6H9z" /><
 const TURN = <svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 11-2.2-5.3M19.5 3.5v4h-4" /><path className="fill" d="M10 10h4v4h-4z" /></svg>;
 const SELL = <svg viewBox="0 0 24 24"><circle className="fill" cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="8.5" /><path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.6.8-2.6 2s1 1.6 2.6 2 2.7.9 2.7 2.1-1.2 2-2.7 2c-1.2 0-2.2-.5-2.7-1.4M12 6.5v1.5M12 16v1.5" /></svg>;
 const SERVE = <svg viewBox="0 0 24 24"><path className="fill" d="M3 12h18v8H3z" /><path d="M3 12h18v8H3zM6 12V8h8v4M9 8V5h2M16 15.5h2" /></svg>;
+const RIDE = <svg viewBox="0 0 24 24"><path className="fill" d="M3 20.5V16h4.5v-4.5H12V7h4.5V3.5H21v17z" /><path d="M3 20.5V16h4.5v-4.5H12V7h4.5V3.5H21v17z" /></svg>;
 
 /**
  * The menu over a piece of furniture clicked with empty hands: what it is for (Stock, serve at the
- * till), Move it, Turn it. It stays pinned above the piece as the camera moves; a click anywhere else
+ * till, ride the stairs), Move it, Turn it. It stays pinned above the piece as the camera moves; a click anywhere else
  * or Esc closes it.
  */
 export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: NonNullable<Snapshot['fixtureMenu']> }) {
@@ -49,7 +50,7 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
       {!menu.fixed && <div className="fm-actions">
         {menu.use && (
           <button type="button" role="menuitem" className="fm-btn primary" onClick={act('use')}>
-            {menu.use === 'Stock' ? ICONS.stock : SERVE}<span>{menu.use}</span>
+            {menu.use === 'Stock' ? ICONS.stock : menu.use === 'Ride' ? RIDE : SERVE}<span>{menu.use}</span>
           </button>
         )}
         <button type="button" role="menuitem" className="fm-btn" onClick={act('move')}>{MOVE}<span>Move</span></button>

@@ -28,7 +28,7 @@ import { box, merge } from './geometry';
 import { PhotoBooth, PHOTO_W, PHOTO_H, haulScene, photoRng, photoProduct } from './photos';
 import { shopScheme } from '@/sim/schemes';
 import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld, liftWorld, sinkWorld, STOREY, type Frame } from '@/sim/layout';
-import { poseOf } from './levels';
+import { poseOf, underFloors } from './levels';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -223,7 +223,7 @@ export class WorldRenderer {
     this.rivals.update(state);
     this.street.update(state);
     this.overlays.sample(state);
-    this.overlays.update(state);
+    this.overlays.update(state, this.viewLevel ?? 0);
     this.clock += Math.min(dt, 0.1);
     // The lawn: grass grows wherever nothing is built, in a ring round the focus (wider as the camera pulls back).
     const dist = fp ? this.follow.distance : this.camera.goalDistance;
@@ -377,7 +377,8 @@ export class WorldRenderer {
     for (const p of state.people) {
       if (p.kind === 'owner' || p.state === 'driving' || p.state === 'inRival' || p.state === 'gone') continue;
       const pose = poseOf(state, p, this.lastAlpha);
-      if (this.viewLevel !== null && pose.level > this.viewLevel) continue;
+      // Out of sight: on a floor lifted off, or under the floor in view.
+      if ((this.viewLevel !== null && pose.level > this.viewLevel) || underFloors(state.shop, cam.position, pose.x, pose.y + 0.5, pose.z, pose.level, this.viewLevel)) continue;
       foot.set(pose.x, pose.y, pose.z).project(cam);
       if (foot.z < -1 || foot.z > 1) continue;
       head.set(pose.x, pose.y + 0.95 * p.look.height, pose.z).project(cam);
@@ -404,17 +405,24 @@ export class WorldRenderer {
   private readonly tmpA = new Vector3();
   private readonly tmpB = new Vector3();
 
-  /** Ground point under a canvas pixel: on the floor in view, as the sim has it (upstairs, in that floor's region). */
-  groundAt(px: number, py: number): Vector3 | null {
+  /** Ground point under a canvas pixel: on the floor in view (or floor `level`), as the sim has it (upstairs, in that floor's region). */
+  groundAt(px: number, py: number, level = this.viewLevel ?? 0): Vector3 | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
-    const level = this.viewLevel ?? 0, h = level * STOREY;
+    const h = level * STOREY;
     const t = (h - this.ray.ray.origin.y) / this.ray.ray.direction.y;
     if (t <= 0) return null;
     const p = new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);
     if (level && this.frame) { const q = sinkWorld(this.frame, p.x, p.z, level); p.set(q.x, h, q.z); }
     return p;
+  }
+
+  /** Is a point (as the sim has it, `y` over its floor) in sight: on a floor in view, and not under a floor over it? */
+  inSight(state: GameState, x: number, y: number, z: number): boolean {
+    const l = liftWorld(state.shop, x, z);
+    if (this.viewLevel !== null && l.level > this.viewLevel) return false;
+    return !underFloors(state.shop, this.activeCamera.position, l.x, l.y + y, l.z, l.level, this.viewLevel);
   }
 
   /** World → canvas pixel (a point upstairs where it is drawn). */

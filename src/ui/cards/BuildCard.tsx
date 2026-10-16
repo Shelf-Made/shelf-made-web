@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, tilePrice, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
+import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
 import { PANEL_PRICE } from '@/sim/storeys';
+import { tileCost, grownCeilings } from '@/sim/build';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
@@ -219,10 +220,10 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <>
           <h3>Floor</h3>
           {(() => {
-            const n = floorTileCount(s.shop), max = (MAX_FLOOR.x1 - MAX_FLOOR.x0) * (MAX_FLOOR.z1 - MAX_FLOOR.z0), price = tilePrice(s.shop), on = b.tool?.kind === 'grow';
+            const n = floorTileCount(s.shop), max = (MAX_FLOOR.x1 - MAX_FLOOR.x0) * (MAX_FLOOR.z1 - MAX_FLOOR.z0), price = tileCost(s.shop), up = grownCeilings(s.shop).length, on = b.tool?.kind === 'grow';
             return (
               <div className="item">
-                <div><div className="name">{n} tiles</div><div className="sub">{n < max ? `Next tile ${money(price)} · room for ${max - n} more` : 'As big as the plot allows'}</div></div>
+                <div><div className="name">{n} tiles</div><div className="sub">{n < max ? `Next tile ${money(price)}${up ? ` with its panel${up > 1 ? 's' : ''} upstairs` : ''} · room for ${max - n} more` : 'As big as the plot allows'}</div></div>
                 <span className="row">
                   {n < max && <button className={`btn small${on ? ' ghost' : ''}`} disabled={!on && s.cash < price} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'grow' }))}>{on ? 'Done' : 'Add tiles'}</button>}
                   <button className={`btn small ghost`} onClick={() => (b.tool?.kind === 'sell' ? runtime.stopPlacing() : runtime.startTool({ kind: 'sell' }))}>{b.tool?.kind === 'sell' ? 'Done' : 'Sell tiles'}</button>

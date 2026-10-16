@@ -244,8 +244,17 @@ export function paintFloor(state: GameState, x: number, z: number, style: FloorS
 }
 
 /** Can this tile be bought and built on? Next to the floor you have, inside the plot's limit, behind the front wall. */
+/**
+ * The ceilings above the ground floor a tile bought gets a panel in, each at the panel price: every one with
+ * panels in it (an open floor's, or one shut, kept for when it opens), so the floors above grow with the shop.
+ * The one over the ground floor comes with the tile, as ever. (Sold, a tile pays 60% back on each, as a panel.)
+ */
+export function grownCeilings(shop: GameState['shop']): number[] { return (shop.ceilings ?? []).flatMap((row, L) => L > 0 && row.length ? [L] : []); }
+/** What the next tile costs: the tile, and its panel in each ceiling upstairs. */
+export function tileCost(shop: GameState['shop']): number { return tilePrice(shop) + grownCeilings(shop).length * PANEL_PRICE; }
+
 export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
-  const shop = state.shop, price = tilePrice(shop), m = MAX_FLOOR, f = shop.floor;
+  const shop = state.shop, price = tileCost(shop), up = grownCeilings(shop).length, m = MAX_FLOOR, f = shop.floor;
   if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Grow the ground floor: the floors above grow with it (Upstairs tab: ceiling panels)', price };
   if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a tile', price };
   if (isFloor(shop, x, z)) return { ok: false, reason: 'That is floor already', price };
@@ -259,7 +268,7 @@ export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
   const clash = lotClash(state, trial);
   if (clash) return { ok: false, reason: clash, price };
   if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
-  return { ok: true, reason: 'More floor', price };
+  return { ok: true, reason: up ? `More floor, and ${up === 1 ? 'a ceiling panel' : `${up} ceiling panels`} over it upstairs` : 'More floor', price };
 }
 
 /** Build one more tile of shop: the walls move out round it. */
@@ -267,9 +276,9 @@ export function buyTile(state: GameState, x: number, z: number): string | null {
   const check = canBuyTile(state, x, z);
   if (!check.ok) return check.reason;
   state.cash -= check.price;
-  // It comes with a ceiling panel, like the rest.
+  // It comes with a ceiling panel, like the rest, and one (paid for) in each ceiling up there: the floors above grow with it.
   const rows = ensureCeilings(state.shop);
-  rows[0] = [...rows[0]!, tileKey(x, z)];
+  for (const L of [0, ...grownCeilings(state.shop)]) rows[L] = [...rows[L]!, tileKey(x, z)];
   addFloor(state.shop, [{ x, z }]);
   // New floor comes with the cheapest finish (lay a better one a tile at a time).
   if ((state.shop.floorStyle ?? 'lino') !== FLOORS[0]!.id) state.shop.tileStyles = { ...state.shop.tileStyles, [tileKey(x, z)]: FLOORS[0]!.id };
@@ -365,12 +374,14 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   for (let z = size.floor.z0; z < size.floor.z1; z++) for (let x = size.floor.x0; x < size.floor.x1; x++) if (!isFloor(shop, x, z)) want.push({ x, z });
   if (!want.length) return 'The shop is already that big.';
   { const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash; }
+  // Each tile at the tile price as it goes in, and its panels upstairs (as a tile bought).
+  const up = grownCeilings(shop);
   let n = floorTileCount(shop), cost = 0;
-  for (let i = 0; i < want.length; i++, n++) cost += tilePriceAt(n);
+  for (let i = 0; i < want.length; i++, n++) cost += tilePriceAt(n) + up.length * PANEL_PRICE;
   if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
   state.cash -= cost;
   const rows = ensureCeilings(shop);
-  rows[0] = [...rows[0]!, ...want.map((t) => tileKey(t.x, t.z))];
+  for (const L of [0, ...up]) rows[L] = [...rows[L]!, ...want.map((t) => tileKey(t.x, t.z))];
   addFloor(shop, want);
   // The delivery pallet goes to the new back corner, by the back door.
   shop.delivery = deliveryZone(shop.floor);

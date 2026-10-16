@@ -7,7 +7,7 @@ import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSe
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, rideEnds } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
-import { canAddPanel, canRemovePanel, levelOfPerson } from '@/sim/storeys';
+import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -612,8 +612,9 @@ export class GameRuntime {
       this.watchReviews(s);
       if (this.screen === 'game') this.developPhotos(s, r, dt);
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
-      // Building upstairs: that floor in view, the ones over it lifted off.
-      r.buildLevel = this.card === 'build' && this.inPlay ? Math.min(this.buildLevel, storeysOf(s.shop).top) : null;
+      // Building upstairs: that floor in view, the ones over it lifted off (back down to the top one when it closes).
+      if (this.buildLevel > storeysOf(s.shop).top) this.setBuildLevel(this.buildLevel);
+      r.buildLevel = this.card === 'build' && this.inPlay ? this.buildLevel : null;
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
       // The weather's sounds: the rain's patter, and thunder after each flash (later the further away).
@@ -621,7 +622,7 @@ export class GameRuntime {
       for (const th of r.weather.thunder.splice(0)) this.audio.thunder(th.distance, th.delay, th.strength);
       if (r.mode === 'play') {
         // The build ghost sits on the tile under the mouse.
-        if (this.building && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y); if (g) this.hoverWorld(g.x, g.z); }
+        if (this.building && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y, this.onGround ? 0 : undefined); if (g) this.hoverWorld(g.x, g.z); }
         this.runPendingUse(s);
         this.aimCache = this.resolveAim();
       } else { this.aimCache = { info: null, run: null }; r.marker.set(null); }
@@ -843,6 +844,11 @@ export class GameRuntime {
   stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); this.renderer?.setPanelHints([], 0); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
+  /** Working on the ground (a piece for outside, a lot tool, adding or selling floor): the pointer is on it, whichever floor is picked. */
+  private get onGround(): boolean {
+    const type = this.build.placing ?? (this.build.selectedId !== null ? this.state?.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type : undefined);
+    return (!!type && !!FIXTURES[type].outdoor) || (!!this.build.tool && (LOT_TOOLS.has(this.build.tool.kind) || this.build.tool.kind === 'grow' || this.build.tool.kind === 'sell'));
+  }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {
     const s = this.state; if (!s) return;
@@ -1029,7 +1035,7 @@ export class GameRuntime {
     // At night the shop is shut but the manager can still fit it out for tomorrow: only the build tools work.
     if (s.phase === 'night' && !building) return;
     if (building) {
-      const g = r.groundAt(px, py);
+      const g = r.groundAt(px, py, this.onGround ? 0 : undefined);
       if (g && this.building) { this.hoverWorld(g.x, g.z); this.clickBuild(null); return; }
       const hit = r.pick(px, py, s);
       if (hit?.kind === 'fixture') { this.clickBuild(hit); return; }
@@ -1094,13 +1100,14 @@ export class GameRuntime {
   private thingAt(px: number, py: number): Thing | null {
     const s = this.state; const r = this.renderer; if (!s || !r) return null;
     // A spill: its marker floating above it, or the puddle itself, close to the pointer on screen (a
-    // shelf behind it, or the floor beyond the marker, must not take the click).
+    // shelf behind it, or the floor beyond the marker, must not take the click). Only one in sight: not upstairs of the floor in view, nor under it.
     {
       const rect = this.canvas?.getBoundingClientRect();
       const ox = rect?.left ?? 0, oy = rect?.top ?? 0;
       const pt = { x: 0, y: 0, visible: false };
       let best: { id: number; d: number } | null = null;
       for (const l of s.shop.litter) for (const y of [0.03, 0.5]) {
+        if (!r.inSight(s, l.x, y, l.z)) continue;
         r.project(l.x, y, l.z, pt);
         if (!pt.visible) continue;
         const d = Math.hypot(pt.x - (px - ox), pt.y - (py - oy));
@@ -1179,8 +1186,9 @@ export class GameRuntime {
     // An extra pallet: its boxes are the delivery's, picked up and put back the same way.
     if (f.type === 'pallet') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
     if (VERTICAL.has(f.type)) {
-      // Up or down, from whichever end you are at (walking into it does the same).
+      // Up or down, from whichever end you are at (walking into it does the same); beside it, round to that end first.
       const up = levelOfPerson(s.shop, owner) === levelOf(f), dir = up ? 'up' : 'down';
+      if (near && !rideOn(s, owner, f.id)) return { text: f.type === 'elevator' ? 'Walk round to the lift door' : `Walk round to the ${up ? 'foot' : 'top'} of the ${f.type === 'escalator' ? 'escalator' : 'stairs'}`, ok: false, key: null, run: null };
       const text = f.type === 'elevator' ? `Take the lift ${dir}` : f.type === 'escalator' ? `Ride the escalator ${dir}` : `Go ${dir} the stairs`;
       return { text, ok: true, key: 'use', run: () => { const r = this.dispatch({ type: 'ride', fixtureId: f.id }); if (!r.ok && r.message) this.showToast(r.message, 1400); } };
     }
@@ -1327,7 +1335,9 @@ export class GameRuntime {
     const o = s.people.find((p) => p.kind === 'owner');
     if (!o) return;
     r.follow.following = true;
-    r.follow.set(o.x, o.z, s.shop.flip ? Math.PI : 0, FollowCamera.DEFAULT, MathUtils.degToRad(52));
+    // Upstairs, where they are drawn (over the ground floor, a storey up a floor).
+    const l = liftWorld(s.shop, o.x, o.z);
+    r.follow.set(l.x, l.z, s.shop.flip ? Math.PI : 0, FollowCamera.DEFAULT, MathUtils.degToRad(52), l.y);
     r.follow.snap();
   }
 
