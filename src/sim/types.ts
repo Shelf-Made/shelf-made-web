@@ -13,7 +13,7 @@ export interface Waypoint extends Vec2 { ride?: number; via?: number; yaw?: numb
 /** Rotation in quarter turns, 0 = facing +z (south, toward the camera). */
 export type Rot = 0 | 1 | 2 | 3;
 
-export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet'
+export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet' | 'storeRack'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'

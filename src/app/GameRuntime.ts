@@ -37,6 +37,9 @@ const goalKey = (s: GameState) => { const g = goalInfo(s); return `${s.goals.ind
 export type Speed = 0 | 1 | 2 | 4;
 export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | 'reviews' | null;
 /** Cards that take the whole screen and stop the clock while open: ordering stock wants your full attention. */
+/** Which shelves the stock tool's labels show. */
+export type StockFilter = 'all' | 'low' | 'empty' | 'chilled';
+
 /** A jump: how long it lasts (ms) and how high it goes (times the manager's height). */
 const HOP_MS = 520, HOP_HEIGHT = 0.3;
 
@@ -76,6 +79,8 @@ export interface Snapshot {
   playing: boolean;
   /** Seeing through the manager's eyes. */
   firstPerson: boolean;
+  /** The stock tool: out or not, which shelves its labels show, and the product it is looking for. */
+  stockTool: { on: boolean; filter: StockFilter; find: string };
   /** The first day's checklist (tutorial steps with short titles), null once tips are off or done. */
   jobs: { id: string; title: string; done: boolean }[] | null;
   /** 0 at opening, 1 at closing: drives the sun on the day dial. */
@@ -206,6 +211,7 @@ export class GameRuntime {
       build: { active: this.card === 'build', placing: this.build.placing, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay, level: this.buildLevel },
       playing: this.inPlay,
       firstPerson: this.firstPerson,
+      stockTool: { on: this.stockTool, filter: this.stockFilter, find: this.stockFind },
       jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
       dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
       goal: s && s.phase !== 'picking' ? goalInfo(s) : null,
@@ -389,6 +395,7 @@ export class GameRuntime {
   /** Esc: stop placing, then let go of the person you were looking at, then close the open card. */
   escape(): void {
     if (this.fixtureMenu !== null) { this.openFixtureMenu(null); return; }
+    if (this.stockTool) { this.setStockTool(false); return; }
     if (this.building) { this.closeCard(); return; }
     if (this.selectedPerson !== null) { this.selectPerson(null); return; }
     if (!this.card && this.state?.phase === 'night' && !this.nightLogHidden) { this.showNightLog(false); return; }
@@ -648,7 +655,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${this.firstPerson}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${this.firstPerson}|${this.stockTool}${this.stockFilter}${this.stockFind}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -756,6 +763,7 @@ export class GameRuntime {
     this.fixtureMenu = null;
     if (card === 'build' && this.card !== 'build' && this.state) { const o = this.state.people.find((p) => p.kind === 'owner'); this.buildLevel = o ? Math.min(storeysOf(this.state.shop).top, levelOfPerson(this.state.shop, o)) : 0; }
     this.card = this.card === card ? null : card;
+    if (this.card && this.stockTool) { this.stockTool = false; this.stockFind = ''; }
     // Building is done from above.
     if (this.card === 'build' && this.renderer?.follow.firstPerson) { this.renderer.follow.setFirstPerson(false); this.leftEyes(); }
     if (this.card === 'reviews') this.reviewsSeen = this.state?.listing?.count ?? 0;
@@ -1033,6 +1041,35 @@ export class GameRuntime {
     if (z === 'in' && this.inPlay) this.setFirstPerson(true); else if (z === 'out') this.setFirstPerson(false);
   }
 
+  // ---- The stock tool: labels over every shelf, a click (or a drag along a row) fills one from the pallet.
+  stockTool = false;
+  stockFilter: StockFilter = 'all';
+  stockFind = '';
+  private stockDragged = new Set<number>();
+  setStockTool(on: boolean): void {
+    if (on === this.stockTool || !this.state || !this.inPlay) return;
+    if (on && !this.state.unlocks.build) { this.showToast('The stock tool comes with Build, on day 2.'); return; }
+    this.stockTool = on;
+    if (on) { if (this.card && this.card !== 'stock') this.closeCard(); if (this.card === 'stock') this.closeCard(); this.stopPlacing(); this.openFixtureMenu(null); }
+    else { this.stockFind = ''; }
+    this.audio.play(on ? 'cardOpen' : 'cardClose');
+    this.emit();
+  }
+  setStockFilter(f: StockFilter): void { this.stockFilter = f; this.emit(); }
+  setStockFind(q: string): void { this.stockFind = q; this.emit(); }
+  /** Top up the shelf under the pointer (once per drag). */
+  stockAt(px: number, py: number, fresh = false): boolean {
+    const s = this.state, r = this.renderer; if (!s || !r || !this.stockTool) return false;
+    if (fresh) this.stockDragged.clear();
+    const hit = r.pick(px, py, s);
+    if (hit?.kind !== 'fixture' || !FIXTURES[hit.type].slots || this.stockDragged.has(hit.id)) return hit?.kind === 'fixture';
+    this.stockDragged.add(hit.id);
+    const res = this.dispatch({ type: 'topUp', fixtureId: hit.id });
+    if (!res.ok && fresh && res.message) this.showToast(res.message, 1600);
+    return true;
+  }
+  supplyAll(): void { const r = this.dispatch({ type: 'topUpAll' }); if (r.ok && r.message) this.showToast(r.message, 2000); }
+
   /** The "First person" toast, cleared when you leave first person before it fades (it would tell you how to leave). */
   private eyesToast = -1;
   private leftEyes(): void { if (this.toast?.id === this.eyesToast) this.toast = null; }
@@ -1132,6 +1169,8 @@ export class GameRuntime {
       if (hit?.kind === 'fixture') { this.clickBuild(hit); return; }
       return;
     }
+    // The stock tool out: a click on a shelf fills it from the pallet.
+    if (this.stockTool && this.stockAt(px, py, true)) return;
     // People first: a click on someone opens their panel (and walks nobody anywhere).
     const who = r.personAt(px, py, s);
     // A shoplifter on the run: grab them if they are in reach, otherwise run after them.
@@ -1502,7 +1541,7 @@ export class GameRuntime {
   }
 
   /** Is a piece (-1: the delivery pallet) in sight: on the floor in view, not under the boards of one over it? */
-  private fixtureInSight(id: number): boolean {
+  fixtureInSight(id: number): boolean {
     const s = this.state, r = this.renderer, a = this.fixtureAnchor(id);
     return !s || !r || !a || r.inSight(s, a.x, 0.5, a.z);
   }

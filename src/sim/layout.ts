@@ -167,8 +167,10 @@ export const STARTER = {
 /** Units of stock an extra Pallet holds. */
 export const PALLET_UNITS = 60;
 /** Room for deliveries: the pallet by the back door, and every extra Pallet on the floor. */
+/** Room a storage rack adds. */
+export const STORE_RACK_UNITS = 200;
 export function storageCap(shop: { storageCapacity: number; fixtures: { type: FixtureType }[] }): number {
-  return shop.storageCapacity + PALLET_UNITS * shop.fixtures.filter((f) => f.type === 'pallet').length;
+  return shop.storageCapacity + PALLET_UNITS * shop.fixtures.filter((f) => f.type === 'pallet').length + STORE_RACK_UNITS * shop.fixtures.filter((f) => f.type === 'storeRack').length;
 }
 /** The delivery zone for any floor: two tiles in the back-left corner beside the back door. */
 export function deliveryZone(floor: Rect): Rect { return { x0: floor.x0, z0: floor.z0, x1: floor.x0 + 2, z1: floor.z0 + 1 }; }
@@ -541,6 +543,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   produce: { type: 'produce', name: 'Produce stand', price: 60, w: 1, d: 1, depth: 0.61, slots: 2, capacity: 10, chilled: false, upkeep: 0, accepts: ['produce'], category: 'shelves' },
   /** More room for deliveries, on the shop floor wherever you put it. */
   pallet: { type: 'pallet', name: 'Pallet', price: 60, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'shelves' },
+  /** Tall metal racking two tiles long: a lot more room for deliveries. */
+  storeRack: { type: 'storeRack', name: 'Storage rack', price: 400, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'shelves' },
   fridge: { type: 'fridge', name: 'Chiller', price: 200, w: 1, d: 1, depth: 0.61, slots: 4, capacity: 6, chilled: true, upkeep: 6, category: 'shelves' },
   freezer: { type: 'freezer', name: 'Tall fridge', price: 300, w: 1, d: 1, depth: 0.51, slots: 2, capacity: 12, chilled: true, upkeep: 8, accepts: ['dairy', 'meat'], category: 'shelves' },
   // Furniture.

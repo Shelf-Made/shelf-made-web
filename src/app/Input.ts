@@ -13,7 +13,7 @@ import { FollowCamera } from '@/render/FollowCamera';
 export class InputController {
   private keys = new Set<string>();
   private rightDrag: { x: number; y: number; moved: number } | null = null;
-  private leftDown: { x: number; y: number; moved: boolean; lx: number; ly: number } | null = null;
+  private leftDown: { x: number; y: number; moved: boolean; lx: number; ly: number; stock?: boolean } | null = null;
   private lastDir = { x: 0, z: 0 };
   private scanHeld = false; private scanTimer = 0;
   private touches = new Map<number, { x: number; y: number; x0: number; y0: number }>();
@@ -36,7 +36,7 @@ export class InputController {
       if (e.pointerType === 'touch') { this.touchDown(e); return; }
       c.setPointerCapture(e.pointerId);
       if (e.button === 2) { this.rightDrag = { x: e.clientX, y: e.clientY, moved: 0 }; return; }
-      if (e.button === 0) this.leftDown = { x: e.clientX, y: e.clientY, moved: false, lx: e.clientX, ly: e.clientY };
+      if (e.button === 0) this.leftDown = { x: e.clientX, y: e.clientY, moved: false, lx: e.clientX, ly: e.clientY, stock: this.rt.stockTool && this.rt.stockAt(e.clientX, e.clientY, true) };
     });
     on(c, 'pointermove', (e: PointerEvent) => {
       if (e.pointerType === 'touch') { this.touchMove(e); return; }
@@ -53,7 +53,9 @@ export class InputController {
       const ld = this.leftDown;
       if (ld) {
         if (!ld.moved && Math.hypot(e.clientX - ld.x, e.clientY - ld.y) > 6) ld.moved = true;
-        if (ld.moved) { this.rt.dragPan(ld.lx, ld.ly, e.clientX, e.clientY); ld.lx = e.clientX; ld.ly = e.clientY; }
+        // With the stock tool, a drag that began on a shelf fills each shelf it passes over instead.
+        if (ld.moved && ld.stock) this.rt.stockAt(e.clientX, e.clientY);
+        else if (ld.moved) { this.rt.dragPan(ld.lx, ld.ly, e.clientX, e.clientY); ld.lx = e.clientX; ld.ly = e.clientY; }
       }
     });
     on(c, 'pointerleave', () => { this.mouse = null; this.rt.setMouse(null, null); });
@@ -62,7 +64,8 @@ export class InputController {
       // A right click that did not turn the camera cancels placing or moving in Build.
       if (e.button === 2) { const d = this.rightDrag; this.rightDrag = null; if (d && d.moved < 6 && this.rt.inPlay) this.rt.secondary(); return; }
       const down = this.leftDown; this.leftDown = null;
-      if (!down || down.moved || !this.rt.inPlay) return;
+      // (A press on a shelf with the stock tool out has filled it already.)
+      if (!down || down.moved || down.stock || !this.rt.inPlay) return;
       this.rt.clickAt(e.clientX, e.clientY);
     });
     on(c, 'pointercancel', (e: PointerEvent) => { if (e.pointerType === 'touch') this.touchUp(e, true); this.rightDrag = null; this.leftDown = null; });
@@ -91,6 +94,7 @@ export class InputController {
         if (e.code === 'KeyV' && this.rt.build.selectedId !== null) { this.rt.copySelected(); return; }
       }
       if (e.code === k.firstPerson && !e.repeat) { this.rt.toggleFirstPerson(); return; }
+      if (e.code === k.stockTool && !e.repeat) { this.rt.setStockTool(!this.rt.stockTool); return; }
       if (e.code === 'KeyB') { this.rt.openCard('build'); return; }
       if (e.code === 'Tab') { e.preventDefault(); this.rt.openCard('stock'); return; }
       if (e.code === k.pause) this.rt.togglePause();

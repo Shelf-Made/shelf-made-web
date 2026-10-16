@@ -1,4 +1,4 @@
-export interface KeyBindings { forward: string; back: string; left: string; right: string; interact: string; scan: string; rotate: string; turnLeft: string; turnRight: string; focus: string; firstPerson: string; zoomIn: string; zoomOut: string; pause: string; speed1: string; speed2: string; speed4: string }
+export interface KeyBindings { forward: string; back: string; left: string; right: string; interact: string; scan: string; rotate: string; turnLeft: string; turnRight: string; focus: string; firstPerson: string; stockTool: string; zoomIn: string; zoomOut: string; pause: string; speed1: string; speed2: string; speed4: string }
 export interface Settings {
   master: number; music: number; sfx: number;
   quality: 'high' | 'medium' | 'low';
@@ -17,7 +17,7 @@ export interface Settings {
 /** A designed manager: which character and height, and the colours chosen (each left out for the character's own). */
 export interface ManagerLook { model: number; height: number; skin?: string; hair?: string; top?: string; bottom?: string }
 
-export const DEFAULT_KEYS: KeyBindings = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', interact: 'KeyF', scan: 'Space', rotate: 'KeyR', turnLeft: 'KeyQ', turnRight: 'KeyE', focus: 'KeyC', firstPerson: 'KeyV', zoomIn: 'Equal', zoomOut: 'Minus', pause: 'KeyP', speed1: 'Digit1', speed2: 'Digit2', speed4: 'Digit3' };
+export const DEFAULT_KEYS: KeyBindings = { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', interact: 'KeyF', scan: 'Space', rotate: 'KeyR', turnLeft: 'KeyQ', turnRight: 'KeyE', focus: 'KeyC', firstPerson: 'KeyV', stockTool: 'KeyT', zoomIn: 'Equal', zoomOut: 'Minus', pause: 'KeyP', speed1: 'Digit1', speed2: 'Digit2', speed4: 'Digit3' };
 export const DEFAULT_SETTINGS: Settings = { master: 0.8, music: 0.6, sfx: 0.9, quality: 'high', largeUI: false, colorBlind: false, lookSpeed: 1, invertY: false, edgePan: false, keys: { ...DEFAULT_KEYS }, analyticsOptIn: false, managerLook: null };
 
 const KEY = 'shelf-made:settings';

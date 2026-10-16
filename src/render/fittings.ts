@@ -29,7 +29,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
-  camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate',
+  camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
@@ -125,6 +125,21 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       return merge(parts);
     }
     case 'gen:tallWall': return place(wall('market/wall'), 0, 0, 0, 0, 1, 2, 1);
+    // Grey steel racking two tiles long, three shelves of brown boxes and the odd shrink-wrapped pallet load.
+    case 'gen:storeRack': {
+      const parts: BufferGeometry[] = [];
+      const z0 = -0.45, depth = 0.62, zc = z0 + depth / 2;
+      for (const x of [-0.95, 0, 0.95]) for (const z of [z0 + 0.02, z0 + depth - 0.02]) parts.push(box(pal, '#4E6A8C', 0.035, 0.98, 0.035, x, 0, z));
+      for (const y of [0.04, 0.36, 0.68]) {
+        parts.push(box(pal, '#F59E0B', 1.94, 0.03, 0.035, 0, y + 0.03, z0 + depth - 0.02), box(pal, '#F59E0B', 1.94, 0.03, 0.035, 0, y + 0.03, z0 + 0.02), box(pal, '#9AA0A8', 1.92, 0.012, depth - 0.04, 0, y + 0.045, zc));
+        for (let i = 0; i < 6; i++) {
+          const w = 0.22 + ((i * 7 + y * 10) % 3) * 0.03, h = 0.16 + ((i * 3 + y * 7) % 4) * 0.025;
+          parts.push(box(pal, i % 3 === 2 ? '#C99A62' : '#D9B07A', w, h, 0.36, -0.78 + i * 0.31, y + 0.058, zc));
+          parts.push(box(pal, '#B08350', w + 0.004, 0.02, 0.07, -0.78 + i * 0.31, y + 0.058 + h - 0.019, zc));
+        }
+      }
+      return merge(parts);
+    }
     // Security. A camera on a bracket high on the wall, looking out and down into the shop, its red light on.
     case 'gen:camera': {
       const body = merge([box(pal, '#F2F2F0', 0.1, 0.085, 0.2, 0, -0.0425, -0.1), box(pal, '#38383D', 0.075, 0.06, 0.02, 0, -0.03, 0.005), box(pal, '#38383D', 0.12, 0.012, 0.22, 0, 0.042, -0.1), box(pal, '#FF3B30', 0.014, 0.014, 0.01, 0.032, 0.008, 0.008)]);

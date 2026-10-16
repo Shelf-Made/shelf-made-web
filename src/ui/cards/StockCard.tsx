@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/products';
 import { SUPPLIERS, unitCost, deliveryStatus, INSTANT_MUL } from '@/sim/economy';
+import { RECYCLE_BACK } from '@/sim/stocking';
+import { keyLabel } from '@/save/settings';
 import { FIXTURES, storageCap } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
 import { savedOrderCost, ruleText, MAX_SAVED } from '@/sim/savedOrders';
@@ -105,7 +107,21 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           )}
         </div>
         <div className="row between"><h3>On the delivery pallet</h3><span className="tag">{storageUnits} / {storageCap(s.shop)} units</span></div>
-        <p className="muted">Boxes wait on the pallet by the back door: F to pick one up, F at a shelf to stock it.</p>
+        <p className="muted">Boxes wait on the pallet by the back door: F to pick one up, F at a shelf to stock it (or the stock tool, {keyLabel(snap.settings.keys.stockTool)}).</p>
+        {storageUnits > 0 && (
+          <div className="list pallet-list">
+            {[...new Set(s.shop.storage.map((e) => e.productId))].map((pid) => {
+              const n = s.shop.storage.filter((e) => e.productId === pid).reduce((a, e) => a + e.qty, 0);
+              const back = Math.round(n * productDef(pid).cost * RECYCLE_BACK * 100) / 100;
+              return (
+                <div className="item" key={pid}>
+                  <div><div className="name">{productDef(pid).name}</div><div className="sub">{n} on the pallet</div></div>
+                  <button className="btn small ghost" title={`Recycle all ${n} for half what they cost`} onClick={() => runtime.dispatch({ type: 'recycle', productId: pid })}>Recycle +{money(back)}</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {pending.length > 0 && (
           <div className="list">
             {pending.map((o) => <div className="item" key={o.id}><div><div className="name">Truck from {SUPPLIERS.find((x) => x.id === o.supplierId)?.name}</div><div className="sub">{o.lines.reduce((a, l) => a + l.qty, 0)} units · {money(o.total)}</div></div>{(() => { const st = deliveryStatus(s, o); return <span className={`tag${st.here ? ' good' : ''}`}>{st.text}</span>; })()}</div>)}

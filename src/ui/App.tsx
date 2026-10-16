@@ -12,6 +12,7 @@ import { GameOverCard } from './GameOverCard';
 import { Celebration, ChampionCard } from './Goals';
 import { InspectPanel } from './Inspect';
 import { FixtureMenu } from './FixtureMenu';
+import { StockTool } from './StockTool';
 
 export function App({ runtime }: { runtime: GameRuntime }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -51,6 +52,7 @@ export function App({ runtime }: { runtime: GameRuntime }) {
           <Overlay runtime={runtime} snap={snap} />
           {snap.inspect && !snap.night && <InspectPanel runtime={runtime} snap={snap} />}
           {snap.fixtureMenu && !snap.night && <FixtureMenu runtime={runtime} menu={snap.fixtureMenu} />}
+          {snap.stockTool.on && !snap.card && <StockTool runtime={runtime} snap={snap} />}
           {snap.toast && <div className="toast" key={snap.toast.id} role="status">{snap.toast.text}</div>}
         </div>
       )}

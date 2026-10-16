@@ -63,6 +63,9 @@ const SPEED_ICONS: Record<Speed, JSX.Element> = {
   2: <svg viewBox="0 0 24 24"><path d="M3 5l9 7-9 7zM12 5l9 7-9 7z" /></svg>,
   4: <svg viewBox="0 0 24 24"><path d="M1 5l7.5 7L1 19zM8.5 5l7.5 7-7.5 7zM16 5l7.5 7-7.5 7z" /></svg>,
 };
+/** The stock tool: a shelf with a box going up onto it. */
+const RESTOCK_ICON = <svg viewBox="0 0 24 24"><path className="fill" d="M8 3.5h8v6H8z" /><path d="M8 3.5h8v6H8zM12 3.5v2.2M3 13.5h18M3 20.5h18M4 13.5v7M20 13.5v7M7 16.5h2.5M11 16.5h2.5M15 16.5h2" /></svg>;
+
 /** First person (an eye), and back to the camera behind you (a figure seen from behind). */
 const EYE_ICONS = {
   eyes: <svg viewBox="0 0 24 24"><path className="fill" d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" /><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" /><circle cx="12" cy="12" r="3.2" /></svg>,
@@ -152,6 +155,18 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
               </button>
             );
           })}
+          {(() => {
+            // The stock tool: not a card, a mode (labels over the shelves; click one to fill it from the pallet).
+            const open = !!snap.unlocks.build, on = snap.stockTool.on;
+            return (
+              <button className={`tile t-restock${on ? ' active' : ''}${open ? '' : ' locked'}`} onClick={() => runtime.setStockTool(!on)} aria-pressed={on} data-card="restock" title={open ? 'Stock tool: fill shelves straight from the pallet' : 'Stock tool: comes with Build on day 2'}>
+                <span className="face">{RESTOCK_ICON}{!open && <svg className="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8 10.5V8a4 4 0 018 0v2.5" /></svg>}</span>
+                <span className="label">Restock</span>
+                {open && <kbd className="key-chip">{keyLabel(snap.settings.keys.stockTool)}</kbd>}
+                {!open && <span className="soon">Day 2</span>}
+              </button>
+            );
+          })()}
           <span className="dock-gap" aria-hidden="true" />
           <button className="tile t-help" onClick={() => runtime.showHint()} title={BLURBS.help} data-card="hint">
             <span className="face">{ICONS.help}</span><span className="label">Help</span>

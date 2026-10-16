@@ -10,7 +10,8 @@ import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
-import { PLOTS, FIXTURES, PALLET_UNITS, RACK_STANDS, storageCap, VERTICAL, storeysOf } from './layout';
+import { PLOTS, FIXTURES, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, VERTICAL, storeysOf } from './layout';
+import { topUp, topUpAll, recycle } from './stocking';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
@@ -97,6 +98,9 @@ export type Command =
   | { type: 'setBreak'; staffId: number; on: boolean }
   | { type: 'restyleStaff'; staffId: number }
   | { type: 'grabThief'; personId: number }
+  | { type: 'topUp'; fixtureId: number }
+  | { type: 'topUpAll' }
+  | { type: 'recycle'; productId: string }
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
   | { type: 'clean'; litterId: number }
@@ -292,7 +296,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if ((f.type === 'register' || f.type === 'kiosk') && (f.serving || (f.queue?.length ?? 0) > 0)) return { ok: false, message: 'Wait until the line is served.' };
       if (f.bikes?.some((b) => b !== null)) return { ok: false, message: 'Bikes are locked to it: wait till they ride off.' };
       { const why = canTakeAway(state, f.id) ?? removalShuts(state, f.id); if (why) return { ok: false, message: `${why}.` }; }
-      if (f.type === 'pallet') { const units = state.shop.storage.reduce((a, e) => a + e.qty, 0); if (units > storageCap(state.shop) - PALLET_UNITS) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
+      if (f.type === 'pallet' || f.type === 'storeRack') { const units = state.shop.storage.reduce((a, e) => a + e.qty, 0); if (units > storageCap(state.shop) - (f.type === 'pallet' ? PALLET_UNITS : STORE_RACK_UNITS)) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
       const refund = Math.round(FIXTURES[f.type].price * 0.6);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });
       state.shop.fixtures.splice(i, 1);
@@ -357,6 +361,18 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'setShift': { const err = setShift(state, cmd.staffId, cmd.shift); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setBreak': { const err = setBreak(state, cmd.staffId, cmd.on); return err ? { ok: false, message: err } : { ok: true }; }
     case 'restyleStaff': { const err = restyle(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'topUp': {
+      const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId);
+      if (!f || !FIXTURES[f.type].slots) return { ok: false };
+      if (!state.shop.storage.length) return { ok: false, message: 'The pallet is empty: order some stock first.' };
+      return topUp(state, f) > 0 ? { ok: true } : { ok: false, message: 'Nothing on the pallet fits there, or it is full.' };
+    }
+    case 'topUpAll': {
+      if (!state.shop.storage.length) return { ok: false, message: 'The pallet is empty: order some stock first.' };
+      const n = topUpAll(state);
+      return n > 0 ? { ok: true, message: `${n} units shelved.` } : { ok: false, message: 'Every shelf is as full as the pallet can make it.' };
+    }
+    case 'recycle': return recycle(state, cmd.productId) > 0 ? { ok: true } : { ok: false };
     case 'grabThief': {
       // A hand on a shoplifter on the run, within reach of the manager.
       const t = state.people.find((x) => x.id === cmd.personId && x.state === 'fleeing' && !x.busted);
