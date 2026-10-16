@@ -7,6 +7,7 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Person, Anim as SimAnim, CustomerType, Look } from '@/sim/types';
 import { box, merge, paint } from './geometry';
 import { rectToWorld } from '@/sim/layout';
+import { staffLevel } from '@/sim/staff';
 import { bagsGeometry, basketGeometry, BAG_HEIGHT, rideBikeGeometry } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
@@ -67,6 +68,15 @@ const OUTFIT_PERMS: number[][] = [
 export const BIKE_COLOURS = ['#E8573F', '#4F8FE0', '#3FA87A', '#FFC044', '#38383D', '#9B6FD0'];
 /** How high a rider sits (the 'sit' pose on the saddle). */
 const RIDE_SEAT = 0.17;
+/** A guard's scooter: how high its deck lifts them, and the navy guards wear. */
+const SCOOTER_DECK = 0.07;
+const GUARD_NAVY = '#2C3E66';
+/** A two-wheeled scooter: a deck between two wheels, a stem up to handlebars (in the rider's frame, facing +z). */
+function scooterGeometry(pal: AssetLibrary['palette']): BufferGeometry {
+  const wheel = (z: number) => box(pal, '#222226', 0.06, 0.07, 0.07, 0, 0, z);
+  return merge([wheel(0.13), wheel(-0.13), box(pal, '#38383D', 0.16, 0.025, 0.3, 0, 0.045, 0), box(pal, '#F2F2F0', 0.17, 0.012, 0.31, 0, 0.07, 0),
+    box(pal, '#9AA0A8', 0.025, 0.42, 0.025, 0, 0.07, 0.13), box(pal, '#222226', 0.3, 0.025, 0.035, 0, 0.48, 0.13)]);
+}
 
 interface Instance {
   root: Group;
@@ -91,6 +101,8 @@ interface Instance {
   umbrella: Mesh | null;
   /** Under them while they ride to or from the shop. */
   bike?: Mesh | null;
+  /** A guard's scooter (from level 3). */
+  scooter?: Mesh | null;
   armL: Object3D | null;
   /** Regulars wave at the staff once as they pass. */
   greetUntil: number;
@@ -300,7 +312,8 @@ export class PeopleView {
     const asset = this.assets.character(model);
     const root = skeletonClone(asset.scene) as Group;
     const skinned: SkinnedMesh[] = [];
-    const shirt = p.kind === 'staff' ? shopScheme(state).primary : undefined;
+    // Staff wear the shop's colour; a guard, security navy.
+    const shirt = p.kind === 'staff' ? (p.role === 'guard' ? GUARD_NAVY : shopScheme(state).primary) : undefined;
     root.traverse((o) => {
       const m = o as SkinnedMesh;
       if (m.isSkinnedMesh) {
@@ -332,7 +345,7 @@ export class PeopleView {
     const derived = this.derivedClips(asset.clips);
     if (derived.carryWalk) { const a = mixer.clipAction(derived.carryWalk); a.setLoop(LoopRepeat, Infinity); actions.carryWalk = a; }
     if (derived.stock) { const a = mixer.clipAction(derived.stock); a.setLoop(LoopRepeat, Infinity); actions.stock = a; }
-    const inst: Instance = { lookKey: p.kind === 'owner' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, gestureKey: '', dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, umbrella: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
+    const inst: Instance = { lookKey: p.kind === 'owner' || p.kind === 'staff' ? lookKey(p) : '', root, model, variant: p.look.variant, mixer, actions, current: null, gestureKey: '', dog: null, seen: this.frame, box: null, bags: null, bagKey: '', arm: root.getObjectByName('arm-right') ?? null, prop: null, umbrella: null, armL: root.getObjectByName('arm-left') ?? null, greetUntil: 0, greeted: -1 };
     const pg = this.propFor(p);
     if (pg) { inst.prop = pg; root.add(pg); }
     if (p.kind === 'owner') root.add(this.badge());
@@ -564,6 +577,7 @@ export class PeopleView {
   private bagGeo = new Map<string, BufferGeometry>();
   /** A bike to ride, in one of a few colours (by who rides it). */
   private bikeGeo = new Map<string, BufferGeometry>();
+  private scooterGeo: BufferGeometry | null = null;
   bikeMesh(id: number): Mesh {
     const hex = BIKE_COLOURS[id % BIKE_COLOURS.length]!;
     let g = this.bikeGeo.get(hex);
@@ -604,7 +618,7 @@ export class PeopleView {
     for (const p of state.people) {
       let inst = this.live.get(p.id);
       // The manager can be redesigned at any time: a new look is a new figure.
-      if (inst && p.kind === 'owner' && inst.lookKey !== lookKey(p)) { this.despawn(inst); this.live.delete(p.id); inst = undefined; }
+      if (inst && (p.kind === 'owner' || p.kind === 'staff') && inst.lookKey !== lookKey(p)) { this.despawn(inst); this.live.delete(p.id); inst = undefined; }
       if (!inst) { inst = this.spawn(state, p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
       const pose = poseOf(state, p, alpha);
@@ -622,6 +636,10 @@ export class PeopleView {
       { const h = p.look.height, k = hop?.stretch ?? 1, w = h / Math.sqrt(k); inst.root.scale.set(w, h * k, w); }
       if (riding && !inst.bike) { inst.bike = this.bikeMesh(p.id); inst.root.add(inst.bike); }
       if (inst.bike) { inst.bike.visible = riding; inst.bike.scale.setScalar(1 / p.look.height); inst.bike.position.set(0, -RIDE_SEAT / p.look.height, 0); }
+      // A guard from level 3 stands on a scooter, a hand's height up.
+      const scoot = p.kind === 'staff' && p.role === 'guard' && staffLevel(p) >= 3 && !p.onBreak;
+      if (scoot && !inst.scooter) { inst.scooter = new Mesh(this.scooterGeo ??= scooterGeometry(this.assets.palette), this.assets.plainMaterial); inst.root.add(inst.scooter); }
+      if (inst.scooter) { inst.scooter.visible = scoot; inst.scooter.scale.setScalar(1 / p.look.height); inst.scooter.position.set(0, -SCOOTER_DECK / p.look.height, 0); if (scoot) inst.root.position.y += SCOOTER_DECK; }
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d > far || d < nearHide) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; }
       if (view) { this.sphere.center.set(x, y + 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }

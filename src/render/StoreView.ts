@@ -13,7 +13,7 @@ import { doubleHeight } from '@/sim/storeys';
 import { underFloors, spillMark } from './levels';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
-const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator']);
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate']);
 
 /** Delivery boxes drawn at most (about four units each). */
 const BOX_MAX = 220;
@@ -746,7 +746,7 @@ export class StoreView {
     // The middle of its footprint (a billboard spans two tiles), up on its floor; a hanging light under a
     // double-height ceiling hangs from that.
     const r = footprintOf(f.type, f.x, f.z, f.rot), L = levelOf(f);
-    const y = yOffset + L * STOREY + (f.type === 'pendant' && doubleHeight(shop, f.x, f.z) ? STOREY : 0);
+    const y = yOffset + L * STOREY + ((f.type === 'pendant' || FIXTURES[f.type].overhead) && doubleHeight(shop, f.x, f.z) ? STOREY : 0);
     this.dummy.position.set((r.x0 + r.x1) / 2 + Math.sin(yaw) * dz, y, zOnLevel((r.z0 + r.z1) / 2, -L) + Math.cos(yaw) * dz);
     this.dummy.rotation.set(0, yaw, 0);
     this.dummy.scale.set(1, 1, 1);

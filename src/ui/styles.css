@@ -699,3 +699,23 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .roundbtn.eyes svg .fill { fill: rgba(63,168,122,0.18); stroke: none; }
 .roundbtn.eyes.active svg .fill { fill: rgba(255,255,255,0.3); }
 .reticle { position: fixed; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: rgba(255,255,255,0.92); box-shadow: 0 0 0 1.5px rgba(56,56,61,0.55), 0 1px 4px rgba(0,0,0,0.25); pointer-events: none; z-index: 2; }
+
+/* Staff: their level and how far to the next, what they need, and the dice for a new name and look. */
+.staff-item .lvl { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 9px; background: #FFC044; color: var(--slate); font-size: 11px; font-weight: 800; line-height: 18px; vertical-align: 1px; }
+.staff-item .tag.break { background: #E5E2DC; color: #6B6862; }
+.staff-item.on-break .name, .staff-item.on-break .sub { opacity: 0.7; }
+.staff-item .xp { height: 5px; margin: 5px 0 4px; border-radius: 3px; background: rgba(56,56,61,0.12); overflow: hidden; max-width: 180px; }
+.staff-item .xp i { display: block; height: 100%; background: linear-gradient(90deg, #FFC044, #F59E0B); border-radius: 3px; }
+.staff-item .sub.need { color: #C2410C; font-weight: 700; }
+.staff-item .staff-controls { gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.staff-item .dice svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.staff-item .dice svg circle { fill: currentColor; stroke: none; }
+.staff-main { min-width: 0; flex: 1; }
+.staff-item .staff-controls select { width: auto; min-width: 0; flex: 0 1 auto; }
+
+/* The basket's instant-delivery switch. */
+.basket .instant { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; margin: 2px 0 8px; border-radius: 12px; background: rgba(255,255,255,0.7); border: 2px solid transparent; cursor: pointer; }
+.basket .instant.on { border-color: #F59E0B; background: #FFF6E0; }
+.basket .instant input { margin-top: 3px; width: 18px; height: 18px; accent-color: #F59E0B; }
+.basket .instant span { display: flex; flex-direction: column; font-size: 14px; }
+.basket .instant small { color: var(--muted, #6B6862); font-size: 12px; }

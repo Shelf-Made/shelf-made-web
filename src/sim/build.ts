@@ -36,7 +36,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   // (but a light hung on the same wall cannot share it). The stairs take two.
   const sameWall = (fx: Fixture) => !!def.onWall && !!FIXTURES[fx.type].onWall && fx.rot === rot;
   const mine = footprintOf(type, x, z, rot);
-  if (shop.fixtures.some((fx) => fx.id !== ignoreId && !FIXTURES[fx.type].outdoor && (fx.x === x && fx.z === z
+  // (A camera up on the ceiling shares its tile with what stands under it, but not with another up there.)
+  const apart = (fx: Fixture) => !!def.overhead !== !!FIXTURES[fx.type].overhead;
+  if (shop.fixtures.some((fx) => fx.id !== ignoreId && !FIXTURES[fx.type].outdoor && !apart(fx) && (fx.x === x && fx.z === z
     ? (sameWall(fx) || (type !== 'window' && fx.type !== 'window'))
     : type !== 'window' && fx.type !== 'window' && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), mine)))) return { ok: false, reason: 'Something is already there', price };
   // Nor where a ride is got on or comes off: whoever steps off would step into it (nor may a flight come up onto anything).

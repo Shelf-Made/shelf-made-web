@@ -18,13 +18,15 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'
   | 'floorLamp' | 'wallLight' | 'pendant' | 'neon'
+  /** Security: a camera on the wall, a dome on the ceiling, a smart dome, and tag gates by the door. */
+  | 'camera' | 'dome' | 'smartCam' | 'tagGate'
   /** Out on the lot. */
   | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard'
   /** Up to the next floor. */
   | 'stairs' | 'escalator' | 'elevator';
 
 /** The Build card's tabs. */
-export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights' | 'outside' | 'storeys';
+export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights' | 'security' | 'outside' | 'storeys';
 /** What a tile of the lot is laid with (grass where none is). */
 export type LotSurface = 'gravel' | 'asphalt' | 'paving' | 'brick';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
@@ -54,6 +56,8 @@ export interface FixtureDef {
   walkable?: boolean;
   /** Hangs on a wall: its back must be against the shop's outer wall. */
   onWall?: boolean;
+  /** Hangs from the ceiling: it shares its tile with whatever stands on the floor under it. */
+  overhead?: boolean;
   /** What it adds to how the shop looks (decor, 0..1 in all), for up to `looksCap` of them. */
   looks?: number; looksCap?: number;
   /**
@@ -193,6 +197,17 @@ export interface Person {
   busted?: boolean;
   /** Staff: the shoplifter they are after. */
   chase?: number | null;
+  /** A shoplifter held still a moment by a smart camera (seconds left), and whether one has already (it works once). */
+  frozen?: number;
+  zapped?: boolean;
+  /** A shoplifter who has run through the tag gates (they sound once). */
+  gated?: boolean;
+  /** Staff: experience from the job (scans, boxes shelved, spills, arrests); it sets their level, 1 to 5. */
+  xp?: number;
+  /** Staff: on a break (half pay, off the floor, keeps their experience). */
+  onBreak?: boolean;
+  /** Staff: the tick they last said what they need to do their job. */
+  needTick?: number;
   /** Staff: seconds at their post with nothing to do (they go and tidy a shelf after a while). */
   idleFor?: number;
   /** Came by bike: the rack and stand it is locked to, and whether they are riding it now. */
@@ -208,11 +223,17 @@ export interface Person {
   rideLock?: Vec2;
 }
 
-export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager';
+export type StaffRole = 'cashier' | 'stocker' | 'cleaner' | 'orderer' | 'manager' | 'guard';
 export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | 'reviews' | null;
 
 export interface Candidate { id: number; name: string; role: StaffRole; skill: number; speed: number; wage: number; look: { model: number; variant: number; height: number } }
-export interface ManagerRules { reorderPoint: number; spendCap: number; priceMin: number; priceMax: number; wageCap: number; adBudget: number }
+export interface ManagerRules {
+  reorderPoint: number; spendCap: number; priceMin: number; priceMax: number; wageCap: number; adBudget: number;
+  /** How full to stock up to when reordering, times what the shelves hold (0.5 to 2; 1.5 when unset). */
+  stockTarget?: number;
+  /** Reorders come by instant delivery (25% more, no truck to wait for). */
+  instant?: boolean;
+}
 
 /**
  * When a manager places a saved order: every morning, every few days, when the pallet runs low, when

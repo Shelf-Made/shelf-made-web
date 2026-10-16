@@ -4,7 +4,7 @@ import { PLOTS, FIXTURES, DIFFICULTY, CLOSE_TIME, storageCap } from './layout';
 import { productDef } from './products';
 import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
-import { spawnDeliveryTruck } from './cars';
+import { spawnDeliveryTruck, deliverOrder } from './cars';
 import { doorOutside } from './people';
 import { rivalDay, rivalsNight, planRivals } from './rivals';
 import { computeScores, priceIndex, playerShare } from './customers';
@@ -35,10 +35,13 @@ export function unitCost(productId: string, supplierId: string, state?: GameStat
   return Math.round(def.cost * supplier(supplierId).priceMul * market * 100) / 100;
 }
 
-export function placeOrder(state: GameState, supplierId: string, lines: { productId: string; qty: number }[]): Order | string {
+/** Instant delivery: straight onto the pallet, no truck to wait for, for this much more. */
+export const INSTANT_MUL = 1.25;
+
+export function placeOrder(state: GameState, supplierId: string, lines: { productId: string; qty: number }[], instant = false): Order | string {
   const sup = supplier(supplierId);
   const shortLines = lines.filter((l) => l.qty > 0 && inShortage(state, l.productId));
-  const clean = lines.filter((l) => l.qty > 0 && !inShortage(state, l.productId)).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: unitCost(l.productId, sup.id, state) }));
+  const clean = lines.filter((l) => l.qty > 0 && !inShortage(state, l.productId)).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: Math.round(unitCost(l.productId, sup.id, state) * (instant ? INSTANT_MUL : 1) * 100) / 100 }));
   if (clean.length === 0) return shortLines.length ? `${productDef(shortLines[0]!.productId).name} is in shortage: no supplier has it this week.` : 'Nothing to order.';
   for (const l of shortLines) state.notices.push({ day: state.day, text: `${productDef(l.productId).name} left off the order: in shortage this week.`, kind: 'event' });
   const total = Math.round(clean.reduce((a, l) => a + l.qty * l.unitCost, 0) * 100) / 100;
@@ -57,6 +60,7 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   const order: Order = { id: state.nextId++, supplierId: sup.id, lines: clean, total, placedDay: state.day, placedTime: state.time, eta, state: 'pending' };
   state.orders.push(order);
   cue(state, 'order');
+  if (instant) deliverOrder(state, order);
   if (!state.tutorial.completed.includes('order')) {
     // Reward handled by completeTutorial via people.ts to keep one code path.
   }

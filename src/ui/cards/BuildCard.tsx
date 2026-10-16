@@ -14,7 +14,7 @@ import { FURNITURE_USE } from '@/sim/furniture';
 type Tab = BuildCategory | 'floors' | 'shop';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'checkout', label: 'Tills' }, { id: 'shelves', label: 'Shelves' }, { id: 'furniture', label: 'Furniture' }, { id: 'decor', label: 'Decor' },
-  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'storeys', label: 'Upstairs' }, { id: 'outside', label: 'Outside' }, { id: 'shop', label: 'Shop' },
+  { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'security', label: 'Security' }, { id: 'floors', label: 'Floors' }, { id: 'storeys', label: 'Upstairs' }, { id: 'outside', label: 'Outside' }, { id: 'shop', label: 'Shop' },
 ];
 /** A word on what each piece is for (the tile's tooltip). */
 const NOTES: Partial<Record<FixtureType, string>> = {
@@ -28,7 +28,11 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   flowerBed: 'Brightens the frontage', planter: 'A tub of greenery', tree: 'Shade and green round the car park', parkBench: 'Somewhere to sit outside',
   bikeRack: `Shoppers ride in and lock up (${RACK_STANDS} bikes); brings in a few more`, billboard: `Your own board: no rent, seen from Main Road (up to ${LOT_MAX.billboard})`,
   stairs: 'Opens the floor above: shoppers climb up to what is on its shelves', escalator: 'Carries shoppers up without the climb: more of them go up',
-  elevator: 'A lift to the floor above: one tile, doors on both floors', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
+  elevator: 'A lift to the floor above: one tile, doors on both floors',
+  camera: 'On a wall, watching the floor in front of it: fewer shoplifters, and every free hand sees one run',
+  dome: 'On the ceiling, watching all round it (over a shelf too)',
+  smartCam: 'Watches all round, further, and freezes a running thief for a moment',
+  tagGate: 'Just inside the door: beeps at a thief running out, and stops most of them', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
 };
 
 /** What a piece is for: what the furniture does, or the note above. */
@@ -68,7 +72,12 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const b = snap.build;
   const selected = b.selectedId !== null ? s.shop.fixtures.find((f) => f.id === b.selectedId) : null;
   const [tab, setTabState] = useState<Tab>(() => (runtime.buildTab as Tab | null) ?? (b.placing ? FIXTURES[b.placing].category : s.shop.fixtures.some((f) => f.type === 'register') ? 'shelves' : 'checkout'));
-  const setTab = (t: Tab) => { runtime.rememberBuildTab(t); setTabState(t); };
+  // The Security tab shows what the cameras see while you place them (and stops when you leave it).
+  const setTab = (t: Tab) => {
+    runtime.rememberBuildTab(t); setTabState(t);
+    if (t === 'security' && b.overlay === 'none') runtime.setOverlay('security');
+    else if (t !== 'security' && b.overlay === 'security') runtime.setOverlay('none');
+  };
   const thumbs = runtime.renderer?.fixtureThumbs ?? {};
   const items = (Object.keys(FIXTURES) as FixtureType[]).filter((t) => FIXTURES[t].category === tab);
   const floor = s.shop.floorStyle ?? 'lino';
@@ -102,7 +111,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()} title="Ctrl+Z">Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()} title="Ctrl+Y">Redo</button></span>
         <label className="row overlay-pick"><span className="muted">View</span>
           <select value={b.overlay} onChange={(e) => runtime.setOverlay(e.target.value as typeof b.overlay)}>
-            <option value="none">Normal</option><option value="heat">Heat map</option><option value="exposure">Exposure</option><option value="paths">Paths</option>
+            <option value="none">Normal</option><option value="heat">Heat map</option><option value="exposure">Exposure</option><option value="paths">Paths</option><option value="security">Cameras</option>
           </select>
         </label>
       </div>

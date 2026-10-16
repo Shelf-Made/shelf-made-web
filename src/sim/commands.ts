@@ -15,7 +15,8 @@ import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
-import { hire, fire, giveRaise, setShift } from './staff';
+import { hire, fire, giveRaise, setShift, setBreak, restyle } from './staff';
+import { caught } from './shoplifting';
 import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall } from './build';
 import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild, keepFinishes } from './storeys';
 import { pave, paintBay, eraseBay } from './lot';
@@ -41,7 +42,7 @@ export type Command =
   | { type: 'scanHere'; registerId: number }
   | { type: 'carry'; fixtureId: number }
   | { type: 'setPrice'; productId: string; price: number }
-  | { type: 'placeOrder'; supplierId: string; lines: { productId: string; qty: number }[] }
+  | { type: 'placeOrder'; supplierId: string; lines: { productId: string; qty: number }[]; instant?: boolean }
   | { type: 'openTomorrow' }
   | { type: 'skipTutorial' }
   /** Design the manager: character, height and colours (null puts a colour back to the character's own). */
@@ -93,6 +94,9 @@ export type Command =
   | { type: 'fire'; staffId: number }
   | { type: 'raise'; staffId: number }
   | { type: 'setShift'; staffId: number; shift: 'full' | 'morning' | 'evening' }
+  | { type: 'setBreak'; staffId: number; on: boolean }
+  | { type: 'restyleStaff'; staffId: number }
+  | { type: 'grabThief'; personId: number }
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
   | { type: 'clean'; litterId: number }
@@ -103,11 +107,14 @@ export type Command =
 
 export interface CommandResult { ok: boolean; message?: string }
 
+/** How far the manager reaches to grab a shoplifter (Use on one running past). */
+export const GRAB_REACH = 1.3;
+
 /** The sound a command makes when it works and has not already made its own. */
 const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
   removeFixture: 'sell', moveFixture: 'place', setPrice: 'tick', flyers: 'paper', billboard: 'build', promotion: 'order', ad: 'order',
   outsideSign: 'build', signStyle: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
-  setShift: 'tick', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
+  setShift: 'tick', setBreak: 'tick', restyleStaff: 'tap', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
 };
 
 /** Characters the manager can be: the twelve townsfolk, six women (even) and six men (odd). */
@@ -227,7 +234,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       return { ok: true };
     }
     case 'placeOrder': {
-      const res = placeOrder(state, cmd.supplierId, cmd.lines);
+      const res = placeOrder(state, cmd.supplierId, cmd.lines, cmd.instant);
       if (typeof res === 'string') return { ok: false, message: res };
       completeTutorial(state, 'order');
       return { ok: true };
@@ -348,6 +355,17 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'hire': { const err = hire(state, cmd.candidateId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'fire': { const err = fire(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setShift': { const err = setShift(state, cmd.staffId, cmd.shift); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'setBreak': { const err = setBreak(state, cmd.staffId, cmd.on); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'restyleStaff': { const err = restyle(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'grabThief': {
+      // A hand on a shoplifter on the run, within reach of the manager.
+      const t = state.people.find((x) => x.id === cmd.personId && x.state === 'fleeing' && !x.busted);
+      const o = state.people.find((x) => x.kind === 'owner');
+      if (!t || !o) return { ok: false };
+      if (Math.hypot(t.x - o.x, t.z - o.z) > GRAB_REACH) return { ok: false, message: 'Too far away: get closer!' };
+      caught(state, t, o);
+      return { ok: true };
+    }
     case 'raise': { const err = giveRaise(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setRules': { state.rules = { ...state.rules, ...cmd.rules }; return { ok: true }; }
     case 'ackBadge': { state.unlocks.newBadges = state.unlocks.newBadges.filter((b) => b !== cmd.card); return { ok: true }; }

@@ -26,20 +26,54 @@ export function staffLook(id: number, base: { model: number; variant: number; he
   return { model: base.model % 12, variant: base.variant, height: base.height, skin: STAFF_SKINS[h(1) % STAFF_SKINS.length], hair: STAFF_HAIRS[h(2) % STAFF_HAIRS.length], bottom: STAFF_BOTTOMS[h(3) % STAFF_BOTTOMS.length] };
 }
 
-export const ROLE_NAMES: Record<StaffRole, string> = { cashier: 'Cashier', stocker: 'Stocker', cleaner: 'Cleaner', orderer: 'Orderer', manager: 'Manager' };
+export const ROLE_NAMES: Record<StaffRole, string> = { cashier: 'Cashier', stocker: 'Stocker', cleaner: 'Cleaner', orderer: 'Orderer', manager: 'Manager', guard: 'Guard' };
 export const ROLE_BLURB: Record<StaffRole, string> = {
   cashier: 'Rings people up so you never have to scan again.',
   stocker: 'Carries boxes from the pallet to the shelves whenever one runs low.',
   cleaner: 'Picks up abandoned baskets and keeps the floor spotless.',
   orderer: 'Reorders products when they drop below the reorder point.',
   manager: 'Runs the shop by your rules: reorders, prices, wages and ads.',
+  guard: 'Watches the door: fewer shoplifters try, and the ones who run get caught.',
 };
-const BASE_WAGE: Record<StaffRole, number> = { cashier: 48, stocker: 42, cleaner: 36, orderer: 52, manager: 90 };
+const BASE_WAGE: Record<StaffRole, number> = { cashier: 48, stocker: 42, cleaner: 36, orderer: 52, manager: 90, guard: 58 };
+
+/**
+ * Experience: every member of staff gets better at the job by doing it (a scan, a box shelved, a spill
+ * mopped, a thief caught, a reorder), and it shows as a level from 1 to 5. Each level makes them quicker
+ * at it; a guard from level 3 patrols on a scooter.
+ */
+export const LEVEL_XP = [0, 60, 180, 400, 800];
+export const MAX_LEVEL = LEVEL_XP.length;
+export function staffLevel(p: { xp?: number }): number {
+  let l = 1; for (let i = 1; i < LEVEL_XP.length; i++) if ((p.xp ?? 0) >= LEVEL_XP[i]!) l = i + 1;
+  return l;
+}
+/** How far through the level they are (0..1; 1 at the top level). */
+export function levelProgress(p: { xp?: number }): number {
+  const l = staffLevel(p); if (l >= MAX_LEVEL) return 1;
+  const a = LEVEL_XP[l - 1]!, b = LEVEL_XP[l]!;
+  return Math.max(0, Math.min(1, ((p.xp ?? 0) - a) / (b - a)));
+}
+/** How much quicker a level makes them at their job: +20% a level, +80% at level 5. */
+export function levelBoost(p: { xp?: number; kind?: string }): number { return p.kind === 'staff' ? 1 + 0.2 * (staffLevel(p) - 1) : 1; }
+/** Experience for a job done; a level gained is cheered. */
+export function gainXp(state: GameState, p: Person, n: number): void {
+  if (p.kind !== 'staff') return;
+  const before = staffLevel(p);
+  p.xp = (p.xp ?? 0) + n;
+  const after = staffLevel(p);
+  if (after > before) {
+    popup(state, { x: p.x, z: p.z }, `Level ${after}!`, 'money', 1.4);
+    state.notices.push({ day: state.day, text: `${p.name} is now a level ${after} ${ROLE_NAMES[p.role ?? 'cashier'].toLowerCase()}${p.role === 'guard' && after === 3 ? ': on a scooter from now on' : ''}.`, kind: 'staff' });
+    cue(state, 'reward');
+  }
+}
 
 export const SHIFT_NAMES = { full: 'All day', morning: 'Mornings (8–2)', evening: 'Evenings (2–8)' } as const;
 
 /** Is this employee on shift right now? */
 export function onShift(p: Person, time: number): boolean {
+  if (p.onBreak) return false;
   const half = 6 * 60;
   return p.shift === 'morning' ? time < half : p.shift === 'evening' ? time >= half : true;
 }
@@ -52,12 +86,33 @@ export function setShift(state: GameState, staffId: number, shift: 'full' | 'mor
 }
 
 /** Daily wage after the shift pattern. */
-export function wageFor(p: Person): number { return Math.round((p.wage ?? 0) * (p.shift && p.shift !== 'full' ? 0.55 : 1)); }
+export function wageFor(p: Person): number { return Math.round((p.wage ?? 0) * (p.shift && p.shift !== 'full' ? 0.55 : 1) * (p.onBreak ? 0.5 : 1)); }
+
+/** On a break, or back to work: off the floor at half pay, keeping what they have learned. */
+export function setBreak(state: GameState, staffId: number, on: boolean): string | null {
+  const p = state.people.find((x) => x.id === staffId && x.kind === 'staff');
+  if (!p) return 'No such employee.';
+  p.onBreak = on || undefined;
+  if (on) { p.chase = null; releaseTill(state, p); }
+  return null;
+}
+function releaseTill(state: GameState, p: Person): void { for (const f of state.shop.fixtures) if (f.staffId === p.id) f.staffId = null; }
+
+/** A new name and a new look (the dice on their card). */
+export function restyle(state: GameState, staffId: number): string | null {
+  const p = state.people.find((x) => x.id === staffId && x.kind === 'staff');
+  if (!p) return 'No such employee.';
+  withRng(state, 'dice', (r) => {
+    p.name = `${r.pick(FIRST)} ${r.pick(LAST)}`;
+    p.look = staffLook(p.id + r.int(1, 99999), { model: r.int(0, 11), variant: r.int(0, 3), height: r.range(0.92, 1.08) });
+  });
+  return null;
+}
 
 export const DEFAULT_RULES: ManagerRules = { reorderPoint: 1.0, spendCap: 300, priceMin: 0.95, priceMax: 1.15, wageCap: 70, adBudget: 0 };
 
-export function makeCandidate(state: GameState, role?: StaffRole): Candidate {
-  return withRng(state, 'staff', (r) => {
+export function makeCandidate(state: GameState, role?: StaffRole, stream = 'staff'): Candidate {
+  return withRng(state, stream, (r) => {
     const roles: StaffRole[] = ['cashier', 'stocker', 'cleaner', 'orderer', 'manager'];
     const rl = role ?? r.pick(roles);
     const skill = Math.round(r.range(0.25, 0.95) * 100) / 100;
@@ -70,6 +125,8 @@ export function makeCandidate(state: GameState, role?: StaffRole): Candidate {
 /** Five fresh faces every morning, always at least one cashier and one stocker. */
 export function refreshPool(state: GameState): void {
   state.staffPool = [makeCandidate(state, 'cashier'), makeCandidate(state, 'stocker'), makeCandidate(state), makeCandidate(state), makeCandidate(state, state.day % 2 === 0 ? 'manager' : undefined)];
+  // Once shoplifters start (the third day), a guard looking for work too (drawn on their own, so the rest of the pool is as it was).
+  if (state.day >= 2) state.staffPool.push(makeCandidate(state, 'guard', 'guards'));
 }
 
 export function hire(state: GameState, candidateId: number): string | null {
@@ -78,7 +135,7 @@ export function hire(state: GameState, candidateId: number): string | null {
   if (state.cash < c.wage) return `You need a day's wage (${dollars(c.wage)}) in the till to hire.`;
   // Hire as many as you like: someone else answers the ad in their place. A cashier with no till of
   // their own takes over one whose cashier is off shift, and helps on the floor until then.
-  state.staffPool = state.staffPool.map((x) => (x.id === c.id ? makeCandidate(state, c.role) : x));
+  state.staffPool = state.staffPool.map((x) => (x.id === c.id ? makeCandidate(state, c.role, c.role === 'guard' ? 'guards' : 'staff') : x));
   const d = doorOutside(state);
   const p: Person = {
     id: c.id, kind: 'staff', look: staffLook(c.id, c.look), x: d.x, z: d.z + 1.5, yaw: Math.PI, px: d.x, pz: d.z + 1.5,
@@ -87,6 +144,8 @@ export function hire(state: GameState, candidateId: number): string | null {
   };
   state.people.push(p);
   if (c.role === 'cashier') { const reg = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && !f.staffId); if (reg) reg.staffId = p.id; }
+  // A guard is quicker on their feet than the rest.
+  if (c.role === 'guard') p.speed *= 1.1;
   state.notices.push({ day: state.day, text: `${c.name} starts today as your ${ROLE_NAMES[c.role].toLowerCase()} (${dollars(c.wage)}/day).`, kind: 'staff' });
   cue(state, 'reward');
   return null;
@@ -124,6 +183,9 @@ export function staffNight(state: GameState): void {
     const underpaid = (p.wage ?? 40) < BASE_WAGE[p.role ?? 'cashier'] * (0.75 + (p.skill ?? 0.5) * 0.6) * 0.9 ? 0.03 : 0;
     p.morale = Math.max(0, Math.min(1, (p.morale ?? 0.8) - 0.015 - busy - underpaid + (manager && manager !== p ? 0.015 : 0) + (state.shop.cleanliness > 0.8 ? 0.005 : 0)));
     p.skill = Math.min(1, (p.skill ?? 0.5) + 0.006);
+    // A guard learns the door by watching it; a manager with no desk to work at frets.
+    if (p.role === 'guard' && !p.onBreak) gainXp(state, p, 15);
+    if (p.role === 'manager' && !state.shop.fixtures.some((f) => f.type === 'desk')) p.morale = Math.max(0, (p.morale ?? 0.8) - 0.02);
     if ((p.morale ?? 1) < 0.2 && withRng(state, 'staff', (r) => r.chance(0.5))) {
       releaseStaff(state, p);
       p.state = 'gone';
@@ -158,15 +220,18 @@ export function autoOrder(state: GameState, rules: ManagerRules, spendCap: numbe
     const have = onHand.get(pid) ?? 0;
     const point = cap * rules.reorderPoint;
     if (have < point) {
-      const qty = Math.max(6, Math.ceil(cap * 1.5 - have));
+      const qty = Math.max(6, Math.ceil(cap * (rules.stockTarget ?? 1.5) - have));
       const cost = qty * productDef(pid).cost;
       if (spend + cost > spendCap) continue;
       spend += cost; lines.push({ productId: pid, qty });
     }
   }
   if (lines.length) {
-    const res = placeOrder(state, 'local', lines);
-    if (typeof res !== 'string') state.notices.push({ day: state.day, text: `Stock reordered: ${lines.length} product${lines.length > 1 ? 's' : ''} for ${dollars(res.total)}.`, kind: 'staff' });
+    const res = placeOrder(state, 'local', lines, !!rules.instant);
+    if (typeof res !== 'string') {
+      state.notices.push({ day: state.day, text: `Stock reordered: ${lines.length} product${lines.length > 1 ? 's' : ''} for ${dollars(res.total)}.`, kind: 'staff' });
+      for (const o of state.people) if (o.kind === 'staff' && (o.role === 'orderer' || o.role === 'manager')) gainXp(state, o, 8);
+    }
   }
 }
 

@@ -4,7 +4,7 @@ import type { Difficulty, FixtureType, Rot, CustomerType, Look, FloorStyle, Wall
 import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile, canPushWall, canPullWall, wallRun } from '@/sim/build';
-import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
+import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
@@ -48,7 +48,7 @@ export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf
 export interface AimInfo { key: string | null; text: string; ok: boolean; at?: { x: number; y: number; z: number } }
 
 /** Something the manager can use. */
-type Thing = { kind: 'fixture' | 'delivery' | 'spill' | 'mess'; id: number };
+type Thing = { kind: 'fixture' | 'delivery' | 'spill' | 'mess' | 'thief'; id: number };
 
 /** How far in front of the manager a thing may be and still be used. */
 const REACH = 1.2;
@@ -107,7 +107,7 @@ export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; st
   | { kind: 'panel' } | { kind: 'unpanel' };
 /** Tools and pieces that work on the lot's own grid (whole x, half z), not the shop floor's. */
 const LOT_TOOLS = new Set<TileTool['kind']>(['pave', 'bay', 'unbay']);
-export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths'; level: number }
+export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' | 'security'; level: number }
 
 /** Short titles for the tutorial steps (the coach card shows one at a time). */
 const JOB_TITLES: Record<string, string> = {
@@ -157,7 +157,7 @@ export class GameRuntime {
   build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; at: { x: number; z: number } | null; wall: string | null; slot: number | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, at: null, wall: null, slot: null, selectedId: null, reason: '', valid: false, price: 0 };
   /** Placing, moving or using a tile tool: the pointer works on tiles. */
   private get building(): boolean { return !!this.build.placing || this.build.selectedId !== null || !!this.build.tool; }
-  overlay: 'none' | 'heat' | 'exposure' | 'paths' = 'none';
+  overlay: 'none' | 'heat' | 'exposure' | 'paths' | 'security' = 'none';
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private saving = false;
@@ -854,7 +854,7 @@ export class GameRuntime {
   bump(): void { this.stateVersion++; this.maybeEmit(); }
 
   // ---- Build mode
-  setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
+  setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths' | 'security'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
   startPlacing(type: FixtureType): void { this.build.placing = type; this.build.tool = null; this.build.selectedId = null; this.build.reason = ''; this.renderer?.setTileGhost(null); this.emit(); }
   /** A tile tool: click tiles next to the shop to buy them, or tiles of floor to lay a finish on them. */
   startTool(tool: TileTool): void {
@@ -1134,6 +1134,14 @@ export class GameRuntime {
     }
     // People first: a click on someone opens their panel (and walks nobody anywhere).
     const who = r.personAt(px, py, s);
+    // A shoplifter on the run: grab them if they are in reach, otherwise run after them.
+    const thief = who !== null ? s.people.find((p) => p.id === who && p.state === 'fleeing' && !p.busted) : undefined;
+    const me = s.people.find((p) => p.kind === 'owner');
+    if (thief && me) {
+      if (Math.hypot(thief.x - me.x, thief.z - me.z) < GRAB_REACH) this.dispatch({ type: 'grabThief', personId: thief.id });
+      else if (applyCommand(s, { type: 'walkTo', x: thief.x, z: thief.z }).ok) { this.refollow(); this.showToast('After them! Run into them to catch them.', 1600); }
+      return;
+    }
     if (who !== null) { this.selectPerson(who); return; }
     // Anywhere else lets go of them (following them too: the camera comes back to the manager).
     if (this.selectedPerson !== null) this.selectPerson(null);
@@ -1216,6 +1224,7 @@ export class GameRuntime {
       return rectToWorld(s.shop, r);
     }
     if (t.kind === 'delivery') return rectToWorld(s.shop, s.shop.delivery);
+    if (t.kind === 'thief') { const p = s.people.find((x) => x.id === t.id); const x = p?.x ?? 0, z = p?.z ?? 0; return { x0: x - 0.3, z0: z - 0.3, x1: x + 0.3, z1: z + 0.3 }; }
     const l = t.kind === 'mess' ? s.life!.litter.find((x) => x.id === t.id)! : s.shop.litter.find((x) => x.id === t.id)!;
     return { x0: l.x - 0.25, z0: l.z - 0.25, x1: l.x + 0.25, z1: l.z + 0.25 };
   }
@@ -1284,6 +1293,8 @@ export class GameRuntime {
     consider({ kind: 'delivery', id: 0 });
     for (const l of s.shop.litter) consider({ kind: 'spill', id: l.id });
     for (const l of frontageLitter(s)) consider({ kind: 'mess', id: l.id });
+    // A shoplifter running past within grabbing distance comes before anything else.
+    for (const p of s.people) if (p.state === 'fleeing' && !p.busted && Math.hypot(p.x - o.x, p.z - o.z) < GRAB_REACH) return { kind: 'thief', id: p.id };
     return best;
   }
 
@@ -1291,6 +1302,7 @@ export class GameRuntime {
   private actionFor(s: GameState, t: Thing, near: boolean): { text: string; ok: boolean; key: 'use' | 'scan' | null; run: (() => void) | null } {
     const owner = s.people.find((p) => p.kind === 'owner')!;
     if (t.kind === 'spill') return { text: 'Mop up the spill', ok: true, key: 'use', run: () => { this.dispatch({ type: 'clean', litterId: t.id }); } };
+    if (t.kind === 'thief') return { text: 'Stop, thief! Grab them', ok: near, key: 'use', run: () => { this.dispatch({ type: 'grabThief', personId: t.id }); } };
     if (t.kind === 'mess') {
       const kind = s.life?.litter.find((l) => l.id === t.id)?.kind;
       return { text: kind === 'poop' ? 'Clear up after the dog' : 'Pick up the litter', ok: true, key: 'use', run: () => { this.dispatch({ type: 'cleanTown', litterId: t.id }); } };

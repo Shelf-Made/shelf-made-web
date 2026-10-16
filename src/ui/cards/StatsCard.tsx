@@ -27,6 +27,19 @@ export function StatsCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       <div className="stat"><span>Sales</span><b>{money(t.revenue)}</b></div>
       <div className="stat"><span>Cost of goods sold</span><b>{money(t.cogs)}</b></div>
       <div className="stat"><span>Tonight: rent + power</span><b>{money(dailyRent(s) + dailyUtilities(s))}</b></div>
+      {(() => {
+        // Shoplifting, today and since you opened (the day logs keep each day's).
+        const all = s.history.concat(s.phase === 'night' ? [] : [t]);
+        const caught = all.reduce((a, d) => a + (d.caught ?? 0), 0), away = all.reduce((a, d) => a + (d.escaped ?? 0), 0), lost = all.reduce((a, d) => a + d.theft, 0);
+        if (!caught && !away) return null;
+        return (<>
+          <h3>Security</h3>
+          <div className="stat"><span>Shoplifters caught today</span><b>{t.caught ?? 0}</b></div>
+          <div className="stat"><span>Got away today</span><b>{t.escaped ?? 0}{t.theft > 0 ? ` (${money(t.theft)})` : ''}</b></div>
+          <div className="stat"><span>All told</span><b>{caught} caught · {away} away · {money(lost)} lost</b></div>
+          <div className="muted">Cameras, tag gates and a guard (Build → Security, Staff) put them off and catch them.</div>
+        </>);
+      })()}
       <h3>Reputation</h3>
       <div className="bar"><div style={{ width: `${Math.round(s.shop.reputation * 100)}%` }} /></div>
       <div className="muted">Awareness {Math.round(s.shop.awareness * 100)}% · happiness {t.satisfactionN ? Math.round((t.satisfaction / t.satisfactionN) * 100) : '–'}%</div>

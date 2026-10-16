@@ -29,6 +29,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
+  camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
@@ -124,6 +125,19 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       return merge(parts);
     }
     case 'gen:tallWall': return place(wall('market/wall'), 0, 0, 0, 0, 1, 2, 1);
+    // Security. A camera on a bracket high on the wall, looking out and down into the shop, its red light on.
+    case 'gen:camera': {
+      const body = merge([box(pal, '#F2F2F0', 0.1, 0.085, 0.2, 0, -0.0425, -0.1), box(pal, '#38383D', 0.075, 0.06, 0.02, 0, -0.03, 0.005), box(pal, '#38383D', 0.12, 0.012, 0.22, 0, 0.042, -0.1), box(pal, '#FF3B30', 0.014, 0.014, 0.01, 0.032, 0.008, 0.008)]);
+      body.rotateX(0.45);
+      body.translate(0, 0.8, WALL_FACE + 0.2);
+      return merge([box(pal, '#9AA0A8', 0.08, 0.08, 0.02, 0, 0.83, WALL_FACE + 0.01), box(pal, '#9AA0A8', 0.025, 0.025, 0.12, 0, 0.855, WALL_FACE + 0.07), body]);
+    }
+    // A smoked dome on a white ring, up on the ceiling.
+    case 'gen:dome': return merge([cylinder(pal, '#F2F2F0', 0.13, 0.025, 0, 0.92, 0, 16), cylinder(pal, '#2A2D33', 0.075, 0.05, 0, 0.87, 0, 16, 0.11), box(pal, '#FF3B30', 0.012, 0.01, 0.012, 0.09, 0.915, 0)]);
+    // The smart one: a bigger dome with a ring of blue light round it.
+    case 'gen:smartCam': return merge([cylinder(pal, '#F2F2F0', 0.17, 0.025, 0, 0.92, 0, 18), cylinder(pal, '#38A3E8', 0.165, 0.012, 0, 0.908, 0, 18), cylinder(pal, '#1E2228', 0.1, 0.065, 0, 0.845, 0, 18, 0.15)]);
+    // Two pedestals either side of the way through, in white with a band of the shop's colour.
+    case 'gen:tagGate': return merge([-1, 1].flatMap((k) => [box(pal, '#F2F2F0', 0.05, 0.56, 0.3, k * 0.42, 0, 0), box(pal, sc.primary, 0.054, 0.05, 0.304, k * 0.42, 0.42, 0), box(pal, '#9AA0A8', 0.09, 0.02, 0.34, k * 0.42, 0, 0)]));
     // Up to the next floor: each runs from its front (+z, on the floor) back and up a storey, through the opening above.
     case 'gen:stairs': {
       const parts: BufferGeometry[] = [];

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS, CATEGORY_NAMES, productDef, type Category } from '@/sim/products';
-import { SUPPLIERS, unitCost, deliveryStatus } from '@/sim/economy';
+import { SUPPLIERS, unitCost, deliveryStatus, INSTANT_MUL } from '@/sim/economy';
 import { FIXTURES, storageCap } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
 import { savedOrderCost, ruleText, MAX_SAVED } from '@/sim/savedOrders';
@@ -13,6 +13,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const [supplierId, setSupplierId] = useState('local');
   const [qty, setQty] = useState<Record<string, number>>({});
   const [saveName, setSaveName] = useState('');
+  // Instant delivery: straight onto the pallet, no truck to wait for, a quarter dearer.
+  const [instant, setInstant] = useState(false);
   // Opened from a shelf: start at the products that go on it (a chiller's dairy, a stand's produce).
   const [cat, setCat] = useState<Category | 'all'>(() => {
     const t = runtime.takeStockFor();
@@ -23,7 +25,7 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const lines = Object.entries(qty).filter(([, q]) => q > 0).map(([productId, q]) => ({ productId, qty: q }));
   const costWith = (sid: string) => Math.round(lines.reduce((a, l) => a + l.qty * unitCost(l.productId, sid, s), 0) * 100) / 100;
   const sup = SUPPLIERS.find((x) => x.id === supplierId)!;
-  const total = costWith(supplierId);
+  const total = Math.round(lines.reduce((a, l) => a + l.qty * Math.round(unitCost(l.productId, supplierId, s) * (instant ? INSTANT_MUL : 1) * 100) / 100, 0) * 100) / 100;
   const short = lines.length > 0 && total < sup.minOrder;
   const onShelf = useMemo(() => {
     const m = new Map<string, { qty: number; cap: number }>();
@@ -88,7 +90,11 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         </div>
         <div className="basket">
           <div className="row between"><span>{units > 0 ? `${units} units` : 'Nothing picked yet'}</span><b className="total">Total {money(total)}</b></div>
-          <button className="btn big" disabled={lines.length === 0 || short} onClick={() => { const r = runtime.dispatch({ type: 'placeOrder', supplierId, lines }); if (r.ok) { setQty({}); runtime.showToast('Order placed. The truck is on its way.'); } }}>Place order</button>
+          <label className={`instant${instant ? ' on' : ''}`}>
+            <input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} />
+            <span><b>Instant delivery</b> +{Math.round((INSTANT_MUL - 1) * 100)}%<small>Straight onto the pallet, no truck to wait for</small></span>
+          </label>
+          <button className="btn big" disabled={lines.length === 0 || short} onClick={() => { const r = runtime.dispatch({ type: 'placeOrder', supplierId, lines, instant }); if (r.ok) { setQty({}); runtime.showToast(instant ? 'Delivered! It is on the pallet.' : 'Order placed. The truck is on its way.'); } }}>{instant ? 'Order now' : 'Place order'}</button>
           {short && <p className="muted">{sup.name} takes orders of {money(sup.minOrder)} or more.</p>}
           {total > s.cash && !sup.terms && <p className="muted">You have {money(s.cash)}.</p>}
           {lines.length > 0 && (s.savedOrders?.length ?? 0) < MAX_SAVED && (

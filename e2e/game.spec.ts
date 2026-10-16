@@ -394,7 +394,7 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   await page.keyboard.press('KeyB');
   const build = page.locator('.card.t-build');
   await expect(build).toBeVisible();
-  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Floors', 'Upstairs', 'Outside', 'Shop']);
+  await expect(build.getByRole('tab')).toHaveText(['Tills', 'Shelves', 'Furniture', 'Decor', 'Walls', 'Lights', 'Security', 'Floors', 'Upstairs', 'Outside', 'Shop']);
   await build.getByRole('tab', { name: 'Furniture' }).click();
   const cafe = build.getByRole('button', { name: /^Café table/ });
   await expect(cafe.locator('img')).toHaveAttribute('src', /^data:image\/png/);

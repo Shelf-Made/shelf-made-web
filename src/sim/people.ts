@@ -11,7 +11,7 @@ import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
 import { listWeight, budgetFor, explainChoice, computeScores } from './customers';
 import { pickType } from './tick';
 import { effectivePrice } from './marketing';
-import { cashierMistake, onShift } from './staff';
+import { cashierMistake, onShift, gainXp, levelBoost } from './staff';
 import { CARD_FEE } from './money';
 import { formatMoney, dollars } from './money';
 import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './life';
@@ -629,8 +629,8 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       const cashier = state.people.find((s) => s.id === reg.staffId && s.kind === 'staff' && onShift(s, state.time) && dist(s, fixtureBackWorld(state.shop, reg)) < 0.8);
       if (cashier) {
         p.timer += dt;
-        const rate = 0.55 / (0.6 + (cashier.skill ?? 0.5));
-        if (p.timer >= rate) { p.timer = 0; scanItem(state, reg); }
+        const rate = 0.55 / (0.6 + (cashier.skill ?? 0.5)) / levelBoost(cashier);
+        if (p.timer >= rate) { p.timer = 0; scanItem(state, reg); gainXp(state, cashier, 1); }
       } else if (reg.type === 'kiosk') {
         p.timer += dt;
         const rate = p.ctype === 'convenience' ? 1.1 : 1.6;
@@ -980,6 +980,8 @@ function postOf(state: GameState, p: Person): Vec2 {
     case 'cashier': { const mine = state.shop.fixtures.find((f) => f.staffId === p.id); if (mine) return fixtureBackWorld(state.shop, mine); if (!reg) return storeroomPoint(state); break; }
     case 'stocker': { const sp = storeroomPoint(state); return { x: sp.x + 0.8, z: sp.z + 0.4 }; }
     case 'cleaner': { const d = doorInside(state); return { x: d.x - 1.2, z: d.z - 0.3 }; }
+    // A guard keeps an eye on the door from just inside it, the other side from the cleaner.
+    case 'guard': { const d = doorInside(state); return { x: d.x + 1.1, z: d.z - 0.5 }; }
   }
   // Everyone else, and a spare cashier with no till of their own: by the pallet.
   const sp = storeroomPoint(state); return { x: sp.x + 2.2, z: sp.z + 0.6 };
@@ -1003,6 +1005,28 @@ function takeTill(state: GameState, p: Person): void {
 /** A cashier who has no till to work (a spare): they lend a hand on the floor instead. */
 function spareCashier(state: GameState, p: Person): boolean {
   return p.role === 'cashier' && !state.shop.fixtures.some((f) => f.staffId === p.id);
+}
+
+/**
+ * What a worker needs to do their job, said out loud every so often while they lack it: a till for a
+ * cashier, a bin for a cleaner, a desk for a manager, a way to the pallet for a stocker.
+ */
+export function needOf(state: GameState, p: Person): string | null {
+  const has = (t: Fixture['type']) => state.shop.fixtures.some((f) => f.type === t);
+  switch (p.role) {
+    case 'cashier': return !has('register') && !has('kiosk') ? 'I need a till!' : null;
+    case 'cleaner': return !has('bin') ? 'I need a bin!' : null;
+    case 'manager': return !has('desk') ? 'I need a desk!' : null;
+    case 'stocker': return !palletReached(state) ? "I can't reach the pallet!" : null;
+    default: return null;
+  }
+}
+function sayNeeds(state: GameState, p: Person): void {
+  if (state.phase !== 'open' || state.tick - (p.needTick ?? -9999) < 20 * 25) return;
+  const need = needOf(state, p);
+  if (!need) return;
+  p.needTick = state.tick;
+  popup(state, { x: p.x, z: p.z }, need, 'bad', 1.3);
 }
 
 /** Workers (the owner and staff): stand at their post, carry stock, clean up. */
@@ -1037,13 +1061,15 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     if (thief) { p.chase = thief.id; p.state = 'chasing'; chaseStep(state, p, dyn); return; }
   }
   takeTill(state, p);
+  if (p.kind === 'staff') sayNeeds(state, p);
   const home = homeOf(state, p);
-  const floorHand = p.kind === 'staff' && (p.role !== 'cashier' || spareCashier(state, p));
+  // (A guard stays by the door: no shelves, no mopping.)
+  const floorHand = p.kind === 'staff' && p.role !== 'guard' && (p.role !== 'cashier' || spareCashier(state, p));
   // Anyone with nothing on finds something to do: shelves to fill (everyone but a cashier, who keeps
   // to the till; a spare cashier with no till helps), a spill to mop (cleaners see to spills first and go furthest for one), and failing
   // all that, now and then a shelf to tidy, so nobody just stands about.
   if ((p.state === 'idle' || p.state === 'toRegister') && !p.task) {
-    const spill = () => (p.state === 'idle' && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null);
+    const spill = () => (p.state === 'idle' && p.role !== 'guard' && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null);
     const mop = (l: { id: number; x: number; z: number }) => {
       p.state = 'toStock'; p.anim = 'walk'; p.timer = -2; // -2 marks a cleaning trip
       p.targetFixture = l.id; p.idleFor = 0;
@@ -1115,8 +1141,10 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         if (p.timer === -2) {
           // Cleaning trip: pick up the litter.
           const i = state.shop.litter.findIndex((l) => l.id === p.targetFixture);
-          if (i >= 0) { state.shop.litter.splice(i, 1); state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.08); cue(state, 'pick'); }
-          p.state = 'stocking'; p.anim = 'browse'; p.timer = 1.0; p.carrying = null; p.task = null; p.targetFixture = null;
+          if (i >= 0) { state.shop.litter.splice(i, 1); state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.08); cue(state, 'pick'); gainXp(state, p, 5); }
+          // (A cleaner with no bin in the shop to empty into takes longer over it.)
+          const binless = p.kind === 'staff' && p.role === 'cleaner' && !state.shop.fixtures.some((x) => x.type === 'bin');
+          p.state = 'stocking'; p.anim = 'browse'; p.timer = (binless ? 1.5 : 1.0) / levelBoost(p); p.carrying = null; p.task = null; p.targetFixture = null;
         } else { p.state = 'pickBox'; p.anim = 'browse'; p.timer = 0.8; p.yaw = Math.PI; }
       }
       break;
@@ -1140,7 +1168,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     }
     case 'carrying': {
       if (followPath(p, p.speed, dt, 12, 0.22)) {
-        p.state = 'stocking'; p.anim = 'browse'; p.timer = 1.2 / Math.max(0.5, p.kind === 'staff' ? 0.6 + (p.skill ?? 0.5) : 1);
+        p.state = 'stocking'; p.anim = 'browse'; p.timer = 1.2 / Math.max(0.5, p.kind === 'staff' ? 0.6 + (p.skill ?? 0.5) : 1) / levelBoost(p);
         const f = state.shop.fixtures.find((x) => x.id === p.task?.fixtureId);
         if (f) { const c = fixtureCentre(state.shop, f); p.yaw = Math.atan2(c.x - p.x, c.z - p.z); }
       }
@@ -1158,6 +1186,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
           if (left > 0) state.shop.storage.push({ productId: p.carrying.productId, qty: left, day: state.day });
           cue(state, 'stock');
           if (p.kind === 'owner') completeTutorial(state, 'stock');
+          else gainXp(state, p, 4);
         }
         p.carrying = null; p.task = null; p.state = 'idle'; p.anim = 'idle';
         // The manager steps back off the shelf's spot, or whoever comes to it next waits for them for good.

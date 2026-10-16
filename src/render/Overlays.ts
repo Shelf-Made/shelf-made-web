@@ -2,11 +2,12 @@ import { Group, InstancedMesh, Object3D, PlaneGeometry, MeshBasicMaterial, Color
 import type { GameState } from '@/sim/types';
 import { doorInside } from '@/sim/people';
 import { fixtureCentre } from '@/sim/grid';
-import { toWorld, liftWorld, levelTileList } from '@/sim/layout';
+import { toWorld, liftWorld, levelTileList, tileKey } from '@/sim/layout';
+import { cameraCover } from '@/sim/security';
 
-export type OverlayKind = 'none' | 'heat' | 'exposure' | 'paths';
+export type OverlayKind = 'none' | 'heat' | 'exposure' | 'paths' | 'security';
 
-/** Build-mode overlays: a heat map of where shoppers stand, how exposed each tile is, and current paths. */
+/** Build-mode overlays: a heat map of where shoppers stand, how exposed each tile is, current paths, and what the cameras see. */
 export class Overlays {
   readonly group = new Group();
   private tiles: InstancedMesh;
@@ -41,6 +42,7 @@ export class Overlays {
     let max = 1;
     if (this.kind === 'heat') for (const v of this.heat.values()) max = Math.max(max, v);
     const d = doorInside(state);
+    const cover = this.kind === 'security' ? cameraCover(shop) : null;
     for (const t of levelTileList(shop, level)) {
       const { x: wx, z: wz } = toWorld(shop, t.x + 0.5, t.z + 0.5);
       let v: number;
@@ -49,6 +51,15 @@ export class Overlays {
         const near = Math.max(0, 1 - Math.hypot(wx - d.x, wz - d.z) / 6);
         const endcap = shop.fixtures.some((fx) => (fx.type === 'endcap' || fx.type === 'rack') && Math.hypot(fixtureCentre(shop, fx).x - wx, fixtureCentre(shop, fx).z - wz) < 1.2) ? 0.35 : 0;
         v = Math.min(1, near * 0.8 + endcap + 0.1);
+      } else if (cover) {
+        // Seen (blue, deeper for a better camera; the smart ones' tiles brightest), or not watched at all (grey).
+        const c = cover.get(tileKey(t.x, t.z));
+        const at = liftWorld(shop, wx, wz);
+        this.dummy.position.set(at.x, at.y + 0.05, at.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix();
+        this.tiles.setMatrixAt(i, this.dummy.matrix);
+        this.tiles.setColorAt(i, c ? this.color.setHSL(0.58, 0.85, c.smart ? 0.62 : 0.38 + c.watch * 0.12) : this.color.setHSL(0, 0, 0.35));
+        if (++i >= 400) break;
+        continue;
       } else {
         v = state.people.some((p) => p.kind === 'customer' && p.path.some((pt) => Math.abs(pt.x - wx) < 0.5 && Math.abs(pt.z - wz) < 0.5)) ? 0.9 : 0.05;
       }

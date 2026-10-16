@@ -575,6 +575,11 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   wallLight: { type: 'wallLight', name: 'Wall light', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.06, looksCap: 4 },
   pendant: { type: 'pendant', name: 'Hanging light', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, looks: 0.06, looksCap: 6 },
   neon: { type: 'neon', name: 'Neon sign', price: 80, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.1, looksCap: 2 },
+  // Security: cameras watch part of the floor (a thief seen bolts into more trouble, and fewer try), tag gates beep at the door.
+  camera: { type: 'camera', name: 'Security camera', price: 250, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'security', walkable: true, onWall: true },
+  dome: { type: 'dome', name: 'Dome camera', price: 600, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'security', walkable: true, overhead: true },
+  smartCam: { type: 'smartCam', name: 'Smart camera', price: 1800, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 4, category: 'security', walkable: true, overhead: true },
+  tagGate: { type: 'tagGate', name: 'Tag gates', price: 450, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'security', walkable: true },
   // Out on the lot (looksCap counts toward the frontage's looks, as `looks` does inside).
   flowerBed: { type: 'flowerBed', name: 'Flower bed', price: 20, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.06, looksCap: 6 },
   planter: { type: 'planter', name: 'Planter', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, curb: 0.05, looksCap: 6 },
