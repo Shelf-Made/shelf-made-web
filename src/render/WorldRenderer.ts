@@ -223,7 +223,7 @@ export class WorldRenderer {
     this.rivals.update(state);
     this.street.update(state);
     this.overlays.sample(state);
-    this.overlays.update(state);
+    this.overlays.update(state, this.viewLevel ?? 0);
     this.clock += Math.min(dt, 0.1);
     // The lawn: grass grows wherever nothing is built, in a ring round the focus (wider as the camera pulls back).
     const dist = fp ? this.follow.distance : this.camera.goalDistance;

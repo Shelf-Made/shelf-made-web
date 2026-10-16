@@ -2,7 +2,7 @@ import { Group, InstancedMesh, Object3D, PlaneGeometry, MeshBasicMaterial, Color
 import type { GameState } from '@/sim/types';
 import { doorInside } from '@/sim/people';
 import { fixtureCentre } from '@/sim/grid';
-import { toWorld } from '@/sim/layout';
+import { toWorld, liftWorld, levelTileList } from '@/sim/layout';
 
 export type OverlayKind = 'none' | 'heat' | 'exposure' | 'paths';
 
@@ -32,17 +32,17 @@ export class Overlays {
     if (this.heat.size > 2000) this.heat.clear();
   }
 
-  update(state: GameState): void {
+  /** Drawn over floor `level` (the one being built on): upstairs, over its tiles where they are drawn. */
+  update(state: GameState, level = 0): void {
     if (this.kind === 'none') { this.tiles.count = 0; this.tiles.visible = false; return; }
     this.tiles.visible = true;
     const shop = state.shop;
-    const f = shop.floor;
     let i = 0;
     let max = 1;
     if (this.kind === 'heat') for (const v of this.heat.values()) max = Math.max(max, v);
     const d = doorInside(state);
-    for (let x = f.x0; x < f.x1; x++) for (let z = f.z0; z < f.z1; z++) {
-      const { x: wx, z: wz } = toWorld(shop, x + 0.5, z + 0.5);
+    for (const t of levelTileList(shop, level)) {
+      const { x: wx, z: wz } = toWorld(shop, t.x + 0.5, t.z + 0.5);
       let v: number;
       if (this.kind === 'heat') v = (this.heat.get(`${Math.floor(wx)},${Math.floor(wz)}`) ?? 0) / max;
       else if (this.kind === 'exposure') {
@@ -52,7 +52,8 @@ export class Overlays {
       } else {
         v = state.people.some((p) => p.kind === 'customer' && p.path.some((pt) => Math.abs(pt.x - wx) < 0.5 && Math.abs(pt.z - wz) < 0.5)) ? 0.9 : 0.05;
       }
-      this.dummy.position.set(wx, 0.05, wz); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix();
+      const at = liftWorld(shop, wx, wz);
+      this.dummy.position.set(at.x, at.y + 0.05, at.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix();
       this.tiles.setMatrixAt(i, this.dummy.matrix);
       this.tiles.setColorAt(i, this.color.setHSL(0.36 - v * 0.36, 0.9, 0.5));
       i++;
