@@ -63,6 +63,11 @@ const SPEED_ICONS: Record<Speed, JSX.Element> = {
   2: <svg viewBox="0 0 24 24"><path d="M3 5l9 7-9 7zM12 5l9 7-9 7z" /></svg>,
   4: <svg viewBox="0 0 24 24"><path d="M1 5l7.5 7L1 19zM8.5 5l7.5 7-7.5 7zM16 5l7.5 7-7.5 7z" /></svg>,
 };
+/** First person (an eye), and back to the camera behind you (a figure seen from behind). */
+const EYE_ICONS = {
+  eyes: <svg viewBox="0 0 24 24"><path className="fill" d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" /><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" /><circle cx="12" cy="12" r="3.2" /></svg>,
+  behind: <svg viewBox="0 0 24 24"><circle className="fill" cx="12" cy="7.5" r="3.5" /><path className="fill" d="M5 21c0-4.4 3.1-7 7-7s7 2.6 7 7z" /><circle cx="12" cy="7.5" r="3.5" /><path d="M5 21c0-4.4 3.1-7 7-7s7 2.6 7 7zM3 4.5l2.5 2M21 4.5l-2.5 2" /></svg>,
+};
 const SPEED_NAMES: Record<Speed, string> = { 0: 'Pause', 1: 'Play', 2: 'Fast', 4: 'Fastest' };
 
 /**
@@ -99,6 +104,8 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
         {status !== 'setup' && <div className={`pill sign ${status}`} aria-label={`Shop is ${status}`}>{status === 'open' ? 'OPEN' : 'CLOSED'}</div>}
       </div>
 
+      {snap.firstPerson && <div className="reticle" aria-hidden="true" />}
+
       {snap.phase !== 'picking' && !snap.jobs && <GoalChip runtime={runtime} snap={snap} />}
 
       {snap.phase === 'setup' && (
@@ -114,6 +121,12 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
             <button key={s} className={snap.speed === s ? 'active' : ''} onClick={() => runtime.setSpeed(s)} aria-pressed={snap.speed === s} aria-label={s === 0 ? 'Pause' : `${s}x speed`} title={`${SPEED_NAMES[s]}${s === 0 ? ` (${keyLabel(snap.settings.keys.pause)})` : ''}`}>{SPEED_ICONS[s]}</button>
           ))}
         </div>
+        {snap.phase !== 'picking' && (
+          <button className={`roundbtn eyes${snap.firstPerson ? ' active' : ''}`} onClick={() => runtime.toggleFirstPerson()} aria-pressed={snap.firstPerson} data-card="eyes"
+            title={`${snap.firstPerson ? 'Back to the camera behind you' : 'See through your own eyes'} (${keyLabel(snap.settings.keys.firstPerson)})`} aria-label="First person">
+            {snap.firstPerson ? EYE_ICONS.behind : EYE_ICONS.eyes}
+          </button>
+        )}
         {snap.phase !== 'picking' && (
           <button className={`roundbtn biz-hud${snap.card === 'reviews' ? ' active' : ''}${snap.reviews.unseen > 0 ? ' fresh' : ''}`} onClick={() => runtime.openCard('reviews')} aria-pressed={snap.card === 'reviews'} data-card="reviews" title={BLURBS.reviews}
             aria-label={`Business Profile: ${snap.reviews.count} review${snap.reviews.count === 1 ? '' : 's'}${snap.reviews.count ? `, rated ${snap.reviews.rating.toFixed(1)}` : ''}${snap.reviews.unseen ? `, ${snap.reviews.unseen} new` : ''}`}>

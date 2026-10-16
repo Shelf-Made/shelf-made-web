@@ -30,6 +30,9 @@ import { shopScheme } from '@/sim/schemes';
 import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld, liftWorld, sinkWorld, STOREY } from '@/sim/layout';
 import { poseOf, underFloors, floorMet } from './levels';
 
+/** Through the manager's eyes: their eye height (times their height), how far out the world is drawn, and people. */
+const EYE = 0.6, EYES_FAR = 44, EYES_PEOPLE = 24;
+
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
 /**
@@ -169,11 +172,16 @@ export class WorldRenderer {
     let focus: Vector3;
     if (this.frame !== state.shop) { this.frame = state.shop; const f = state.shop; this.marker.lift = (x, z) => liftWorld(f, x, z); }
     const pose = fp && tracked ? poseOf(state, tracked, alpha) : null;
+    // Through the manager's own eyes (never someone else's: following them goes back to the camera behind).
+    const eyes = fp && this.follow.firstPerson && !!owner && tracked === owner;
     if (fp && tracked && pose) {
       // At the height of the floor they are on, or of the one the Build card builds on.
+      if (eyes) this.follow.eye = EYE * tracked.look.height;
       this.follow.follow(pose.x, pose.z, this.buildLevel !== null ? this.buildLevel * STOREY : pose.y);
       this.follow.update(dt);
       focus = this.tmpFocus.set(this.follow.target.x, 0, this.follow.target.z);
+      // The light's shadows and the rain fit round what is in front of the eyes, not round the feet.
+      if (eyes) { const b = this.follow.basis(); focus.x += b.fx * 4; focus.z += b.fz * 4; }
     } else {
       this.camera.update(dt);
       focus = this.camera.target;
@@ -193,9 +201,11 @@ export class WorldRenderer {
     this.people.rain = this.weather.rainLevel;
     this.life?.update(state, Math.min(dt, 0.1));
     this.lighting.setTime(state.time / DAY_SECONDS, night, focus, fp ? this.follow.viewRadius() : this.camera.viewRadius(), { cloud: wx.cloud, rain: wx.rain, storm: wx.storm, fog: wx.fog, flash: this.weather.flash });
-    // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away.
+    // Haze: the roads fade out beyond the crossroads; pushed back as the camera pulls away. Through the eyes the
+    // world ends a street or two away (nothing far out drawn: no distant walkers, cars or birds).
     const fog = this.scene.fog as Fog | null;
-    if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance, k = this.lighting.fogScale; fog.near = (45 + d * 1.1) * k; fog.far = (160 + d * 1.6) * (0.4 + 0.6 * k); }
+    if (fog && eyes) { const k = this.lighting.fogScale; fog.near = 14 * k; fog.far = EYES_FAR * (0.5 + 0.5 * k); }
+    else if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance, k = this.lighting.fogScale; fog.near = (45 + d * 1.1) * k; fog.far = (160 + d * 1.6) * (0.4 + 0.6 * k); }
     this.setTown(state.seed, state.shop.plotId);
     // With the manager inside, the roof comes off and the walls between the camera and the manager
     // drop to stubs. Outside, the shop stands whole and wears its roof once the camera pulls back.
@@ -206,39 +216,49 @@ export class WorldRenderer {
       const l = toLocal(state.shop, pose.x, pose.z);
       inside = l.x > f.x0 - 0.4 && l.x < f.x1 + 0.4 && l.z > f.z0 - 0.4 && l.z < f.z1 + 0.7;
     }
-    // The floor in view: the one being built on, or the manager's while inside (the floors over it are lifted off); from outside, the whole building.
-    this.viewLevel = this.buildLevel ?? (inside && pose ? pose.level : null);
+    // The floor in view: the one being built on, or the manager's while inside (the floors over it are lifted off); from outside,
+    // and through the eyes, the whole building.
+    this.viewLevel = this.buildLevel ?? (inside && pose && !eyes ? pose.level : null);
     this.store.setViewLevel(this.viewLevel);
-    this.people.viewLevel = this.viewLevel; this.reactions.viewLevel = this.viewLevel;
+    // (Through the eyes, no bubbles over the floors above: they would show through the ceiling.)
+    this.people.viewLevel = this.viewLevel; this.reactions.viewLevel = eyes && pose ? pose.level : this.viewLevel;
     const camYaw = fp ? this.follow.yaw : this.camera.yaw;
-    this.store.update(state, fp ? (inside || this.buildLevel !== null ? camYaw : null) : (this.cutaway ? camYaw : null), this.activeCamera.position);
-    // (Never over the floor the Build card builds on, the top one too.)
-    this.store.setRoof(fp ? !inside && this.buildLevel === null && this.follow.distance > 16 : !this.cutaway);
-    if (fp && tracked) this.rivals.occlude(this.follow.camera.position, tracked.x, tracked.z); else this.rivals.occlude(null, 0, 0);
+    this.store.update(state, eyes ? null : fp ? (inside || this.buildLevel !== null ? camYaw : null) : (this.cutaway ? camYaw : null), this.activeCamera.position);
+    // (Never over the floor the Build card builds on, the top one too.) Through the eyes it is always on, a ceiling under it.
+    this.store.setRoof(eyes || (fp ? !inside && this.buildLevel === null && this.follow.distance > 16 : !this.cutaway));
+    this.store.setCeiling(eyes);
+    if (fp && tracked && !eyes) this.rivals.occlude(this.follow.camera.position, tracked.x, tracked.z); else this.rivals.occlude(null, 0, 0);
+    // Inside under the roof, the shop's own lights are on (the roof keeps the sun out), the light bouncing off the
+    // pale ceiling and floor instead of the grass, as in a photo down the aisles.
+    if (eyes && inside) {
+      this.store.setInteriorLight(night ? null : 2.8);
+      if (!night) { this.lighting.hemi.groundColor.set('#F2ECE2'); this.lighting.hemi.color.set('#FFF8EE'); this.lighting.hemi.intensity = Math.max(this.lighting.hemi.intensity, 1.5); }
+    } else this.store.setInteriorLight(null);
     // Skinned people are never frustum-culled by three.js (their bounds move with the bones): skip the ones out of view here.
     const cam = this.activeCamera; cam.updateMatrixWorld();
     this.viewFrustum.setFromProjectionMatrix(this.viewMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
-    this.people.update(state, alpha, dt, focus, -1, 0, fp ? 26 + this.follow.distance : 48, this.viewFrustum, cam.position);
+    this.people.update(state, alpha, dt, focus, eyes ? owner!.id : -1, 0, eyes ? EYES_PEOPLE : fp ? 26 + this.follow.distance : 48, this.viewFrustum, cam.position);
     this.reactions.update(state, alpha, cam.position);
     this.marker.update(dt);
-    this.cars.update(state, alpha);
+    this.cars.update(state, alpha, eyes ? cam.position : null, EYES_FAR);
     this.rivals.update(state);
     this.street.update(state);
     this.overlays.sample(state);
     this.overlays.update(state, this.viewLevel ?? 0);
     this.clock += Math.min(dt, 0.1);
     // The lawn: grass grows wherever nothing is built, in a ring round the focus (wider as the camera pulls back).
-    const dist = fp ? this.follow.distance : this.camera.goalDistance;
+    const dist = eyes ? 2 : fp ? this.follow.distance : this.camera.goalDistance;
     this.grass.mesh.visible = this.quality !== 'low';
     if (this.grass.mesh.visible) {
       this.grass.refreshMask(this.renderer, this.scene, [this.statics.group, this.store.group, this.rivals.group, this.street.group], WorldRenderer.notGround, `${this.townKey}|${this.store.layoutKey}|${this.rivals.layoutKey()}`);
       this.grass.update(focus.x, focus.z, Math.min(GRASS_RING / 2, 9 + dist * 0.8));
       this.weather.setHeights(this.grass.mask);
     }
+    this.ambient.close = eyes;
     this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky, this.lighting);
     this.renderer.info.reset();
     // Tilt-shift fades in only as the camera pulls right out over the town.
-    const far = fp ? this.follow.distance : this.camera.goalDistance;
+    const far = eyes ? 0 : fp ? this.follow.distance : this.camera.goalDistance;
     this.post.render(this.scene, this.activeCamera, Math.max(0, Math.min(1, (far - 34) / 26)));
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc >= 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }

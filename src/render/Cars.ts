@@ -21,7 +21,8 @@ export class CarsView {
     });
   }
 
-  update(state: GameState, alpha: number): void {
+  /** Cars beyond `far` of `eye` (when given: through the manager's eyes) are not drawn. */
+  update(state: GameState, alpha: number, eye: { x: number; z: number } | null = null, far = Infinity): void {
     const counts = new Array<number>(this.meshes.length).fill(0);
     this.blobs.begin();
     for (const car of state.cars) {
@@ -30,6 +31,7 @@ export class CarsView {
       const i = counts[mi]!;
       if (i >= 48) continue;
       const x = car.px + (car.x - car.px) * alpha, z = car.pz + (car.z - car.pz) * alpha;
+      if (eye && Math.hypot(x - eye.x, z - eye.z) > far) continue;
       let dy = car.yaw - car.pyaw;
       while (dy > Math.PI) dy -= Math.PI * 2;
       while (dy < -Math.PI) dy += Math.PI * 2;

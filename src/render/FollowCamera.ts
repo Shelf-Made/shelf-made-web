@@ -28,6 +28,14 @@ export class FollowCamera {
   /** The camera stays over the crossroads and its backdrop ring. */
   bounds = { minX: -32, maxX: 32, minZ: -24, maxZ: 28 };
   limits = { minPitch: deg(35), maxPitch: deg(70) };
+  /** Seeing through the manager's eyes: at their eye height, looking where they look, with a wider lens and a short view. */
+  firstPerson = false;
+  /** How far down the eyes look in first person (radians; negative looks up). */
+  fpDown = deg(6);
+  /** The eyes' height over the floor, in first person (set from the manager's height). */
+  eye = 0.6;
+  /** Scrolling in past the closest the camera comes: how far, so a nudge of the trackpad does not drop you into first person. */
+  private pushIn = 0;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(30, aspect, 0.3, 260);
@@ -69,7 +77,24 @@ export class FollowCamera {
   /** Where the overview settles: the middle of the crossroads. */
   home = { x: 0, z: 3 };
 
-  zoom(factor: number): void {
+  /**
+   * The wheel or the zoom keys. In first person, out goes back to the camera behind (null: no change); in close,
+   * scrolling on past the nearest the camera comes asks for first person ('in').
+   */
+  zoom(factor: number): 'in' | 'out' | null {
+    if (this.firstPerson) return factor > 1.01 ? 'out' : null;
+    if (factor < 1 && this.goal.distance <= FollowCamera.MIN + 1e-6) {
+      this.pushIn += Math.log(1 / factor);
+      if (this.pushIn > 0.3) { this.pushIn = 0; return 'in'; }
+      return null;
+    }
+    this.pushIn = 0;
+    this.zoomBy(factor);
+    return null;
+  }
+
+  /** Zoom by a factor, nothing more (the Build card fitting the shop in view, and back). */
+  zoomBy(factor: number): void {
     const before = this.goal.distance;
     this.goal.distance = MathUtils.clamp(this.goal.distance * factor, FollowCamera.MIN, FollowCamera.MAX);
     if (this.goal.distance > FollowCamera.FOLLOW_MAX) {
@@ -88,9 +113,10 @@ export class FollowCamera {
     this.goal.yaw = Math.round(this.goal.yaw / step) * step + dir * step;
   }
 
-  /** Right-drag: turn freely and tilt. */
+  /** Right-drag: turn freely and tilt (in first person, look round and up and down). */
   drag(dx: number, dy: number): void {
     this.goal.yaw -= dx * 0.006;
+    if (this.firstPerson) { this.fpDown = MathUtils.clamp(this.fpDown + dy * 0.004, -deg(50), deg(70)); return; }
     this.goal.pitch = MathUtils.clamp(this.goal.pitch + dy * 0.004, this.limits.minPitch, this.limits.maxPitch);
   }
 
@@ -115,6 +141,7 @@ export class FollowCamera {
   /** Back to the manager. Zoomed right out, come back in to the default too. */
   focus(x: number, z: number, y = this.goal.y): void {
     this.following = true; this.goal.y = y;
+    if (this.firstPerson) { this.goal.x = x; this.goal.z = z; this.clamp(); return; }
     if (this.goal.distance > FollowCamera.FOLLOW_MAX) this.goal.distance = FollowCamera.DEFAULT;
     this.goal.x = x; this.goal.z = z; this.clamp();
   }
@@ -130,7 +157,32 @@ export class FollowCamera {
     this.goal.z = MathUtils.clamp(this.goal.z, this.bounds.minZ, this.bounds.maxZ);
   }
 
+  /** Into the manager's eyes (facing the way the camera did), or back out to the camera behind them at its nearest. */
+  setFirstPerson(on: boolean): void {
+    if (on === this.firstPerson) return;
+    this.firstPerson = on; this.pushIn = 0;
+    const c = this.camera;
+    if (on) {
+      this.following = true; this.fpDown = deg(6);
+      c.fov = 62; c.near = 0.04; c.far = 60;
+    } else {
+      // Back out behind them, close in, looking the way the eyes did.
+      this.goal.distance = this.distance = FollowCamera.MIN;
+      c.fov = 30; c.near = 0.3; c.far = 260;
+    }
+    c.updateProjectionMatrix();
+    this.target.set(this.goal.x, this.goal.y, this.goal.z);
+    this.apply();
+  }
+
   update(dt: number): void {
+    if (this.firstPerson) {
+      // The eyes go where the manager goes, with no lag (their walk is already smoothed); turning eases a little.
+      this.target.set(this.goal.x, this.goal.y, this.goal.z);
+      this.yaw += (this.goal.yaw - this.yaw) * (1 - Math.exp(-dt * 22));
+      this.apply();
+      return;
+    }
     const k = 1 - Math.exp(-dt * 8);
     this.target.x += (this.goal.x - this.target.x) * k;
     this.target.z += (this.goal.z - this.target.z) * k;
@@ -144,6 +196,13 @@ export class FollowCamera {
 
   private apply(): void {
     const c = this.camera;
+    if (this.firstPerson) {
+      const cp = Math.cos(this.fpDown), fx = -Math.sin(this.yaw) * cp, fz = -Math.cos(this.yaw) * cp;
+      const y = this.target.y + this.eye;
+      c.position.set(this.target.x, y, this.target.z);
+      c.lookAt(this.target.x + fx, y - Math.sin(this.fpDown), this.target.z + fz);
+      return;
+    }
     const lookY = this.distance < 20 ? 0.45 : 0;
     const h = Math.sin(this.pitch) * this.distance, r = Math.cos(this.pitch) * this.distance;
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -156,7 +215,7 @@ export class FollowCamera {
   }
 
   /** Ground radius in view around the target, for fitting the sun's shadow camera. */
-  viewRadius(): number { return this.distance * 0.75; }
+  viewRadius(): number { return this.firstPerson ? 9 : this.distance * 0.75; }
 
   resize(aspect: number): void { this.camera.aspect = aspect; this.camera.updateProjectionMatrix(); }
 }

@@ -117,6 +117,14 @@ export function installTestHooks(rt: GameRuntime): void {
     bounds: async (ids: string[]) => { await rt.renderer?.assets.loadModels(ids.filter((id) => rt.renderer!.assets.has(id)), () => {}); return Object.fromEntries(ids.map((id) => { const r = rt.renderer; if (!r || !r.assets.has(id)) return [id, null]; const g = r.assets.geometry(id); g.computeBoundingBox(); const b = g.boundingBox!; return [id, [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map((v) => Math.round(v * 100) / 100)]; })); },
     interact: () => rt.interact(),
     zoom: (f: number) => rt.zoom(f),
+    firstPerson: () => rt.firstPerson,
+    /** Through the manager's eyes (or not), facing `yaw`, looking `down` radians below level. */
+    eyes: (on: boolean, yaw?: number, down?: number) => {
+      rt.setFirstPerson(on); const f = rt.renderer?.follow; if (!f) return false;
+      if (yaw !== undefined) { f.set(f.target.x, f.target.z, yaw, undefined, undefined, f.target.y); f.snap(); }
+      if (down !== undefined) f.fpDown = down;
+      return f.firstPerson;
+    },
     turn: (dir: 1 | -1) => rt.turnStep(dir),
     move: (x: number, z: number) => rt.move(x, z),
     focusStore: () => rt.focusStore(true),

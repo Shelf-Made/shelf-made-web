@@ -1092,6 +1092,53 @@ test('a spill beside a shelf: F mops it rather than stocking the shelf, and clic
   await expect.poll(async () => (await state(page)).shop.litter.length).toBe(0);
 });
 
+test('first person: V looks through the manager\'s eyes, F uses what you look at, a drag looks round, scrolling out or Build goes back', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Eye Level', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  // Stood a step from a shelf, the manager facing away from it.
+  const at = await page.evaluate(() => {
+    const w = window as unknown as { __shelf: { state: () => { shop: { originX: number; originZ: number; flip?: boolean; fixtures: { type: string; x: number; z: number; rot: number }[] }; people: { kind: string; yaw: number }[] } } };
+    const s = w.__shelf.state();
+    const f = s.shop.fixtures.find((x) => x.type === 'shelf' && x.rot === 1)!;
+    return { lx: f.x + 1.5, lz: f.z + 0.5, flip: !!s.shop.flip };
+  });
+  await hooks(page, 'aimAt', at.lx + 0.1, at.lz, at.lx + 2, 0.5, at.lz);
+  await expect.poll(() => aimText(page)).toBe('');
+  await page.mouse.move(400, 300);
+  await page.keyboard.press('KeyV');
+  await expect.poll(async () => (await hooks<boolean>(page, 'firstPerson'))).toBe(true);
+  await expect(page.locator('.reticle')).toHaveCount(1);
+  await expect(page.locator('button[aria-label="First person"]')).toHaveAttribute('aria-pressed', 'true');
+  // The manager's own body is not drawn (it would fill the view).
+  await expect.poll(() => page.evaluate(() => { const rt = (window as unknown as { __shelf: { runtime: { state: { people: { kind: string; id: number }[] }; renderer: { people: { live: Map<number, { root: { visible: boolean } }> } } } } }).__shelf.runtime; const o = rt.state.people.find((p) => p.kind === 'owner')!; return rt.renderer.people.live.get(o.id)?.root.visible; })).toBe(false);
+  // Looking at the shelf (the body still turned away): F's prompt is for the shelf.
+  await hooks(page, 'eyes', true, (at.flip ? Math.PI : 0) + Math.PI / 2, 0.2);
+  await expect.poll(() => aimText(page)).not.toBe('');
+  // A drag looks round (it does not pull the view along the ground).
+  const yaw0 = await page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { follow: { goalYaw: number } } } } }).__shelf.runtime.renderer.follow.goalYaw);
+  await page.mouse.move(600, 400); await page.mouse.down(); await page.mouse.move(700, 400, { steps: 4 }); await page.mouse.up();
+  const yaw1 = await page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { follow: { goalYaw: number; firstPerson: boolean } } } } }).__shelf.runtime.renderer.follow.goalYaw);
+  expect(yaw1).toBeLessThan(yaw0 - 0.3);
+  // Scrolling out goes back to the camera behind; scrolling in past the nearest comes back in.
+  await page.mouse.wheel(0, 240);
+  await expect.poll(async () => (await hooks<boolean>(page, 'firstPerson'))).toBe(false);
+  await expect(page.locator('.reticle')).toHaveCount(0);
+  for (let i = 0; i < 14; i++) await page.mouse.wheel(0, -240);
+  await expect.poll(async () => (await hooks<boolean>(page, 'firstPerson'))).toBe(true);
+  // Build is done from above.
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { unlocks: { build: boolean } } } }).__shelf.state().unlocks.build = true; });
+  await page.keyboard.press('KeyB');
+  await expect.poll(async () => (await hooks<boolean>(page, 'firstPerson'))).toBe(false);
+  await page.keyboard.press('KeyV');
+  expect((await hooks<boolean>(page, 'firstPerson'))).toBe(false);
+  await page.keyboard.press('KeyB');
+  // The eye button does it too.
+  await page.locator('button[aria-label="First person"]').click();
+  await expect.poll(async () => (await hooks<boolean>(page, 'firstPerson'))).toBe(true);
+});
+
 test("the shop's business profile: reviews come in, the badge counts them, photos develop, and the owner replies", async ({ page }) => {
   test.setTimeout(240_000);
   await ready(page);

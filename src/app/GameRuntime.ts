@@ -71,6 +71,8 @@ export interface Snapshot {
   build: BuildUI;
   /** In a game (not the lobby or the plot picker): the follow camera is on. */
   playing: boolean;
+  /** Seeing through the manager's eyes. */
+  firstPerson: boolean;
   /** The first day's checklist (tutorial steps with short titles), null once tips are off or done. */
   jobs: { id: string; title: string; done: boolean }[] | null;
   /** 0 at opening, 1 at closing: drives the sun on the day dial. */
@@ -200,6 +202,7 @@ export class GameRuntime {
       gameOver: s ? s.gameOver : false,
       build: { active: this.card === 'build', placing: this.build.placing, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay, level: this.buildLevel },
       playing: this.inPlay,
+      firstPerson: this.firstPerson,
       jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
       dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
       goal: s && s.phase !== 'picking' ? goalInfo(s) : null,
@@ -367,6 +370,7 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer; const id = this.selectedPerson;
     if (!s || !r || id === null) return;
     const p = s.people.find((x) => x.id === id); if (!p) return;
+    if (r.follow.firstPerson) { r.follow.setFirstPerson(false); this.leftEyes(); }
     this.followingPerson = true;
     r.followId = id;
     { const l = liftWorld(this.state!.shop, p.x, p.z); r.follow.focus(l.x, l.z, l.y); }
@@ -514,7 +518,7 @@ export class GameRuntime {
     this.emit();
   }
 
-  toLobby(): void { this.screen = 'lobby'; this.state = null; this.card = null; this.modalPause = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
+  toLobby(): void { this.renderer?.follow.setFirstPerson(false); this.screen = 'lobby'; this.state = null; this.card = null; this.modalPause = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
   /** A different game: nobody is selected or followed. */
   private forgetSelection(): void {
     this.selectedPerson = null; this.followingPerson = false;
@@ -640,7 +644,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${this.firstPerson}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -729,7 +733,7 @@ export class GameRuntime {
     this.buildTab = tab;
     // Building outside: pull back far enough to see the lot round the shop.
     const f = this.renderer?.follow;
-    if (tab === 'outside' && f && f.following && f.goalDistance < 18) { const from = f.goalDistance; f.zoom(18 / from); this.buildZoom ??= { from, to: f.goalDistance }; }
+    if (tab === 'outside' && f && f.following && f.goalDistance < 18) { const from = f.goalDistance; f.zoomBy(18 / from); this.buildZoom ??= { from, to: f.goalDistance }; }
   }
 
   /** The floor the Build card builds on (it starts on the manager's). */
@@ -748,6 +752,8 @@ export class GameRuntime {
     this.fixtureMenu = null;
     if (card === 'build' && this.card !== 'build' && this.state) { const o = this.state.people.find((p) => p.kind === 'owner'); this.buildLevel = o ? Math.min(storeysOf(this.state.shop).top, levelOfPerson(this.state.shop, o)) : 0; }
     this.card = this.card === card ? null : card;
+    // Building is done from above.
+    if (this.card === 'build' && this.renderer?.follow.firstPerson) { this.renderer.follow.setFirstPerson(false); this.leftEyes(); }
     if (this.card === 'reviews') this.reviewsSeen = this.state?.listing?.count ?? 0;
     if (this.card) this.move(0, 0);
     if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); }
@@ -811,7 +817,7 @@ export class GameRuntime {
     const need = Math.max(w / (Math.max(0.25, free) * 2 * t * c.aspect), d / (0.7 * 2 * t));
     if (f.following && need > f.goalDistance) {
       const from = f.goalDistance;
-      f.zoom(Math.min(need, FollowCamera.FOLLOW_MAX) / from);
+      f.zoomBy(Math.min(need, FollowCamera.FOLLOW_MAX) / from);
       this.buildZoom = { from, to: f.goalDistance };
     }
   }
@@ -819,7 +825,7 @@ export class GameRuntime {
   private buildZoom: { from: number; to: number } | null = null;
   private unfitBuildView(): void {
     const z = this.buildZoom, f = this.renderer?.follow; this.buildZoom = null;
-    if (z && f && f.following && Math.abs(f.goalDistance - z.to) < 0.01) f.zoom(z.from / f.goalDistance);
+    if (z && f && f.following && Math.abs(f.goalDistance - z.to) < 0.01) f.zoomBy(z.from / f.goalDistance);
   }
   /** Docked cards sit on the right third, so the world slides left while one is open. (Public for the test hooks.) */
   updateSideOffset(): void {
@@ -1018,7 +1024,37 @@ export class GameRuntime {
   /** Two fingers twisting on a phone: turn the camera with them. */
   twistCamera(radians: number): void { const r = this.renderer; if (!r || !this.inPlay) return; r.follow.drag(-radians / 0.006, 0); }
   turnStep(dir: 1 | -1): void { this.renderer?.follow.rotateStep(dir); this.audio.play('tick'); }
-  zoom(factor: number): void { this.renderer?.follow.zoom(factor); }
+  zoom(factor: number): void {
+    const z = this.renderer?.follow.zoom(factor);
+    if (z === 'in' && this.inPlay) this.setFirstPerson(true); else if (z === 'out') this.setFirstPerson(false);
+  }
+
+  /** The "First person" toast, cleared when you leave first person before it fades (it would tell you how to leave). */
+  private eyesToast = -1;
+  private leftEyes(): void { if (this.toast?.id === this.eyesToast) this.toast = null; }
+  /** Seeing through the manager's eyes (V, the eye button, or scrolling in past the closest the camera comes). */
+  get firstPerson(): boolean { return !!this.renderer?.follow.firstPerson; }
+  toggleFirstPerson(): void { this.setFirstPerson(!this.firstPerson); }
+  setFirstPerson(on: boolean): void {
+    const r = this.renderer, s = this.state; if (!r || !s) return;
+    if (on === r.follow.firstPerson) return;
+    if (on) {
+      if (!this.inPlay) return;
+      // Building needs the view from above; following someone else, it would be their eyes.
+      if (this.card === 'build' || this.building) { this.showToast('Close Build to look through your own eyes.', 1800); return; }
+      if (this.followingPerson) this.stopFollowQuietly();
+      this.focusCamera();
+      r.follow.setFirstPerson(true);
+      this.showToast(`First person · drag to look round · ${keyLabel(this.settings.keys.firstPerson)} or scroll out to leave`, 3600);
+      this.eyesToast = this.toastId;
+    } else {
+      r.follow.setFirstPerson(false);
+      this.leftEyes();
+      this.focusCamera();
+    }
+    this.audio.play('tick');
+    this.emit();
+  }
   /** The wheel or a trackpad: zoom in proportion to how far it scrolled, so a flick of the trackpad is a nudge, not a leap. */
   wheelZoom(deltaY: number, deltaMode: number): void {
     const px = deltaMode === 1 ? deltaY * 33 : deltaMode === 2 ? deltaY * 400 : deltaY;
@@ -1027,6 +1063,8 @@ export class GameRuntime {
   /** Click (or touch) and drag: grab the ground and pull the view along. */
   dragPan(x0: number, y0: number, x1: number, y1: number): void {
     const r = this.renderer; if (!r || !this.inPlay) return;
+    // Through the manager's eyes there is no ground to pull: a drag looks round instead.
+    if (r.follow.firstPerson) { this.turnCamera(x1 - x0, y1 - y0); return; }
     // Both on the floor grabbed: from outside (every floor drawn) a move off the top boards onto the lawn, or across
     // the stairwell, would measure from one floor to another (a storey down, and a floor's region away).
     const a = r.groundAt(x0, y0), b = a && r.groundAt(x1, y1, Math.round(a.y / STOREY));
@@ -1188,7 +1226,9 @@ export class GameRuntime {
   /** The nearest usable thing within reach in front of the manager (what F acts on). */
   private thingInFront(s: GameState): Thing | null {
     const o = s.people.find((p) => p.kind === 'owner'); if (!o) return null;
-    const fx = Math.sin(o.yaw), fz = Math.cos(o.yaw);
+    // Through their eyes, in front is where you look (they turn to face it only when they walk).
+    const eyes = this.renderer?.follow.firstPerson ? this.renderer.follow.yaw : null;
+    const fx = eyes !== null ? -Math.sin(eyes) : Math.sin(o.yaw), fz = eyes !== null ? -Math.cos(eyes) : Math.cos(o.yaw);
     let best: Thing | null = null, bestD = Infinity;
     const consider = (t: Thing) => {
       const r = this.thingRect(s, t);
@@ -1386,6 +1426,7 @@ export class GameRuntime {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
     const o = s.people.find((p) => p.kind === 'owner');
     if (!o) return;
+    r.follow.setFirstPerson(false);
     r.follow.following = true;
     // Upstairs, where they are drawn (over the ground floor, a storey up a floor).
     const l = liftWorld(s.shop, o.x, o.z);

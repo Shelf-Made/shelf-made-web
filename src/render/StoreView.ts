@@ -79,6 +79,10 @@ export class StoreView {
   private deliveryBox = new Box3();
   private chillerGeo: BufferGeometry | null = null;
   private roof: Mesh | null = null;
+  /** The ceiling under the roof, seen only through the manager's eyes: white tiles and glowing light panels. */
+  private ceiling: Group | null = null;
+  private readonly ceilingLightMat = new MeshBasicMaterial({ color: new Color(1.7, 1.68, 1.6) });
+  private readonly ceilingMat = new MeshBasicMaterial({ color: '#D8DDE2' });
   /** The shop's colours (from its scheme): awning, fascia, pylon, the walls inside. */
   private scheme: Scheme = schemeById(undefined);
   private painted = new Map<string, BufferGeometry>();
@@ -162,6 +166,8 @@ export class StoreView {
 
   /** The roof: off whenever you are inside (so the camera sees the floor), on from outside once pulled back; never over floors lifted off. */
   setRoof(on: boolean): void { if (this.roof) this.roof.visible = on && !this.levelGroups.some((g) => g && !g.visible && g.children.length > 0); }
+  /** The ceiling under the roof (first person, the whole building in view). */
+  setCeiling(on: boolean): void { if (this.ceiling) this.ceiling.visible = on && this.viewLevel === null; }
 
   /** Chunky rounded letters from Fredoka Bold: cream faces, sunny-yellow sides (or any two colours). */
   /** Extruded lettering in two colours. `bevel` rounds the edges (the shop's own fascia); signs seen from afar go without, at a tenth of the triangles. */
@@ -475,7 +481,25 @@ export class StoreView {
       if (mid) roof.push(box(pal, '#B9BCC4', 0.6, 0.3, 0.5, mid.x + 0.5, (height(mid.x, mid.z) + 1) * STOREY + 0.06, mid.z + 0.5));
       this.roof = new Mesh(merge(roof), this.assets.material);
       this.roof.castShadow = true; this.roof.visible = false;
-      this.shell.add(this.roof); }
+      this.shell.add(this.roof);
+      // Under it, the ceiling as the manager sees it: white tiles with a light panel over every other one, under the
+      // roof on the top floor and under the boards of each floor over another.
+      const deck: BufferGeometry[] = [], lit: BufferGeometry[] = [];
+      const panel = (x: number, z: number, y: number) => {
+        deck.push(box(pal, '#F4F7FA', 1, 0.012, 1, x + 0.5, y, z + 0.5));
+        if ((Math.round(x + z) & 1) === 0) lit.push(box(pal, '#FFFFFF', 0.5, 0.008, 0.16, x + 0.5, y - 0.007, z + 0.5));
+      };
+      for (const tile of tiles) panel(tile.x, tile.z, (height(tile.x, tile.z) + 1) * STOREY - 0.045);
+      for (let L = 1; L < MAX_LEVELS; L++) for (const k of st.built[L] ? st.floors[L] ?? [] : []) {
+        const [x, z] = k.split(',').map(Number) as [number, number];
+        panel(x, z, L * STOREY - 0.08);
+      }
+      this.ceiling = new Group();
+      // (Unlit: lit from below by the sky's bounce it reads grey, not as a white ceiling.)
+      if (deck.length) this.ceiling.add(new Mesh(merge(deck), this.ceilingMat));
+      if (lit.length) this.ceiling.add(new Mesh(merge(lit), this.ceilingLightMat));
+      this.ceiling.visible = false;
+      this.shell.add(this.ceiling); }
     this.nightLight.position.set(ox + (f.x0 + f.x1) / 2, 0.95, oz + (backZ + f.z1) / 2);
     // Opening day: bunting in the shop's colours across the front.
     this.bunting = new Mesh(buntingGeometry(pal, width + 0.6, [sc.primary, sc.accent, sc.trim]).translate(ox + f.x0 - 0.3, 0.97, fz + 0.48), this.assets.material);

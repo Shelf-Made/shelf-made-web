@@ -8,7 +8,7 @@ import { FollowCamera } from '@/render/FollowCamera';
  * click to walk there and use them (or place in build mode), left-drag to pan, right-drag to turn
  * the camera (a plain right click cancels in Build), the wheel to zoom (in proportion to the scroll).
  * Q/E turn the camera in 45° steps, C brings it back to you, + and − zoom. Walking again brings the
- * camera back to the manager. Touch: tap to walk or use, drag to pan, pinch to zoom, twist to turn.
+ * camera back to the manager. V (or scrolling in past the closest) sees through the manager's eyes, where any drag looks round. Touch: tap to walk or use, drag to pan, pinch to zoom, twist to turn.
  */
 export class InputController {
   private keys = new Set<string>();
@@ -49,7 +49,7 @@ export class InputController {
         this.rt.turnCamera(dx, dy);
         return;
       }
-      // Left-drag pans: grab the ground and pull. A press that hardly moves is still a click.
+      // Left-drag pans: grab the ground and pull (in first person, looks round). A press that hardly moves is still a click.
       const ld = this.leftDown;
       if (ld) {
         if (!ld.moved && Math.hypot(e.clientX - ld.x, e.clientY - ld.y) > 6) ld.moved = true;
@@ -90,6 +90,7 @@ export class InputController {
         if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); this.rt.redo(); return; }
         if (e.code === 'KeyV' && this.rt.build.selectedId !== null) { this.rt.copySelected(); return; }
       }
+      if (e.code === k.firstPerson && !e.repeat) { this.rt.toggleFirstPerson(); return; }
       if (e.code === 'KeyB') { this.rt.openCard('build'); return; }
       if (e.code === 'Tab') { e.preventDefault(); this.rt.openCard('stock'); return; }
       if (e.code === k.pause) this.rt.togglePause();

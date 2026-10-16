@@ -14,6 +14,8 @@ function h01(n: number): number { const s = Math.sin(n * 12.9898) * 43758.5453; 
 
 export class AmbientView {
   readonly group = new Group();
+  /** Seeing through the manager's eyes: only what is close by is drawn. */
+  close = false;
   private critters: Critter[] = [];
   private clouds: Mesh | null = null;
   private sky: Mesh;
@@ -155,7 +157,8 @@ export class AmbientView {
     // Animals far from the camera are too small to see and cost a draw call per part: skip them.
     const cp = camera.position;
     for (const c of this.critters) {
-      const far = c.home.kind === 'bird' ? 90 : c.home.kind === 'deer' ? 36 : 24;
+      // Through the manager's eyes, no birds wheeling far overhead, and the rest only close by.
+      const far = this.close ? (c.home.kind === 'bird' ? 0 : 18) : c.home.kind === 'bird' ? 90 : c.home.kind === 'deer' ? 36 : 24;
       const vis = Math.hypot(c.obj.position.x - cp.x, c.obj.position.z - cp.z) < far;
       c.obj.visible = vis;
       if (vis) this.animate(c, t, dt);
