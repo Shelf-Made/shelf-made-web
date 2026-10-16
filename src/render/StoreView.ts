@@ -1012,15 +1012,15 @@ export class StoreView {
    */
   pick(ray: Raycaster, shop: Shop, level = 0): StoreHit | null {
     const meshes = [...this.fixtureMeshes.values()].filter((e) => e.ids.length).map((e) => e.mesh);
-    const eye = ray.ray.origin, hidden = (p: Vector3) => underFloors(shop, eye, p.x, p.y, p.z, this.viewLevel);
-    const hits = ray.intersectObjects(meshes, false).filter((h) => !hidden(h.point));
+    // Hidden or not by the floor the thing stands on (the delivery's on the ground), not by how high the ray met it.
+    const eye = ray.ray.origin, hidden = (p: Vector3, on: number) => underFloors(shop, eye, p.x, p.y, p.z, on, this.viewLevel);
+    const fixtureOf = (h: { object: unknown; instanceId?: number }) => { const ids = (h.object as InstancedMesh).userData.fixtureIds as number[]; return shop.fixtures.find((x) => x.id === ids[h.instanceId ?? 0]); };
+    const hits = ray.intersectObjects(meshes, false).filter((h) => { const f = fixtureOf(h); return f && !hidden(h.point, levelOf(f)); });
     const boxHit = ray.ray.intersectBox(this.deliveryBox, new Vector3());
-    const boxDist = boxHit && !hidden(boxHit) ? boxHit.distanceTo(eye) : Infinity;
+    const boxDist = boxHit && !hidden(boxHit, 0) ? boxHit.distanceTo(eye) : Infinity;
     if (hits.length && hits[0]!.distance < boxDist) {
-      const h = hits[0]!;
-      const ids = (h.object as InstancedMesh).userData.fixtureIds as number[];
-      const f = shop.fixtures.find((x) => x.id === ids[h.instanceId ?? 0]);
-      if (f) return { kind: 'fixture', id: f.id, type: f.type, dist: h.distance };
+      const h = hits[0]!, f = fixtureOf(h)!;
+      return { kind: 'fixture', id: f.id, type: f.type, dist: h.distance };
     }
     if (boxDist < Infinity && shop.storage.length) return { kind: 'delivery', dist: boxDist };
     const t = (level * STOREY - ray.ray.origin.y) / ray.ray.direction.y;

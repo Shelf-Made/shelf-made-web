@@ -39,15 +39,17 @@ export function poseOf(state: GameState, p: Person, alpha: number): Pose {
 }
 
 /**
- * Is a point as drawn (world x, y, z) out of sight from `eye`, under the floors over it up to the one in view (null:
- * every open floor)? Looking down through each floor between, a tile people stand on is in the way; an opening
- * (where the stairs come up) or a double-height space is not.
+ * Is a point as drawn (world x, y, z) of something on floor `on` out of sight from `eye`, under the floors over it up
+ * to the one in view (null: every open floor)? Looking down through each floor between, a tile people stand on is in
+ * the way; an opening (where the stairs come up) or a double-height space is not. Floor `on` says which floors are over
+ * it, not y: the top of a piece a storey tall is flush with the boards over it, and as hidden.
  */
-export function underFloors(shop: Shop, eye: { x: number; y: number; z: number }, x: number, y: number, z: number, view: number | null): boolean {
+export function underFloors(shop: Shop, eye: { x: number; y: number; z: number }, x: number, y: number, z: number, on: number, view: number | null): boolean {
   const st = storeysOf(shop);
-  for (let L = Math.floor(y / STOREY + 0.01) + 1; L <= (view ?? st.top); L++) {
+  for (let L = on + 1; L <= (view ?? st.top); L++) {
     const h = L * STOREY;
-    if (eye.y <= h) continue;
+    // Up through that floor's opening (a flight's rail), it is over those boards, not under them.
+    if (eye.y <= h || y > h + 0.01) continue;
     const t = (eye.y - h) / (eye.y - y), l = toLocal(shop, eye.x + (x - eye.x) * t, eye.z + (z - eye.z) * t);
     if (st.floors[L]?.has(tileKey(Math.floor(l.x + 0.5) - 0.5, Math.floor(l.z)))) return true;
   }

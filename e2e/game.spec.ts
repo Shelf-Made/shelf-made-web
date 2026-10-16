@@ -472,6 +472,8 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await hooks(page, 'setSpeed', 0);
   await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
   expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  // A wall on the ground floor, a storey tall: its top is flush with the first floor's boards.
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'wall', x: -0.5, z: -5, rot: 0 })).ok).toBe(true);
   // A shopper and a spill on the ground floor, under the first floor's boards.
   const shopper = await page.evaluate(() => {
     const h = (window as unknown as { __shelf: { crowd: (n: number) => void; state: () => { shop: { originX: number; originZ: number; flip?: boolean; litter: { id: number; x: number; z: number }[] }; people: { id: number; x: number; z: number; px: number; pz: number; path: unknown[]; state: string; timer: number }[] } } }).__shelf;
@@ -484,6 +486,11 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   });
   // Upstairs over the ground floor's shelves: a click on the boards walks there, never picks the shelf under them.
   await hooks(page, 'fp', -0.5, -2.5 + UP);
+  // Nor the wall, nor the delivery's boxes in the corner (as tall), down there.
+  await pointAt(page, 0, -4.5 + UP);
+  expect(await aimText(page)).not.toMatch(/wall/i);
+  await pointAt(page, -1.5, -5.5 + UP);
+  expect(await aimText(page)).not.toMatch(/delivery/i);
   await pointAt(page, -2.2, -3.2 + UP);
   expect(await aimText(page)).not.toMatch(/shelf/i);
   await clickAt(page, -2.2, -3.2 + UP);

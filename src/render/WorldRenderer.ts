@@ -378,7 +378,7 @@ export class WorldRenderer {
       if (p.kind === 'owner' || p.state === 'driving' || p.state === 'inRival' || p.state === 'gone') continue;
       const pose = poseOf(state, p, this.lastAlpha);
       // Out of sight: on a floor lifted off, or under the floor in view.
-      if ((this.viewLevel !== null && pose.level > this.viewLevel) || underFloors(state.shop, cam.position, pose.x, pose.y + 0.5, pose.z, this.viewLevel)) continue;
+      if ((this.viewLevel !== null && pose.level > this.viewLevel) || underFloors(state.shop, cam.position, pose.x, pose.y + 0.5, pose.z, pose.level, this.viewLevel)) continue;
       foot.set(pose.x, pose.y, pose.z).project(cam);
       if (foot.z < -1 || foot.z > 1) continue;
       head.set(pose.x, pose.y + 0.95 * p.look.height, pose.z).project(cam);
@@ -422,7 +422,7 @@ export class WorldRenderer {
   inSight(state: GameState, x: number, y: number, z: number): boolean {
     const l = liftWorld(state.shop, x, z);
     if (this.viewLevel !== null && l.level > this.viewLevel) return false;
-    return !underFloors(state.shop, this.activeCamera.position, l.x, l.y + y, l.z, this.viewLevel);
+    return !underFloors(state.shop, this.activeCamera.position, l.x, l.y + y, l.z, l.level, this.viewLevel);
   }
 
   /** World → canvas pixel (a point upstairs where it is drawn). */
