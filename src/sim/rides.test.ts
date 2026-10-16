@@ -746,3 +746,24 @@ describe('a click nobody can walk to', () => {
     expect(canPlace(s, 'plant', -2.5, -1, 0).ok).toBe(true);
   });
 });
+
+describe('a box carried for a shelf, and a click somewhere else', () => {
+  // The walk clicked for kept the trip's "carrying", and arriving went straight to stocking that shelf: from wherever
+  // it ended, even a floor below it.
+  it('goes where clicked with the box still in hand: the shelf is stocked only by the shelf', () => {
+    const s = quiet(31), o = owner(s);
+    expect(place(s, 'shelf', -2.5, zOnLevel(-4, 1), 1).ok).toBe(true);
+    const shelf = s.shop.fixtures[s.shop.fixtures.length - 1]!;
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId === 'rice') { sl.productId = null; sl.qty = 0; }
+    s.shop.storage = [{ productId: 'rice', qty: 8, day: s.day }];
+    expect(applyCommand(s, { type: 'carry', fixtureId: shelf.id }).ok).toBe(true);
+    run(s, 30, () => !!o.carrying);
+    expect(o.carrying).toEqual({ productId: 'rice', qty: 8 });
+    const door = at(s, 1, -0.5);
+    expect(applyCommand(s, { type: 'walkTo', x: door.x, z: door.z }).ok).toBe(true);
+    run(s, 20);
+    expect(levelOfPerson(s.shop, o)).toBe(0);
+    expect(shelf.slots.reduce((a, sl) => a + sl.qty, 0)).toBe(0);
+    expect(o.carrying).toEqual({ productId: 'rice', qty: 8 });
+  });
+});

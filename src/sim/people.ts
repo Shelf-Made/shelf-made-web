@@ -939,9 +939,8 @@ export function ownerWalkTo(state: GameState, to: Vec2): boolean {
   if (o.state === 'pickBox' || o.state === 'stocking') return false;
   // Nowhere they can walk to ("You can't get there"): nothing changes, never off in a straight line at it.
   if (!setPath(state, o, to, dynamicBlockers(state), true)) return false;
-  o.moveDir = null;
-  if (!o.carrying) o.task = null;
-  o.state = o.carrying && o.task ? 'carrying' : 'walking';
+  // Where clicked, a box in hand or not: a trip to stock a shelf is off (arriving is no reason to stock it from there).
+  o.moveDir = null; o.task = null; o.state = 'walking';
   return true;
 }
 
