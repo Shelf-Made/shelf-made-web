@@ -463,7 +463,7 @@ test('building up: stairs open the first floor, a shelf goes up there, and a cei
   await expect.poll(async () => (await hooks<{ shop: { ceilings: string[][] } }>(page, 'state')).shop.ceilings[1]!.includes('-1.5,-1')).toBe(false);
 });
 
-test('upstairs as it looks: nothing picked through the floor, the stairs ridden from an end, the lot built from any floor', async ({ page }) => {
+test('upstairs as it looks: nothing picked through the floor, the stairs ridden from an end, the lot built from any floor, no roof over a floor lifted off', async ({ page }) => {
   const UP = -16;
   test.setTimeout(300_000);
   await ready(page);
@@ -519,6 +519,33 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await expect.poll(() => aimText(page)).toBe('Walk round to the foot of the stairs');
   await hooks(page, 'aimAt', 1.0, -0.4, 1.0, 0, -2.0);
   await expect.poll(() => aimText(page)).toBe('Go up the stairs');
+  // Their menu's Ride wears an icon of its own, not the till's.
+  const useIcon = async (type: string) => {
+    const id = (await state(page)).shop.fixtures.find((f) => f.type === type)!.id;
+    await page.evaluate((id) => (window as unknown as { __shelf: { runtime: { openFixtureMenu: (id: number) => void } } }).__shelf.runtime.openFixtureMenu(id), id);
+    await expect(page.locator('.fixture-menu')).toHaveCount(1);
+    const use = page.locator('.fixture-menu .fm-btn.primary');
+    return { text: await use.innerText(), icon: await use.locator('svg').innerHTML() };
+  };
+  const till = await useIcon('register'), ride = await useIcon('stairs');
+  expect([till.text, ride.text]).toEqual(['Serve here', 'Ride']);
+  expect(ride.icon).not.toBe(till.icon);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.fixture-menu')).toHaveCount(0);
+  // A pendant hung in a double-height space: a storey up, under the high ceiling; its pool of light down on the floor.
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'removePanel', x: -1.5, z: -1 })).ok).toBe(true);
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'pendant', x: -1.5, z: -1, rot: 0 })).ok).toBe(true);
+  const lampY = () => page.evaluate(() => {
+    type Inst = { count: number; instanceMatrix: { array: ArrayLike<number> } };
+    const st = (window as unknown as { __shelf: { runtime: { renderer: { store: { lampPools: Inst | null; glows: Map<string, Inst> } } } } }).__shelf.runtime.renderer.store;
+    const ys = (m: Inst | null | undefined) => Array.from({ length: m?.count ?? 0 }, (_, i) => +m!.instanceMatrix.array[i * 16 + 13]!.toFixed(2));
+    return { glow: ys(st.glows.get('pendant')), pool: ys(st.lampPools) };
+  });
+  await expect.poll(async () => (await lampY()).glow.length).toBe(1);
+  const lamp = await lampY();
+  expect(lamp.glow[0]).toBeCloseTo(1, 1);
+  expect(lamp.pool).toHaveLength(1);
+  expect(lamp.pool[0]).toBeLessThan(0.1);
   // Building on the first floor, a flower bed still goes out on the lot.
   await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
   await hooks(page, 'fp', 1.5, -0.5 + UP);
@@ -539,6 +566,17 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await pointAt(page, 2.0, -0.5);
   await expect.poll(() => aimText(page)).toMatch(/^Sell this tile/);
   await page.keyboard.press('Escape');
+  // From out front: the roof on; with the Build card on the ground floor, the first floor lifted off and no roof floating over it.
+  const roof = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { store: { roof: { visible: boolean } } } } } }).__shelf.runtime.renderer.store.roof.visible);
+  await hooks(page, 'openCard', 'build');
+  await expect(build).toHaveCount(0);
+  await hooks(page, 'fp', 0.5, 2.5, 0, 0.9, 20);
+  await expect.poll(roof).toBe(true);
+  await hooks(page, 'openCard', 'build');
+  await expect(floors.getByRole('button', { name: 'Ground' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(roof).toBe(false);
+  await floors.getByRole('button', { name: '1st' }).click();
+  await expect.poll(roof).toBe(true);
   // The stairs sold: the first floor closes, and the floor picker comes down to the ground floor.
   const stairs = (await state(page)).shop.fixtures.find((f) => f.type === 'stairs')!;
   await hooks(page, 'fp', -0.5, -0.5);
