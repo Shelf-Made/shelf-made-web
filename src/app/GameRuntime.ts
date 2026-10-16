@@ -316,7 +316,8 @@ export class GameRuntime {
     const s = this.state, id = this.fixtureMenu;
     this.fixtureMenu = null;
     const f = s?.shop.fixtures.find((x) => x.id === id);
-    if (!s || !f) { this.emit(); return; }
+    // (Never on one out of sight: a choice made as the floor in view changed.)
+    if (!s || !f || !this.fixtureInSight(f.id)) { this.emit(); return; }
     this.audio.start();
     if (action === 'use') this.walkAndUse({ kind: 'fixture', id: f.id });
     else if (action === 'sell') {
@@ -624,6 +625,8 @@ export class GameRuntime {
         // The build ghost sits on the tile under the mouse.
         if (this.building && this.mousePos) { const g = r.groundAt(this.mousePos.x, this.mousePos.y, this.onGround ? 0 : undefined); if (g) this.hoverWorld(g.x, g.z); }
         this.runPendingUse(s);
+        // A piece's menu goes with the piece out of sight (the floor in view changed: up a ride, or it lifted off).
+        if (this.fixtureMenu !== null && !this.fixtureInSight(this.fixtureMenu)) this.openFixtureMenu(null);
         this.aimCache = this.resolveAim();
       } else { this.aimCache = { info: null, run: null }; r.marker.set(null); }
     }
@@ -1368,6 +1371,12 @@ export class GameRuntime {
     // The picker card sits at the bottom, so frame the corner in the upper half; south corners are seen from across the road.
     r.camera.focus(c.x, c.z, 24, (fr.flip ? Math.PI : 0) + 0.25, 0.95);
     if (snap) r.camera.snap();
+  }
+
+  /** Is a piece (-1: the delivery pallet) in sight: on the floor in view, not under the boards of one over it? */
+  private fixtureInSight(id: number): boolean {
+    const s = this.state, r = this.renderer, a = this.fixtureAnchor(id);
+    return !s || !r || !a || r.inSight(s, a.x, 0.5, a.z);
   }
 
   fixtureAnchor(id: number): { x: number; y: number; z: number } | null {

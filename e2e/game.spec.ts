@@ -889,6 +889,22 @@ test('adding floor with an upper floor picked: pointed at and lit on the boards 
   await expect.poll(async () => (await hooks<{ shop: { floor: { x0: number } } }>(page, 'state')).shop.floor.x0).toBe(-3.5);
 });
 
+test("a piece's menu goes when the piece goes out of sight: never acting on one under the boards", async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  await hooks(page, 'fp', -1.5, -3.5);
+  const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
+  await page.evaluate((id) => (window as unknown as { __shelf: { runtime: { openFixtureMenu: (id: number) => void } } }).__shelf.runtime.openFixtureMenu(id), shelf.id);
+  await expect(page.locator('.fixture-menu')).toHaveCount(1);
+  // Up on the first floor (as off a ride): the shelf is under its boards, and its menu is gone.
+  await hooks(page, 'fp', -1.5, -3.5 + UPS);
+  await drawFrames(page, 4);
+  await expect(page.locator('.fixture-menu')).toHaveCount(0);
+  // Nor does a choice from it, made late, act on the shelf down there.
+  await page.evaluate((id) => { const rt = (window as unknown as { __shelf: { runtime: { fixtureMenu: number | null; fixtureMenuAction: (a: string) => void } } }).__shelf.runtime; rt.fixtureMenu = id; rt.fixtureMenuAction('sell'); }, shelf.id);
+  expect((await state(page)).shop.fixtures.some((f) => f.id === shelf.id)).toBe(true);
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);
