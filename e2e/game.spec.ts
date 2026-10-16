@@ -1155,9 +1155,13 @@ test("the shop's business profile: reviews come in, the badge counts them, photo
   await hooks(page, 'setSpeed', 0);
   const button = page.locator('.hud-time [data-card="reviews"]');
   await expect(button.locator('.badge')).toHaveText('0');
-  // Two days of trade: shoppers go home and write about it.
-  await hooks(page, 'playDays', 2);
-  const listing = await hooks<{ count: number; stars: number[]; photos: number }>(page, 'listing');
+  // A few days of trade: shoppers go home and write about it (two days usually brings in half a dozen; a quiet
+  // start can bring three, so play on a day at a time, up to four).
+  let listing = { count: 0, stars: [] as number[], photos: 0 };
+  for (let day = 0; day < 4 && listing.count <= 3; day++) {
+    await hooks(page, 'playDays', 1);
+    listing = await hooks<{ count: number; stars: number[]; photos: number }>(page, 'listing');
+  }
   expect(listing.count).toBeGreaterThan(3);
   await expect(button.locator('.badge')).toHaveText(String(listing.count));
   await expect(button).toHaveAttribute('aria-label', new RegExp(`${listing.count} reviews, rated \\d\\.\\d`));
