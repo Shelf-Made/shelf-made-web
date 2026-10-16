@@ -117,12 +117,15 @@ export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Wayp
   return out;
 }
 
-/** String-pulling: drop waypoints that can be skipped in a straight line. */
+/**
+ * String-pulling: drop waypoints that can be skipped in a straight line. From `start` on, every leg is checked, the
+ * first too (off a ride, `start` is where it comes off, a cell short of the first point: never cut across a corner).
+ */
 function smooth(g: Grid, start: Vec2, pts: Vec2[], dyn?: Set<number>): Vec2[] {
-  if (pts.length <= 2) return pts;
+  if (pts.length <= 1) return pts;
   const out: Vec2[] = [];
   let anchor = start;
-  let i = 0;
+  let i = -1;
   while (i < pts.length - 1) {
     let j = pts.length - 1;
     while (j > i + 1 && !lineClear(g, anchor, pts[j]!, dyn)) j--;

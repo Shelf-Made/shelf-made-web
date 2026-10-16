@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, newGame, FIXTURES, TICK, type GameState } from './index';
 import { openGame } from './testUtil';
 import { rideEnds, storeysOf, toLocal, toWorld, zOnLevel } from './layout';
-import { cellOf, fixtureAccessWorld, fixtureFacingWorld, isBlocked, nearestWalkable } from './grid';
+import { cellOf, fixtureAccessWorld, fixtureFacingWorld, isBlocked, lineClear, nearestWalkable } from './grid';
 import { gridFor, resetGridCache } from './state';
 import { quickSetup } from './setup';
 import { findPath } from './pathfinding';
@@ -139,6 +139,27 @@ describe('which way up', () => {
     }
     expect(rode.size).toBe(4);
     expect([...rode.values()]).toEqual(['escalator', 'escalator', 'escalator', 'escalator']);
+  });
+});
+
+describe('on and off a ride', () => {
+  // The walk on from where a ride comes off was never checked for its first two cells: off the stairs, everyone cut
+  // across the corner of the stairwell's rail, or through a piece beside the landing.
+  it('every way to or from a floor walks round what is there, from the very end of the ride', () => {
+    for (const type of ['stairs', 'escalator', 'elevator'] as const) {
+      const s = shop(8);
+      expect(place(s, type, STAIRS.x, STAIRS.z).ok).toBe(true);
+      expect(place(s, 'fridge', 1.5, zOnLevel(-4, 1), 3).ok).toBe(true);
+      const g = gridFor(s), door = at(s, 0, -0.7), cut: string[] = [];
+      for (let x = -2; x <= 2; x += 0.5) for (let z = -6; z <= -1; z += 0.5) {
+        const up = at(s, x, z, 1);
+        for (const [a, b] of [[door, up], [up, door]] as const) {
+          let from = a;
+          for (const w of findPath(g, a, b) ?? []) { if (w.ride === undefined && !lineClear(g, from, w)) cut.push(`${type} to ${x},${z}`); from = w; }
+        }
+      }
+      expect(cut, type).toEqual([]);
+    }
   });
 });
 
