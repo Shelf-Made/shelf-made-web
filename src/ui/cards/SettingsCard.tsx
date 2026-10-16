@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Quality } from '@/save/settings';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { DEFAULT_KEYS, keyLabel, type KeyBindings } from '@/save/settings';
 
@@ -15,7 +16,7 @@ export function SettingsBody({ runtime, snap, inLobby }: { runtime: GameRuntime;
       {slider('Master', 'master')}{slider('Music', 'music')}{slider('Effects', 'sfx')}
       <h3>Display</h3>
       <label className="row between"><span>Quality</span>
-        <select value={st.quality} onChange={(e) => runtime.updateSettings({ quality: e.target.value as 'high' | 'medium' | 'low' })}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low (no shadows)</option></select>
+        <select value={st.quality} onChange={(e) => runtime.updateSettings({ quality: e.target.value as Quality })}><option value="limitless">Limitless (a strong graphics card)</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low (no shadows)</option></select>
       </label>
       <label className="toggle"><span>Larger UI</span><input type="checkbox" checked={st.largeUI} onChange={(e) => runtime.updateSettings({ largeUI: e.target.checked })} /></label>
       <label className="toggle"><span>Colour-blind markers</span><input type="checkbox" checked={st.colorBlind} onChange={(e) => runtime.updateSettings({ colorBlind: e.target.checked })} /></label>

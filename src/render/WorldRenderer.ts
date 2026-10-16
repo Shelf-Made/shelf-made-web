@@ -1,5 +1,7 @@
 import { Scene, WebGLRenderer, Raycaster, Vector2, Vector3, SRGBColorSpace, PCFShadowMap, NeutralToneMapping, PerspectiveCamera, Mesh, MeshBasicMaterial, Color, Group as GroupObj, type BufferGeometry, type Fog, type Object3D, type Group, Frustum, Matrix4, Sphere } from 'three';
 import { FollowCamera } from './FollowCamera';
+import { Motes } from './Motes';
+import type { Quality } from '@/save/settings';
 import { TargetMarker } from './TargetMarker';
 import { AssetLibrary } from './assets';
 import { CameraRig } from './CameraRig';
@@ -77,7 +79,9 @@ export class WorldRenderer {
   private fpsAcc = 0; private fpsN = 0; private fps = 60;
   private night = false;
   private readonly tmpFocus = new Vector3();
-  quality: 'high' | 'medium' | 'low' = 'high';
+  quality: Quality = 'high';
+  /** Dust in the sun and fireflies at night (Limitless). */
+  private readonly motes = new Motes();
   /** A picture of every product (PNG data URLs), rendered at load from the shelf models. */
   productThumbs: Record<string, string> = {};
   /** A picture of every piece the Build card sells, by fixture type. */
@@ -115,7 +119,7 @@ export class WorldRenderer {
     this.rivals = new RivalsView(this.assets, (t, sz, d, face, side, bevel) => this.store.letters(t, sz, d, face, side, bevel));
     this.street = new StreetView(this.assets);
     this.ambient = new AmbientView(this.assets);
-    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group, this.grass.mesh, this.weather.group);
+    this.scene.add(this.ambient.group, this.statics.group, this.store.group, this.people.group, this.cars.group, this.rivals.group, this.street.group, this.overlays.group, this.reactions.group, this.grass.mesh, this.weather.group, this.motes.points);
     // Post passes render several times a frame: count the whole frame, not just the last pass.
     this.renderer.info.autoReset = false;
     this.post = new PostFX(this.renderer, this.scene, this.follow.camera);
@@ -256,6 +260,7 @@ export class WorldRenderer {
       this.grass.update(focus.x, focus.z, Math.min(GRASS_RING / 2, 9 + dist * 0.8));
       this.weather.setHeights(this.grass.mask);
     }
+    this.motes.update(this.clock, Math.min(dt, 0.1), focus, this.night, this.renderer.getPixelRatio());
     this.ambient.close = eyes;
     this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky, this.lighting);
     this.renderer.info.reset();
@@ -513,11 +518,14 @@ export class WorldRenderer {
     return { fps: this.fps, drawCalls: i.calls, triangles: i.triangles, people: this.people.count };
   }
 
-  setQuality(q: 'high' | 'medium' | 'low'): void {
+  setQuality(q: Quality): void {
     this.quality = q;
-    this.renderer.setPixelRatio(q === 'high' ? Math.min(window.devicePixelRatio, 1.75) : q === 'medium' ? 1 : 0.8);
+    // Limitless draws at the screen's full resolution, and over it on a plain screen (smoother edges).
+    this.renderer.setPixelRatio(q === 'limitless' ? Math.min(2.5, Math.max(1.5, window.devicePixelRatio)) : q === 'high' ? Math.min(window.devicePixelRatio, 1.75) : q === 'medium' ? 1 : 0.8);
     this.renderer.shadowMap.enabled = q !== 'low';
-    this.lighting.sun.shadow.mapSize.set(q === 'high' ? 2048 : 1024, q === 'high' ? 2048 : 1024);
+    const map = q === 'limitless' ? 4096 : q === 'high' ? 2048 : 1024;
+    this.lighting.sun.shadow.mapSize.set(map, map);
+    this.motes.points.visible = q === 'limitless';
     if (this.lighting.sun.shadow.map) { this.lighting.sun.shadow.map.dispose(); this.lighting.sun.shadow.map = null; }
     this.post.setQuality(q);
     this.resize();
