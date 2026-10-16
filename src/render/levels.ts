@@ -57,6 +57,17 @@ export function underFloors(shop: Shop, eye: { x: number; y: number; z: number }
 }
 
 /**
+ * A spill's marker (floating over it, seen through anything but a floor over it), from `eye`: `hidden` on a floor
+ * lifted off; `below` (behind whatever is in front of it) under a floor over it: the floor in view, or (every floor
+ * drawn, from outside) the boards it is under, as a click finds it (out of sight there, a click is on those boards).
+ */
+export function spillMark(shop: Shop, eye: { x: number; y: number; z: number }, x: number, z: number, view: number | null): { hidden: boolean; below: boolean } {
+  const w = liftWorld(shop, x, z);
+  if (view !== null) return { hidden: w.level > view, below: w.level < view };
+  return { hidden: false, below: underFloors(shop, eye, w.x, w.y + 0.5, w.z, w.level, null) };
+}
+
+/**
  * The floor a look along `dir` from `eye` meets first, with the whole building drawn (none lifted off): the boards of
  * the highest floor under it, down through openings and double-height spaces; the ground (and the lawn) under them all.
  */

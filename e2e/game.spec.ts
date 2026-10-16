@@ -692,6 +692,37 @@ test('upstairs from outside, every floor drawn: a click on the top floor means i
   expect.soft(shot?.ids.includes(upShelf), 'the shelf upstairs in the photo').toBe(true);
 });
 
+/** A shop a floor up (a panel over the counter's side sold), seen from outside with the manager on the pavement: every floor drawn. */
+async function upFromOutside(page: Page): Promise<void> {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'removePanel', x: -1.5, z: -1 })).ok).toBe(true);
+  await hooks(page, 'fp', 0, 2.5, 0, 0.95, 12);
+  await hooks(page, 'view', 0, -3, 0, 13, 1.1);
+}
+
+test('from outside, every floor drawn: a spill under the top boards is not drawn on them, one under the open sky is', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upFromOutside(page);
+  // On the ground floor: under the first floor's boards, and under the open sky of the double-height space.
+  await page.evaluate(() => {
+    const s = (window as unknown as { __shelf: { state: () => { shop: { originX: number; originZ: number; flip?: boolean; litter: { id: number; x: number; z: number }[] } } } }).__shelf.state();
+    const f = s.shop.flip ? -1 : 1, at = (x: number, z: number) => ({ x: s.shop.originX + x * f, z: s.shop.originZ + z * f });
+    s.shop.litter.push({ id: 9901, ...at(-1.5, -3.5) }, { id: 9902, ...at(-1, -0.5) });
+  });
+  // The first one's marker behind the boards (a click there is on them, and walks up there); the other over everything.
+  const marks = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { store: { spillMarks: { visible: boolean; material: { depthTest: boolean } }[] } } } } }).__shelf.runtime.renderer.store.spillMarks.slice(0, 2).map((m) => m.visible && !m.material.depthTest));
+  await expect.poll(marks).toEqual([false, true]);
+  await pointAt(page, -1, -0.5, 0.5);
+  await expect.poll(() => aimText(page)).toBe('Mop up the spill');
+  await pointAt(page, -1.5, -3.5, 0.5);
+  expect(await aimText(page)).not.toMatch(/spill/i);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });

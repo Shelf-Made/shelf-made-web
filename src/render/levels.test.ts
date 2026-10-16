@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand } from '@/sim/index';
 import { openGame } from '@/sim/testUtil';
-import { toWorld } from '@/sim/layout';
-import { underFloors, floorMet } from './levels';
+import { toWorld, zOnLevel } from '@/sim/layout';
+import { underFloors, floorMet, spillMark } from './levels';
 
 describe('what is in sight upstairs', () => {
   it('hides what is under a floor over it, but not under an opening or a double-height space', () => {
@@ -47,5 +47,22 @@ describe('what is in sight upstairs', () => {
     // Looking up from under the boards meets none of them.
     const w = toWorld(s.shop, -2, -3.5);
     expect(floorMet(s.shop, { x: w.x, y: 0.5, z: w.z }, { x: 0, y: 1, z: 0 })).toBe(0);
+  });
+  it("draws a spill's marker over everything but a floor over it: from outside too, under the top floor's boards", () => {
+    const s = openGame({ seed: 93, plotId: 'main', name: 'Upstairs', tutorial: false });
+    s.cash = 50000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removePanel', x: -1.5, z: -1 }).ok).toBe(true);
+    // A spill at (x, z) on floor `on` (where the sim has it), seen from out front and above, the floor in view `view`.
+    const mark = (x: number, z: number, on: number, view: number | null) => { const w = toWorld(s.shop, x, zOnLevel(z, on)), e = toWorld(s.shop, x, z + 6); return spillMark(s.shop, { x: e.x, y: 12, z: e.z }, w.x, w.z, view); };
+    // Under the first floor's boards: behind them from outside (every floor drawn), as from up there.
+    expect(mark(-1.5, -3.5, 0, null)).toEqual({ hidden: false, below: true });
+    expect(mark(-1.5, -3.5, 0, 1)).toEqual({ hidden: false, below: true });
+    expect(mark(-1.5, -3.5, 0, 0)).toEqual({ hidden: false, below: false });
+    // Under the open sky of the double-height space, from outside: over everything.
+    expect(mark(-1, -0.5, 0, null)).toEqual({ hidden: false, below: false });
+    // On the first floor: over everything, but not drawn with that floor lifted off.
+    expect(mark(-1.5, -3.5, 1, null)).toEqual({ hidden: false, below: false });
+    expect(mark(-1.5, -3.5, 1, 0)).toEqual({ hidden: true, below: false });
   });
 });

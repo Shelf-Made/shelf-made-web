@@ -10,7 +10,7 @@ import { PRODUCTS } from '@/sim/products';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { doubleHeight } from '@/sim/storeys';
-import { underFloors } from './levels';
+import { underFloors, spillMark } from './levels';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
 const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator']);
@@ -662,7 +662,7 @@ export class StoreView {
   }
 
   /** Per frame: wall cut-down (cinematic camera only), fixtures, stock, boxes, spills. */
-  update(state: GameState, cameraYaw: number | null): void {
+  update(state: GameState, cameraYaw: number | null, eye?: Vector3): void {
     const shop = state.shop;
     if (this.shellKey !== shellKeyOf(shop)) { this.buildShell(shop); this.layoutVersion = -1; }
     const flip = shop.flip ? -1 : 1;
@@ -678,8 +678,9 @@ export class StoreView {
     const key = `${stockKey(shop)}|${this.viewLevel}`;
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }
     const n = Math.min(8, shop.litter.length);
-    // A spill upstairs sits on its floor; on a floor out of view it is not drawn, and under the floor in view its bubble is hidden by it.
-    const spillAt = (l: { x: number; z: number }) => { const lp = toLocal(shop, l.x, l.z), L = levelOfZ(lp.z); return { x: lp.x, y: L * STOREY, z: zOnLevel(lp.z, -L), hidden: this.viewLevel !== null && L > this.viewLevel, below: this.viewLevel !== null && L < this.viewLevel }; };
+    // A spill upstairs sits on its floor; on a floor out of view it is not drawn, and under the floor in view (or, from
+    // outside, under the boards over it) its bubble is hidden by it.
+    const spillAt = (l: { x: number; z: number }) => { const lp = toLocal(shop, l.x, l.z), L = levelOfZ(lp.z), m = eye ? spillMark(shop, eye, l.x, l.z, this.viewLevel) : { hidden: this.viewLevel !== null && L > this.viewLevel, below: this.viewLevel !== null && L < this.viewLevel }; return { x: lp.x, y: L * STOREY, z: zOnLevel(lp.z, -L), ...m }; };
     for (let i = 0; i < n; i++) { const l = shop.litter[i]!; const at = spillAt(l); this.dummy.position.set(at.x, at.y + 0.032, at.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(at.hidden ? 0 : 1 + (l.id % 3) * 0.2, 1, at.hidden ? 0 : 1); this.dummy.updateMatrix(); this.spills.setMatrixAt(i, this.dummy.matrix); }
     this.spills.count = n; this.spills.instanceMatrix.needsUpdate = true;
     if (n && !this.spillMarks.length && typeof document !== 'undefined') {
