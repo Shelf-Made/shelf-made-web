@@ -208,7 +208,12 @@ export function addWetSheen(mat: MeshStandardMaterial, outdoorsOnly: boolean): M
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         float sheen = 0.0;
         if (uWet > 0.01) {
-          vec3 nW = inverseTransformDirection(normalize(vNormal), viewMatrix);
+          // (Flat shaded, as three draws a model with no normals, there is no vNormal: the face's own.)
+          #ifdef FLAT_SHADED
+            vec3 nW = inverseTransformDirection(normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))), viewMatrix);
+          #else
+            vec3 nW = inverseTransformDirection(normalize(vNormal), viewMatrix);
+          #endif
           sheen = uWet * smoothstep(0.55, 0.9, nW.y);
           ${outdoorsOnly ? 'sheen *= 1.0 - step(uShelter.x, vDetailPos.x) * step(vDetailPos.x, uShelter.z) * step(uShelter.y, vDetailPos.z) * step(vDetailPos.z, uShelter.w);' : ''}
           diffuseColor.rgb *= 1.0 - 0.18 * sheen;

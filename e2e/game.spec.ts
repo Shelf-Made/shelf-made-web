@@ -919,6 +919,20 @@ test('with the Build card open, a click (or the use key) on a placed piece picks
   await expect.poll(selected).toBe(shelf.id);
 });
 
+test('a window put in breaks no shader', async ({ page }) => {
+  test.setTimeout(300_000);
+  const errors: string[] = [];
+  page.on('console', (m) => { if (/program not valid|ERROR: 0:|shader/i.test(m.text())) errors.push(m.text()); });
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  // A window in the side wall, seen from inside (the walls between cut down, the window's trim with them): every program compiles.
+  expect((await hooks<{ ok: boolean; message?: string }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'window', x: -2.5, z: -3, rot: 1 })).message).toBeUndefined();
+  for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) { await hooks(page, 'fp', -0.5, -2.5, yaw); await drawFrames(page, 3); }
+  expect(errors).toEqual([]);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
