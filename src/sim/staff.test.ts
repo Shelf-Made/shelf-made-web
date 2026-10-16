@@ -1,6 +1,7 @@
 import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
-import { tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, type GameState } from './index';
+import { tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, toWorld, type GameState } from './index';
+import { storeroomPoint } from './people';
 
 function day(s: GameState, scan: boolean): void {
   for (let i = 0; i < (DAY_SECONDS + 130) / TICK && s.phase !== 'night'; i++) { tick(s); if (scan && i % 6 === 0) applyCommand(s, { type: 'scan' }); }
@@ -101,5 +102,34 @@ describe('restocking keeps the range', () => {
     expect(b.qty).toBe(8);
     expect(a.productId).toBe(keep);
     expect(a.qty).toBe(0);
+  });
+});
+
+describe('two bound for the same corner', () => {
+  // Both on their way to the pallet round the corner beside it, from either side: each one's way points at the other,
+  // but they come together there, not past each other. Never stepping aside for good, the nearer one off the corner.
+  it('get round it, neither held off it by the other', () => {
+    const s = openGame({ seed: 4, plotId: 'elm', name: 'T', tutorial: false });
+    s.cash = 60000;
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).ok).toBe(true);
+    for (const [x, z, type] of [[-3.5, -6, 'shelf'], [-1.5, -6, 'shelf'], [-3.5, -5, 'shelf'], [-1.5, -5, 'fridge']] as const) expect(applyCommand(s, { type: 'placeFixture', fixtureType: type, x, z, rot: 0 }).ok).toBe(true);
+    for (let i = 0; i < 2; i++) expect(applyCommand(s, { type: 'hire', candidateId: s.staffPool.find((c) => c.role === 'stocker')!.id }).ok).toBe(true);
+    s.people = s.people.filter((p) => p.kind !== 'customer');
+    const o = s.people.find((p) => p.kind === 'owner')!, park = toWorld(s.shop, 2.5, -1);
+    o.x = o.px = park.x; o.z = o.pz = park.z; o.path = []; o.pathIdx = 0; o.state = 'idle';
+    s.shop.storage = [{ productId: 'bread', qty: 40, day: s.day }];
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf' && f.x === -2.5 && f.z === -3)!;
+    const pallet = storeroomPoint(s), corner = toWorld(s.shop, -1.75, -5.25);
+    const [a, b] = s.people.filter((p) => p.kind === 'staff') as [typeof o, typeof o];
+    const set = (p: typeof o, x: number, z: number, speed: number) => {
+      const at = toWorld(s.shop, x, z);
+      p.x = p.px = at.x; p.z = p.pz = at.z; p.speed = speed; p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; p.carrying = null;
+      p.task = { type: 'carry', fixtureId: shelf.id, productId: 'bread', qty: 1 }; p.path = [{ ...corner }, { ...pallet }]; p.pathIdx = 0;
+    };
+    set(b, -1.8016, -5.2314, 1.04); set(a, -1.5027, -5.4888, 1.472);
+    let t = 0;
+    for (; t < 30 && (a.pathIdx === 0 || b.pathIdx === 0); t += TICK) tick(s);
+    expect(t).toBeLessThan(3);
+    expect(s.stuckRescues).toBe(0);
   });
 });

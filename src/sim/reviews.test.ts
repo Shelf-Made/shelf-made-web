@@ -45,9 +45,9 @@ describe('reviews', () => {
   });
 
   it('come in from shoppers after their visit, with words and photos, and a dressed-up clean shop rates higher than a bare messy one', () => {
-    const good = openGame({ seed: 12, plotId: 'main', name: 'Good Shop' });
+    const good = openGame({ seed: 13, plotId: 'main', name: 'Good Shop' });
     decorate(good);
-    const bad = openGame({ seed: 12, plotId: 'main', name: 'Bad Shop' });
+    const bad = openGame({ seed: 13, plotId: 'main', name: 'Bad Shop' });
     for (let d = 0; d < 4; d++) { playDay(good); playDay(bad, true); nextDay(good); nextDay(bad); }
     const g = listingOf(good), b = listingOf(bad);
     expect(g.count).toBeGreaterThan(10);

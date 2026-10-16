@@ -1258,16 +1258,20 @@ function separate(state: GameState, dyn: Set<number>): void {
       if (i === j) continue;
       const b = movers[j]!;
       if (past && b === owner) continue;
+      // Both bound for the same turn (a corner) from either side come together there, not past each other: each would
+      // hold the other off it for good. The nearer goes first; the other gives way (the whole push, no step aside).
+      const wb = b.path[b.pathIdx], hb = heading(b), turn = !!h && !!hb && h.x * hb.x + h.z * hb.z < 0 && w !== end && Math.hypot(wb!.x - w!.x, wb!.z - w!.z) < 0.05;
+      if (turn) { const da = Math.hypot(a.x - w!.x, a.z - w!.z), db = Math.hypot(b.x - w!.x, b.z - w!.z); if (da < db || (da === db && i < j)) continue; }
       const dx = a.x - b.x, dz = a.z - b.z;
       const d = Math.hypot(dx, dz);
       const reach = b.kind === 'owner' ? MANAGER_ROOM : 0.42;
-      if (d < reach && d > 1e-4) { const push = (reach - d) * (b.kind === 'owner' ? 1 : 0.5); fx += (dx / d) * push; fz += (dz / d) * push; }
+      if (d < reach && d > 1e-4) { const push = (reach - d) * (b.kind === 'owner' || turn ? 1 : 0.5); fx += (dx / d) * push; fz += (dz / d) * push; }
       else if (d <= 1e-4) { fx += (i < j ? 0.02 : -0.02); }
       // Someone in the way, coming the other way or standing (not where this one is going: that is shoved, as ever):
       // a step aside, away from them, both to the same hand when nose to nose. A push alone only holds two in line
       // apart (a landing upstairs is where everyone gets off and on, so the way to a shelf and back is one line).
-      if (!h || d > 0.9 || (end && Math.hypot(b.x - end.x, b.z - end.z) < 0.42)) continue;
-      const along = -(dx * h.x + dz * h.z), lat = -(dx * h.z - dz * h.x), hb = heading(b);
+      if (turn || !h || d > 0.9 || (end && Math.hypot(b.x - end.x, b.z - end.z) < 0.42)) continue;
+      const along = -(dx * h.x + dz * h.z), lat = -(dx * h.z - dz * h.x);
       if (along <= 0 || Math.abs(lat) >= 0.42 || (hb && hb.x * h.x + hb.z * h.z > -0.5)) continue;
       const side = Math.abs(lat) < 0.02 ? 1 : -Math.sign(lat), step = a.speed * TICK * 0.5;
       sx += h.z * side * step; sz -= h.x * side * step;
