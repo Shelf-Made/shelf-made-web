@@ -612,8 +612,9 @@ export class GameRuntime {
       this.watchReviews(s);
       if (this.screen === 'game') this.developPhotos(s, r, dt);
       r.mode = this.inPlay && !this.cinematic ? 'play' : 'cinematic';
-      // Building upstairs: that floor in view, the ones over it lifted off.
-      r.buildLevel = this.card === 'build' && this.inPlay ? Math.min(this.buildLevel, storeysOf(s.shop).top) : null;
+      // Building upstairs: that floor in view, the ones over it lifted off (back down to the top one when it closes).
+      if (this.buildLevel > storeysOf(s.shop).top) this.setBuildLevel(this.buildLevel);
+      r.buildLevel = this.card === 'build' && this.inPlay ? this.buildLevel : null;
       r.render(s, this.alpha, dt);
       if (this.speed > 0) this.worldSounds(s, r.mode === 'play');
       // The weather's sounds: the rain's patter, and thunder after each flash (later the further away).
