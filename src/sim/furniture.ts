@@ -8,10 +8,10 @@
  */
 import type { GameState, Person, Fixture, FixtureType, Vec2 } from './types';
 import { FIXTURES } from './layout';
-import { withRng } from './state';
 import { productDef } from './products';
 import { effectivePrice } from './marketing';
-import { fixtureFrontWorld, fixtureFacingWorld, fixtureCentre } from './grid';
+import { fixtureFacingWorld, fixtureCentre, fixtureStandWorld } from './grid';
+import { withRng, gridFor } from './state';
 
 /** What each piece is for, in a few words (the Build card shows it). */
 export const FURNITURE_USE: Partial<Record<FixtureType, string>> = {
@@ -99,12 +99,12 @@ function taken(state: GameState, f: Fixture): number[] {
   return state.people.filter((q) => q.rest?.fixtureId === f.id).map((q) => q.rest!.seat);
 }
 
-/** A free place on a piece of this kind near them (null when there is none). */
+/** A free place on a piece of this kind near them, one they can get to (null when there is none). */
 export function freeSeat(state: GameState, p: Person, types: FixtureType[], within = 9): { f: Fixture; seat: number } | null {
   let best: { f: Fixture; seat: number; d: number } | null = null;
   for (const f of state.shop.fixtures) {
     const n = SEATS[f.type];
-    if (!n || !types.includes(f.type)) continue;
+    if (!n || !types.includes(f.type) || !seatApproach(state, f)) continue;
     const used = taken(state, f);
     const seat = [...Array(n).keys()].find((k) => !used.includes(k));
     if (seat === undefined) continue;
@@ -126,13 +126,16 @@ export function seatPose(state: GameState, f: Fixture, seat: number): { at: Vec2
   return { at: { x: c.x + side.x * off + fw.x * from, z: c.z + side.z * off + fw.z * from }, yaw: Math.atan2(fw.x, fw.z) };
 }
 
-/** Where to walk to before sitting (the open floor in front of the seat). */
-export function seatApproach(state: GameState, f: Fixture): Vec2 { return fixtureFrontWorld(state.shop, f); }
+/**
+ * Where to walk to before sitting, and to stand up on after: the open floor in front of the seat, or (turned to a
+ * wall or the void, something on its front tile) behind or beside it. Null when the door reaches none of those.
+ */
+export function seatApproach(state: GameState, f: Fixture): Vec2 | null { return fixtureStandWorld(state.shop, f, undefined, gridFor(state)); }
 
-/** Is the help desk there, and free (nobody asking at it)? */
+/** Is the help desk there, and free (nobody asking at it), and one they can get to? */
 export function freeDesk(state: GameState): Fixture | null {
   const desks = state.shop.fixtures.filter((f) => f.type === 'desk');
-  return desks.find((d) => !state.people.some((q) => q.rest?.fixtureId === d.id)) ?? null;
+  return desks.find((d) => !state.people.some((q) => q.rest?.fixtureId === d.id) && fixtureStandWorld(state.shop, d, undefined, gridFor(state))) ?? null;
 }
 
 /** At the help desk: one of what they asked for, fetched from the pallet (null if it went meanwhile). */

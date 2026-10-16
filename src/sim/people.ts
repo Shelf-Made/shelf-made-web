@@ -387,7 +387,7 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   cue(state, 'cash');
   reg.serving = null; reg.scanned = 0;
   if (!state.tutorial.completed.includes('ringUp')) completeTutorial(state, 'ringUp');
-  if (coffee && cafe) { p.rest = { kind: 'cafe', fixtureId: cafe.f.id, seat: cafe.seat }; p.state = 'resting'; p.anim = 'walk'; p.timer = -1; setPath(state, p, seatApproach(state, cafe.f)); return; }
+  if (coffee && cafe) { p.rest = { kind: 'cafe', fixtureId: cafe.f.id, seat: cafe.seat }; p.state = 'resting'; p.anim = 'walk'; p.timer = -1; setPath(state, p, seatApproach(state, cafe.f)!); return; }
   startLeaving(state, p, true);
 }
 
@@ -513,7 +513,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       if (!p.rested && (p.walked ?? 0) > 16) {
         p.rested = true;
         const s = freeSeat(state, p, ['bench', 'sofa']);
-        if (s) { p.rest = { kind: 'seat', fixtureId: s.f.id, seat: s.seat }; p.state = 'resting'; p.anim = 'walk'; p.timer = -1; setPath(state, p, seatApproach(state, s.f), dyn); break; }
+        if (s) { p.rest = { kind: 'seat', fixtureId: s.f.id, seat: s.seat }; p.state = 'resting'; p.anim = 'walk'; p.timer = -1; setPath(state, p, seatApproach(state, s.f)!, dyn); break; }
       }
       const item = list[p.listIdx!]!;
       const f = findFixtureWith(state, item.productId);
@@ -726,8 +726,8 @@ function restStep(state: GameState, p: Person, dyn: Set<number>): void {
     const max = p.maxPatience ?? 100, bonus = REST_BONUS[f.type] ?? 0.2;
     p.patience = Math.min(max * 1.4, (p.patience ?? max) + bonus * max);
   }
-  // Back on their feet in front of it.
-  if (rest.kind !== 'desk') { const a = seatApproach(state, f); p.x = a.x; p.z = a.z; }
+  // Back on their feet where they came to it from (built round meanwhile: the nearest floor).
+  if (rest.kind !== 'desk') { const a = seatApproach(state, f) ?? nearestWalkable(gridFor(state), p); p.x = a.x; p.z = a.z; }
   void dyn;
   done();
 }
