@@ -5,7 +5,7 @@
  */
 import type { GameState, FixtureType, Person, Rot, Vec2, Waypoint, Shop } from './types';
 import { FIXTURES, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect } from './layout';
-import { buildGrid, fixtureStandWorld, fixtureFrontWorld } from './grid';
+import { buildGrid, fixtureStandWorld, fixtureFrontWorld, nearestWalkable } from './grid';
 import { findPath } from './pathfinding';
 import { followPath } from './movement';
 import { doorInside, dynamicBlockers, setPath } from './people';
@@ -209,28 +209,45 @@ export function rideOn(state: GameState, p: Vec2, fixtureId: number, within = 1.
 
 // ---- Rides under way.
 
-/** Is this ride still there to take: its piece where it stood, between two open floors? */
-function rideStands(state: GameState, w: Waypoint): boolean {
-  for (const list of gridFor(state).portals?.values() ?? []) for (const pt of list) if (pt.via === w.via && pt.at.x === w.x && pt.at.z === w.z) return true;
-  return false;
+/**
+ * Is the ride to `w` from `from` (where they stand, or the waypoint before) still there to take: its piece where
+ * it stood, getting on where it did, between two open floors? One already under way needs only the piece:
+ * something put down at an end shuts it to anyone else, but whoever is on it rides it out.
+ */
+function rideStands(state: GameState, from: Vec2, w: Waypoint, on = false): boolean {
+  const near = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.z - b.z) < RIDE_REACH;
+  for (const list of gridFor(state).portals?.values() ?? []) for (const pt of list) if (pt.via === w.via && pt.at.x === w.x && pt.at.z === w.z && near(pt.from, from)) return true;
+  const shop = state.shop, f = on ? shop.fixtures.find((q) => q.id === w.via) : undefined;
+  if (!f || !VERTICAL.has(f.type) || !storeysOf(shop).built[levelOf(f) + 1]) return false;
+  const e = rideEnds(f), a = toWorld(shop, e.bottom.x, e.bottom.z), b = toWorld(shop, e.top.x, e.top.z);
+  return (near(from, a) && near(w, b)) || (near(from, b) && near(w, a));
 }
 
 /** Does someone's way on ride stairs, an escalator or a lift that is not there any more (sold, moved), or up to a floor that has closed? */
 function wayGone(state: GameState, p: Person): boolean {
-  for (let i = p.pathIdx; i < p.path.length; i++) { const w = p.path[i]!; if (w.ride !== undefined && !rideStands(state, w)) return true; }
+  for (let i = p.pathIdx; i < p.path.length; i++) {
+    const w = p.path[i]!;
+    if (w.ride !== undefined && !rideStands(state, i > p.pathIdx ? p.path[i - 1]! : p, w, i === p.pathIdx && p.climb !== undefined)) return true;
+  }
   return false;
+}
+
+/** Off a ride (at its end, or back where they got on): never left standing in something put down there meanwhile. */
+function stepClear(state: GameState, p: Person): void {
+  const at = nearestWalkable(gridFor(state), p);
+  p.x = at.x; p.z = at.z;
 }
 
 /**
  * Someone's way planned again from where they stand, to where it went (a walk out to the street keeps its
  * crossings: only the way to the first kerb, all the grid covers, is planned again). With no way there any more
- * (it was up on a floor that has closed) they stop.
+ * (it was up on a floor that has closed) they stop: at the end of the ride they are on, if they are on one.
  */
 function replan(state: GameState, p: Person): void {
   const w = p.path[p.pathIdx];
-  if (w?.ride !== undefined && !rideStands(state, w)) p.climb = undefined;
+  if (p.climb !== undefined && w?.ride !== undefined && !rideStands(state, p, w, true)) { p.climb = undefined; stepClear(state, p); }
   const k = p.xings?.length ? p.xings[0]! : p.path.length - 1, tail = p.path.slice(k + 1);
-  if (!setPath(state, p, p.path[k]!, dynamicBlockers(state))) { p.path = []; p.pathIdx = 0; p.xings = undefined; return; }
+  if (!setPath(state, p, p.path[k]!, dynamicBlockers(state))) { p.path = p.climb !== undefined ? p.path.slice(0, 1) : []; p.pathIdx = 0; p.xings = undefined; return; }
   if (p.xings) p.xings = p.xings.map((i) => i - k - 1 + p.path.length);
   p.path.push(...tail);
 }
@@ -255,6 +272,7 @@ export function rideStep(state: GameState, p: Person): boolean {
   if (p.climb === undefined) return false;
   if (p.path[p.pathIdx]?.ride === undefined) { p.climb = undefined; return false; }
   followPath(p, p.speed, TICK);
+  if (p.climb === undefined) stepClear(state, p);
   return true;
 }
 

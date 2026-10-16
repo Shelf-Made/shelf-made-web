@@ -34,7 +34,8 @@ const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]
  */
 export function findPath(g: Grid, from: Vec2, to: Vec2, dyn?: Set<number>): Waypoint[] | null {
   const start = nearestWalkable(g, from, dyn);
-  const goal = nearestWalkable(g, to, dyn);
+  // Just the point: a target taken off an old path (the top of the stairs) must not bring its ride along.
+  const near = nearestWalkable(g, to, dyn), goal = { x: near.x, z: near.z };
   const [sx, sz] = cellOf(g, start);
   const [gx, gz] = cellOf(g, goal);
   if (!inBounds(g, sx, sz) || !inBounds(g, gx, gz)) return null;

@@ -57,7 +57,7 @@ export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>
   if (!ride.length) p.climb = undefined;
   const from = ride[0] ?? p;
   const path = findPath(gridFor(state), { x: from.x, z: from.z }, to, dyn);
-  p.path = [...ride, ...(path ?? [to])]; p.pathIdx = 0;
+  p.path = [...ride, ...(path ?? [{ x: to.x, z: to.z }])]; p.pathIdx = 0;
   return !!path;
 }
 
