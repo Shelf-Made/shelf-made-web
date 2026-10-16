@@ -66,8 +66,8 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   }
   // A way up moved must not shut a floor with anything or anyone on it (as selling it would not).
   if (ignoreId !== undefined && VERTICAL.has(type)) { const why = strands(state, trialShop); if (why) return { ok: false, reason: why, price }; }
-  // The doors, the pallet and the manager's way out stay open.
-  const inside = buildGrid(trialShop, -1, true), shut = shuts(state, trialShop, inside);
+  // Nobody else under it either, and the doors, the pallet and the manager's way out stay open.
+  const inside = buildGrid(trialShop, -1, true), open = buildGrid(trialShop, -1), shut = builtOver(state, open) ?? shuts(state, trialShop, inside, open);
   if (shut) return { ok: false, reason: shut, price };
   // The piece itself: shoppers queue at a till's front (facing into the room, the tile clear), whoever serves stands
   // behind a counter; shelves are used from whichever side is free inside; a way up is got on at its foot.
@@ -100,11 +100,22 @@ function waysShut(state: GameState, shop: Shop, inside: Grid, open = buildGrid(s
   return out;
 }
 /** Why a change (making the shop `trial`, `inside` its grid with the back door shut) would shut one of those ways that is open now, or null. What is shut already (an older save's) stops nobody. */
-function shuts(state: GameState, trial: Shop, inside: Grid): string | null {
-  const now = waysShut(state, trial, inside);
+function shuts(state: GameState, trial: Shop, inside: Grid, open?: Grid): string | null {
+  const now = waysShut(state, trial, inside, open);
   if (!now.length) return null;
   const was = waysShut(state, state.shop, buildGrid(state.shop, -1, true), gridFor(state));
   return now.find((r) => !was.includes(r)) ?? null;
+}
+
+/**
+ * Who a change (`open`: the shop's walking grid after it) would build over: anyone standing where a piece or the walls
+ * round new floor go up would be inside it, judged by the floor beside it (maybe the far side of it), and walk on
+ * from there through anything. Nobody is: as for the manager, a tile sold, upstairs.
+ */
+function builtOver(state: GameState, open: Grid): string | null {
+  const g = gridFor(state);
+  const p = state.people.find((q) => q.kind !== 'walker' && q.climb === undefined && q.state !== 'driving' && isBlocked(open, ...cellOf(open, q)) && !isBlocked(g, ...cellOf(g, q)));
+  return p ? (p.kind === 'owner' ? 'You are standing there' : 'Someone is standing there') : null;
 }
 
 /** The finish on one tile of floor. */
@@ -282,6 +293,9 @@ export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
   const clash = lotClash(state, trial);
   if (clash) return { ok: false, reason: clash, price };
   if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
+  // The walls go up round it: never round anyone.
+  const over = builtOver(state, buildGrid(trial, -1));
+  if (over) return { ok: false, reason: over, price };
   return { ok: true, reason: up ? `More floor, and ${up === 1 ? 'a ceiling panel' : `${up} ceiling panels`} over it upstairs` : 'More floor', price };
 }
 
@@ -408,6 +422,9 @@ export function expandShop(state: GameState, sizeId: string): string | null {
     trial.delivery = zone; trial.backDoor = { x: shop.backDoor.x, z: trial.floor.z0 };
     const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
     if (why) return `${why}: the delivery pallet goes to the new back corner.`;
+    // The walls go up round it: never round anyone.
+    const over = builtOver(state, buildGrid(trial, -1));
+    if (over) return over;
   }
   // Each tile at the tile price as it goes in, and its panels upstairs (as a tile bought).
   const up = grownCeilings(shop);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, tick, TICK, FIXTURES, buildGrid, findPath, type GameState } from './index';
 import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt, wallStyleAt, canSellTile } from './build';
+import { makeCandidate } from './staff';
 import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, lotLayout, FLOORS, wallSegments } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint, spawnCustomer } from './people';
@@ -195,6 +196,28 @@ describe('growing the shop a tile at a time', () => {
     expect(len).toBeGreaterThan(5);
   });
 
+  // The walls go up round a tile bought: nobody may be standing where they go, nor be boxed in by them. The manager
+  // was walled in by one (no key moved them, every click was "You can't get there"); expandShop put a driver in one.
+  it('never puts a wall up round the manager, or anyone, out by a tile bought', () => {
+    const s = openGame({ seed: 4, plotId: 'main', name: 'Walled', tutorial: false });
+    s.cash = 20000;
+    const o = s.people.find((p) => p.kind === 'owner')!, side = toWorld(s.shop, 3.75, -2.5);
+    s.people = [o];
+    o.x = o.px = side.x; o.z = o.pz = side.z; o.path = []; o.pathIdx = 0; o.state = 'idle';
+    expect(canBuyTile(s, 2.5, -3).reason).toBe('You are standing there');
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).message).toBe('You are standing there');
+    // Someone else walking up the side.
+    const out = toWorld(s.shop, 0, 1);
+    o.x = o.px = out.x; o.z = o.pz = out.z;
+    const p = spawnCustomer(s, true)!;
+    p.x = p.px = side.x; p.z = p.pz = side.z; p.xings = undefined; p.state = 'toDoor'; p.path = [toWorld(s.shop, 3.75, 1)]; p.pathIdx = 0;
+    expect(canBuyTile(s, 2.5, -3).reason).toBe('Someone is standing there');
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).message).toBe('Someone is standing there');
+    // Nobody there: fine.
+    s.people = [o];
+    expect(canBuyTile(s, 2.5, -3).ok).toBe(true);
+  });
+
   it('a window on a wall that moves goes out with it; the back door moves back with the back wall', () => {
     const s = shop();
     const f0 = { ...s.shop.floor };
@@ -370,6 +393,34 @@ describe('building across someone downstairs', () => {
       for (let i = 0; i < 10 / TICK && p.state === 'leaving'; i++) { tick(s); const g = gridFor(s), [cx, cz] = cellOf(g, p); if (isBlocked(g, cx, cz)) into++; }
       expect(into, how).toBe(0);
     }
+  });
+
+  // Nobody but the manager was asked: a piece went down on a stocker, who walked from inside it into the pocket it
+  // closed (judged by the free cell beside them, the other side of it), then from there straight through the shelves.
+  it('puts nothing down on top of anyone, a worker or a shopper', () => {
+    const s = openGame({ seed: 5, plotId: 'main', name: 'On top', tutorial: false });
+    s.cash = 20000;
+    const o = s.people.find((p) => p.kind === 'owner')!, back = toWorld(s.shop, 1.5, -5.5);
+    o.x = o.px = back.x; o.z = o.pz = back.z;
+    s.people = [o];
+    for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+    expect(place(s, 'shelf', -2.5, -1, 2).ok).toBe(true);
+    const shelf = s.shop.fixtures[s.shop.fixtures.length - 1]!;
+    for (const sl of shelf.slots) { sl.productId = 'rice'; sl.qty = 4; }
+    const c = makeCandidate(s, 'stocker');
+    s.staffPool.push(c);
+    expect(applyCommand(s, { type: 'hire', candidateId: c.id }).ok).toBe(true);
+    const w = s.people.find((p) => p.id === c.id)!, at = toWorld(s.shop, -1.25, -1.75);
+    w.x = w.px = at.x; w.z = w.pz = at.z; w.carrying = { productId: 'rice', qty: 4 }; w.task = { type: 'carry', fixtureId: shelf.id, productId: 'rice', qty: 4 };
+    w.state = 'carrying'; w.path = [toWorld(s.shop, -2, -1.5)]; w.pathIdx = 0;
+    expect(canPlace(s, 'plant', -1.5, -2, 0).reason).toBe('Someone is standing there');
+    // A shopper the same.
+    s.people = [o];
+    const p = spawnCustomer(s, true)!;
+    p.x = p.px = at.x; p.z = p.pz = at.z; p.xings = undefined; p.state = 'shopping'; p.path = []; p.pathIdx = 0;
+    expect(canPlace(s, 'floorLamp', -1.5, -2, 0).reason).toBe('Someone is standing there');
+    // Clear of them: fine.
+    expect(canPlace(s, 'plant', 1.5, -5, 0).ok).toBe(true);
   });
 
   it('never walls a shopper in downstairs, as upstairs', () => {
