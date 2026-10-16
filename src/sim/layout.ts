@@ -491,6 +491,11 @@ export function levelTileList(shop: FloorShape, level: number): { x: number; z: 
   if (level === 0) return floorTileList(shop);
   return [...(storeysOf(shop).floors[level] ?? [])].map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z: zOnLevel(z, level) }; });
 }
+/** Every floor tile of every open floor (corners in each floor's region): the whole shop, for its finish. */
+export function shopTileList(shop: FloorShape): { x: number; z: number }[] {
+  const st = storeysOf(shop);
+  return st.built.flatMap((b, L) => b ? levelTileList(shop, L) : []);
+}
 /** Is the tile (ground corner) inside the building on floor `level` (floor, an opening, or a double-height space)? */
 export function insideOn(shop: FloorShape, level: number, x: number, z: number): boolean { return storeysOf(shop).inside[level]?.has(tileKey(x, z)) ?? false; }
 /** Where you come off going up a piece (the tile beyond its top, on the floor above) and get on going down: tile centres, shop-relative. */

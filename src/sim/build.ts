@@ -4,7 +4,7 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
-import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf } from './layout';
+import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff } from './storeys';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
@@ -102,10 +102,10 @@ export function styleAt(shop: GameState['shop'], x: number, z: number): FloorSty
   return shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino';
 }
 
-/** What laying a finish over the whole shop would cost now (the tiles that have another finish). */
+/** What laying a finish over the whole shop (every open floor) would cost now (the tiles that have another finish). */
 export function floorCost(state: GameState, style: FloorStyle): number {
   const per = FLOORS.find((x) => x.id === style)?.perTile ?? 0;
-  return per * floorTileList(state.shop).filter((t) => styleAt(state.shop, t.x, t.z) !== style).length;
+  return per * shopTileList(state.shop).filter((t) => styleAt(state.shop, t.x, t.z) !== style).length;
 }
 
 /** Lay a finish over the whole shop. */
@@ -113,7 +113,7 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
   const def = FLOORS.find((x) => x.id === style);
   if (!def) return 'No such floor.';
   const cost = floorCost(state, style);
-  if (!floorTileList(state.shop).some((t) => styleAt(state.shop, t.x, t.z) !== style)) return 'That floor is down already.';
+  if (!shopTileList(state.shop).some((t) => styleAt(state.shop, t.x, t.z) !== style)) return 'That floor is down already.';
   if (state.cash < cost) return `Need ${dollars(cost)}`;
   state.cash -= cost;
   state.shop.floorStyle = style;
@@ -217,7 +217,9 @@ export function sellTile(state: GameState, x: number, z: number): string | null 
   const rows = ensureCeilings(shop);
   for (let L = 0; L < rows.length; L++) rows[L] = rows[L]!.filter((k) => k !== tileKey(x, z));
   setFloorTiles(shop, rest);
-  if (shop.tileStyles?.[tileKey(x, z)]) { const st = { ...shop.tileStyles }; delete st[tileKey(x, z)]; shop.tileStyles = st; }
+  // Its finish goes with it, on every floor (bought back, it is bare again up there too).
+  const keys = Array.from({ length: MAX_LEVELS }, (_, L) => tileKey(x, zOnLevel(z, L)));
+  if (keys.some((k) => shop.tileStyles?.[k])) { const st = { ...shop.tileStyles }; for (const k of keys) delete st[k]; shop.tileStyles = st; }
   // The back door comes forward to the back edge of its column.
   const col = rest.filter((t) => Math.abs(t.x + 0.5 - shop.backDoor.x) < 0.01);
   if (col.length) shop.backDoor = { x: shop.backDoor.x, z: Math.min(...col.map((t) => t.z)) };
