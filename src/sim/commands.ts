@@ -168,7 +168,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!o) return { ok: false };
       const l = Math.hypot(cmd.x, cmd.z);
       o.moveDir = l > 0.01 ? { x: cmd.x / l, z: cmd.z / l } : null;
-      if (!o.moveDir && o.state !== 'carrying' && o.state !== 'pickBox' && o.state !== 'stocking' && o.state !== 'toStock') { o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle'; }
+      // Let go: stop (on a ride, at its end: the keys took over from any walk clicked for beyond it).
+      if (!o.moveDir && o.state !== 'carrying' && o.state !== 'pickBox' && o.state !== 'stocking' && o.state !== 'toStock') { o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle'; o.path = o.path.slice(0, o.pathIdx + (o.climb !== undefined ? 1 : 0)); }
       return { ok: true };
     }
     case 'walkTo': {

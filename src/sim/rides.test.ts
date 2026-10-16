@@ -140,6 +140,27 @@ describe('which way up', () => {
   });
 });
 
+describe('a key tapped on the way up a flight clicked for', () => {
+  it('lets the manager off at the top and leaves them there, with no walk left over that they never take', () => {
+    const s = quiet(87);
+    const o = owner(s), there = at(s, 2, -5.5, 1);
+    expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
+    run(s, 20, () => o.climb !== undefined);
+    expect(o.climb).toBeDefined();
+    const d = into(s);
+    applyCommand(s, { type: 'moveDir', x: d.x, z: d.z });
+    run(s, 0.3);
+    applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
+    run(s, 4, () => o.climb === undefined);
+    expect(levelOfPerson(s.shop, o)).toBe(1);
+    const top = { x: o.x, z: o.z };
+    run(s, 12);
+    expect(o.path.length - o.pathIdx).toBe(0);
+    expect(Math.hypot(o.x - top.x, o.z - top.z)).toBeLessThan(0.01);
+    expect(s.stuckRescues).toBe(0);
+  });
+});
+
 describe('riding the lift with the keys', () => {
   it('holding a key a little off into the lift takes the manager up once, not up and down for ever', () => {
     for (const turn of [0.3, -0.3, 0]) {
