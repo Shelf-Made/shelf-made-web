@@ -969,16 +969,16 @@ export class StoreView {
     else { this.wallGhost.position.set(w.line - w.nx * 0.1, y, zOnLevel(w.t, -L)); this.wallGhost.rotation.set(0, Math.PI / 2, 0); }
     this.wallGhost.visible = true;
   }
-  /** Growing the shop: every tile that could be bought, faintly marked on the ground. */
+  /** Growing the shop: every tile that could be bought (ground tiles), faintly marked on floor `level`'s plane. */
   private growHints: InstancedMesh | null = null;
-  setGrowHints(tiles: { x: number; z: number }[]): void {
+  setGrowHints(tiles: { x: number; z: number }[], level = 0): void {
     if (!this.growHints) {
       this.growHints = new InstancedMesh(box(this.assets.palette, '#FFFFFF', 0.9, 0.02, 0.9, 0, 0, 0), new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0.35, depthWrite: false, depthTest: false }), 128);
       this.growHints.frustumCulled = false; this.growHints.renderOrder = 5;
       this.root.add(this.growHints);
     }
     const m = new Matrix4();
-    tiles.slice(0, 128).forEach((t, i) => this.growHints!.setMatrixAt(i, m.makeTranslation(t.x + 0.5, 0.025, t.z + 0.5)));
+    tiles.slice(0, 128).forEach((t, i) => this.growHints!.setMatrixAt(i, m.makeTranslation(t.x + 0.5, level * STOREY + 0.025, t.z + 0.5)));
     this.growHints.count = Math.min(128, tiles.length);
     this.growHints.instanceMatrix.needsUpdate = true;
   }

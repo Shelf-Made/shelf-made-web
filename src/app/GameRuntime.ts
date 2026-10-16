@@ -830,7 +830,7 @@ export class GameRuntime {
     this.showGrowHints();
     this.emit();
   }
-  /** While growing: the tiles that could be bought, marked on the ground. */
+  /** While growing: the tiles that could be bought, marked on the floor in view (each grows every floor's column). */
   private showGrowHints(): void {
     const s = this.state; const r = this.renderer; if (!s || !r) return;
     // The panel tools: the panels over this floor, faint at ceiling height.
@@ -839,18 +839,18 @@ export class GameRuntime {
     if (this.build.tool?.kind !== 'grow') { r.setGrowHints([]); r.setWallGhost(null); return; }
     const out: { x: number; z: number }[] = [];
     for (let z = MAX_FLOOR.z0; z < MAX_FLOOR.z1; z++) for (let x = MAX_FLOOR.x0; x < MAX_FLOOR.x1; x++) { const c = canBuyTile({ ...s, cash: Infinity }, x, z); if (c.ok) out.push({ x, z }); }
-    r.setGrowHints(out);
+    r.setGrowHints(out, this.buildLevel);
   }
   stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); this.renderer?.setPanelHints([], 0); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
   selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
   /**
-   * Working on the ground (a piece for outside, a lot tool, adding floor): the pointer is on it, whichever floor is
-   * picked. (Floor to sell is pointed at on the boards in view, the tile lit there: the column under it goes.)
+   * Working on the ground (a piece for outside, a lot tool): the pointer is on it, whichever floor is picked. (Floor to
+   * add or sell is pointed at on the plane of the boards in view, the tile lit there: the column at it grows or goes.)
    */
   private get onGround(): boolean {
     const type = this.build.placing ?? (this.build.selectedId !== null ? this.state?.shop.fixtures.find((f) => f.id === this.build.selectedId)?.type : undefined);
-    return (!!type && !!FIXTURES[type].outdoor) || (!!this.build.tool && (LOT_TOOLS.has(this.build.tool.kind) || this.build.tool.kind === 'grow'));
+    return (!!type && !!FIXTURES[type].outdoor) || (!!this.build.tool && LOT_TOOLS.has(this.build.tool.kind));
   }
   /** Pointer over the world in build mode: snap to a tile and show the ghost. */
   hoverWorld(wx: number, wz: number): void {
@@ -892,7 +892,7 @@ export class GameRuntime {
         this.maybeEmit();
         return;
       }
-      const check = tool.kind === 'grow' ? canBuyTile(s, x, z) : tool.kind === 'sell' ? canSellTile(s, x, groundZ(z)) : tool.kind === 'pave' ? canPave(s, x, z, tool.surface)
+      const check = tool.kind === 'grow' ? canBuyTile(s, x, groundZ(z)) : tool.kind === 'sell' ? canSellTile(s, x, groundZ(z)) : tool.kind === 'pave' ? canPave(s, x, z, tool.surface)
         : tool.kind === 'panel' ? canAddPanel(s, x, z) : tool.kind === 'unpanel' ? canRemovePanel(s, x, z) : canPaintFloor(s, x, z, tool.style);
       this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
       r.setTileGhost({ x, z, ok: check.ok });
@@ -923,7 +923,7 @@ export class GameRuntime {
         ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style }) : { ok: false, message: 'Point at a wall' })
         : tool.kind === 'bay' || tool.kind === 'unbay'
           ? (this.build.slot !== null ? this.dispatch({ type: tool.kind === 'bay' ? 'paintBay' : 'eraseBay', slot: this.build.slot }) : { ok: false, message: 'Point at the car park' })
-          : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z } : tool.kind === 'sell' ? { type: 'sellTile', x, z: groundZ(z) } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface }
+          : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z: groundZ(z) } : tool.kind === 'sell' ? { type: 'sellTile', x, z: groundZ(z) } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface }
             : tool.kind === 'panel' ? { type: 'addPanel', x, z } : tool.kind === 'unpanel' ? { type: 'removePanel', x, z } : { type: 'paintFloor', x, z, style: tool.style });
       if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
       else if (tool.kind === 'grow' || tool.kind === 'sell' || tool.kind === 'panel' || tool.kind === 'unpanel') this.showGrowHints();

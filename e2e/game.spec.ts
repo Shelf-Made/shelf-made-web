@@ -868,6 +868,27 @@ test("after a drag of the view, the Build card's view still goes up to the floor
   await expect.poll(camY).toBeCloseTo(0, 1);
 });
 
+test('adding floor with an upper floor picked: pointed at and lit on the boards in view, the column bought', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  await hooks(page, 'fp', -1.5, -3.5 + UPS);
+  await page.keyboard.press('KeyB');
+  const build = page.locator('.card.t-build');
+  await expect(build.getByRole('group', { name: 'Which floor' }).getByRole('button', { name: '1st' })).toHaveAttribute('aria-pressed', 'true');
+  await build.getByRole('tab', { name: 'Shop' }).click();
+  await build.getByRole('button', { name: 'Add tiles' }).click();
+  const hover = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { build: { hover: { x: number; z: number } | null } } } }).__shelf.runtime.build.hover);
+  // Beside the first floor's left edge, on its plane: that column, lit up there, and the ground tile under it bought.
+  await pointAt(page, -3.0, -3.5 + UPS);
+  await expect.poll(hover).toEqual({ x: -3.5, z: -4 + UPS });
+  await expect.poll(() => aimText(page)).toMatch(/^Add this tile/);
+  // Inside the boards: floor already.
+  await pointAt(page, -1.0, -3.5 + UPS);
+  await expect.poll(() => aimText(page)).toMatch(/floor already/i);
+  await clickAt(page, -3.0, -3.5 + UPS);
+  await expect.poll(async () => (await hooks<{ shop: { floor: { x0: number } } }>(page, 'state')).shop.floor.x0).toBe(-3.5);
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);

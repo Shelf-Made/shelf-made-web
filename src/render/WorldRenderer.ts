@@ -454,7 +454,7 @@ export class WorldRenderer {
   setGhost(type: Parameters<StoreView['setGhost']>[0], state: GameState, x: number, z: number, rot: Parameters<StoreView['setGhost']>[4], valid: boolean): void { this.store.setGhost(type, state.shop, x, z, rot, valid); }
   setTileGhost(t: Parameters<StoreView["setTileGhost"]>[0]): void { this.store.setTileGhost(t); }
   setWallGhost(w: Parameters<StoreView['setWallGhost']>[0]): void { this.store.setWallGhost(w); }
-  setGrowHints(tiles: { x: number; z: number }[]): void { this.store.setGrowHints(tiles); }
+  setGrowHints(tiles: { x: number; z: number }[], level = 0): void { this.store.setGrowHints(tiles, level); }
   setPanelHints(tiles: { x: number; z: number }[], level: number): void { this.store.setPanelHints(tiles, level); }
 
   debugPeople(): unknown { return this.people.debugInfo(); }
