@@ -1,12 +1,12 @@
 /**
  * Build mode rules: where fixtures may go, what they cost, growing the shop and the lot.
- * Placement never blocks a path: the door, the back door and every fixture's front must
- * stay reachable after the change.
+ * Placement never blocks a path: the door, the back door and every fixture's front reached now
+ * must stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
 import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
-import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
+import { buildGrid, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
@@ -80,19 +80,15 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) return { ok: false, reason: 'Would cut the shop in two', price };
   // The pallet where deliveries land: whoever stocks the shelves must be able to reach it.
   if (!findPath(inside, from, storeroomPoint(state))) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
-  for (const fx of fixtures) {
-    if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
-    // Shoppers queue at a till's front: it has to face into the room. Shelves are used from whichever side is free inside.
-    const till = fx.type === 'register' || fx.type === 'kiosk';
-    if (till && !frontInside(shop, fx)) return { ok: false, reason: fx === trial ? 'Turn it to face into the shop' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
-    const stand = till ? fixtureFrontWorld(shop, fx) : fixtureStandWorld(trialShop, fx, undefined, grid);
-    if (!stand || !findPath(inside, from, stand)) return { ok: false, reason: fx === trial ? 'Nobody could reach it from inside' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
-    if (fx.type === 'register' && !findPath(inside, from, fixtureBackWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'You could not get behind it' : 'Would block the way behind the counter', price };
-  }
-  // A way up goes up: on from the floor at its foot, off on the floor above.
-  const now = reachOf(state, trialShop, inside);
+  // The piece itself: shoppers queue at a till's front (facing into the room, the tile clear), whoever serves stands
+  // behind a counter; shelves are used from whichever side is free inside; a way up is got on at its foot.
+  const now = reachOf(state, trialShop, inside), till = type === 'register' || type === 'kiosk';
+  if (till && !frontInside(shop, trial)) return { ok: false, reason: 'Turn it to face into the shop', price };
+  if ((till || def.slots > 0) && !now.pieces.has(trial.id)) return { ok: false, reason: 'Nobody could reach it from inside', price };
+  if (type === 'register' && !now.behind.has(trial.id)) return { ok: false, reason: 'You could not get behind it', price };
   if (VERTICAL.has(type) && !now.rides.has(trial.id)) return { ok: false, reason: 'Nobody could get on it from inside', price };
-  // Nothing upstairs cut off (a floor, a piece, someone up there or on the way), and every way up that goes up still does.
+  // Nothing else cut off that is reached now (a floor, a piece on any, someone up there or on the way), and every
+  // way up that goes up still does. What is cut off already (an older save's) stops nobody building round it.
   const why = cutOff(state, reachOf(state, shop), now, trialShop, trial.id);
   if (why) return { ok: false, reason: why, price };
   return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : VERTICAL.has(type) ? `${def.name} up to the next floor${ceiling ? `, and a ceiling over it for ${dollars(ceiling)}` : ''}` : def.name, price, ...(ceiling ? { ceiling } : {}) };

@@ -5,7 +5,7 @@
  */
 import type { GameState, FixtureType, FloorStyle, Person, Rot, Vec2, Waypoint, Shop } from './types';
 import { FIXTURES, FLOORS, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
-import { buildGrid, fixtureStandWorld, fixtureFrontWorld, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
+import { buildGrid, fixtureStandWorld, fixtureFront, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
 import { followPath } from './movement';
 import { dynamicBlockers, setPath } from './people';
 import { gridFor } from './state';
@@ -82,9 +82,9 @@ export function withoutIt(shop: Shop, type: FixtureType, id?: number): Shop {
   return id !== undefined && VERTICAL.has(type) ? { ...shop, fixtures: shop.fixtures.filter((f) => f.id !== id) } : shop;
 }
 
-// ---- What the door reaches. No change may cut a floor above, anything on one or anyone up there off from the
+// ---- What the door reaches. No change may cut a floor above, a piece on any floor or anyone up there off from the
 // front door, nor stop a way up that goes up now from going up. Judged against the shop as it stands, so a way
-// up that never went anywhere (an older save's, blocked) stops nobody building.
+// up that never went anywhere, or a piece already cut off (an older save's), stops nobody building.
 
 /** What a layout's walking grid (the back door shut) reaches from the front door. */
 export interface Reach {
@@ -92,14 +92,18 @@ export interface Reach {
   rides: Set<number>;
   /** The floors above with a way up to them. */
   floors: Set<number>;
-  /** Pieces upstairs someone can get to (to use it, or get on it). */
+  /** Pieces someone can get to (to use it, or get on it): upstairs anything, downstairs shelves and tills. A till's queue spot (its front tile) clear. */
   pieces: Set<number>;
+  /** Counters with the tile behind them clear to stand on and serve from. */
+  behind: Set<number>;
   /** Who upstairs (or halfway up) can get back down to the door. */
   people: Set<number>;
 }
 export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(shop, -1, true)): Reach {
-  const reach = reachableCells(shop, grid), out: Reach = { rides: new Set(), floors: new Set(), pieces: new Set(), people: new Set() };
+  const reach = reachableCells(shop, grid), out: Reach = { rides: new Set(), floors: new Set(), pieces: new Set(), behind: new Set(), people: new Set() };
   const got = (p: Vec2) => { const [cx, cz] = cellOf(grid, nearestWalkable(grid, p, undefined, 1)); return inBounds(grid, cx, cz) && !!reach[cellIndex(grid, cx, cz)]; };
+  // A tile (by its centre) of floor, every cell of it walked to: nothing on it, never a tile beside it.
+  const clear = (t: Vec2) => isFloor(shop, t.x - 0.5, t.z - 0.5) && [-0.25, 0.25].every((dx) => [-0.25, 0.25].every((dz) => { const [cx, cz] = cellOf(grid, toWorld(shop, t.x + dx, t.z + dz)); return inBounds(grid, cx, cz) && !!reach[cellIndex(grid, cx, cz)]; }));
   // A ride up from a foot the door reaches, without riding it: going only up, nobody gets back to a foot by its
   // own top; failing that (a foot reached by coming down), with that piece left out.
   const lv = grid.rowLevel, up = (pt: Portal, at: number) => lv![(pt.to / grid.w) | 0]! > lv![(at / grid.w) | 0]!;
@@ -111,11 +115,13 @@ export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(sho
   }
   for (const f of shop.fixtures) {
     if (FIXTURES[f.type].outdoor) continue;
-    const L = levelOf(f);
+    const L = levelOf(f), till = f.type === 'register' || f.type === 'kiosk';
     if (out.rides.has(f.id)) out.floors.add(L + 1);
-    if (!L || FIXTURES[f.type].walkable) continue;
-    const till = f.type === 'register' || f.type === 'kiosk';
-    if (VERTICAL.has(f.type) ? out.rides.has(f.id) : till ? got(fixtureFrontWorld(shop, f)) : !!fixtureStandWorld(shop, f, undefined, grid)) out.pieces.add(f.id);
+    // (A way up downstairs is in `rides`; a plant or a wall down there may be shut in.)
+    if (FIXTURES[f.type].walkable || (!L && (VERTICAL.has(f.type) || (!till && !FIXTURES[f.type].slots)))) continue;
+    const front = fixtureFront(f);
+    if (VERTICAL.has(f.type) ? out.rides.has(f.id) : till ? clear(front) : !!fixtureStandWorld(shop, f, undefined, grid)) out.pieces.add(f.id);
+    if (f.type === 'register' && clear({ x: 2 * f.x + 1 - front.x, z: 2 * f.z + 1 - front.z })) out.behind.add(f.id);
   }
   for (const p of state.people) {
     if (p.kind === 'walker') continue;
@@ -131,7 +137,8 @@ export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(sho
 export function cutOff(state: GameState, was: Reach, now: Reach, shop: Shop, skip?: number): string | null {
   const st = storeysOf(shop);
   for (const L of was.floors) if (st.built[L] && !now.floors.has(L)) return `Would cut off the ${FLOOR_NAMES[L]} floor`;
-  for (const f of shop.fixtures) if (f.id !== skip && was.pieces.has(f.id) && !now.pieces.has(f.id)) return `Would cut off the ${FIXTURES[f.type].name.toLowerCase()} upstairs`;
+  for (const f of shop.fixtures) if (f.id !== skip && was.pieces.has(f.id) && !now.pieces.has(f.id)) return `Would cut off the ${FIXTURES[f.type].name.toLowerCase()}${levelOf(f) ? ' upstairs' : ''}`;
+  for (const f of shop.fixtures) if (f.id !== skip && was.behind.has(f.id) && !now.behind.has(f.id)) return 'Would block the way behind the counter';
   for (const p of state.people) if (was.people.has(p.id) && !now.people.has(p.id)) return 'Someone upstairs would have no way down';
   for (const f of shop.fixtures) if (f.id !== skip && was.rides.has(f.id) && !now.rides.has(f.id)) return 'Would block the way up';
   return null;

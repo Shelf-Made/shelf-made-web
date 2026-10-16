@@ -2,7 +2,7 @@ import { openGame } from '@/sim/testUtil';
 import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
-import { tick, SAVE_VERSION, gridFor, findPath } from '@/sim/index';
+import { tick, SAVE_VERSION, gridFor, findPath, applyCommand, type GameState } from '@/sim/index';
 import { toWorld, toLocal, zOnLevel, rideEnds, isFloor } from '@/sim/layout';
 import { ensureCeilings } from '@/sim/storeys';
 import { doorInside } from '@/sim/people';
@@ -113,5 +113,35 @@ describe('saves', () => {
     const path = findPath(gridFor(t), doorInside(t), up)!;
     expect(path.some((w) => w.ride !== undefined)).toBe(true);
     expect(path.every((w) => toLocal(t.shop, w.x, w.z).z < t.shop.floor.z1)).toBe(true);
+  });
+  it('loads an older save with something upstairs cut off, and building goes on round it', () => {
+    const fresh = () => {
+      const s = openGame({ seed: 61, plotId: 'main', name: 'Upstairs', tutorial: false });
+      s.cash = 50000;
+      const o = s.people.find((p) => p.kind === 'owner')!, by = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+      o.x = o.px = by.x; o.z = o.pz = by.z;
+      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+      return s;
+    };
+    const shelf = (s: GameState, x: number, z: number, rot: 0 | 1 | 2 | 3) => s.shop.fixtures.push({ id: s.nextId++, type: 'shelf', x, z, rot, slots: [] });
+    // As the first build of floors let them be: a shelf on the landing of the only stairs...
+    const landing = fresh();
+    shelf(landing, 0.5, zOnLevel(-4, 1), 1);
+    // ...a shelf up there with the floor round it sold...
+    const bare = fresh();
+    expect(applyCommand(bare, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: zOnLevel(-4, 1), rot: 1 }).ok).toBe(true);
+    bare.shop.ceilings![0] = bare.shop.ceilings![0]!.filter((k) => !['-1.5,-4', '-2.5,-3', '-2.5,-5'].includes(k));
+    // ...and a floor shut with a shelf on it, its stairs moved away.
+    const shut = fresh();
+    expect(applyCommand(shut, { type: 'placeFixture', fixtureType: 'stairs', x: -0.5, z: -3, rot: 0 }).ok).toBe(true);
+    expect(applyCommand(shut, { type: 'placeFixture', fixtureType: 'stairs', x: 1.5, z: zOnLevel(-4, 1), rot: 0 }).ok).toBe(true);
+    expect(applyCommand(shut, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: zOnLevel(-4, 2), rot: 1 }).ok).toBe(true);
+    shut.shop.fixtures = shut.shop.fixtures.filter((f) => !(f.type === 'stairs' && f.z < -12));
+    for (const [name, s] of [['landing', landing], ['bare', bare], ['shut', shut]] as const) {
+      s.shop.layoutVersion++;
+      const t = parse(serialize(s)).state;
+      expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).message, name).toBeUndefined();
+      expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: 1.5, z: -5, rot: 0 }).message, name).toBeUndefined();
+    }
   });
 });

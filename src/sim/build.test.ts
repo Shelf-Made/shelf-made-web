@@ -267,3 +267,33 @@ describe('finishes and selling floor', () => {
     expect(canSellTile(s, f.x1 - 1, f.z0 + 1).reason).toMatch(/first/);
   });
 });
+
+describe('nothing on the ground floor cut off either', () => {
+  it("never sells the tile a shelf or a counter is used from, nor puts anything on a counter's queue spot", () => {
+    const s = shop();
+    // A shelf in the corner by the front wall, another behind it: used from the tile in front alone.
+    expect(place(s, 'shelf', -2.5, -1, 1).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, -2, 1).ok).toBe(true);
+    expect(canSellTile(s, -1.5, -1).reason).toBe('Would cut off the shelf');
+    // A counter facing the back: the queue in front of it, whoever serves behind it.
+    expect(place(s, 'register', 1.5, -3, 2).ok).toBe(true);
+    expect(canSellTile(s, 1.5, -4).reason).toBe('Would cut off the checkout counter');
+    expect(canSellTile(s, 1.5, -2).reason).toBe('Would block the way behind the counter');
+    for (const t of ['shelf', 'wall', 'plant'] as const) expect(canPlace(s, t, 1.5, -4, 0).reason, t).toBe('Would cut off the checkout counter');
+    expect(canPlace(s, 'shelf', 1.5, -2, 0).reason).toBe('Would block the way behind the counter');
+    // A tile with neither on it: fine.
+    expect(canSellTile(s, 1.5, -5).ok).toBe(true);
+  });
+
+  it('builds on round a shelf or counter already cut off (an older layout)', () => {
+    const s = shop();
+    expect(place(s, 'register', 1.5, -3, 2).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, -1, 1).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, -2, 1).ok).toBe(true);
+    // As an older build let them be: a plant on the counter's queue spot, a wall in front of the corner shelf.
+    s.shop.fixtures.push({ id: s.nextId++, type: 'plant', x: 1.5, z: -4, rot: 0, slots: [] }, { id: s.nextId++, type: 'wall', x: -1.5, z: -1, rot: 0, slots: [] });
+    s.shop.layoutVersion++;
+    expect(place(s, 'plant', 0.5, -5, 0).message).toBeUndefined();
+    expect(applyCommand(s, { type: 'sellTile', x: 1.5, z: -6 }).message).toBeUndefined();
+  });
+});

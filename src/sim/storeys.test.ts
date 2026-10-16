@@ -170,7 +170,9 @@ describe('building up: nothing cut off, nothing for free', () => {
     // A tile the floor above hangs from (the panels round it down): the shelf up there would be cut off.
     corridor(s);
     expect(canSellTile(s, -1.5, -4).reason).toBe('Would cut off the shelf upstairs');
-    expect(canSellTile(s, 1.5, -1).ok).toBe(true);
+    // One nothing hangs from is fine (not (1.5, -1): the only way round behind the counter, past the stairs).
+    expect(canSellTile(s, 1.5, -5).ok).toBe(true);
+    expect(canSellTile(s, 1.5, -1).reason).toBe('Would block the way behind the counter');
   });
 
   it('judges each panel by itself, not by the last one pointed at', () => {
@@ -486,5 +488,36 @@ describe('building up: nobody caught halfway, nothing left behind', () => {
     let up = false;
     for (let i = 0; i < 60 / TICK; i++) { tick(s); if (s.people.some((p) => p.kind === 'staff' && levelOfPerson(s.shop, p) > 0)) up = true; }
     expect(up).toBe(false);
+  });
+});
+
+describe('building up: a counter keeps its queue and its back, and what is cut off already stops nobody', () => {
+  it('will not take the floor from in front of or behind a counter upstairs', () => {
+    const s = shop(96); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // Its front over ground (-2.5, -1): the queue stands there.
+    expect(place(s, 'register', -2.5, zOnLevel(-2, 1), 0).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removePanel', x: -2.5, z: -1 }).message).toBe('Would cut off the checkout counter upstairs');
+    expect(canSellTile(s, -2.5, -1).reason).toBe('Would cut off the checkout counter upstairs');
+    // Its back over ground (-1.5, -5): whoever serves stands there.
+    expect(place(s, 'register', -1.5, zOnLevel(-4, 1), 0).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removePanel', x: -1.5, z: -5 }).message).toBe('Would block the way behind the counter');
+    expect(canSellTile(s, -1.5, -5).reason).toBe('Would block the way behind the counter');
+    expect(s.shop.ceilings![0]!.includes('-1.5,-5')).toBe(true);
+  });
+
+  it('builds on round a piece upstairs that an older layout left cut off', () => {
+    const s = shop(97); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // A counter whose queue spot is a gap now, and a shelf with no floor beside it (as an older build left them).
+    expect(place(s, 'register', -2.5, zOnLevel(-2, 1), 0).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, zOnLevel(-4, 1), 1).ok).toBe(true);
+    s.shop.ceilings![0] = s.shop.ceilings![0]!.filter((k) => !['-2.5,-1', '-1.5,-4', '-2.5,-3', '-2.5,-5'].includes(k));
+    s.shop.layoutVersion++;
+    // Anything else, anywhere, still goes in: a plant downstairs, a shelf upstairs.
+    expect(place(s, 'plant', -1.5, -2, 0).message).toBeUndefined();
+    expect(place(s, 'shelf', 1.5, zOnLevel(-5, 1), 3).message).toBeUndefined();
+    // Nor does the counter stop the panels near it being bought back.
+    expect(applyCommand(s, { type: 'addPanel', x: -1.5, z: -4 }).message).toBeUndefined();
   });
 });
