@@ -5,7 +5,7 @@ import { rideEnds, storeysOf, toLocal, toWorld, zOnLevel } from './layout';
 import { cellOf, fixtureAccessWorld, fixtureFacingWorld, isBlocked, nearestWalkable } from './grid';
 import { gridFor } from './state';
 import { findPath } from './pathfinding';
-import { levelOfPerson, repathAfterBuild } from './storeys';
+import { levelOfPerson, repathAfterBuild, rideOn } from './storeys';
 import { addSpill, spawnCustomer, startLeaving, setPath } from './people';
 import { bolt } from './shoplifting';
 import { makeCandidate } from './staff';
@@ -141,7 +141,7 @@ describe('which way up', () => {
 });
 
 describe('a key tapped on the way up a flight clicked for', () => {
-  it('lets the manager off at the top and leaves them there, with no walk left over that they never take', () => {
+  it('lets the manager off at the top, a step clear of the way down, with no walk left over that they never take', () => {
     const s = quiet(87);
     const o = owner(s), there = at(s, 2, -5.5, 1);
     expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
@@ -156,7 +156,8 @@ describe('a key tapped on the way up a flight clicked for', () => {
     const top = { x: o.x, z: o.z };
     run(s, 12);
     expect(o.path.length - o.pathIdx).toBe(0);
-    expect(Math.hypot(o.x - top.x, o.z - top.z)).toBeLessThan(0.01);
+    expect(Math.hypot(o.x - top.x, o.z - top.z)).toBeLessThan(0.9);
+    expect(Math.hypot(o.x - there.x, o.z - there.z)).toBeGreaterThan(1);
     expect(s.stuckRescues).toBe(0);
   });
 });
@@ -545,5 +546,65 @@ describe('everyone rides every way up', () => {
       expect(w.dropped, type).toBe(0);
       expect(s.stuckRescues, type).toBe(0);
     }
+  });
+});
+
+describe('the manager off a ride', () => {
+  // However they rode it (Use, or the keys let go on it, or held on past its end and let go after), never left
+  // standing where the way back starts: a shopper after that flight gets on it.
+  for (const type of ['stairs', 'escalator', 'elevator'] as const) for (const how of ['use', 'let go', 'held', 'walk let go']) for (const up of [true, false]) it(`steps clear of the ${type === 'elevator' ? 'lift' : type} (${how}, ${up ? 'up' : 'down'}): whoever wants it next gets on`, () => {
+    const s = quiet(88, type);
+    const shelf = riceUpstairs(s, 1);
+    shelf.slots[0] = { productId: 'rice', qty: 8 };
+    const o = owner(s), f = s.shop.fixtures.find((x) => x.type === type)!, e = rideEnds(f);
+    put(o, toWorld(s.shop, up ? e.bottom.x : e.top.x, up ? e.bottom.z : e.top.z));
+    const ride = rideOn(s, o, f.id)!, d = { x: Math.sin(ride.yaw!), z: Math.cos(ride.yaw!) };
+    if (how === 'use') expect(applyCommand(s, { type: 'ride', fixtureId: f.id }).ok).toBe(true);
+    else if (how === 'walk let go') {
+      // Clicked across floors, and a key tapped on the way: off at the other end, the walk on from there dropped.
+      const there = up ? at(s, 2, -5.5, 1) : at(s, -2, -0.8);
+      expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
+      run(s, 2, () => o.climb !== undefined);
+      applyCommand(s, { type: 'moveDir', x: d.x, z: d.z }); run(s, 0.1);
+    } else { applyCommand(s, { type: 'moveDir', x: d.x, z: d.z }); run(s, 0.2); }
+    expect(o.climb).toBeDefined();
+    if (how === 'let go' || how === 'walk let go') applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
+    run(s, 5, () => o.climb === undefined);
+    expect(levelOfPerson(s.shop, o)).toBe(up ? 1 : 0);
+    if (how === 'held') { run(s, 1); applyCommand(s, { type: 'moveDir', x: 0, z: 0 }); }
+    run(s, 2);
+    expect(o.state).toBe('idle');
+    // A shopper after the rice up there (the manager came down), or on the way out from up there (they went up).
+    const c = spawnCustomer(s, true)!;
+    c.xings = undefined; c.list = [{ productId: 'rice', qty: 1 }]; c.listIdx = 0; c.basket = [];
+    if (!up) { put(c, at(s, -1.5, -0.8)); c.state = 'browsing'; c.timer = -1; c.targetFixture = shelf.id; setPath(s, c, fixtureAccessWorld(s.shop, shelf, c, gridFor(s))); }
+    else { put(c, at(s, 2, -5.5, 1)); startLeaving(s, c, true); }
+    expect(c.path.some((w) => w.via === f.id)).toBe(true);
+    const at0 = { x: o.x, z: o.z };
+    let rode = false;
+    run(s, 30, () => (rode ||= c.climb !== undefined));
+    expect(rode).toBe(true);
+    // The manager stays where they stepped to.
+    expect(Math.hypot(o.x - at0.x, o.z - at0.z)).toBeLessThan(0.01);
+    expect(levelOfPerson(s.shop, o)).toBe(up ? 1 : 0);
+  });
+
+  // Walked there and left there (no ride), or wherever a step off one comes to in a tight spot: nobody is held off
+  // for ever from where their way turns, or gets on, by the manager standing on it. They squeeze past.
+  for (const type of ['stairs', 'escalator', 'elevator'] as const) for (const up of [true, false]) it(`parked where the ${type === 'elevator' ? 'lift' : type} starts (${up ? 'top' : 'foot'}), the manager is squeezed past`, () => {
+    const s = quiet(89, type);
+    const shelf = riceUpstairs(s, 1);
+    shelf.slots[0] = { productId: 'rice', qty: 8 };
+    const o = owner(s), f = s.shop.fixtures.find((x) => x.type === type)!, e = rideEnds(f);
+    put(o, toWorld(s.shop, up ? e.top.x : e.bottom.x, up ? e.top.z : e.bottom.z));
+    const c = spawnCustomer(s, true)!;
+    c.xings = undefined; c.list = [{ productId: 'rice', qty: 1 }]; c.listIdx = 0; c.basket = [];
+    if (!up) { put(c, at(s, -1.5, -0.8)); c.state = 'browsing'; c.timer = -1; c.targetFixture = shelf.id; setPath(s, c, fixtureAccessWorld(s.shop, shelf, c, gridFor(s))); }
+    else { put(c, at(s, 2, -5.5, 1)); startLeaving(s, c, true); }
+    const at0 = { x: o.x, z: o.z };
+    let rode = false;
+    run(s, 30, () => (rode ||= c.climb !== undefined));
+    expect(rode).toBe(true);
+    expect(Math.hypot(o.x - at0.x, o.z - at0.z)).toBeLessThan(0.01);
   });
 });

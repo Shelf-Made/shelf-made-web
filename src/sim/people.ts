@@ -18,7 +18,7 @@ import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './l
 import { noteVisit } from './reviews';
 import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './shoplifting';
 import { freeStand, standPoint, freeStands } from './lot';
-import { RIDE_REACH, rideAt, rideStep, startRide } from './storeys';
+import { RIDE_REACH, rideAt, rideStep, startRide, stepOff } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
 import { RACK_STANDS } from './layout';
 
@@ -964,7 +964,13 @@ function spareCashier(state: GameState, p: Person): boolean {
 /** Workers (the owner and staff): stand at their post, carry stock, clean up. */
 function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   const dt = TICK;
-  if (p.kind === 'owner' && !(p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0))) p.rideLock = undefined;
+  if (p.kind === 'owner' && !(p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0))) {
+    // Off a ride with nowhere more to go (Use, the keys let go on it or just past its end, a walk stopped on it): a
+    // step clear of where the way back starts, or nobody could get on it while they stood there.
+    const to = p.rideLock && p.pathIdx >= p.path.length && (p.state === 'idle' || p.state === 'walking') ? stepOff(state, p) : null;
+    if (to) { p.path = [to]; p.pathIdx = 0; p.state = 'walking'; }
+    p.rideLock = undefined;
+  }
   if (p.kind === 'owner' && p.climb === undefined && p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0)) { steer(state, p, dyn); return; }
   if (p.kind === 'owner' && p.state === 'walking') {
     // Click-to-move.
@@ -1206,20 +1212,27 @@ function shelvedAnywhere(state: GameState, productId: string): boolean {
   return state.shop.fixtures.some((f) => f.slots.some((s) => s.productId === productId));
 }
 
+/** How far everyone keeps off the manager (who is never shoved). */
+export const MANAGER_ROOM = 0.48;
+
 function separate(state: GameState, dyn: Set<number>): void {
   const g = gridFor(state);
   const movers = state.people.filter((p) => p.kind !== 'walker' && p.state !== 'driving' && p.state !== 'queued' && p.state !== 'paying' && p.state !== 'gone' && !(p.state === 'resting' && p.timer > 0) && p.climb === undefined);
+  const owner = movers.find((p) => p.kind === 'owner');
   for (let i = 0; i < movers.length; i++) {
     const a = movers[i]!;
-    // The player is never shoved; everyone else steps round them.
+    // The player is never shoved; everyone else steps round them. Where their way turns next (or gets on a ride) is
+    // where the manager stands: they squeeze past, never held off it for ever (where they stop, they wait).
     if (a.kind === 'owner') continue;
+    const w = a.path[a.pathIdx], past = !!owner && !!w && a.pathIdx < a.path.length - 1 && Math.hypot(w.x - owner.x, w.z - owner.z) < MANAGER_ROOM;
     let fx = 0, fz = 0;
     for (let j = 0; j < movers.length; j++) {
       if (i === j) continue;
       const b = movers[j]!;
+      if (past && b === owner) continue;
       const dx = a.x - b.x, dz = a.z - b.z;
       const d = Math.hypot(dx, dz);
-      const reach = b.kind === 'owner' ? 0.48 : 0.42;
+      const reach = b.kind === 'owner' ? MANAGER_ROOM : 0.42;
       if (d < reach && d > 1e-4) { const push = (reach - d) * (b.kind === 'owner' ? 1 : 0.5); fx += (dx / d) * push; fz += (dz / d) * push; }
       else if (d <= 1e-4) { fx += (i < j ? 0.02 : -0.02); }
     }

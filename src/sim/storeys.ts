@@ -7,7 +7,7 @@ import type { GameState, FixtureType, FloorStyle, Person, Rot, Vec2, Waypoint, S
 import { FIXTURES, FLOORS, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
 import { buildGrid, fixtureStandWorld, fixtureFront, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
 import { followPath } from './movement';
-import { dynamicBlockers, setPath } from './people';
+import { dynamicBlockers, setPath, MANAGER_ROOM } from './people';
 import { gridFor } from './state';
 import { dollars } from './money';
 import type { PlaceCheck } from './build';
@@ -280,6 +280,23 @@ export function rideAt(state: GameState, p: Person, dir: Vec2): Waypoint | null 
   return null;
 }
 
+/**
+ * Where someone standing where a ride starts (just off the other way: its landing, a lift's door) steps to, out
+ * of the way of whoever gets on (nobody walks into the manager): on off the landing, away from the piece, or to
+ * one side, clear of every ride's start. Null when they stand at none (or there is no room).
+ */
+export function stepOff(state: GameState, p: Vec2): Vec2 | null {
+  // (Far enough on that stopping short of it, as a walk does, still leaves room.)
+  const g = gridFor(state), starts = [...g.portals?.values() ?? []].flat(), STEP = 0.8;
+  const on = starts.find((pt) => Math.hypot(pt.from.x - p.x, pt.from.z - p.z) < MANAGER_ROOM);
+  if (!on) return null;
+  for (const turn of [0, 1, -1, 2, -2]) {
+    const a = on.yaw + Math.PI + turn * Math.PI / 4, to = { x: on.from.x + Math.sin(a) * STEP, z: on.from.z + Math.cos(a) * STEP };
+    if (lineClear(g, p, to) && starts.every((pt) => Math.hypot(pt.from.x - to.x, pt.from.z - to.z) > STEP - 1e-6)) return to;
+  }
+  return null;
+}
+
 /** The ride on this piece from where a person stands (its foot, or its top): null when they are not at either. */
 export function rideOn(state: GameState, p: Vec2, fixtureId: number, within = 1.2): Waypoint | null {
   let best: Waypoint | null = null, bd = within;
@@ -368,7 +385,8 @@ export function rideStep(state: GameState, p: Person): boolean {
   if (p.climb === undefined) return false;
   if (p.path[p.pathIdx]?.ride === undefined) { p.climb = undefined; return false; }
   followPath(p, p.speed, TICK);
-  if (p.climb === undefined) stepClear(state, p);
+  // (The manager off one: no riding straight back on the keys, nor standing where the way back starts. See tickWorker.)
+  if (p.climb === undefined) { stepClear(state, p); if (p.kind === 'owner') p.rideLock = { x: p.x, z: p.z }; }
   return true;
 }
 
