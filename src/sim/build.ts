@@ -16,6 +16,9 @@ import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays } from './lot';
 /** `ceiling`: the part of the price that is a ceiling over a floor it opens (all a move costs). */
 export interface PlaceCheck { ok: boolean; reason: string; price: number; ceiling?: number }
 
+/** Is (x, z) not a tile's corner? (The Build card snaps to tiles; a command need not.) */
+function offTile(shop: Shop, x: number, z: number): boolean { const f = shop.floor; return Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6; }
+
 /** Can this fixture go here? Reason is in plain words for the ghost label. */
 export function canPlace(state: GameState, type: FixtureType, x: number, z: number, rot: Rot, ignoreId?: number): PlaceCheck {
   const def = FIXTURES[type];
@@ -24,7 +27,7 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const shop = state.shop;
   const f = shop.floor;
   let price = def.price;
-  if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a floor tile', price };
+  if (offTile(shop, x, z)) return { ok: false, reason: 'Snap to a floor tile', price };
   const level = levelOfZ(z + 0.5);
   const up = placeUpstairs(state, type, x, z, rot, ignoreId);
   if (up) return up;
@@ -162,6 +165,7 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
 export function canPaintFloor(state: GameState, x: number, z: number, style: FloorStyle): PlaceCheck {
   const now = isFloor(state.shop, x, z) ? styleAt(state.shop, x, z) : null;
   const price = (FLOORS.find((f) => f.id === style)?.perTile ?? 0) - Math.round(RESALE * (FLOORS.find((f) => f.id === now)?.perTile ?? 0));
+  if (offTile(state.shop, x, z)) return { ok: false, reason: 'Snap to a tile', price };
   if (!now) return { ok: false, reason: 'Only on the shop floor', price };
   if (now === style) return { ok: false, reason: 'That floor is down already', price };
   if (price > 0 && state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
@@ -205,6 +209,7 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   const shop = state.shop, n = floorTileCount(shop), above = shop.ceilings?.slice(1).filter((r) => r.includes(tileKey(x, z))).length ?? 0;
   const price = -Math.round(RESALE * tilePriceAt(n - 1)) - above * Math.round(RESALE * PANEL_PRICE);
   if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Upstairs, take the ceiling panel down instead (Upstairs tab)', price };
+  if (offTile(shop, x, z)) return { ok: false, reason: 'Snap to a tile', price };
   if (!isFloor(shop, x, z)) return { ok: false, reason: 'Point at a tile of floor', price };
   if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z + 1 === shop.floor.z1) return { ok: false, reason: 'The front door stands here', price };
   const d = shop.delivery;
@@ -290,9 +295,9 @@ export function grownCeilings(shop: GameState['shop']): number[] { return (shop.
 export function tileCost(shop: GameState['shop']): number { return tilePrice(shop) + grownCeilings(shop).length * PANEL_PRICE; }
 
 export function canBuyTile(state: GameState, x: number, z: number): PlaceCheck {
-  const shop = state.shop, price = tileCost(shop), up = grownCeilings(shop).length, m = MAX_FLOOR, f = shop.floor;
+  const shop = state.shop, price = tileCost(shop), up = grownCeilings(shop).length, m = MAX_FLOOR;
   if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Grow the ground floor: the floors above grow with it (Upstairs tab: ceiling panels)', price };
-  if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a tile', price };
+  if (offTile(shop, x, z)) return { ok: false, reason: 'Snap to a tile', price };
   if (isFloor(shop, x, z)) return { ok: false, reason: 'That is floor already', price };
   if (z + 1 > m.z1) return { ok: false, reason: 'The front wall stays where it is', price };
   if (x < m.x0 || x + 1 > m.x1 || z < m.z0) return { ok: false, reason: 'The plot ends here', price };
@@ -424,13 +429,13 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   if (!want.length) return 'The shop is already that big.';
   {
     const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash;
-    // The delivery pallet goes to the new back corner: nothing may stand there, nor a way up be stepped onto from
-    // it, nor anything upstairs be cut off by it.
-    const zone = deliveryZone(trial.floor);
+    // The delivery pallet goes to the new back corner (of that size: a tile bought further out the back is no corner
+    // of floor): nothing may stand there, nor a way up be stepped onto from it, nor anything upstairs be cut off by it.
+    const zone = deliveryZone(size.floor);
     if (shop.fixtures.some((fx) => !FIXTURES[fx.type].outdoor && !FIXTURES[fx.type].onWall && levelOf(fx) === 0 && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), zone))) return 'Clear the back corner first: the delivery pallet goes there.';
     const foot = shop.fixtures.find((fx) => VERTICAL.has(fx.type) && (() => { const b = rideEnds(fx).bottom; return overlaps({ x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, zone); })());
     if (foot) return `The delivery pallet would go where you get on the ${FIXTURES[foot.type].name.toLowerCase()}: move it first.`;
-    trial.delivery = zone; trial.backDoor = { x: shop.backDoor.x, z: trial.floor.z0 };
+    trial.delivery = zone; trial.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
     const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
     if (why) return `${why}: the delivery pallet goes to the new back corner.`;
     // The walls go up round it: never round anyone.
@@ -446,9 +451,9 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const rows = ensureCeilings(shop);
   for (const L of [0, ...up]) rows[L] = [...rows[L]!, ...want.map((t) => tileKey(t.x, t.z))];
   addFloor(shop, want);
-  // The delivery pallet goes to the new back corner, by the back door.
-  shop.delivery = deliveryZone(shop.floor);
-  shop.backDoor = { x: shop.backDoor.x, z: shop.floor.z0 };
+  // The delivery pallet goes to the new back corner, by the back door (out to the back edge of its column: reshape).
+  shop.delivery = deliveryZone(size.floor);
+  shop.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
   reshape(state);
   state.notices.push({ day: state.day, text: `Extension built: the shop is now a ${size.name.toLowerCase()}.`, kind: 'info' });
   return null;

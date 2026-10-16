@@ -261,6 +261,31 @@ describe('growing the shop a tile at a time', () => {
   });
 });
 
+describe('the commands themselves (bots, tests): only what the Build card offers', () => {
+  // The card snaps to tiles and never grows the shop in one go, so only the command layer saw these.
+  it('a tile sold or laid off the tile grid does nothing and pays nothing', () => {
+    const s = openGame({ seed: 3, plotId: 'main', name: 'Junk', tutorial: false });
+    s.cash = 5000;
+    const cash = s.cash, n = floorTileCount(s.shop);
+    expect(applyCommand(s, { type: 'sellTile', x: 1, z: -4 }).message).toBe('Snap to a tile');
+    expect(applyCommand(s, { type: 'paintFloor', x: 0.3, z: -4.2, style: 'lino' }).message).toBe('Snap to a tile');
+    expect(applyCommand(s, { type: 'paintFloor', x: 0.3, z: -4.2, style: 'wood' }).message).toBe('Snap to a tile');
+    expect(s.cash).toBe(cash);
+    expect(floorTileCount(s.shop)).toBe(n);
+  });
+
+  it('growing the shop after a tile bought out the back keeps the pallet and the back door on the floor', () => {
+    const s = shop();
+    expect(applyCommand(s, { type: 'buyTile', x: 1.5, z: -7 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'buyTile', x: 1.5, z: -8 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).ok).toBe(true);
+    const d = s.shop.delivery, b = s.shop.backDoor;
+    for (let x = d.x0; x < d.x1; x++) for (let z = d.z0; z < d.z1; z++) expect(isFloor(s.shop, x, z), `pallet on ${x},${z}`).toBe(true);
+    expect(isFloor(s.shop, b.x - 0.5, b.z), 'back door').toBe(true);
+    expect(findPath(buildGrid(s.shop, 99), doorInside(s), toWorld(s.shop, b.x, b.z - 0.6))).not.toBeNull();
+  });
+});
+
 describe('finishes and selling floor', () => {
   it('a new shop has plain walls; a stretch at a time takes a finish, and swapping it sells the old one back', () => {
     const s = shop();
