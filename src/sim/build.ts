@@ -253,9 +253,9 @@ export function buyTile(state: GameState, x: number, z: number): string | null {
   const check = canBuyTile(state, x, z);
   if (!check.ok) return check.reason;
   state.cash -= check.price;
-  // It comes with a ceiling panel, like the rest, on every open floor: the floors above grow with it.
+  // It comes with a ceiling panel, like the rest, on every open floor (and one shut, its ceiling kept for when it opens): the floors above grow with it.
   const rows = ensureCeilings(state.shop), built = storeysOf(state.shop).built;
-  rows.forEach((row, L) => { if (built[L]) rows[L] = [...row, tileKey(x, z)]; });
+  rows.forEach((row, L) => { if (built[L] || row.length) rows[L] = [...row, tileKey(x, z)]; });
   addFloor(state.shop, [{ x, z }]);
   // New floor comes with the cheapest finish (lay a better one a tile at a time).
   if ((state.shop.floorStyle ?? 'lino') !== FLOORS[0]!.id) state.shop.tileStyles = { ...state.shop.tileStyles, [tileKey(x, z)]: FLOORS[0]!.id };
@@ -356,7 +356,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   if (state.cash < cost) return `Need ${dollars(cost)} for the extension.`;
   state.cash -= cost;
   const rows = ensureCeilings(shop), built = storeysOf(shop).built;
-  rows.forEach((row, L) => { if (built[L]) rows[L] = [...row, ...want.map((t) => tileKey(t.x, t.z))]; });
+  rows.forEach((row, L) => { if (built[L] || row.length) rows[L] = [...row, ...want.map((t) => tileKey(t.x, t.z))]; });
   addFloor(shop, want);
   // The delivery pallet goes to the new back corner, by the back door.
   shop.delivery = deliveryZone(shop.floor);
