@@ -637,7 +637,7 @@ test('a card opened on the way to use something lets it go: never done from the 
   expect(await spilt()).toBe(true);
 });
 
-test('upstairs from outside, every floor drawn: a click on the top floor means it, never what is under it', async ({ page }) => {
+test('upstairs from outside, every floor drawn: a click on the top floor means it, and bubbles under it hide', async ({ page }) => {
   const UP = -16;
   test.setTimeout(300_000);
   await ready(page);
@@ -660,6 +660,20 @@ test('upstairs from outside, every floor drawn: a click on the top floor means i
   expect.soft(end, 'walking up to where it was clicked').not.toBeNull();
   if (end) expect.soft(Math.hypot(end.x + 1.8, end.z - (-2.5 + UP)), 'walking up to where it was clicked').toBeLessThan(0.8);
   await page.keyboard.press('Escape');
+  // A shopper under the first floor's boards with something to say: from up there, neither they nor what they say.
+  await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: Shelf }).__shelf, s = h.state(), f = s.shop.flip ? -1 : 1;
+    h.crowd(1);
+    const c = s.people[s.people.length - 1]!;
+    c.x = c.px = s.shop.originX - 1.5 * f; c.z = c.pz = s.shop.originZ - 3.5 * f; c.path = []; c.state = 'browsing'; c.timer = 999;
+    s.reactions.push({ id: 99001, personId: c.id, kind: 'pricey', tick: s.tick - 10 });
+  });
+  const bubbles = () => page.evaluate(() => (window as unknown as { __shelf: Shelf }).__shelf.runtime.renderer.reactions.group.children.filter((c) => c.visible).length);
+  await hooks(page, 'fp', -0.5, -1.5 + UP);
+  await drawFrames(page);
+  expect.soft(await bubbles(), 'no bubble over the boards upstairs').toBe(0);
+  await hooks(page, 'fp', -0.5, -1.5);
+  await expect.poll(bubbles).toBe(1);
 });
 
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {

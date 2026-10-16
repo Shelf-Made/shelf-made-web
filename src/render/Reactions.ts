@@ -1,7 +1,7 @@
 import { Group, Sprite, SpriteMaterial, CanvasTexture, SRGBColorSpace, type Vector3 } from 'three';
 import type { GameState, ReactionKind } from '@/sim/types';
 import { TICK } from '@/sim/layout';
-import { poseOf } from './levels';
+import { poseOf, underFloors } from './levels';
 
 /** How long a bubble stays up, and how many at once. */
 const SHOW = 2.8, MAX = 4;
@@ -26,7 +26,7 @@ export class ReactionsView {
     return m;
   }
 
-  /** The floor in view: bubbles over people upstairs of it are hidden with them. */
+  /** The floor in view: bubbles over people upstairs of it, or under it (or under any floor, every one drawn), are hidden with them. */
   viewLevel: number | null = null;
 
   update(state: GameState, alpha: number, eye: Vector3 | null, far = 42): void {
@@ -37,7 +37,8 @@ export class ReactionsView {
       const p = r && state.people.find((x) => x.id === r.personId);
       if (!r || !p || p.state === 'driving' || p.state === 'inRival' || typeof document === 'undefined') { s.visible = false; return; }
       const pose = poseOf(state, p, alpha), x = pose.x, z = pose.z;
-      if ((this.viewLevel !== null && pose.level > this.viewLevel) || (eye && Math.hypot(x - eye.x, eye.y - pose.y, z - eye.z) > far)) { s.visible = false; return; }
+      // (The bubble draws over everything: judged by the one saying it, as people are picked.)
+      if ((this.viewLevel !== null && pose.level > this.viewLevel) || (eye && (Math.hypot(x - eye.x, eye.y - pose.y, z - eye.z) > far || underFloors(state.shop, eye, x, pose.y + 0.5, z, pose.level, this.viewLevel)))) { s.visible = false; return; }
       const age = (now - r.tick) * TICK;
       // Pop in with a little overshoot, hold, then shrink away.
       const k = age < 0.25 ? (age / 0.25) * 1.15 : age < 0.4 ? 1.15 - (age - 0.25) : age > SHOW - 0.35 ? Math.max(0, (SHOW - age) / 0.35) : 1;
