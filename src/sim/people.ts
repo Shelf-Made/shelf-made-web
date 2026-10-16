@@ -51,12 +51,14 @@ export function dynamicBlockers(state: GameState): Set<number> {
   return set;
 }
 
-export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>): boolean {
+/** A way to `to` (false: there is none). With none, straight at it, or (`keep`) on the way they were going. */
+export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>, keep = false): boolean {
   // Partway up the stairs: up to the top first, and the new way on from there.
   const ride = p.climb !== undefined && p.path[p.pathIdx]?.ride !== undefined ? [p.path[p.pathIdx]!] : [];
-  if (!ride.length) p.climb = undefined;
   const from = ride[0] ?? p;
   const path = findPath(gridFor(state), { x: from.x, z: from.z }, to, dyn);
+  if (!path && keep) return false;
+  if (!ride.length) p.climb = undefined;
   p.path = [...ride, ...(path ?? [{ x: to.x, z: to.z }])]; p.pathIdx = 0;
   return !!path;
 }
@@ -904,8 +906,8 @@ export function ownerWalkTo(state: GameState, to: Vec2): boolean {
   const o = state.people.find((x) => x.kind === 'owner');
   if (!o) return false;
   if (o.state === 'pickBox' || o.state === 'stocking') return false;
-  const ok = setPath(state, o, to, dynamicBlockers(state));
-  if (!ok) return false;
+  // Nowhere they can walk to ("You can't get there"): nothing changes, never off in a straight line at it.
+  if (!setPath(state, o, to, dynamicBlockers(state), true)) return false;
   o.moveDir = null;
   if (!o.carrying) o.task = null;
   o.state = o.carrying && o.task ? 'carrying' : 'walking';

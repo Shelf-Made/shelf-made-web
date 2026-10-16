@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { applyCommand, tick, TICK, type GameState } from './index';
+import { applyCommand, tick, newGame, FIXTURES, TICK, type GameState } from './index';
 import { openGame } from './testUtil';
 import { rideEnds, storeysOf, toLocal, toWorld, zOnLevel } from './layout';
 import { cellOf, fixtureAccessWorld, fixtureFacingWorld, isBlocked, nearestWalkable } from './grid';
-import { gridFor } from './state';
+import { gridFor, resetGridCache } from './state';
+import { quickSetup } from './setup';
 import { findPath } from './pathfinding';
 import { levelOfPerson, repathAfterBuild, rideOn } from './storeys';
-import { addSpill, spawnCustomer, startLeaving, setPath } from './people';
+import { addSpill, spawnCustomer, startLeaving, setPath, doorInside, doorOutside } from './people';
+import { canPlace } from './build';
 import { bolt } from './shoplifting';
 import { makeCandidate } from './staff';
 import type { FixtureType, Person } from './types';
@@ -606,5 +608,65 @@ describe('the manager off a ride', () => {
     run(s, 30, () => (rode ||= c.climb !== undefined));
     expect(rode).toBe(true);
     expect(Math.hypot(o.x - at0.x, o.z - at0.z)).toBeLessThan(0.01);
+  });
+});
+
+describe('a click nobody can walk to', () => {
+  /** The starter shop being fitted out, with tile (1.5, -5) walled off on its own, the manager outside the door. */
+  function sealed(): GameState {
+    resetGridCache();
+    const s = newGame({ seed: 5, plotId: 'main', name: 'Sealed' });
+    quickSetup(s, false);
+    s.cash = 50000;
+    put(owner(s), toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8));
+    const id = (t: FixtureType) => s.shop.fixtures.find((f) => f.type === t)!.id;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: id('fridge') }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: id('register'), x: 1.5, z: -2, rot: 0 }).ok).toBe(true);
+    for (const [x, z] of [[1.5, -6], [0.5, -5], [1.5, -4]] as const) expect(place(s, 'wall', x, z).ok, `wall at ${x}, ${z}`).toBe(true);
+    return s;
+  }
+  const out = (s: GameState) => findPath(gridFor(s), owner(s), doorOutside(s));
+
+  it('walking (or riding) somewhere already, the manager carries on there: never off in a straight line through the walls', () => {
+    for (const riding of [false, true]) {
+      const s = quiet(100), o = owner(s);
+      const there = riding ? at(s, 2, -5.5, 1) : at(s, 2, -0.8);
+      expect(applyCommand(s, { type: 'walkTo', x: there.x, z: there.z }).ok).toBe(true);
+      if (riding) { run(s, 20, () => o.climb !== undefined); expect(o.climb).toBeDefined(); } else run(s, 0.5);
+      // Over the road, past the far kerb.
+      const road = toWorld(s.shop, 2, 8);
+      expect(applyCommand(s, { type: 'walkTo', x: road.x, z: road.z }).ok, `riding ${riding}`).toBe(false);
+      run(s, 20);
+      expect(Math.hypot(o.x - there.x, o.z - there.z), `riding ${riding}`).toBeLessThan(0.3);
+      expect(out(s), `riding ${riding}`).not.toBeNull();
+      expect(applyCommand(s, { type: 'walkTo', x: doorInside(s).x, z: doorInside(s).z }).ok).toBe(true);
+    }
+  });
+
+  it('a spot walled off on its own: the manager stays out of it, and building goes on', () => {
+    for (const walking of [false, true]) {
+      const s = sealed();
+      if (walking) { const p = toWorld(s.shop, -2, -1.5); expect(applyCommand(s, { type: 'walkTo', x: p.x, z: p.z }).ok).toBe(true); run(s, 0.5); }
+      const inside = toWorld(s.shop, 2, -4.5);
+      expect(applyCommand(s, { type: 'walkTo', x: inside.x, z: inside.z }).ok, `walking ${walking}`).toBe(false);
+      run(s, 20);
+      expect(out(s), `walking ${walking}`).not.toBeNull();
+      expect(s.stuckRescues, `walking ${walking}`).toBe(0);
+      expect(canPlace(s, 'plant', -2.5, -1, 0).reason, `walking ${walking}`).toBe(FIXTURES.plant.name);
+    }
+  });
+
+  it('a lone tile left upstairs (its panels round it sold): the manager is not walked onto it', () => {
+    const s = quiet(101), o = owner(s);
+    for (const [x, z] of [[-1.5, -6], [-2.5, -5]] as const) expect(applyCommand(s, { type: 'removePanel', x, z }).ok, `panel ${x}, ${z}`).toBe(true);
+    const up = at(s, -1, -2.5, 1);
+    expect(applyCommand(s, { type: 'walkTo', x: up.x, z: up.z }).ok).toBe(true);
+    run(s, 8);
+    expect(levelOfPerson(s.shop, o)).toBe(1);
+    const lone = toWorld(s.shop, -2, zOnLevel(-5.5, 1));
+    expect(applyCommand(s, { type: 'walkTo', x: lone.x, z: lone.z }).ok).toBe(false);
+    run(s, 10);
+    expect(out(s)).not.toBeNull();
+    expect(canPlace(s, 'plant', -2.5, -1, 0).ok).toBe(true);
   });
 });
