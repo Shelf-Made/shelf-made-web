@@ -330,11 +330,13 @@ async function main(): Promise<void> {
   for (const r of by('guided')) if (!r.profitableBy || r.profitableBy > 5) failures.push(`guided seed ${r.seed} not profitable by day 5 (${r.profitableBy || 'never'})`);
   // 3. No early upgrade costs more than 5 days of a guided player's income.
   const guidedDaily = avg(by('guided').map((r) => avg(r.history.slice(0, 5).map((p) => Math.max(0, p)))));
-  for (const [type, def] of Object.entries(FIXTURES)) if (['shelf', 'fridge', 'register', 'produce', 'endcap'].includes(type) && def.price > guidedDaily * 5) failures.push(`${type} costs $${def.price} > 5 days of income ($${(guidedDaily * 5).toFixed(0)})`);
+  // (Each judged only with the runs it needs: --only runs one strategy.)
+  const ran = (name: string) => by(name).length > 0;
+  if (ran('guided')) for (const [type, def] of Object.entries(FIXTURES)) if (['shelf', 'fridge', 'register', 'produce', 'endcap'].includes(type) && def.price > guidedDaily * 5) failures.push(`${type} costs $${def.price} > 5 days of income ($${(guidedDaily * 5).toFixed(0)})`);
   // 4. A bad layout is clearly worse than a guided player but not a guaranteed loss.
   const carelessEnd = avg(by('careless').map((r) => r.cash8)), guidedEnd = avg(by('guided').map((r) => r.cash8));
-  if (!(carelessEnd < guidedEnd)) failures.push(`careless (${carelessEnd.toFixed(0)}) should end with less than guided (${guidedEnd.toFixed(0)})`);
-  if (by('careless').every((r) => r.bust8)) failures.push('careless always goes bust within eight days');
+  if (ran('careless') && ran('guided') && !(carelessEnd < guidedEnd)) failures.push(`careless (${carelessEnd.toFixed(0)}) should end with less than guided (${guidedEnd.toFixed(0)})`);
+  if (ran('careless') && by('careless').every((r) => r.bust8)) failures.push('careless always goes bust within eight days');
   // 5. Rivals neither crush nor ignore the player: customers keep coming after rivals open (≥ 60% of the first days),
   //    and a rival sale visibly pulls bargain hunters (share drops by at least 3 points).
   for (const r of by('guided')) {
