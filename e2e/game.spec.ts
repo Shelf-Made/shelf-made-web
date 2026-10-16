@@ -782,6 +782,32 @@ test('a popup from a floor out of view is not drawn over the floor in view', asy
   await expect.poll(() => shown('up-pop')).toBe(false);
 });
 
+test("the panel of a shopper gone up to a floor lifted off stays put, not beside where they would be", async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  await hooks(page, 'fp', 0, -1.5);
+  const id = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: Up }).__shelf, s = h.state(), f = s.shop.flip ? -1 : 1;
+    h.crowd(1);
+    const c = s.people[s.people.length - 1]!;
+    c.x = c.px = s.shop.originX - 1.5 * f; c.z = c.pz = s.shop.originZ - 3.5 * f; c.path = []; c.state = 'browsing'; c.timer = 999;
+    h.selectPerson(c.id);
+    return c.id;
+  });
+  const panel = page.locator('.inspect');
+  await expect(panel).toHaveCount(1);
+  await drawFrames(page, 6);
+  const was = await panel.boundingBox();
+  // Up on the first floor (lifted off, the manager downstairs): out of sight, and the panel no longer follows them.
+  await page.evaluate(({ id, UP }) => {
+    const s = (window as unknown as { __shelf: Up }).__shelf.state(), f = s.shop.flip ? -1 : 1, c = s.people.find((p) => p.id === id)!;
+    c.z = c.pz = s.shop.originZ + (-3.5 + UP) * f;
+  }, { id, UP: UPS });
+  await drawFrames(page, 6);
+  await expect(panel).toHaveClass(/offscreen/);
+  expect(await panel.boundingBox()).toEqual(was);
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);

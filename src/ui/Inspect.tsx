@@ -61,8 +61,9 @@ export function InspectPanel({ runtime, snap }: { runtime: GameRuntime; snap: Sn
       if (!el || !s || !r) return;
       if (window.innerWidth <= 640) { el.classList.add('docked'); el.style.left = ''; el.style.top = ''; return; }
       el.classList.remove('docked');
+      // Out of sight (on a floor lifted off): left where it was, faded.
       const a = r.personAnchor(s, id);
-      if (!a) return;
+      if (!a) { el.classList.add('offscreen'); return; }
       r.project(a.x, a.y, a.z, proj);
       const w = el.offsetWidth, h = el.offsetHeight, W = window.innerWidth, H = window.innerHeight;
       // Beside the person, on whichever side has room, never under the top bar or the tool shelf.

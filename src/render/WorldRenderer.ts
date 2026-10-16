@@ -400,6 +400,8 @@ export class WorldRenderer {
     const p = state.people.find((q) => q.id === id);
     if (!p || p.state === 'gone') return null;
     const pose = poseOf(state, p, this.lastAlpha);
+    // On a floor lifted off: not drawn (see People).
+    if (this.viewLevel !== null && pose.level > this.viewLevel) return null;
     return { x: pose.x, y: p.state === 'driving' ? 1.2 : pose.y + 0.95 * p.look.height + 0.15, z: pose.z };
   }
 
