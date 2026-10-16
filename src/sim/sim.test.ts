@@ -297,6 +297,44 @@ describe('simulation', () => {
     expect(canPlace(s, 'register', fl.x0, -1, 3).reason).toMatch(/face into the shop|reach|block|standing|already/i);
   });
 
+  it('nobody shoved round the end of a shelf (the manager crossing their way) walks on through it', () => {
+    // The pallet's row: a produce stand and a shelf facing the front; a shopper walks a straight leg to the till past
+    // the shelf's end as the manager crosses it on the way to the pallet.
+    const base = openGame({ seed: 1, plotId: 'main', name: 'Herd', tutorial: false });
+    base.cash = 5000;
+    for (const [t, x] of [['produce', -2.5], ['shelf', -0.5]] as const) expect(applyCommand(base, { type: 'placeFixture', fixtureType: t, x, z: -5, rot: 0 }).ok).toBe(true);
+    base.people = base.people.filter((p) => p.kind === 'owner');
+    for (const f of base.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+    base.shop.storage = []; base.phase = 'open';
+    const snap = JSON.stringify(base);
+    let deepest = 0, trials = 0;
+    for (const dcx of [-0.2, -0.1, 0, 0.1, 0.2]) for (const dcz of [-0.15, 0, 0.15]) for (const dox of [-0.3, -0.15, 0, 0.15, 0.3]) for (const doz of [-0.15, 0, 0.15]) {
+      const s = JSON.parse(snap) as GameState; resetGridCache();
+      const g = gridFor(s), W = (x: number, z: number) => toWorld(s.shop, x, z);
+      const c = spawnCustomer(s, true)!;
+      const a = W(-0.98 + dcx, -3.3 + dcz), b = W(2, -3.5);
+      c.x = c.px = a.x; c.z = c.pz = a.z; c.xings = undefined; c.state = 'leaving'; c.path = [b]; c.pathIdx = 0; c.list = []; c.basket = []; c.speed = 1.6;
+      const m = s.people.find((p) => p.kind === 'owner')!, ms = W(0.05 + dox, -3.02 + doz);
+      m.x = m.px = ms.x; m.z = m.pz = ms.z; m.path = [W(-0.25 + dox, -3.25 + doz), W(-1.5, -4.65)]; m.pathIdx = 0; m.state = 'walking'; m.task = null; m.moveDir = null;
+      trials++;
+      for (let i = 0; i < 6 / TICK && c.state === 'leaving'; i++) {
+        tick(s);
+        // How far into a blocked cell: to the edge of the nearest open one.
+        const [cx, cz] = cellOf(g, c);
+        if (!isBlocked(g, cx, cz)) continue;
+        let near = Infinity;
+        for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+          if (isBlocked(g, cx + dx, cz + dz)) continue;
+          const x0 = g.x0 + (cx + dx) * 0.5, z0 = g.z0 + (cz + dz) * 0.5;
+          near = Math.min(near, Math.hypot(Math.max(x0 - c.x, 0, c.x - x0 - 0.5), Math.max(z0 - c.z, 0, c.z - z0 - 0.5)));
+        }
+        deepest = Math.max(deepest, near);
+      }
+    }
+    expect(trials).toBe(225);
+    expect(deepest).toBe(0);
+  });
+
   it('a till line never waits on someone who has left the world', () => {
     const s = openGame({ seed: 16, plotId: 'main', name: 'Ghost' });
     const reg = s.shop.fixtures.find((f) => f.type === 'register')!;

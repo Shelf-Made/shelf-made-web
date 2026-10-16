@@ -1,7 +1,7 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells } from './grid';
+import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
@@ -1259,10 +1259,11 @@ function separate(state: GameState, dyn: Set<number>): void {
       sx += h.z * side * step; sz -= h.x * side * step;
     }
     if (fx === 0 && fz === 0 && sx === 0 && sz === 0) continue;
-    // (Not into a wall: then only the push.)
+    // (Not into a wall, nor round the end of a shelf where the way on is through it: then only the push, or neither.)
+    const on = w && w.ride === undefined ? w : null;
     for (const [nx, nz] of [[a.x + fx + sx, a.z + fz + sz], [a.x + fx, a.z + fz]] as const) {
       const [cx, cz] = cellOf(g, { x: nx, z: nz });
-      if (!isBlocked(g, cx, cz, dyn)) { a.x = nx; a.z = nz; break; }
+      if (!isBlocked(g, cx, cz, dyn) && (!on || lineClear(g, { x: nx, z: nz }, on))) { a.x = nx; a.z = nz; break; }
     }
   }
 }
