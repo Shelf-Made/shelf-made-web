@@ -10,6 +10,7 @@ import { PRODUCTS } from '@/sim/products';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { doubleHeight } from '@/sim/storeys';
+import { underFloors } from './levels';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
 const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator']);
@@ -54,8 +55,10 @@ export class StoreView {
   private productMeshes = new Map<string, { mesh: InstancedMesh; w: number; h: number; d: number; minY: number }>();
   private boxes!: InstancedMesh;
   private spills!: InstancedMesh;
-  /** A bubble with a drop in it, bobbing over each spill so it is easy to find. */
+  /** A bubble with a drop in it, bobbing over each spill so it is easy to find (seen through anything, but a floor over it). */
   private spillMarks: Sprite[] = [];
+  /** The bubble's look: over everything; and under the floor in view, hidden by it. */
+  private spillMarkMats: SpriteMaterial[] = [];
   private wells!: InstancedMesh;
   private stickers!: InstancedMesh;
   private layoutVersion = -1;
@@ -675,12 +678,13 @@ export class StoreView {
     const key = `${stockKey(shop)}|${this.viewLevel}`;
     if (key !== this.stockKey) { this.rebuildProducts(shop); this.rebuildBoxes(shop); this.stockKey = key; }
     const n = Math.min(8, shop.litter.length);
-    // A spill upstairs sits on its floor; on a floor out of view it is not drawn.
-    const spillAt = (l: { x: number; z: number }) => { const lp = toLocal(shop, l.x, l.z), L = levelOfZ(lp.z); return { x: lp.x, y: L * STOREY, z: zOnLevel(lp.z, -L), hidden: this.viewLevel !== null && L > this.viewLevel }; };
+    // A spill upstairs sits on its floor; on a floor out of view it is not drawn, and under the floor in view its bubble is hidden by it.
+    const spillAt = (l: { x: number; z: number }) => { const lp = toLocal(shop, l.x, l.z), L = levelOfZ(lp.z); return { x: lp.x, y: L * STOREY, z: zOnLevel(lp.z, -L), hidden: this.viewLevel !== null && L > this.viewLevel, below: this.viewLevel !== null && L < this.viewLevel }; };
     for (let i = 0; i < n; i++) { const l = shop.litter[i]!; const at = spillAt(l); this.dummy.position.set(at.x, at.y + 0.032, at.z); this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(at.hidden ? 0 : 1 + (l.id % 3) * 0.2, 1, at.hidden ? 0 : 1); this.dummy.updateMatrix(); this.spills.setMatrixAt(i, this.dummy.matrix); }
     this.spills.count = n; this.spills.instanceMatrix.needsUpdate = true;
     if (n && !this.spillMarks.length && typeof document !== 'undefined') {
       const mat = new SpriteMaterial({ map: icon('spill'), depthTest: false, transparent: true });
+      this.spillMarkMats = [mat, new SpriteMaterial({ map: mat.map, transparent: true })];
       for (let i = 0; i < 8; i++) { const sp = new Sprite(mat); sp.renderOrder = 5; sp.scale.set(0.3, 0.3, 1); sp.visible = false; this.spillMarks.push(sp); this.root.add(sp); }
     }
     const bob = performance.now() / 1000;
@@ -690,6 +694,7 @@ export class StoreView {
       if (!l) return;
       const at = spillAt(l);
       sp.visible = !at.hidden;
+      sp.material = this.spillMarkMats[at.below ? 1 : 0]!;
       sp.position.set(at.x, at.y + 0.5 + 0.05 * Math.sin(bob * 3 + i), at.z);
     });
   }
@@ -1000,19 +1005,23 @@ export class StoreView {
 
   debugFixtures(): unknown { return [...this.fixtureMeshes.entries()].map(([k, v]) => ({ model: k, count: v.mesh.count, ids: v.ids })); }
 
-  /** Raycast fixtures, then the delivery boxes, then the floor (of floor `level`, in its region as the sim has it). */
+  /**
+   * Raycast fixtures, then the delivery boxes, then the floor (of floor `level`, in its region as the sim has it).
+   * Only what is in sight: nothing under the floor in view (or one between), but down a stairwell or into a double-height space.
+   */
   pick(ray: Raycaster, shop: Shop, level = 0): StoreHit | null {
     const meshes = [...this.fixtureMeshes.values()].filter((e) => e.ids.length).map((e) => e.mesh);
-    const hits = ray.intersectObjects(meshes, false);
+    const eye = ray.ray.origin, hidden = (p: Vector3) => underFloors(shop, eye, p.x, p.y, p.z, this.viewLevel);
+    const hits = ray.intersectObjects(meshes, false).filter((h) => !hidden(h.point));
     const boxHit = ray.ray.intersectBox(this.deliveryBox, new Vector3());
-    const boxDist = boxHit ? boxHit.distanceTo(ray.ray.origin) : Infinity;
+    const boxDist = boxHit && !hidden(boxHit) ? boxHit.distanceTo(eye) : Infinity;
     if (hits.length && hits[0]!.distance < boxDist) {
       const h = hits[0]!;
       const ids = (h.object as InstancedMesh).userData.fixtureIds as number[];
       const f = shop.fixtures.find((x) => x.id === ids[h.instanceId ?? 0]);
       if (f) return { kind: 'fixture', id: f.id, type: f.type, dist: h.distance };
     }
-    if (boxHit && shop.storage.length && !level) return { kind: 'delivery', dist: boxDist };
+    if (boxDist < Infinity && shop.storage.length) return { kind: 'delivery', dist: boxDist };
     const t = (level * STOREY - ray.ray.origin.y) / ray.ray.direction.y;
     if (t > 0) { const p = new Vector3().copy(ray.ray.origin).addScaledVector(ray.ray.direction, t); const q = sinkWorld(shop, p.x, p.z, level); return { kind: 'floor', x: q.x, z: q.z, dist: t }; }
     return null;

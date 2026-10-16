@@ -1093,13 +1093,14 @@ export class GameRuntime {
   private thingAt(px: number, py: number): Thing | null {
     const s = this.state; const r = this.renderer; if (!s || !r) return null;
     // A spill: its marker floating above it, or the puddle itself, close to the pointer on screen (a
-    // shelf behind it, or the floor beyond the marker, must not take the click).
+    // shelf behind it, or the floor beyond the marker, must not take the click). Only one in sight: not upstairs of the floor in view, nor under it.
     {
       const rect = this.canvas?.getBoundingClientRect();
       const ox = rect?.left ?? 0, oy = rect?.top ?? 0;
       const pt = { x: 0, y: 0, visible: false };
       let best: { id: number; d: number } | null = null;
       for (const l of s.shop.litter) for (const y of [0.03, 0.5]) {
+        if (!r.inSight(s, l.x, y, l.z)) continue;
         r.project(l.x, y, l.z, pt);
         if (!pt.visible) continue;
         const d = Math.hypot(pt.x - (px - ox), pt.y - (py - oy));

@@ -28,7 +28,7 @@ import { box, merge } from './geometry';
 import { PhotoBooth, PHOTO_W, PHOTO_H, haulScene, photoRng, photoProduct } from './photos';
 import { shopScheme } from '@/sim/schemes';
 import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld, liftWorld, sinkWorld, STOREY, type Frame } from '@/sim/layout';
-import { poseOf } from './levels';
+import { poseOf, underFloors } from './levels';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -377,7 +377,8 @@ export class WorldRenderer {
     for (const p of state.people) {
       if (p.kind === 'owner' || p.state === 'driving' || p.state === 'inRival' || p.state === 'gone') continue;
       const pose = poseOf(state, p, this.lastAlpha);
-      if (this.viewLevel !== null && pose.level > this.viewLevel) continue;
+      // Out of sight: on a floor lifted off, or under the floor in view.
+      if ((this.viewLevel !== null && pose.level > this.viewLevel) || underFloors(state.shop, cam.position, pose.x, pose.y + 0.5, pose.z, this.viewLevel)) continue;
       foot.set(pose.x, pose.y, pose.z).project(cam);
       if (foot.z < -1 || foot.z > 1) continue;
       head.set(pose.x, pose.y + 0.95 * p.look.height, pose.z).project(cam);
@@ -415,6 +416,13 @@ export class WorldRenderer {
     const p = new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);
     if (level && this.frame) { const q = sinkWorld(this.frame, p.x, p.z, level); p.set(q.x, h, q.z); }
     return p;
+  }
+
+  /** Is a point (as the sim has it, `y` over its floor) in sight: on a floor in view, and not under a floor over it? */
+  inSight(state: GameState, x: number, y: number, z: number): boolean {
+    const l = liftWorld(state.shop, x, z);
+    if (this.viewLevel !== null && l.level > this.viewLevel) return false;
+    return !underFloors(state.shop, this.activeCamera.position, l.x, l.y + y, l.z, this.viewLevel);
   }
 
   /** World → canvas pixel (a point upstairs where it is drawn). */

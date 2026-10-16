@@ -3,8 +3,8 @@
  * everyone and everything is carried back over the ground floor and up a storey a floor, and whoever is on the
  * stairs, an escalator or in a lift is drawn on their way between floors.
  */
-import type { GameState, Person } from '@/sim/types';
-import { TICK, liftWorld, toWorld } from '@/sim/layout';
+import type { GameState, Person, Shop } from '@/sim/types';
+import { TICK, STOREY, liftWorld, toWorld, toLocal, storeysOf, tileKey } from '@/sim/layout';
 
 export interface Pose { x: number; y: number; z: number; level: number; ride: 'stairs' | 'escalator' | 'elevator' | null }
 
@@ -36,4 +36,20 @@ export function poseOf(state: GameState, p: Person, alpha: number): Pose {
   const x = jump ? p.x : p.px + (p.x - p.px) * alpha, z = jump ? p.z : p.pz + (p.z - p.pz) * alpha;
   const l = liftWorld(shop, x, z);
   return { x: l.x, y: l.y, z: l.z, level: l.level, ride: null };
+}
+
+/**
+ * Is a point as drawn (world x, y, z) out of sight from `eye`, under the floors over it up to the one in view (null:
+ * every open floor)? Looking down through each floor between, a tile people stand on is in the way; an opening
+ * (where the stairs come up) or a double-height space is not.
+ */
+export function underFloors(shop: Shop, eye: { x: number; y: number; z: number }, x: number, y: number, z: number, view: number | null): boolean {
+  const st = storeysOf(shop);
+  for (let L = Math.floor(y / STOREY + 0.01) + 1; L <= (view ?? st.top); L++) {
+    const h = L * STOREY;
+    if (eye.y <= h) continue;
+    const t = (eye.y - h) / (eye.y - y), l = toLocal(shop, eye.x + (x - eye.x) * t, eye.z + (z - eye.z) * t);
+    if (st.floors[L]?.has(tileKey(Math.floor(l.x + 0.5) - 0.5, Math.floor(l.z)))) return true;
+  }
+  return false;
 }
