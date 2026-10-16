@@ -1,7 +1,7 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
+import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
+import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
@@ -254,10 +254,21 @@ function willBuy(state: GameState, ctype: CustomerType, productId: string): bool
   return withRng(state, 'customers', (rr) => rr.chance(p));
 }
 
+/**
+ * A till someone in at the door can queue at (on the floor in front of it), with someone to serve them there: a kiosk
+ * serves itself, a counter is served from the floor behind it (reached, or `by` its cashier standing there already).
+ * An older save may have left one cut off: nobody is sent there.
+ */
+function tillOpen(state: GameState, f: Fixture, by = f.staffId): boolean {
+  const shop = state.shop, front = fixtureFront(f), back = { x: 2 * f.x + 1 - front.x, z: 2 * f.z + 1 - front.z }, bw = toWorld(shop, back.x, back.z);
+  if (!isFloor(shop, front.x - 0.5, front.z - 0.5) || !doorReaches(state, queueSlot(state, f, 0))) return false;
+  return f.type !== 'register' || (isFloor(shop, back.x - 0.5, back.z - 0.5) && (doorReaches(state, bw) || state.people.some((p) => p.id === by && dist(p, bw) < 0.8)));
+}
+
 function chooseRegister(state: GameState, ctype?: CustomerType): Fixture | null {
   let best: Fixture | null = null, bestLen = Infinity;
   for (const f of state.shop.fixtures) {
-    if (f.type !== 'register' && f.type !== 'kiosk') continue;
+    if ((f.type !== 'register' && f.type !== 'kiosk') || !tillOpen(state, f)) continue;
     let len = (f.queue?.length ?? 0) + (f.serving ? 1 : 0);
     if (f.type === 'kiosk') len += ctype === 'loyalist' ? 3 : 1.5;
     if (len < bestLen) { best = f; bestLen = len; }
@@ -951,10 +962,13 @@ function homeOf(state: GameState, p: Person): Vec2 {
   const sp = storeroomPoint(state); return { x: sp.x + 2.2, z: sp.z + 0.6 };
 }
 
-/** A cashier on shift without a till takes one nobody on shift is working (its own cashier's shift is over). */
+/** A cashier on shift without a till takes one nobody on shift is working (its own cashier's shift is over). One cut off is given up. */
 function takeTill(state: GameState, p: Person): void {
-  if (p.kind !== 'staff' || p.role !== 'cashier' || !onShift(p, state.time) || state.shop.fixtures.some((f) => f.staffId === p.id)) return;
-  const till = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && (() => {
+  if (p.kind !== 'staff' || p.role !== 'cashier' || !onShift(p, state.time)) return;
+  const mine = state.shop.fixtures.find((f) => f.staffId === p.id);
+  if (mine && tillOpen(state, mine)) return;
+  if (mine) mine.staffId = null;
+  const till = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && tillOpen(state, f, p.id) && (() => {
     if (!f.staffId) return true;
     const o = state.people.find((x) => x.id === f.staffId);
     return !o || !onShift(o, state.time);
