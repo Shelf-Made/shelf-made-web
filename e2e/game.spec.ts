@@ -868,6 +868,29 @@ test('nothing on a floor pokes up through the boards of the one above', async ({
   expect(Object.keys(tops)).toEqual(expect.arrayContaining(['market/bottle-return', 'market/shelf-end']));
 });
 
+test('with the Build card open, a click (or the use key) on a placed piece picks it up to move', async ({ page }) => {
+  test.setTimeout(300_000);
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  const selected = () => page.evaluate(() => (window as unknown as { __shelf: Up }).__shelf.runtime.build.selectedId);
+  const shelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
+  // Facing the shelf with the Build card open (nothing picked from it yet): F picks it up.
+  const front = { x: shelf.x + 0.5 + [0, 1, 0, -1][shelf.rot ?? 0]! * 0.8, z: shelf.z + 0.5 + [1, 0, -1, 0][shelf.rot ?? 0]! * 0.8 };
+  await hooks(page, 'aimAt', front.x, front.z, shelf.x + 0.5, 0, shelf.z + 0.5);
+  await page.keyboard.press('KeyB');
+  await expect.poll(() => aimText(page)).toMatch(/^Move Shelf/);
+  await page.keyboard.press('KeyF');
+  await expect.poll(selected).toBe(shelf.id);
+  // Esc puts it down again (the card stays open), and a click on it does the same as F.
+  await page.keyboard.press('Escape');
+  await expect.poll(selected).toBeNull();
+  await expect(page.locator('.card.t-build')).toHaveCount(1);
+  await clickAt(page, shelf.x + 0.5, shelf.z + 0.5, 0.5);
+  await expect.poll(selected).toBe(shelf.id);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });

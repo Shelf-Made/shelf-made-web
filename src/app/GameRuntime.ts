@@ -911,7 +911,10 @@ export class GameRuntime {
   }
   /** Click in build mode: place, move, or pick a fixture. */
   clickBuild(hit: StoreHit | null): void {
-    const s = this.state; if (!s || !this.build.hover) return;
+    const s = this.state; if (!s) return;
+    // Nothing in hand: a piece clicked (or in front, F) is picked up to move. No tile under the pointer is asked for.
+    if (!this.building) { if (hit && hit.kind === 'fixture') { const f = s.shop.fixtures.find((fx) => fx.id === hit.id); if (f) { this.build.rot = f.rot; this.selectFixture(f.id); } } return; }
+    if (!this.build.hover) return;
     const { x, z } = this.build.hover;
     const tool = this.build.tool;
     if (tool) {
@@ -939,9 +942,7 @@ export class GameRuntime {
       const res = this.dispatch({ type: 'moveFixture', fixtureId: this.build.selectedId, x, z, rot: this.build.rot });
       if (!res.ok) this.undoStack.pop(); else this.selectFixture(null);
       this.renderer?.setGhost(null, s, 0, 0, 0, false);
-      return;
     }
-    if (hit && hit.kind === 'fixture') { const f = s.shop.fixtures.find((fx) => fx.id === hit.id); if (f) { this.build.rot = f.rot; this.selectFixture(f.id); } }
   }
   sellSelected(): void {
     if (this.build.selectedId === null) return;
