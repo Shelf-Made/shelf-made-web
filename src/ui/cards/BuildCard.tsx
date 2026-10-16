@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
+import { FIXTURES, VARIANTS, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
 import { PANEL_PRICE } from '@/sim/storeys';
 import { tileCost, grownCeilings } from '@/sim/build';
 import type { BuildCategory, FixtureType } from '@/sim/types';
@@ -38,6 +38,51 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   tagGate: 'Just inside the door: beeps at a thief running out, and stops most of them', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
 };
 
+/** The paint's colour (any at all) and the eyedropper, to take one off a tile or wall you point at next. */
+function PaintPicker({ runtime, kind }: { runtime: GameRuntime; kind: 'floor' | 'wall' }) {
+  return (
+    <span className="row paint-pick">
+      <input type="color" value={runtime.paintColour} onChange={(e) => runtime.setPaintColour(e.target.value)} aria-label="Paint colour" title="Any colour you like" />
+      <button className={`btn small ghost eyedrop${runtime.eyedropper ? ' on' : ''}`} onClick={() => { if (!runtime.eyedropper) runtime.startTool({ kind, style: 'paint' }); runtime.setEyedropper(!runtime.eyedropper); }} title="Eyedropper: click a tile or wall to take its colour" aria-label="Eyedropper" aria-pressed={runtime.eyedropper}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5M17 7l2.5-2.5a1.8 1.8 0 00-2.5-2.5L14.5 4.5M16 8.5L7 17.5 4 20l2.5-3 9-9" /></svg>
+      </button>
+    </span>
+  );
+}
+
+/** Choose a picture for the picture floor: shrunk to a small square (it is kept in the save), then laid tile by tile. */
+function PhotoPicker({ runtime, has }: { runtime: GameRuntime; has: boolean }) {
+  const pick = (file: File | undefined) => {
+    if (!file) return;
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d')!, side = Math.min(img.width, img.height);
+      g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 128, 128);
+      URL.revokeObjectURL(url);
+      const r = runtime.dispatch({ type: 'setFloorImage', dataUrl: c.toDataURL('image/jpeg', 0.82) });
+      if (r.ok) { runtime.showToast('Picture ready: lay it on any tiles.', 1800); runtime.startTool({ kind: 'floor', style: 'photo' }); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); runtime.showToast("That file isn't a picture.", 1800); };
+    img.src = url;
+  };
+  return (
+    <label className="btn small ghost photo-pick" title="Any picture of your own, as floor tiles">
+      {has ? 'Change' : 'Choose'}
+      <input type="file" accept="image/*" onChange={(e) => pick(e.target.files?.[0])} style={{ display: 'none' }} />
+    </label>
+  );
+}
+
+/** What placing one more of a piece adds to how the shop looks (or its frontage), while it still counts. */
+function looksGain(s: NonNullable<GameRuntime['state']>, t: FixtureType): string | null {
+  const def = FIXTURES[t], have = s.shop.fixtures.filter((f) => f.type === t).length;
+  if (def.looks && have < (def.looksCap ?? Infinity)) return `+${Math.round(def.looks * 100)}% looks (${have + 1} of ${def.looksCap} count)`;
+  if (def.curb && have < (def.looksCap ?? Infinity)) return `+${Math.round(def.curb * 100)}% kerb appeal (${have + 1} of ${def.looksCap} count)`;
+  if ((def.looks || def.curb) && have >= (def.looksCap ?? Infinity)) return 'Enough of these for looks already: more add nothing';
+  return null;
+}
+
 /** What a piece is for: what the furniture does, or the note above. */
 const noteFor = (t: FixtureType): string | undefined => FURNITURE_USE[t] ?? NOTES[t];
 
@@ -59,14 +104,21 @@ function wallSwatch(id: string, sc: { primary: string; light: string }): string 
     case 'tiles': return 'repeating-linear-gradient(0deg, #FFFFFF 0 7px, #D8DADF 7px 8px)';
     case 'wood': return 'linear-gradient(0deg, #A87B45 0 10%, #C99A62 10% 56%, #A87B45 56% 62%, #FFF3DC 62%)';
     case 'brick': return 'repeating-linear-gradient(0deg, #B8402E 0 6px, #D8DADF 6px 7px)';
+    case 'marble': return 'linear-gradient(0deg, #9AA0A8 0 10%, #F4F7FA 10%), linear-gradient(120deg, transparent 45%, #D8D8DC 46% 48%, transparent 49%)';
+    case 'paint': return 'conic-gradient(#E8573F, #FFC044, #3FA87A, #4F8FE0, #9B6FE0, #E8573F)';
     default: return 'linear-gradient(0deg, #D8DADF 0 10%, #FFF3DC 10%)';
   }
 }
 
 /** The swatch for a floor finish: two tiles of its colours. */
 function floorSwatch(id: string, light: string): string {
-  const c: Record<string, [string, string]> = { lino: ['#FFF3DC', '#F3DEC0'], concrete: ['#C4C0B8', '#BBB6AD'], checker: ['#FFFFFF', '#38383D'], colour: ['#FFFFFF', light], stone: ['#F4F7FA', '#E4E6EA'], wood: ['#D9A066', '#B8824C'] };
+  const c: Record<string, [string, string]> = { lino: ['#FFF3DC', '#F3DEC0'], concrete: ['#C4C0B8', '#BBB6AD'], checker: ['#FFFFFF', '#38383D'], colour: ['#FFFFFF', light], stone: ['#F4F7FA', '#E4E6EA'], wood: ['#D9A066', '#B8824C'],
+    parquet: ['#C8925A', '#A87B45'], carpet: ['#5A6E8C', '#53668A'], terracotta: ['#C8693A', '#BF6235'], marble: ['#F4F7FA', '#E9DCC4'] };
+  if (id === 'paint') return 'conic-gradient(#E8573F, #FFC044, #3FA87A, #4F8FE0, #9B6FE0, #E8573F)';
+  if (id === 'photo') return 'linear-gradient(135deg, #A9D8F5 0 40%, #7CC26B 40% 60%, #3FA87A 60%)';
   const [a, b] = c[id] ?? ['#ddd', '#ccc'];
+  if (id === 'parquet') return `repeating-linear-gradient(45deg, ${a} 0 6px, ${b} 6px 7px), repeating-linear-gradient(-45deg, ${a} 0 6px, ${b} 6px 7px)`;
+  if (id === 'carpet') return `radial-gradient(${b} 1px, ${a} 1.5px) 0 0 / 4px 4px`;
   return id === 'wood' ? `repeating-linear-gradient(0deg, ${a} 0 8px, ${b} 8px 9px, #C99A62 9px 17px, ${b} 17px 18px)` : `conic-gradient(${a} 0 25%, ${b} 0 50%, ${a} 0 75%, ${b} 0)`;
 }
 
@@ -92,6 +144,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           <div>
             <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'push' ? 'Pushing a wall out' : b.tool.kind === 'pull' ? 'Pulling a wall in' : b.tool.kind === 'panel' ? 'Putting up ceiling panels' : b.tool.kind === 'unpanel' ? 'Taking down ceiling panels' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
             <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'push' || b.tool.kind === 'pull' ? 'Point at an outer wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : b.tool.kind === 'bay' || b.tool.kind === 'unbay' ? 'Click a bay beside the shop' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
+            {b.tool.kind !== 'push' && b.tool.kind !== 'pull' && <div className="sub muted">Drag along a row to do a line of them at once</div>}
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
         </div>
@@ -101,6 +154,14 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <div className="name">{b.placing ? FIXTURES[b.placing].name : `Moving ${FIXTURES[selected!.type].name}`}</div>
             {noteFor(b.placing ?? selected!.type) && <div className="sub">{noteFor(b.placing ?? selected!.type)}</div>}
             <div className="sub">{b.reason || (FIXTURES[b.placing ?? selected!.type].outdoor ? 'Point at the grass outside' : 'Point at a floor tile')}{b.price ? ` · ${money(b.price)}` : ''} · R turns</div>
+            {b.placing && looksGain(s, b.placing) && <div className="sub gain">{looksGain(s, b.placing)}</div>}
+            {b.placing && VARIANTS[b.placing] && (
+              <div className="row variant-pick" role="group" aria-label="Which look">
+                <button className="btn small ghost" onClick={() => runtime.cycleVariant(-1)} aria-label="Previous look" title="[ or ,">‹</button>
+                <span className="v-name">{VARIANTS[b.placing]![b.variant] ?? VARIANTS[b.placing]![0]}</span>
+                <button className="btn small ghost" onClick={() => runtime.cycleVariant(1)} aria-label="Next look" title="] or .">›</button>
+              </div>
+            )}
           </div>
           <div className="row">
             <button className="btn small ghost" onClick={() => runtime.rotateGhost()}>Rotate</button>
@@ -111,7 +172,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         </div>
       ) : null}
       <div className="row between build-tools">
-        <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()} title="Ctrl+Z">Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()} title="Ctrl+Y">Redo</button></span>
+        <span className="row"><button className="btn small ghost" disabled={!b.canUndo} onClick={() => runtime.undo()} title="Ctrl+Z">Undo</button><button className="btn small ghost" disabled={!b.canRedo} onClick={() => runtime.redo()} title="Ctrl+Y">Redo</button>
+          <button className={`btn small ghost${snap.topView ? ' on' : ''}`} aria-pressed={snap.topView} onClick={() => runtime.setTopView(!snap.topView)} title="Look straight down on the floor you are building">Top view</button></span>
         <label className="row overlay-pick"><span className="muted">View</span>
           <select value={b.overlay} onChange={(e) => runtime.setOverlay(e.target.value as typeof b.overlay)}>
             <option value="none">Normal</option><option value="heat">Heat map</option><option value="exposure">Exposure</option><option value="paths">Paths</option><option value="security">Cameras</option>
@@ -181,6 +243,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
                 <div className="item" key={w.id}>
                   <span className="swatch big" style={{ background: wallSwatch(w.id, schemeById(s.shop.scheme)) }} aria-hidden="true" />
                   <div style={{ flex: 1 }}><div className="name">{w.name}</div><div className="sub">{w.perSeg ? `${money(w.perSeg)} a stretch` : 'Comes with the shop · puts back a finish'}</div></div>
+                  {w.id === 'paint' && <PaintPicker runtime={runtime} kind="wall" />}
                   <button className={`btn small${on ? ' ghost' : ''}`} disabled={s.cash < w.perSeg} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'wall', style: w.id }))}>{on ? 'Done' : w.perSeg ? 'Paint' : 'Strip'}</button>
                 </div>
               );
@@ -196,6 +259,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               <div className="item" key={fl.id}>
                 <span className="swatch big" style={{ background: floorSwatch(fl.id, schemeById(s.shop.scheme).light) }} aria-hidden="true" />
                 <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{fl.perTile ? `${money(fl.perTile)} a tile` : 'Comes with the shop · puts back a finish'}{fl.id === floor && !s.shop.tileStyles ? ' · down now' : ''}</div></div>
+                {fl.id === 'paint' && <PaintPicker runtime={runtime} kind="floor" />}
+                {fl.id === 'photo' && <PhotoPicker runtime={runtime} has={!!s.shop.floorImage} />}
                 <button className={`btn small${on ? ' ghost' : ''}`} disabled={s.cash < fl.perTile} onClick={() => (on ? runtime.stopPlacing() : runtime.startTool({ kind: 'floor', style: fl.id }))}>{on ? 'Done' : 'Lay'}</button>
               </div>
             );

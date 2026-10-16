@@ -751,3 +751,16 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .tag.bulky { background: #EFE7DA; color: #8B5A3C; }
 .tag.season { background: #FDE1E8; color: #B5235A; }
 .list.goods .item.off-season { opacity: 0.55; }
+
+/* Paint in any colour: the swatch to pick it, the eyedropper beside it. */
+.paint-pick { gap: 4px; margin-right: 6px; }
+.paint-pick input[type="color"] { width: 34px; height: 30px; padding: 0; border: 2px solid #E5E2DC; border-radius: 8px; background: none; cursor: pointer; }
+.paint-pick .eyedrop svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.paint-pick .eyedrop.on { background: var(--slate); color: #fff; }
+
+/* Build: the looks a piece adds, the variant arrows, the top view switch. */
+.item .sub.gain { color: #2E8560; font-weight: 700; }
+.variant-pick { gap: 6px; margin-top: 6px; align-items: center; }
+.variant-pick .v-name { min-width: 110px; text-align: center; font-weight: 700; font-size: 13px; }
+.variant-pick .btn { min-width: 30px; font-size: 18px; line-height: 1; }
+.build-tools .btn.on { background: var(--slate); color: #fff; }

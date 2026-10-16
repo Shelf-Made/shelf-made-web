@@ -673,6 +673,8 @@ export const WALLS: { id: WallStyle; name: string; perSeg: number; looks: number
   { id: 'tiles', name: 'White tiles', perSeg: 8, looks: 0.14 },
   { id: 'wood', name: 'Wood panelling', perSeg: 10, looks: 0.16 },
   { id: 'brick', name: 'Bare brick', perSeg: 12, looks: 0.18 },
+  { id: 'marble', name: 'Marble', perSeg: 18, looks: 0.24 },
+  { id: 'paint', name: 'Paint (any colour)', perSeg: 5, looks: 0.12 },
 ];
 /** What a finish gives back when it is replaced or taken off. */
 export const RESALE = 0.6;
@@ -683,7 +685,25 @@ export const FLOORS: { id: FloorStyle; name: string; perTile: number; looks: num
   { id: 'colour', name: 'Tiles in your colours', perTile: 5, looks: 0.14 },
   { id: 'wood', name: 'Wooden boards', perTile: 7, looks: 0.2 },
   { id: 'stone', name: 'White stone', perTile: 9, looks: 0.22 },
+  { id: 'carpet', name: 'Carpet', perTile: 6, looks: 0.16 },
+  { id: 'terracotta', name: 'Terracotta', perTile: 6, looks: 0.16 },
+  { id: 'parquet', name: 'Parquet', perTile: 10, looks: 0.22 },
+  { id: 'marble', name: 'Marble', perTile: 14, looks: 0.26 },
+  { id: 'paint', name: 'Paint (any colour)', perTile: 4, looks: 0.12 },
+  { id: 'photo', name: 'Your own picture', perTile: 8, looks: 0.16 },
 ];
+/** Pieces that come in more than one look (the variant arrows), and the names of their looks. */
+export const VARIANTS: Partial<Record<FixtureType, string[]>> = {
+  tree: ['Oak', 'Round tree', 'Pine', 'Autumn oak'], plant: ['Potted plant', 'Fern', 'Tall bush'], rug: ['Red rug', 'Blue rug', 'Green rug'],
+  flowerBed: ['Red and yellow', 'Purple', 'All yellow'], parkBench: ['Wooden', 'Painted'], sign: ['Classic', 'Shop colour'],
+};
+/** What a piece fetches back when sold: all it cost the day it was bought, 60% after. */
+export function refundOf(f: { type: FixtureType; bought?: number; conveyor?: boolean }, day: number, conveyorPrice = 0): number {
+  const full = FIXTURES[f.type].price + (f.conveyor ? conveyorPrice : 0);
+  return f.bought === day ? full : Math.round(full * 0.6);
+}
+/** The paint finish's colour before you choose one. */
+export const DEFAULT_PAINT = '#7FB6E8';
 
 export const DIFFICULTY = {
   relaxed: { cash: 1200, rentMul: 0.8, demandMul: 1.2, patienceMul: 1.3 },

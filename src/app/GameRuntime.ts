@@ -6,7 +6,7 @@ import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile, canPushWall, canPullWall, wallRun } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
 import { CONVEYOR_PRICE } from '@/sim/people';
-import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, VARIANTS } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
@@ -43,6 +43,8 @@ export type StockFilter = 'all' | 'low' | 'empty' | 'chilled';
 
 /** A jump: how long it lasts (ms) and how high it goes (times the manager's height). */
 const HOP_MS = 520, HOP_HEIGHT = 0.3;
+/** Each finish's main colour, for the eyedropper. */
+const FINISH_HEX: Record<string, string> = { lino: '#FFF3DC', concrete: '#C4C0B8', checker: '#FFFFFF', colour: '#FFFFFF', stone: '#F4F7FA', wood: '#D9A066', parquet: '#B8824C', carpet: '#5A6E8C', terracotta: '#C8693A', marble: '#F4F7FA', plain: '#FFF3DC', bands: '#3FA87A', tiles: '#FFFFFF', brick: '#B8402E' };
 
 export const MODAL_CARDS: ReadonlySet<CardId> = new Set<CardId>(['stock']);
 
@@ -80,6 +82,8 @@ export interface Snapshot {
   playing: boolean;
   /** Seeing through the manager's eyes. */
   firstPerson: boolean;
+  /** Building: looking straight down on the floor. */
+  topView: boolean;
   /** The stock tool: out or not, which shelves its labels show, and the product it is looking for. */
   stockTool: { on: boolean; filter: StockFilter; find: string };
   /** The first day's checklist (tutorial steps with short titles), null once tips are off or done. */
@@ -106,14 +110,14 @@ export interface Snapshot {
 }
 
 /** A tile tool in Build: buying floor to grow the shop, or laying a finish on a tile. */
-export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle } | { kind: 'wall'; style: WallStyle } | { kind: 'push' } | { kind: 'pull' }
+export type TileTool = { kind: 'grow' } | { kind: 'sell' } | { kind: 'floor'; style: FloorStyle; colour?: string } | { kind: 'wall'; style: WallStyle; colour?: string } | { kind: 'push' } | { kind: 'pull' }
   /** Out on the lot: lay a surface (null takes it up), paint a parking bay, or paint one out. */
   | { kind: 'pave'; surface: LotSurface | null } | { kind: 'bay' } | { kind: 'unbay' }
   /** A ceiling panel over a tile (the floor of the storey above), or one taken down for a double-height space. */
   | { kind: 'panel' } | { kind: 'unpanel' };
 /** Tools and pieces that work on the lot's own grid (whole x, half z), not the shop floor's. */
 const LOT_TOOLS = new Set<TileTool['kind']>(['pave', 'bay', 'unbay']);
-export interface BuildUI { active: boolean; placing: FixtureType | null; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' | 'security'; level: number }
+export interface BuildUI { active: boolean; placing: FixtureType | null; variant: number; tool: TileTool | null; rot: Rot; selectedId: number | null; reason: string; valid: boolean; price: number; canUndo: boolean; canRedo: boolean; overlay: 'none' | 'heat' | 'exposure' | 'paths' | 'security'; level: number }
 
 /** Short titles for the tutorial steps (the coach card shows one at a time). */
 const JOB_TITLES: Record<string, string> = {
@@ -160,7 +164,7 @@ export class GameRuntime {
   private lastPhase: GameState['phase'] | null = null;
   private noticesSeen = 0;
   /** Build mode: what is being placed, where the pointer hovers, selection, undo stack. */
-  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; at: { x: number; z: number } | null; wall: string | null; slot: number | null; selectedId: number | null; reason: string; valid: boolean; price: number } = { placing: null, tool: null, rot: 0, hover: null, at: null, wall: null, slot: null, selectedId: null, reason: '', valid: false, price: 0 };
+  build: { placing: FixtureType | null; tool: TileTool | null; rot: Rot; hover: { x: number; z: number } | null; at: { x: number; z: number } | null; wall: string | null; slot: number | null; selectedId: number | null; reason: string; valid: boolean; price: number; variant: number } = { placing: null, tool: null, rot: 0, hover: null, at: null, wall: null, slot: null, selectedId: null, reason: '', valid: false, price: 0, variant: 0 };
   /** Placing, moving or using a tile tool: the pointer works on tiles. */
   private get building(): boolean { return !!this.build.placing || this.build.selectedId !== null || !!this.build.tool; }
   overlay: 'none' | 'heat' | 'exposure' | 'paths' | 'security' = 'none';
@@ -209,9 +213,10 @@ export class GameRuntime {
       settings: this.settings,
       saving: this.saving,
       gameOver: s ? s.gameOver : false,
-      build: { active: this.card === 'build', placing: this.build.placing, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay, level: this.buildLevel },
+      build: { active: this.card === 'build', placing: this.build.placing, variant: this.build.variant, tool: this.build.tool, rot: this.build.rot, selectedId: this.build.selectedId, reason: this.build.reason, valid: this.build.valid, price: this.build.price, canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, overlay: this.overlay, level: this.buildLevel },
       playing: this.inPlay,
       firstPerson: this.firstPerson,
+      topView: this.topView,
       stockTool: { on: this.stockTool, filter: this.stockFilter, find: this.stockFind },
       jobs: s && s.tutorial.enabled && !s.tutorial.done && s.phase !== 'picking' ? TIPS.map((t) => ({ id: t.id, title: JOB_TITLES[t.id] ?? t.id, done: s.tutorial.completed.includes(t.id) })) : null,
       dayFrac: s ? Math.max(0, Math.min(1, s.time / DAY_SECONDS)) : 0,
@@ -311,7 +316,7 @@ export class GameRuntime {
     if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
-    return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: Math.round(def.price * 0.6), ...(f.type === 'pallet' ? { picks: picks() } : {}),
+    return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: refundOf(f, s.day, CONVEYOR_PRICE), ...(f.type === 'pallet' ? { picks: picks() } : {}),
       ...(f.type === 'register' && !f.conveyor ? { upgrade: { label: 'Conveyor belt', price: CONVEYOR_PRICE } } : {}) };
   }
   /** Picked from a pallet's menu: walk over and pick that box up. */
@@ -338,11 +343,12 @@ export class GameRuntime {
     if (action === 'use') this.walkAndUse({ kind: 'fixture', id: f.id });
     else if (action === 'upgrade') { const r = this.dispatch({ type: 'upgradeTill', fixtureId: f.id }); if (r.ok) this.showToast('Conveyor belt fitted: people get through quicker.', 2000); }
     else if (action === 'sell') {
-      // Sold where it stands, for part of what it cost (its stock goes back on the pallet).
+      // Sold where it stands, for part of what it cost (all of it the day it was bought; its stock goes back on the pallet).
       this.snapshotForUndo();
+      const back = refundOf(f, s.day, CONVEYOR_PRICE), same = f.bought === s.day;
       const res = this.dispatch({ type: 'removeFixture', fixtureId: f.id });
       if (!res.ok) { this.undoStack.pop(); this.showToast(res.message ?? "That can't be sold.", 1800); }
-      else { this.audio.play('coin'); this.showToast(`Sold the ${FIXTURES[f.type].name.toLowerCase()} for ${dollars(Math.round(FIXTURES[f.type].price * 0.6))}.`, 1800); }
+      else { this.audio.play('coin'); this.showToast(`Sold the ${FIXTURES[f.type].name.toLowerCase()} for ${dollars(back)}${same ? ' (bought today: all of it back)' : ''}.`, 1800); }
     } else if (action === 'move') {
       // Picked up: the ghost follows the pointer; a click puts it down, R turns it, Esc puts it back.
       this.build.rot = f.rot; this.build.hover = null;
@@ -658,7 +664,7 @@ export class GameRuntime {
   private lastKey = '';
   private maybeEmit(): void {
     const s = this.state;
-    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${this.firstPerson}|${this.stockTool}${this.stockFilter}${this.stockFind}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
+    const key = s ? `${s.cash.toFixed(2)}|${s.day}|${clockLabel(Math.min(s.time, DAY_SECONDS))}|${s.phase}|${this.speed}|${this.card}|${JSON.stringify(this.currentTip(s))}|${s.tutorial.completed.length}|${this.saving}|${this.stateVersion}|${s.gameOver}|${this.build.placing}|${this.build.variant}|${JSON.stringify(this.build.tool)}|${this.build.rot}|${this.build.selectedId}|${this.build.reason}|${this.build.valid}|${this.overlay}|${this.firstPerson}|${this.topView}|${this.stockTool}${this.stockFilter}${this.stockFind}|${s.shop.scheme}|${goalKey(s)}|${s.listing?.count ?? 0}|${this.reviewsSeen}|${this.photoVersion}|${this.selectedPerson === null ? '' : JSON.stringify(this.inspectInfo())}` : `lobby|${this.loaded}|${this.loadProgress}`;
     if (key !== this.lastKey) { this.lastKey = key; this.emit(); }
   }
 
@@ -771,7 +777,7 @@ export class GameRuntime {
     if (this.card === 'build' && this.renderer?.follow.firstPerson) { this.renderer.follow.setFirstPerson(false); this.leftEyes(); }
     if (this.card === 'reviews') this.reviewsSeen = this.state?.listing?.count ?? 0;
     if (this.card) this.move(0, 0);
-    if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); }
+    if (this.card !== 'build') { this.stopPlacing(); this.setOverlay('none'); this.setTopView(false); }
     this.fitBuild = this.card === 'build';
     if (this.card !== 'build') this.unfitBuildView();
     if (card && this.state?.unlocks.newBadges.includes(card)) this.dispatch({ type: 'ackBadge', card });
@@ -783,7 +789,7 @@ export class GameRuntime {
   closeCard(): void {
     if (this.building) { this.stopPlacing(); this.emit(); return; }
     // (The heat, exposure or paths view goes with the Build card, as when it is toggled shut.)
-    if (this.card) { if (this.card === 'build') this.setOverlay('none'); this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.holdForModal(); this.updateSideOffset(); this.emit(); }
+    if (this.card) { if (this.card === 'build') { this.setOverlay('none'); this.setTopView(false); } this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.holdForModal(); this.updateSideOffset(); this.emit(); }
   }
   // ---- Your manager, designed in the lobby: kept with your settings, worn in every game you play.
   /** The look you designed, or the default shop worker. */
@@ -866,9 +872,82 @@ export class GameRuntime {
 
   // ---- Build mode
   setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths' | 'security'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
-  startPlacing(type: FixtureType): void { this.build.placing = type; this.build.tool = null; this.build.selectedId = null; this.build.reason = ''; this.renderer?.setTileGhost(null); this.emit(); }
+  startPlacing(type: FixtureType): void { if (type !== this.build.placing) this.build.variant = 0; this.build.placing = type; this.build.tool = null; this.build.selectedId = null; this.build.reason = ''; this.renderer?.setTileGhost(null); this.emit(); }
+  /** Build's top view: straight down on the floor being built (back to the usual tilt when Build closes). */
+  topView = false;
+  private pitchBefore = 0;
+  setTopView(on: boolean): void {
+    const r = this.renderer; if (!r || on === this.topView) return;
+    this.topView = on;
+    const f = r.follow, deg = MathUtils.degToRad;
+    if (on) { this.pitchBefore = f.pitch; f.limits.maxPitch = deg(89); f.set(f.target.x, f.target.z, undefined, undefined, deg(89), f.target.y); }
+    else { f.limits.maxPitch = deg(70); f.set(f.target.x, f.target.z, undefined, undefined, Math.min(deg(70), this.pitchBefore || deg(52)), f.target.y); }
+    this.audio.play('tick');
+    this.emit();
+  }
+  /** The variant arrows: the next (or last) look of the piece being placed. */
+  cycleVariant(dir: 1 | -1): void {
+    const t = this.build.placing, n = t ? VARIANTS[t]?.length ?? 0 : 0;
+    if (!t || n < 2) return;
+    this.build.variant = (this.build.variant + dir + n) % n;
+    this.audio.play('tick');
+    this.refreshGhost();
+    this.emit();
+  }
   /** A tile tool: click tiles next to the shop to buy them, or tiles of floor to lay a finish on them. */
+  // ---- Paint in any colour: the colour on the brush, an eyedropper to take one off the floor or a wall, and a drag
+  // that lays a finish (or buys, sells, paves) tile after tile along a row, with the running cost shown.
+  paintColour = DEFAULT_PAINT;
+  eyedropper = false;
+  setPaintColour(hex: string): void {
+    this.paintColour = hex;
+    const t = this.build.tool;
+    if (t && (t.kind === 'floor' || t.kind === 'wall') && t.style === 'paint') { this.build.tool = { ...t, colour: hex }; this.refreshGhost(); }
+    this.emit();
+  }
+  setEyedropper(on: boolean): void { this.eyedropper = on; this.emit(); }
+  /** The colour of the tile or wall under the pointer (a painted one's own, any other finish's main colour). */
+  private takeColour(): boolean {
+    const s = this.state, h = this.build.hover; if (!s || !h) return false;
+    const w = this.build.at ? nearestWall(s, this.build.at.x, this.build.at.z) : null;
+    const wallHex = w && this.build.tool?.kind === 'wall' ? (s.shop.wallColors?.[w.key] ?? FINISH_HEX[s.shop.wallStyles?.[w.key] ?? s.shop.wallStyle ?? 'bands']) : null;
+    const k = `${h.x},${h.z}`, style = s.shop.tileStyles?.[k] ?? s.shop.floorStyle ?? 'lino';
+    const hex = wallHex ?? s.shop.tileColors?.[k] ?? FINISH_HEX[style];
+    if (!hex) return false;
+    this.eyedropper = false;
+    this.setPaintColour(hex);
+    this.showToast(`Colour taken: ${hex.toUpperCase()}`, 1400);
+    return true;
+  }
+  private dragSeen = new Set<string>();
+  private dragCost = 0;
+  private dragCount = 0;
+  /** A drag with a tile tool: each new tile (or stretch of wall) under the pointer gets the tool, once a drag. */
+  toolDrag(px: number, py: number, phase: 'start' | 'move' | 'end'): boolean {
+    const s = this.state, r = this.renderer, t = this.build.tool;
+    if (!s || !r || !t || t.kind === 'push' || t.kind === 'pull') return false;
+    if (phase === 'end') {
+      if (this.dragCount > 1) this.showToast(`${this.dragCount} done · ${this.dragCost >= 0 ? dollars(this.dragCost) : `${dollars(-this.dragCost)} back`}`, 2000);
+      this.dragSeen.clear(); this.dragCost = 0; this.dragCount = 0;
+      return true;
+    }
+    if (phase === 'start') { this.dragSeen.clear(); this.dragCost = 0; this.dragCount = 0; }
+    const g = r.groundAt(px, py, this.onGround ? 0 : undefined); if (!g) return true;
+    this.hoverWorld(g.x, g.z);
+    if (phase === 'start' && this.eyedropper) { this.takeColour(); return true; }
+    const h = this.build.hover; if (!h) return true;
+    const key = t.kind === 'wall' ? this.build.wall ?? '' : `${h.x},${h.z}`;
+    if (!key || this.dragSeen.has(key)) return true;
+    this.dragSeen.add(key);
+    if (!this.build.valid) return true;
+    const price = this.build.price, before = s.cash;
+    this.clickBuild(null);
+    if (s.cash !== before || price === 0) { this.dragCost += price; this.dragCount++; }
+    return true;
+  }
+
   startTool(tool: TileTool): void {
+    if ((tool.kind === 'floor' || tool.kind === 'wall') && tool.style === 'paint' && !tool.colour) tool = { ...tool, colour: this.paintColour };
     this.build.tool = tool; this.build.placing = null; this.build.selectedId = null; this.build.reason = '';
     this.renderer?.setGhost(null, this.state!, 0, 0, 0, false);
     this.showGrowHints();
@@ -920,7 +999,7 @@ export class GameRuntime {
       if (tool.kind === 'wall') {
         const w = this.build.at ? nearestWall(s, this.build.at.x, this.build.at.z) : null;
         this.build.wall = w?.key ?? null;
-        const check = w ? canPaintWall(s, w.key, tool.style) : { ok: false, reason: 'Point at a wall', price: 0 };
+        const check = w ? canPaintWall(s, w.key, tool.style, tool.colour) : { ok: false, reason: 'Point at a wall', price: 0 };
         this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
         r.setTileGhost(null);
         r.setWallGhost(w ? { ...w, ok: check.ok } : null);
@@ -952,7 +1031,7 @@ export class GameRuntime {
         return;
       }
       const check = tool.kind === 'grow' ? canBuyTile(s, x, groundZ(z)) : tool.kind === 'sell' ? canSellTile(s, x, groundZ(z)) : tool.kind === 'pave' ? canPave(s, x, z, tool.surface)
-        : tool.kind === 'panel' ? canAddPanel(s, x, z) : tool.kind === 'unpanel' ? canRemovePanel(s, x, z) : canPaintFloor(s, x, z, tool.style);
+        : tool.kind === 'panel' ? canAddPanel(s, x, z) : tool.kind === 'unpanel' ? canRemovePanel(s, x, z) : canPaintFloor(s, x, z, tool.style, tool.colour);
       this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = check.price;
       r.setTileGhost({ x, z, ok: check.ok });
       this.maybeEmit();
@@ -965,7 +1044,7 @@ export class GameRuntime {
     const check = canPlace(s, type, this.build.hover.x, this.build.hover.z, this.build.rot, this.build.selectedId ?? undefined);
     // A move is free, but for a ceiling over a floor it opens.
     this.build.valid = check.ok; this.build.reason = check.reason; this.build.price = this.build.selectedId !== null ? check.ceiling ?? 0 : check.price;
-    r.setGhost(type, s, this.build.hover.x, this.build.hover.z, this.build.rot, check.ok);
+    r.setGhost(type, s, this.build.hover.x, this.build.hover.z, this.build.rot, check.ok, this.build.placing ? this.build.variant : s.shop.fixtures.find((f) => f.id === this.build.selectedId)?.variant ?? 0);
     this.maybeEmit();
   }
   /** Click in build mode: place, move, or pick a fixture. */
@@ -979,13 +1058,13 @@ export class GameRuntime {
     if (tool) {
       this.snapshotForUndo();
       const res = tool.kind === 'wall'
-        ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style }) : { ok: false, message: 'Point at a wall' })
+        ? (this.build.wall ? this.dispatch({ type: 'paintWall', key: this.build.wall, style: tool.style, colour: tool.colour }) : { ok: false, message: 'Point at a wall' })
         : tool.kind === 'push' || tool.kind === 'pull'
           ? (this.build.wall ? this.dispatch({ type: tool.kind === 'push' ? 'pushWall' : 'pullWall', key: this.build.wall }) : { ok: false, message: 'Point at an outer wall' })
         : tool.kind === 'bay' || tool.kind === 'unbay'
           ? (this.build.slot !== null ? this.dispatch({ type: tool.kind === 'bay' ? 'paintBay' : 'eraseBay', slot: this.build.slot }) : { ok: false, message: 'Point at the car park' })
           : this.dispatch(tool.kind === 'grow' ? { type: 'buyTile', x, z: groundZ(z) } : tool.kind === 'sell' ? { type: 'sellTile', x, z: groundZ(z) } : tool.kind === 'pave' ? { type: 'pave', x, z, surface: tool.surface }
-            : tool.kind === 'panel' ? { type: 'addPanel', x, z } : tool.kind === 'unpanel' ? { type: 'removePanel', x, z } : { type: 'paintFloor', x, z, style: tool.style });
+            : tool.kind === 'panel' ? { type: 'addPanel', x, z } : tool.kind === 'unpanel' ? { type: 'removePanel', x, z } : { type: 'paintFloor', x, z, style: tool.style, colour: tool.colour });
       if (!res.ok) { this.undoStack.pop(); if (res.message) this.showToast(res.message, 1400); }
       else if (tool.kind === 'grow' || tool.kind === 'sell' || tool.kind === 'push' || tool.kind === 'pull' || tool.kind === 'panel' || tool.kind === 'unpanel') this.showGrowHints();
       this.refreshGhost();
@@ -993,7 +1072,7 @@ export class GameRuntime {
     }
     if (this.build.placing) {
       this.snapshotForUndo();
-      const res = this.dispatch({ type: 'placeFixture', fixtureType: this.build.placing, x, z, rot: this.build.rot });
+      const res = this.dispatch({ type: 'placeFixture', fixtureType: this.build.placing, x, z, rot: this.build.rot, variant: this.build.variant });
       if (!res.ok) this.undoStack.pop();
       this.refreshGhost();
       return;
@@ -1008,8 +1087,10 @@ export class GameRuntime {
   sellSelected(): void {
     if (this.build.selectedId === null) return;
     this.snapshotForUndo();
+    const f = this.state?.shop.fixtures.find((x) => x.id === this.build.selectedId);
+    const back = f && this.state ? refundOf(f, this.state.day, CONVEYOR_PRICE) : 0, same = !!f && f.bought === this.state?.day;
     const res = this.dispatch({ type: 'removeFixture', fixtureId: this.build.selectedId });
-    if (!res.ok) this.undoStack.pop(); else this.showToast('Sold for 60% of the price.');
+    if (!res.ok) this.undoStack.pop(); else this.showToast(same ? `Sold for ${dollars(back)}: bought today, so all of it back.` : `Sold for ${dollars(back)} (60% of the price).`);
     this.selectFixture(null);
     this.renderer?.setGhost(null, this.state!, 0, 0, 0, false);
   }

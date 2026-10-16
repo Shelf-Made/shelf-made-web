@@ -1,4 +1,4 @@
-import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, CircleGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Box3, PointLight, Sprite, SpriteMaterial, type BufferGeometry, type Raycaster } from 'three';
+import { Group, Mesh, InstancedMesh, Object3D, Matrix4, Color, CircleGeometry, MeshBasicMaterial, MeshStandardMaterial, Vector3, Box3, PointLight, Sprite, SpriteMaterial, BoxGeometry, TextureLoader, SRGBColorSpace, type BufferGeometry, type Raycaster } from 'three';
 import { icon } from './Reactions';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BufferGeometry as BoxGeometryEmpty, Float32BufferAttribute } from 'three';
@@ -7,6 +7,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
+import { DEFAULT_PAINT } from '@/sim/layout';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { doubleHeight } from '@/sim/storeys';
@@ -33,7 +34,7 @@ import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOU
 import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle, WallStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
-import { fittingGeometry, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS } from './fittings';
+import { fittingGeometry, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf } from './fittings';
 import { BlobShadows } from './blobs';
 import { cornerProps, pylonSpot, cornerGarden } from './dressing';
 import { tuftMesh } from './StaticWorld';
@@ -48,7 +49,7 @@ export const STORE_MODELS = [...new Set([...Object.values(FIXTURE_MODEL).filter(
 
 export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'delivery'; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
 
-interface Side { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull: Mesh[] }
+interface Side { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull: Mesh[]; extraLedge?: Mesh[] }
 
 /** The player's store: shell (Kenney walls, concrete floor, doors, sign), fixtures, stock, delivered boxes. */
 export class StoreView {
@@ -182,6 +183,24 @@ export class StoreView {
   /** Is a piece on a floor in view? */
   private shown(f: Fixture): boolean { return this.viewLevel === null || FIXTURES[f.type].outdoor === true || levelOf(f) <= this.viewLevel; }
 
+  /** Your own picture for the picture floor, as a material (made once for each picture). */
+  private photoMats = new Map<string, MeshStandardMaterial>();
+  private photoMat(url: string): MeshStandardMaterial {
+    let m = this.photoMats.get(url);
+    if (!m) {
+      const tex = new TextureLoader().load(url);
+      tex.colorSpace = SRGBColorSpace; tex.anisotropy = 4;
+      m = new MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 });
+      this.photoMats.set(url, m);
+    }
+    return m;
+  }
+  /** The material for paint in any colour: the palette's white, times each vertex's colour. */
+  private paintMatCache: MeshStandardMaterial | null = null;
+  private paintMat(): MeshStandardMaterial {
+    if (!this.paintMatCache) { this.paintMatCache = this.assets.plainMaterial.clone(); this.paintMatCache.vertexColors = true; }
+    return this.paintMatCache;
+  }
   /** The roof: off whenever you are inside (so the camera sees the floor), on from outside once pulled back; never over floors lifted off. */
   setRoof(on: boolean): void { if (this.roof) this.roof.visible = on && !this.levelGroups.some((g) => g && !g.visible && g.children.length > 0); }
   /** The ceiling under the roof (first person, the whole building in view). */
@@ -241,12 +260,19 @@ export class StoreView {
     // ---- Floor: warm checker lino, a tile a square, with fine joints between; then the lot paving outside.
     const floorParts: BufferGeometry[] = [];
     // Tile by tile, each in its own finish (laid a tile at a time), the joints showing between.
+    const paintParts: BufferGeometry[] = [], photoParts: BufferGeometry[] = [];
     for (const { x, z } of floorTileList(shop)) {
-      const fin = floorPaint(shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino', sc);
+      const style = shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino';
+      const fin = floorPaint(style, sc);
       floorParts.push(box(pal, fin.joint, 1, 0.052, 1, ox + x + 0.5, -0.04, oz + z + 0.5));
       const i = Math.round(x - f.x0), j = Math.round(z - backZ);
-      floorParts.push(...tileFace(pal, fin, ox + x, oz + z, 0, (i + j) % 2 === 1, i * 7 + j * 3));
+      const faces = tileFace(pal, fin, ox + x, oz + z, 0, (i + j) % 2 === 1, i * 7 + j * 3);
+      // Painted any colour: its face in a mesh of its own, coloured vertex by vertex (the palette has only so many).
+      if (style === 'paint') { floorParts.push(faces[0]!); paintParts.push(...tint(faces.slice(1), shop.tileColors?.[tileKey(x, z)] ?? DEFAULT_PAINT, (i + j) % 2 === 1)); }
+      else if (style === 'photo') { floorParts.push(faces[0]!); photoParts.push(photoFace(ox + x, oz + z, 0)); }
+      else floorParts.push(...faces);
     }
+    if (photoParts.length && shop.floorImage) { const pm = new Mesh(merge(photoParts), this.photoMat(shop.floorImage)); pm.receiveShadow = true; this.shell.add(pm); }
     // Door thresholds: steel strips across each opening.
     floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.door.x, -0.008, oz + f.z1 + WALL_T / 2));
     floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.backDoor.x, -0.008, oz + shop.backDoor.z - WALL_T / 2));
@@ -303,6 +329,7 @@ export class StoreView {
     for (let x = L.driveway.x0 + 0.2; x + 0.15 <= L.driveway.x1 - 0.1; x += 0.3) floorParts.push(box(pal, '#D8DADF', 0.15, 0.004, swOut - swIn - 0.12, ox + x + 0.075, 0.026, oz + (swIn + swOut) / 2));
     this.dressLot(shop, floorParts);
     // The ground material: the lot and the pavement get wet in the rain (the shop floor is sheltered).
+    if (paintParts.length) { const pm = new Mesh(mergeTinted(paintParts), this.paintMat()); pm.receiveShadow = true; this.shell.add(pm); }
     const floorMesh = new Mesh(merge(floorParts), this.assets.ground);
     floorMesh.receiveShadow = true;
     this.shell.add(floorMesh);
@@ -355,7 +382,7 @@ export class StoreView {
         return `${dir.name}@${line}@${dir.axis === 'x' ? fx.x + 0.5 : gz + 0.5}`;
       }));
       for (const dir of DIRS) {
-        const full: BufferGeometry[] = [], ledge: BufferGeometry[] = [], glass: BufferGeometry[] = [];
+        const full: BufferGeometry[] = [], ledge: BufferGeometry[] = [], glass: BufferGeometry[] = [], paintFull: BufferGeometry[] = [], paintLedge: BufferGeometry[] = [];
         const ax = dir.axis === 'x' ? 1 : 0, az = dir.axis === 'z' ? 1 : 0;
         for (const tile of tilesL) {
           if (atL(tile.x + dir.nx, tile.z + dir.nz)) continue;
@@ -395,15 +422,19 @@ export class StoreView {
             const key = L === 0 ? wallKey(dir.name, line, t) : dir.axis === 'x' ? wallKey(dir.name, zOnLevel(line, L), t) : wallKey(dir.name, line, zOnLevel(t, L));
             const finish = shop.wallStyles?.[key] ?? shop.wallStyle ?? 'bands';
             const lift = (g: BufferGeometry) => (y0 ? g.translate(0, y0, 0) : g);
-            full.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole, finish).map(lift));
-            ledge.push(...this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null, finish).map(lift));
+            // Painted any colour: into meshes of their own, coloured vertex by vertex.
+            const colour = finish === 'paint' ? shop.wallColors?.[key] ?? DEFAULT_PAINT : null;
+            (colour ? paintFull : full).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole, finish).map(lift), colour));
+            (colour ? paintLedge : ledge).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null, finish).map(lift), colour));
           }
         }
         if (!full.length) continue;
         const fullMesh = new Mesh(merge(full), this.assets.material);
         const ledgeMesh = new Mesh(merge(ledge), this.assets.material);
         for (const m of [fullMesh, ledgeMesh]) { m.castShadow = true; m.receiveShadow = true; parent.add(m); }
-        const side: Side = { full: fullMesh, ledge: ledgeMesh, nx: dir.nx, nz: dir.nz, extraFull: [] };
+        const side: Side = { full: fullMesh, ledge: ledgeMesh, nx: dir.nx, nz: dir.nz, extraFull: [], extraLedge: [] };
+        if (paintFull.length) { const pm = new Mesh(mergeTinted(paintFull), this.paintMat()); pm.receiveShadow = true; parent.add(pm); side.extraFull.push(pm); }
+        if (paintLedge.length) { const pm = new Mesh(mergeTinted(paintLedge), this.paintMat()); pm.receiveShadow = true; pm.visible = false; parent.add(pm); side.extraLedge!.push(pm); }
         if (glass.length) { const gm = new Mesh(merge(glass), this.assets.glass); parent.add(gm); side.extraFull.push(gm); }
         this.sides.push(side);
         if (dir.name === 'front' && L === 0) front = side;
@@ -552,13 +583,20 @@ export class StoreView {
     const pal = this.assets.palette, y0 = L * STOREY;
     const parts: BufferGeometry[] = [];
     const floors = st.floors[L]!, inside = st.inside[L]!;
+    const painted: BufferGeometry[] = [], photos: BufferGeometry[] = [];
     for (const k of floors) {
       const [x, z] = k.split(',').map(Number) as [number, number];
       // Each tile in its own finish, as downstairs.
-      const fin = floorPaint(shop.tileStyles?.[tileKey(x, zOnLevel(z, L))] ?? shop.floorStyle ?? 'lino', this.scheme);
+      const key = tileKey(x, zOnLevel(z, L)), style = shop.tileStyles?.[key] ?? shop.floorStyle ?? 'lino';
+      const fin = floorPaint(style, this.scheme);
       parts.push(box(pal, fin.joint, 1, 0.08, 1, x + 0.5, y0 - 0.068, z + 0.5));
-      parts.push(...tileFace(pal, fin, x, z, y0, (Math.round(x - 0.5) + z) % 2 !== 0, Math.round(x * 7) + z * 3 + 99));
+      const odd = (Math.round(x - 0.5) + z) % 2 !== 0, faces = tileFace(pal, fin, x, z, y0, odd, Math.round(x * 7) + z * 3 + 99);
+      if (style === 'paint') { parts.push(faces[0]!); painted.push(...tint(faces.slice(1), shop.tileColors?.[key] ?? DEFAULT_PAINT, odd)); }
+      else if (style === 'photo') { parts.push(faces[0]!); photos.push(photoFace(x, z, y0)); }
+      else parts.push(...faces);
     }
+    if (painted.length) { const pm = new Mesh(mergeTinted(painted), this.paintMat()); pm.receiveShadow = true; parent.add(pm); }
+    if (photos.length && shop.floorImage) { const pm = new Mesh(merge(photos), this.photoMat(shop.floorImage)); pm.receiveShadow = true; parent.add(pm); }
     // Where each flight comes up: no rail between its top step (or the lift's door) and the floor it lands on.
     const landings = new Set<string>();
     for (const v of shop.fixtures) {
@@ -635,6 +673,9 @@ export class StoreView {
       : style === 'tiles' ? [[WALL_BANDS.skirting, '#D8DADF'], [[0.07, 0.6], '#FFFFFF'], ...lines(0.07, 0.6, 0.09, '#D8DADF'), [[0.6, 0.63], '#D8DADF'], [[0.63, 0.97], '#F4F7FA']]
       : style === 'wood' ? [[WALL_BANDS.skirting, '#A87B45'], [[0.07, 0.55], '#C99A62'], ...lines(0.07, 0.55, 0.12, '#B8824C'), [[0.55, 0.6], '#A87B45'], [[0.6, 0.97], RAIL]]
       : style === 'brick' ? [[[0, 0.97], '#B8402E'], ...lines(0, 0.97, 0.08, '#D8DADF')]
+      : style === 'marble' ? [[WALL_BANDS.skirting, '#9AA0A8'], [[0.07, 0.97], '#F4F7FA'], ...lines(0.07, 0.97, 0.3, '#D8D8DC')]
+      // Paint: white here, coloured vertex by vertex (see tint), a skirting a shade darker.
+      : style === 'paint' ? [[WALL_BANDS.skirting, '#D8DADF'], [[0.07, 0.97], '#FFFFFF']]
       : [[WALL_BANDS.skirting, SKIRTING], [WALL_BANDS.lower, sc.primary], [WALL_BANDS.rail, RAIL], [WALL_BANDS.upper, sc.light]];
     let depth = 0.02;
     const piece = (u0: number, u1: number, y0: number, y1: number, hex: string) => {
@@ -712,6 +753,7 @@ export class StoreView {
       const facing = cameraYaw !== null && flip * (s.nx * Math.sin(cameraYaw) + s.nz * Math.cos(cameraYaw)) > 0.25;
       s.full.visible = !facing; s.ledge.visible = facing;
       for (const m of s.extraFull) m.visible = !facing;
+      for (const m of s.extraLedge ?? []) m.visible = facing;
     }
     for (const w of this.wallCut) { w.full.visible = cameraYaw === null; w.cut.visible = cameraYaw !== null; }
     if (this.bunting) this.bunting.visible = (state.day === 1 || state.marketing.openingEventDay === state.day) && state.phase !== 'night' && state.phase !== 'picking';
@@ -783,7 +825,7 @@ export class StoreView {
     if (this.lampPools) { this.root.remove(this.lampPools); this.lampPools.dispose(); this.lampPools = null; }
     const byModel = new Map<string, Fixture[]>();
     const shown = shop.fixtures.filter((f) => this.shown(f));
-    for (const f of shown) { const id = f.type === 'fridge' ? 'chiller' : FIXTURE_MODEL[f.type]; const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
+    for (const f of shown) { const id = f.type === 'fridge' ? 'chiller' : modelOf(f.type, f.variant, FIXTURE_MODEL[f.type]); const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
     const m = new Matrix4();
     for (const [model, list] of byModel) {
       // A piece whose model is missing is skipped, never the rest of the shop with it.
@@ -1058,9 +1100,9 @@ export class StoreView {
   }
 
   /** Build-mode ghost: green when it can go there, red when it cannot. */
-  setGhost(type: FixtureType | null, shop: Shop, x: number, z: number, rot: Rot, valid: boolean): void {
+  setGhost(type: FixtureType | null, shop: Shop, x: number, z: number, rot: Rot, valid: boolean, variant = 0): void {
     if (!type) { if (this.ghost) this.ghost.visible = false; return; }
-    const geo = type === 'window' ? (this.windowGhostGeo ??= windowGhost(this.assets)) : this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : FIXTURE_MODEL[type]);
+    const geo = type === 'window' ? (this.windowGhostGeo ??= windowGhost(this.assets)) : this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : modelOf(type, variant, FIXTURE_MODEL[type]));
     if (!this.ghost) { this.ghost = new Mesh(geo, this.ghostMat); this.root.add(this.ghost); }
     this.ghost.geometry = geo;
     this.ghost.visible = true;
@@ -1105,19 +1147,51 @@ function stockKey(shop: Shop): string {
 
 export { mergeGeometries, paint };
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${JSON.stringify(shop.wallColors ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
-function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean } {
+function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean; cross?: boolean; veins?: string } {
   switch (style) {
     case 'concrete': return { a: '#C4C0B8', b: '#BBB6AD', joint: '#A39E95' };
     case 'checker': return { a: '#FFFFFF', b: '#38383D', joint: '#D8D8DC', quarters: true };
     case 'colour': return { a: '#FFFFFF', b: sc.light, joint: '#D8D8DC' };
     case 'stone': return { a: '#F4F7FA', b: '#FFFFFF', joint: '#C9CBD1' };
     case 'wood': return { a: '#D9A066', b: '#C99A62', joint: '#A87B45', boards: ['#D9A066', '#C99A62', '#C8925A', '#D9A066', '#B8824C'] };
+    case 'parquet': return { a: '#B8824C', b: '#A87B45', joint: '#8B5A3C', boards: ['#C8925A', '#B8824C', '#A87B45', '#C99A62'], cross: true };
+    case 'carpet': return { a: sc.dark, b: sc.dark, joint: sc.dark };
+    case 'terracotta': return { a: '#C8693A', b: '#BF6235', joint: '#E9DCC4' };
+    case 'marble': return { a: '#F4F7FA', b: '#E9DCC4', joint: '#D8D8DC', veins: '#C9CBD1' };
+    case 'paint': case 'photo': return { a: '#FFFFFF', b: '#FFFFFF', joint: '#C9CBD1' };
     default: return { a: LINO.a, b: LINO.b, joint: LINO.joint };
   }
 }
+
+/** Geometry coloured vertex by vertex (any colour, not just the palette's): `odd` tiles a shade darker, as a checker. (`Color` reads the hex as sRGB and keeps it linear, as the shader wants.) */
+function tint(geos: BufferGeometry[], hex: string, odd = false): BufferGeometry[] {
+  const c = new Color(hex).multiplyScalar(odd ? 0.93 : 1);
+  for (const g of geos) {
+    const n = g.getAttribute('position').count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new Float32BufferAttribute(a, 3));
+  }
+  return geos;
+}
+
+/** A tile's face showing the whole of your picture (its own 0..1 on top). */
+function photoFace(x: number, z: number, y: number): BufferGeometry {
+  const g = new BoxGeometry(TILE_FACE, 0.003, TILE_FACE);
+  g.translate(x + 0.5, y + 0.0125, z + 0.5);
+  return g;
+}
+
+/** Merged keeping each vertex's colour (the usual merge drops it): every part comes from tint, so they match. */
+function mergeTinted(parts: BufferGeometry[]): BufferGeometry {
+  const flat = parts.map((g) => (g.index ? g.toNonIndexed() : g));
+  return mergeGeometries(flat, false) ?? new BoxGeometryEmpty();
+}
+
+/** Tinted when there is a colour (paint), as they are when there is not. */
+function tint0(geos: BufferGeometry[], hex: string | null): BufferGeometry[] { return hex ? tint(geos, hex) : geos; }
 
 /** Every finish's tile face is this wide, so the joints run straight across tiles laid in different finishes. */
 const TILE_FACE = 0.975;
@@ -1129,9 +1203,19 @@ function tileFace(pal: Parameters<typeof box>[0], fin: ReturnType<typeof floorPa
   const out = [box(pal, fin.joint, 1, 0.004, 1, x + 0.5, y + 0.004, z + 0.5)];
   const inset = (1 - TILE_FACE) / 2;
   if (fin.boards) {
-    // Four boards, each its own shade of honey, filling the same square as any other tile.
-    const gap = 0.01, deep = (TILE_FACE - 3 * gap) / 4;
-    for (let k = 0; k < 4; k++) out.push(box(pal, fin.boards[(seed + k * 5) % fin.boards.length]!, TILE_FACE, 0.003, deep, x + 0.5, y + 0.011, z + inset + deep / 2 + k * (deep + gap)));
+    // Four boards, each its own shade of honey, filling the same square as any other tile (parquet: every other
+    // tile's boards the other way, a basket weave).
+    const gap = 0.01, deep = (TILE_FACE - 3 * gap) / 4, across = !!fin.cross && odd;
+    for (let k = 0; k < 4; k++) {
+      const c = fin.boards[(seed + k * 5) % fin.boards.length]!, off = inset + deep / 2 + k * (deep + gap);
+      out.push(across ? box(pal, c, deep, 0.003, TILE_FACE, x + off, y + 0.011, z + 0.5) : box(pal, c, TILE_FACE, 0.003, deep, x + 0.5, y + 0.011, z + off));
+    }
+    return out;
+  }
+  if (fin.veins) {
+    // Marble: the slab, and a vein or two across it.
+    out.push(box(pal, odd ? fin.b : fin.a, TILE_FACE, 0.003, TILE_FACE, x + 0.5, y + 0.011, z + 0.5));
+    for (let k = 0; k < 2; k++) { const v = box(pal, fin.veins, 0.7 - k * 0.25, 0.001, 0.012, 0, 0, 0); v.rotateY(0.5 + ((seed + k * 3) % 5) * 0.4); v.translate(x + 0.5 + (k - 0.5) * 0.18, y + 0.0145, z + 0.5 + ((seed % 3) - 1) * 0.12); out.push(v); }
     return out;
   }
   if (fin.quarters) {

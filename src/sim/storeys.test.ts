@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType, type Fixture } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey } from './layout';
+import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey, refundOf } from './layout';
 import { fixtureFacingWorld, fixtureStandWorld, fixtureFront, lineClear, isBlocked, cellOf, cellIndex, reachableCells } from './grid';
 import { canPlace, canSellTile, floorCost, grownCeilings, styleAt } from './build';
 import { spawnCustomer, setPath, doorInside, addSpill } from './people';
@@ -342,7 +342,8 @@ describe('building up: nothing cut off, nothing for free', () => {
   it('never makes money, whatever is built, moved and sold in whatever order', () => {
     // What everything would fetch sold back now, on top of the cash: no build action may raise it.
     const worth = (s: GameState) => {
-      let w = s.cash + s.shop.fixtures.reduce((a, f) => a + Math.round(FIXTURES[f.type].price * RESALE), 0);
+      // (A piece fetches what selling it would: all it cost the day it was bought, 60% after.)
+      let w = s.cash + s.shop.fixtures.reduce((a, f) => a + refundOf(f, s.day), 0);
       w += ensureCeilings(s.shop).reduce((a, r) => a + r.length, 0) * Math.round(RESALE * PANEL_PRICE);
       for (let m = 1; m <= floorTileCount(s.shop); m++) w += Math.round(RESALE * tilePriceAt(m - 1));
       // The finishes, on every tile in use and those kept for when they are back (a floor shut, a flight over them).

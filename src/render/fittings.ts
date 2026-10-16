@@ -18,7 +18,7 @@ import { WALL_COLOURS } from './storeArt';
 export const FITTING_MODELS = ['furniture/bench-cushion', 'furniture/side-table', 'furniture/chair', 'furniture/desk', 'furniture/computer-screen', 'furniture/trashcan',
   'furniture/speaker', 'furniture/cabinet-television', 'furniture/television-modern', 'furniture/bookcase-open', 'furniture/books', 'furniture/plant-small-1', 'furniture/plant-small-2',
   'furniture/plant-small-3', 'furniture/rug-rectangle', 'furniture/rug-doormat', 'furniture/lamp-wall', 'furniture/lamp-square-ceiling', 'market/fence', 'market/fence-door', 'food/cup-coffee',
-  'furniture/bench', 'furniture/potted-plant', 'nature/tree-oak', 'nature/tree-default', 'nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb', 'suburban/planter'];
+  'furniture/bench', 'furniture/potted-plant', 'nature/tree-oak', 'nature/tree-default', 'nature/tree-pineroundc', 'nature/tree-oak-fall', 'nature/pot-large', 'nature/pot-small', 'nature/plant-bushdetailed', 'nature/plant-flattall', 'nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb', 'suburban/planter'];
 
 /** Where each new piece's geometry comes from: a Kenney model as it is, or one composed here ("gen:"). */
 export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
@@ -33,6 +33,14 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   iceChest: 'gen:iceChest', coolProduce: 'gen:coolProduce', wallShelf: 'gen:wallShelf', glassCase: 'gen:glassCase', displayTable: 'gen:displayTable',
   bakeryCase: 'gen:bakeryCase', clothesRail: 'gen:clothesRail', vending: 'gen:vending', queueRail: 'gen:queueRail',
 };
+
+/** The other looks of pieces that come in more than one (index 1 on; index 0 is the model above). */
+export const VARIANT_MODEL: Partial<Record<FixtureType, string[]>> = {
+  tree: ['gen:tree', 'gen:treeRound', 'gen:treePine', 'gen:treeAutumn'], plant: ['gen:plant', 'gen:plantFern', 'gen:plantBush'], rug: ['gen:rug', 'gen:rugBlue', 'gen:rugGreen'],
+  flowerBed: ['gen:flowerBed', 'gen:flowerBedPurple', 'gen:flowerBedYellow'], parkBench: ['gen:parkBench', 'gen:parkBenchPainted'], sign: ['market/column', 'gen:signShop'],
+};
+/** The model a piece is drawn with, for the look it has. */
+export function modelOf(type: FixtureType, variant: number | undefined, base: string): string { return (variant && VARIANT_MODEL[type]?.[variant]) || base; }
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
 export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim', 'gen:tallWall']);
@@ -76,6 +84,13 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
   const m = (model: string, x = 0, y = 0, z = 0, yaw = 0, s = 1, sy = s, sz = s) => place(assets.geometry(model).clone(), x, y, z, yaw, s, sy, sz);
   // Walls inside the shop wear the outside's paint: white with the stripe in the shop's colour.
   const wall = (model: string) => place(paintStrips(recolor(assets.geometry(model), WALL_COLOURS), pal, { '2:1': sc.primary }), 0, 0, 0, 0, 1, 1, 0.38);
+  // A low timber edge round dark soil, planted in rows of these flowers.
+  const flowerBed = (kinds: string[]) => {
+    const parts: BufferGeometry[] = [box(pal, '#6B4A35', 0.84, 0.05, 0.84, 0, 0, 0)];
+    for (const [x, z, w, d] of [[0, -0.41, 0.88, 0.06], [0, 0.41, 0.88, 0.06], [-0.41, 0, 0.06, 0.88], [0.41, 0, 0.06, 0.88]] as const) parts.push(box(pal, '#A87B45', w, 0.09, d, x, 0, z));
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) parts.push(m(kinds[(i * 3 + j * 2) % kinds.length]!, -0.24 + i * 0.24, 0.05, -0.24 + j * 0.24, (i + j) * 0.9, 0.85));
+    return merge(parts);
+  };
   switch (id) {
     case 'gen:cafe': return merge([m('furniture/side-table', 0, 0, 0, 0, 1.15), m('furniture/chair', -0.34, 0, 0, Math.PI / 2), m('furniture/chair', 0.34, 0, 0, -Math.PI / 2), m('food/cup-coffee', -0.08, 0.354, 0.02, 0, 0.6), m('food/cup-coffee', 0.1, 0.354, -0.03, 1, 0.6)]);
     case 'gen:desk': return merge([m('furniture/desk', 0, 0, 0.05, 0, 1.3), m('furniture/computer-screen', 0.12, 0.4, -0.05, Math.PI + 0.3, 1.1), box(pal, sc.primary, 0.5, 0.12, 0.02, 0, 0.18, 0.26), box(pal, '#FFFFFF', 0.2, 0.03, 0.022, 0, 0.225, 0.262)]);
@@ -103,14 +118,7 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:speaker': return m('furniture/speaker', 0, 0, 0, 0, 1.4);
     case 'gen:plant': return m('furniture/potted-plant', 0, 0, 0, 0, 1.45);
     // Out on the lot.
-    case 'gen:flowerBed': {
-      // A low timber edge round dark soil, planted in rows.
-      const parts: BufferGeometry[] = [box(pal, '#6B4A35', 0.84, 0.05, 0.84, 0, 0, 0)];
-      for (const [x, z, w, d] of [[0, -0.41, 0.88, 0.06], [0, 0.41, 0.88, 0.06], [-0.41, 0, 0.06, 0.88], [0.41, 0, 0.06, 0.88]] as const) parts.push(box(pal, '#A87B45', w, 0.09, d, x, 0, z));
-      const kinds = ['nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb'];
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) parts.push(m(kinds[(i * 3 + j * 2) % kinds.length]!, -0.24 + i * 0.24, 0.05, -0.24 + j * 0.24, (i + j) * 0.9, 0.85));
-      return merge(parts);
-    }
+    case 'gen:flowerBed': return flowerBed(['nature/flower-reda', 'nature/flower-yellowa', 'nature/flower-purplea', 'nature/flower-redb', 'nature/flower-yellowb']);
     case 'gen:tree': return merge([m('nature/tree-oak', 0, 0, 0, 0.4, 1.05), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
     case 'gen:planter': return m('suburban/planter', 0, 0, 0, 0, 1.2);
     case 'gen:bikeRack': {
@@ -127,6 +135,18 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       return merge(parts);
     }
     case 'gen:tallWall': return place(wall('market/wall'), 0, 0, 0, 0, 1, 2, 1);
+    // The other looks (the variant arrows).
+    case 'gen:treeRound': return merge([m('nature/tree-default', 0, 0, 0, 0.2, 1.1), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
+    case 'gen:treePine': return merge([m('nature/tree-pineroundc', 0, 0, 0, 0.6, 1.0), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
+    case 'gen:treeAutumn': return merge([m('nature/tree-oak-fall', 0, 0, 0, 0.4, 1.05), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
+    case 'gen:plantFern': return merge([m('nature/pot-large', 0, 0, 0, 0, 0.9), m('nature/plant-bushdetailed', 0, 0.2, 0, 0.3, 0.5)]);
+    case 'gen:plantBush': return merge([m('nature/pot-small', 0, 0, 0, 0, 1.1), m('nature/plant-flattall', 0, 0.12, 0, 0.8, 0.6)]);
+    case 'gen:rugBlue': return recolor(m('furniture/rug-rectangle', 0, ON_FLOOR, 0, 0, 0.74, 1, 0.74), (from) => (from.row === 2 ? { row: 2, strip: 5 } : null));
+    case 'gen:rugGreen': return recolor(m('furniture/rug-rectangle', 0, ON_FLOOR, 0, 0, 0.74, 1, 0.74), (from) => (from.row === 2 ? { row: 2, strip: 3 } : null));
+    case 'gen:flowerBedPurple': return flowerBed(['nature/flower-purplea', 'nature/flower-purplea', 'nature/flower-redb']);
+    case 'gen:flowerBedYellow': return flowerBed(['nature/flower-yellowa', 'nature/flower-yellowb', 'nature/flower-yellowa']);
+    case 'gen:parkBenchPainted': return recolor(m('furniture/bench', 0, 0, 0, 0, 2.6, 1.35, 2.4), (from) => (from.row === 3 ? { row: 2, strip: 1 } : null));
+    case 'gen:signShop': return merge([box(pal, '#38383D', 0.05, 0.62, 0.05, 0, 0, 0), box(pal, sc.primary, 0.62, 0.22, 0.05, 0, 0.6, 0), box(pal, '#FFFFFF', 0.5, 0.04, 0.052, 0, 0.69, 0)]);
     // The displays (tile space, the back against the tile's back edge at z −0.45; their stock goes in SLOT_BOXES).
     // An ice-cream chest: a white well with a sky-blue rim and glass edge, open on top.
     case 'gen:iceChest': return merge([

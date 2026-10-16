@@ -10,7 +10,7 @@ import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
-import { PLOTS, FIXTURES, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf } from './layout';
+import { PLOTS, FIXTURES, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf, refundOf, VARIANTS } from './layout';
 import { topUp, topUpAll, recycle } from './stocking';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
@@ -48,7 +48,7 @@ export type Command =
   | { type: 'skipTutorial' }
   /** Design the manager: character, height and colours (null puts a colour back to the character's own). */
   | { type: 'designManager'; look: { model?: number; height?: number; skin?: string | null; hair?: string | null; top?: string | null; bottom?: string | null } }
-  | { type: 'placeFixture'; fixtureType: FixtureType; x: number; z: number; rot: Rot }
+  | { type: 'placeFixture'; fixtureType: FixtureType; x: number; z: number; rot: Rot; variant?: number }
   | { type: 'removeFixture'; fixtureId: number }
   | { type: 'moveFixture'; fixtureId: number; x: number; z: number; rot: Rot }
   | { type: 'expandShop'; sizeId: string }
@@ -66,7 +66,7 @@ export type Command =
   | { type: 'signStyle'; style: 'classic' | 'lit' }
   | { type: 'setFloor'; style: FloorStyle }
   /** One tile: lay a finish on it, or buy it to grow the shop. */
-  | { type: 'paintFloor'; x: number; z: number; style: FloorStyle }
+  | { type: 'paintFloor'; x: number; z: number; style: FloorStyle; colour?: string }
   | { type: 'buyTile'; x: number; z: number }
   | { type: 'sellTile'; x: number; z: number }
   /** A ceiling panel over a tile of floor (z on that floor's region), or taken down and sold. */
@@ -75,7 +75,7 @@ export type Command =
   | { type: 'ride'; fixtureId: number }
   | { type: 'removePanel'; x: number; z: number }
   /** One stretch of outer wall (a key from wallKey) given a finish. */
-  | { type: 'paintWall'; key: string; style: WallStyle }
+  | { type: 'paintWall'; key: string; style: WallStyle; colour?: string }
   | { type: 'pushWall'; key: string }
   | { type: 'pullWall'; key: string }
   /** One tile of the lot laid with a surface (null: back to grass). */
@@ -101,6 +101,7 @@ export type Command =
   | { type: 'topUp'; fixtureId: number }
   | { type: 'topUpAll' }
   | { type: 'upgradeTill'; fixtureId: number }
+  | { type: 'setFloorImage'; dataUrl: string }
   | { type: 'recycle'; productId: string }
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
@@ -276,7 +277,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!check.ok) return { ok: false, message: check.reason };
       // The price, and a ceiling over a floor it opens.
       state.cash -= check.price;
-      const fx = { id: state.nextId++, type: cmd.fixtureType, x: cmd.x, z: cmd.z, rot: cmd.rot, slots: Array.from({ length: def.slots }, () => ({ productId: null, qty: 0 })) } as GameState['shop']['fixtures'][number];
+      const fx = { id: state.nextId++, type: cmd.fixtureType, x: cmd.x, z: cmd.z, rot: cmd.rot, slots: Array.from({ length: def.slots }, () => ({ productId: null, qty: 0 })), bought: state.day } as GameState['shop']['fixtures'][number];
+      if (cmd.variant && VARIANTS[cmd.fixtureType] && cmd.variant < VARIANTS[cmd.fixtureType]!.length) fx.variant = cmd.variant;
       if (fx.type === 'register' || fx.type === 'kiosk') { fx.queue = []; fx.serving = null; fx.scanned = 0; fx.staffId = null; }
       if (fx.type === 'bikeRack') fx.bikes = Array.from({ length: RACK_STANDS }, () => null);
       const opened = VERTICAL.has(fx.type) ? [...storeysOf(state.shop).built] : null;
@@ -298,7 +300,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (f.bikes?.some((b) => b !== null)) return { ok: false, message: 'Bikes are locked to it: wait till they ride off.' };
       { const why = canTakeAway(state, f.id) ?? removalShuts(state, f.id); if (why) return { ok: false, message: `${why}.` }; }
       if (f.type === 'pallet' || f.type === 'storeRack') { const units = storageUsed(state.shop); if (units > storageCap(state.shop) - (f.type === 'pallet' ? PALLET_UNITS : STORE_RACK_UNITS)) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
-      const refund = Math.round(FIXTURES[f.type].price * 0.6);
+      const refund = refundOf(f, state.day, CONVEYOR_PRICE);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });
       state.shop.fixtures.splice(i, 1);
       state.shop.layoutVersion++;
@@ -325,7 +327,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'buyCorner': { const err = buyCorner(state, cmd.rivalId, cmd.managerId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'openingEvent': { const err = bookOpeningEvent(state); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setFloor': { const err = setFloor(state, cmd.style); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
-    case 'paintFloor': { const err = paintFloor(state, cmd.x, cmd.z, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'paintFloor': { const err = paintFloor(state, cmd.x, cmd.z, cmd.style, cmd.colour); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'buyTile': { const err = buyTile(state, cmd.x, cmd.z); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'sellTile': { const err = sellTile(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'ride': {
@@ -337,7 +339,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     }
     case 'addPanel': { const err = addPanel(state, cmd.x, cmd.z); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'removePanel': { const err = removePanel(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
-    case 'paintWall': { const err = paintWall(state, cmd.key, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'paintWall': { const err = paintWall(state, cmd.key, cmd.style, cmd.colour); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'pushWall': { const err = pushWall(state, cmd.key); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'pullWall': { const err = pullWall(state, cmd.key); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'pave': { const err = pave(state, cmd.x, cmd.z, cmd.surface); if (!err) cue(state, cmd.surface ? 'place' : 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
@@ -367,6 +369,12 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!f || !FIXTURES[f.type].slots) return { ok: false };
       if (!state.shop.storage.length) return { ok: false, message: 'The pallet is empty: order some stock first.' };
       return topUp(state, f) > 0 ? { ok: true } : { ok: false, message: 'Nothing on the pallet fits there, or it is full.' };
+    }
+    case 'setFloorImage': {
+      // A small picture only (the renderer tiles it): kept in the save.
+      if (!cmd.dataUrl.startsWith('data:image/') || cmd.dataUrl.length > 160_000) return { ok: false, message: 'That picture is too big: try a smaller one.' };
+      state.shop.floorImage = cmd.dataUrl;
+      return { ok: true };
     }
     case 'upgradeTill': {
       const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId && x.type === 'register');

@@ -34,9 +34,9 @@ export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'wa
 /** What a tile of the lot is laid with (grass where none is). */
 export type LotSurface = 'gravel' | 'asphalt' | 'paving' | 'brick';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
-export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete';
+export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete' | 'carpet' | 'marble' | 'terracotta' | 'parquet' | 'paint' | 'photo';
 /** The inside finish of a stretch of outer wall. */
-export type WallStyle = 'plain' | 'bands' | 'tiles' | 'wood' | 'brick';
+export type WallStyle = 'plain' | 'bands' | 'tiles' | 'wood' | 'brick' | 'marble' | 'paint';
 /** The shell walls (old saves put windows in a whole wall at a time; see windowsFromSides). */
 export type WindowSide = 'left' | 'right' | 'back';
 
@@ -96,6 +96,10 @@ export interface Fixture {
   staffId?: number | null;
   /** Register only: upgraded with a conveyor belt (goods come along to be scanned: quicker through). */
   conveyor?: boolean;
+  /** The day it was bought (sold the same day, it fetches all it cost back: you changed your mind). */
+  bought?: number;
+  /** Which look of the piece (a kind of tree, a colour of rug), for pieces that come in more than one. */
+  variant?: number;
   /** Bike rack only: who has a bike in each stand (a person id), or null. */
   bikes?: (number | null)[];
 }
@@ -355,6 +359,10 @@ export interface Shop {
   gaps?: string[];
   /** Floor finish tile by tile, where it differs from `floorStyle` (keys as `gaps`). */
   tileStyles?: Record<string, FloorStyle>;
+  /** Tiles painted any colour you like (with the paint finish): their colour, by tile. */
+  tileColors?: Record<string, string>;
+  /** Your own picture for the picture floor (a small JPEG, as a data URL). */
+  floorImage?: string;
   storeroom: { x0: number; z0: number; x1: number; z1: number };
   door: Vec2;
   backDoor: Vec2;
@@ -383,6 +391,8 @@ export interface Shop {
   /** The inside finish of the outer walls, stretch by stretch where it differs from `wallStyle` (keys from wallKey). Old saves had painted bands, said nowhere: written down on loading (bandsWrittenDown). */
   wallStyle?: WallStyle;
   wallStyles?: Record<string, WallStyle>;
+  /** Stretches of wall painted any colour you like: their colour, by stretch. */
+  wallColors?: Record<string, string>;
   /** Windows bought for the side and back walls. */
   /** Old saves only: whole walls of windows, turned into Window pieces on load. */
   windows?: Partial<Record<WindowSide, boolean>>;

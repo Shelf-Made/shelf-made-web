@@ -4,7 +4,7 @@
  * must stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop } from './types';
-import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
+import { DEFAULT_PAINT, FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
 import { buildGrid, frontInside, cellOf, isBlocked, type Grid } from './grid';
 import { findPath } from './pathfinding';
@@ -164,12 +164,15 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
  * Can this tile of floor be given this finish? Its price, less what the finish coming up fetches
  * (laying the cheapest sells the old one back: the price comes out below nothing).
  */
-export function canPaintFloor(state: GameState, x: number, z: number, style: FloorStyle): PlaceCheck {
+export function canPaintFloor(state: GameState, x: number, z: number, style: FloorStyle, colour?: string): PlaceCheck {
   const now = isFloor(state.shop, x, z) ? styleAt(state.shop, x, z) : null;
-  const price = (FLOORS.find((f) => f.id === style)?.perTile ?? 0) - Math.round(RESALE * (FLOORS.find((f) => f.id === now)?.perTile ?? 0));
+  // Repainting a painted tile another colour costs just the paint.
+  const repaint = style === 'paint' && now === 'paint';
+  const price = (FLOORS.find((f) => f.id === style)?.perTile ?? 0) - (repaint ? 0 : Math.round(RESALE * (FLOORS.find((f) => f.id === now)?.perTile ?? 0)));
   if (offTile(state.shop, x, z)) return { ok: false, reason: 'Snap to a tile', price };
   if (!now) return { ok: false, reason: 'Only on the shop floor', price };
-  if (now === style) return { ok: false, reason: 'That floor is down already', price };
+  if (style === 'photo' && !state.shop.floorImage) return { ok: false, reason: 'Choose a picture first', price };
+  if (now === style && (!repaint || (state.shop.tileColors?.[tileKey(x, z)] ?? DEFAULT_PAINT).toUpperCase() === (colour ?? DEFAULT_PAINT).toUpperCase())) return { ok: false, reason: repaint ? 'That colour is on it already' : 'That floor is down already', price };
   if (price > 0 && state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   return { ok: true, reason: FLOORS.find((f) => f.id === style)?.name ?? style, price };
 }
@@ -180,25 +183,29 @@ export function wallStyleAt(shop: GameState['shop'], key: string): WallStyle {
 }
 
 /** Can this stretch of wall be given this finish? Priced as floors are (the old finish sells back). */
-export function canPaintWall(state: GameState, key: string, style: WallStyle): PlaceCheck {
+export function canPaintWall(state: GameState, key: string, style: WallStyle, colour?: string): PlaceCheck {
   const seg = wallSegments(state.shop).find((w) => w.key === key);
   const now = seg ? wallStyleAt(state.shop, key) : null;
-  const price = (WALLS.find((w) => w.id === style)?.perSeg ?? 0) - Math.round(RESALE * (WALLS.find((w) => w.id === now)?.perSeg ?? 0));
+  const repaint = style === 'paint' && now === 'paint';
+  const price = (WALLS.find((w) => w.id === style)?.perSeg ?? 0) - (repaint ? 0 : Math.round(RESALE * (WALLS.find((w) => w.id === now)?.perSeg ?? 0)));
   if (!now) return { ok: false, reason: 'Point at a wall', price };
-  if (now === style) return { ok: false, reason: 'That wall has it already', price };
+  if (now === style && (!repaint || (state.shop.wallColors?.[key] ?? DEFAULT_PAINT).toUpperCase() === (colour ?? DEFAULT_PAINT).toUpperCase())) return { ok: false, reason: repaint ? 'That colour is on it already' : 'That wall has it already', price };
   if (price > 0 && state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   return { ok: true, reason: WALLS.find((w) => w.id === style)?.name ?? style, price };
 }
 
 /** Give one stretch of wall a finish. */
-export function paintWall(state: GameState, key: string, style: WallStyle): string | null {
-  const check = canPaintWall(state, key, style);
+export function paintWall(state: GameState, key: string, style: WallStyle, colour?: string): string | null {
+  const check = canPaintWall(state, key, style, colour);
   if (!check.ok) return check.reason;
   state.cash -= check.price;
   const shop = state.shop;
   const styles = { ...shop.wallStyles };
   if (style === (shop.wallStyle ?? 'bands')) delete styles[key]; else styles[key] = style;
   shop.wallStyles = styles;
+  const colours = { ...shop.wallColors };
+  if (style === 'paint') colours[key] = colour ?? DEFAULT_PAINT; else delete colours[key];
+  shop.wallColors = colours;
   return null;
 }
 
@@ -275,14 +282,17 @@ export function sellTile(state: GameState, x: number, z: number): string | null 
 }
 
 /** Lay a finish on one tile. */
-export function paintFloor(state: GameState, x: number, z: number, style: FloorStyle): string | null {
-  const check = canPaintFloor(state, x, z, style);
+export function paintFloor(state: GameState, x: number, z: number, style: FloorStyle, colour?: string): string | null {
+  const check = canPaintFloor(state, x, z, style, colour);
   if (!check.ok) return check.reason;
   state.cash -= check.price;
   const shop = state.shop;
   const styles = { ...shop.tileStyles };
   if (style === (shop.floorStyle ?? 'lino')) delete styles[tileKey(x, z)]; else styles[tileKey(x, z)] = style;
   shop.tileStyles = styles;
+  const colours = { ...shop.tileColors };
+  if (style === 'paint') colours[tileKey(x, z)] = colour ?? DEFAULT_PAINT; else delete colours[tileKey(x, z)];
+  shop.tileColors = colours;
   return null;
 }
 
