@@ -1,6 +1,6 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
+import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, dirToWorld, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
 import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, cellCentre, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
@@ -456,7 +456,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       }
       if (car.state === 'parked') {
         // Step out beside the car, on the aisle side.
-        p.x = car.x + 0.75; p.z = car.z + 0.55;
+        const at = carSide(state, car); p.x = at.x; p.z = at.z;
         const spot = nearestWalkable(gridFor(state), { x: p.x, z: p.z }, dyn);
         p.x = spot.x; p.z = spot.z;
         p.state = 'toDoor'; p.anim = 'walk';
@@ -670,7 +670,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
             p.state = 'toCar'; p.anim = p.anim === 'carry' ? 'carry' : 'walk';
             break;
           }
-          if (car) { p.state = 'toCar'; p.anim = p.anim === 'carry' ? 'carry' : 'walk'; setPath(state, p, { x: car.x + 0.75, z: car.z + 0.55 }, dyn); break; }
+          if (car) { p.state = 'toCar'; p.anim = p.anim === 'carry' ? 'carry' : 'walk'; setPath(state, p, carSide(state, car), dyn); break; }
         }
         // On foot: out to the sidewalk, then off along the streets until out of sight.
         const end = streetStart(state, 'customers');
@@ -708,6 +708,9 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
     default: break;
   }
 }
+
+/** Beside a parked car on the aisle side, as the lot lies (a corner turned round has its aisle the other way). */
+function carSide(state: GameState, car: { x: number; z: number }): Vec2 { const d = dirToWorld(state.shop, { x: 0.75, z: 0.55 }); return { x: car.x + d.x, z: car.z + d.z }; }
 
 /**
  * Sitting down or asking at the help desk: walk over, then sit (or wait at the desk) for a moment.

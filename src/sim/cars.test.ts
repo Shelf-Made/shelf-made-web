@@ -117,3 +117,26 @@ describe('traffic', () => {
     }
   });
 });
+
+describe('getting out of the car', () => {
+  // The step out was put a fixed way in the world: on the corner turned round (the bus stop's), toward the shop, and
+  // the nearest free floor was inside it. They appeared in the shop, walked out of the door and back in.
+  it('every driver steps out on the lot, never inside the shop, on every corner', () => {
+    for (const plotId of ['main', 'elm', 'bus']) {
+      const s = openGame({ seed: 1, plotId, name: 'Out', tutorial: false });
+      const f = s.shop.floor, was = new Map<number, string>();
+      let inside = 0, out = 0;
+      for (let i = 0; i < 240 / TICK; i++) {
+        tick(s);
+        if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+        for (const p of s.people) {
+          if (p.kind !== 'customer') continue;
+          if (was.get(p.id) === 'driving' && p.state === 'toDoor') { out++; const l = toLocal(s.shop, p.x, p.z); if (l.x > f.x0 && l.x < f.x1 && l.z > f.z0 && l.z < f.z1) inside++; }
+          was.set(p.id, p.state);
+        }
+      }
+      expect(out, plotId).toBeGreaterThan(3);
+      expect(inside, plotId).toBe(0);
+    }
+  });
+});
