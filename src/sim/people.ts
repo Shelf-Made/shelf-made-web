@@ -1160,6 +1160,13 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
           if (p.kind === 'owner') completeTutorial(state, 'stock');
         }
         p.carrying = null; p.task = null; p.state = 'idle'; p.anim = 'idle';
+        // The manager steps back off the shelf's spot, or whoever comes to it next waits for them for good.
+        const c = f && p.kind === 'owner' && !(p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0)) ? fixtureCentre(state.shop, f) : null;
+        const d = c ? Math.hypot(p.x - c.x, p.z - c.z) : 0;
+        if (c && d > 1e-3) {
+          const to = { x: p.x + (p.x - c.x) / d * 0.6, z: p.z + (p.z - c.z) / d * 0.6 };
+          if (lineClear(gridFor(state), p, to)) { p.path = [to]; p.pathIdx = 0; p.state = 'walking'; }
+        }
       }
       break;
     }

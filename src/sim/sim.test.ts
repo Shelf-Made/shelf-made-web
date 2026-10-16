@@ -114,6 +114,10 @@ describe('simulation', () => {
     expect(applyCommand(s, { type: 'carry', fixtureId: shelf.id }).ok).toBe(true);
     for (let i = 0; i < 40 / TICK; i++) tick(s);
     expect(shelf.slots.some((sl) => sl.productId === 'bread' && sl.qty > 0)).toBe(true);
+    // Stocked, the manager steps back off the shelf's spot, so whoever comes to it next can get to it.
+    const owner = s.people.find((p) => p.kind === 'owner')!, spot = fixtureAccessWorld(s.shop, shelf, owner, gridFor(s))!;
+    expect(owner.state).toBe('idle');
+    expect(Math.hypot(owner.x - spot.x, owner.z - spot.z)).toBeGreaterThan(0.4);
     expect(applyCommand(s, { type: 'openShop' }).ok).toBe(true);
     expect(s.phase).toBe('open');
   });
