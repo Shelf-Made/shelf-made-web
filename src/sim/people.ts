@@ -1,7 +1,7 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells } from './grid';
+import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
@@ -237,9 +237,12 @@ export function spawnWalker(state: GameState): void {
   });
 }
 
+/** Can someone in at the front door get to a piece to use it? (An older save may have left one cut off: nobody is sent there.) */
+function getsTo(state: GameState, f: Fixture): boolean { return !!fixtureStandWorld(state.shop, f, undefined, gridFor(state)); }
+
 function findFixtureWith(state: GameState, productId: string): Fixture | null {
   let best: Fixture | null = null, bestQty = 0;
-  for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId === productId && s.qty > bestQty) { best = f; bestQty = s.qty; }
+  for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId === productId && s.qty > bestQty && getsTo(state, f)) { best = f; bestQty = s.qty; }
   return best;
 }
 
@@ -1014,8 +1017,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         const def = FIXTURES[f.type]; if (!def.slots) continue;
         const cap = def.slots * def.capacity; const have = f.slots.reduce((a, sl) => a + sl.qty, 0);
         const ratio = have / cap;
-        // Any shelf with room for something on the pallet, the emptiest first.
-        if (ratio < 1 && (!best || ratio < best.ratio) && pickCarryTask(state, f)) best = { f, ratio };
+        // Any shelf with room for something on the pallet, the emptiest first (one they can get to).
+        if (ratio < 1 && (!best || ratio < best.ratio) && pickCarryTask(state, f) && getsTo(state, f)) best = { f, ratio };
       }
       if (best) { const t = pickCarryTask(state, best.f)!; p.task = { type: 'carry', fixtureId: best.f.id, productId: t.productId, qty: t.qty }; p.idleFor = 0; }
     }
@@ -1024,7 +1027,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     if (!p.task && floorHand && p.state === 'idle' && dist(p, home) <= 0.35 && isFree(state, p)) {
       p.idleFor = (p.idleFor ?? 0) + dt;
       if (p.idleFor > 9) {
-        const shelves = state.shop.fixtures.filter((f) => FIXTURES[f.type].slots > 0);
+        const shelves = state.shop.fixtures.filter((f) => FIXTURES[f.type].slots > 0 && getsTo(state, f));
         const f = shelves.length ? withRng(state, 'tidy', (r) => r.pick(shelves)) : null;
         p.idleFor = withRng(state, 'tidy', (r) => -r.range(0, 8));
         if (f) {
@@ -1085,7 +1088,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         if (!task) { p.state = 'idle'; break; }
         const entry = state.shop.storage.find((s) => s.productId === task.productId && s.qty > 0);
         const f = state.shop.fixtures.find((x) => x.id === task.fixtureId);
-        if (!entry || !f) { p.task = null; p.state = 'idle'; break; }
+        if (!entry || !f || !getsTo(state, f)) { p.task = null; p.state = 'idle'; break; }
         const qty = Math.min(entry.qty, task.qty);
         entry.qty -= qty;
         if (entry.qty <= 0) state.shop.storage.splice(state.shop.storage.indexOf(entry), 1);

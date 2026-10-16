@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey } from './layout';
-import { fixtureFacingWorld, lineClear, isBlocked, cellOf } from './grid';
+import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey } from './layout';
+import { fixtureFacingWorld, fixtureStandWorld, lineClear, isBlocked, cellOf, cellIndex, reachableCells } from './grid';
 import { canPlace, canSellTile, floorCost, grownCeilings, styleAt } from './build';
 import { spawnCustomer, setPath, doorInside, addSpill } from './people';
 import { levelOfPerson, canAddPanel, canRemovePanel, ensureCeilings, PANEL_PRICE } from './storeys';
@@ -557,5 +557,48 @@ describe('building up: a counter keeps its queue and its back, and what is cut o
     // A floor open now still never shuts with anything on it.
     expect(place(s, 'plant', -1.5, zOnLevel(-5, 1), 0).ok).toBe(true);
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: a }).message).toMatch(/only way up/);
+  });
+
+  it('sends nobody through the walls to a shelf an older layout left cut off upstairs', () => {
+    for (const who of ['shoppers', 'stocker'] as const) {
+      const s = shop(99); aside(s);
+      expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+      // The left of the first floor hangs from the tile over ground (-0.5, -5)...
+      for (const z of [-6, -4, -3, -2, -1]) expect(applyCommand(s, { type: 'removePanel', x: -0.5, z }).ok, `panel at ${z}`).toBe(true);
+      expect(place(s, 'shelf', -2.5, zOnLevel(-5, 1), 1).ok).toBe(true);
+      const cut = s.shop.fixtures.find((f) => f.type === 'shelf' && levelOf(f) === 1)!;
+      // ...and that tile sold, as an older build let it be: the shelf up there, full of rice, is cut off.
+      s.shop.gaps = [...s.shop.gaps ?? [], '-0.5,-5'];
+      s.shop.layoutVersion++;
+      expect(fixtureStandWorld(s.shop, cut, undefined, gridFor(s))).toBeNull();
+      for (const f of s.shop.fixtures) f.slots = f.slots.map((sl) => sl.productId === 'rice' ? { productId: null, qty: 0 } : sl);
+      cut.slots = cut.slots.map(() => ({ productId: 'rice', qty: who === 'shoppers' ? 30 : 1 }));
+      // A little rice on a shelf downstairs too.
+      const low = s.shop.fixtures.find((f) => f.type === 'shelf' && levelOf(f) === 0)!;
+      low.slots[0] = { productId: 'rice', qty: who === 'shoppers' ? 2 : 0 };
+      s.people = s.people.filter((p) => p.kind === 'owner');
+      for (const f of s.shop.fixtures) { f.queue = []; f.serving = null; }
+      s.shop.storage = who === 'stocker' ? [{ productId: 'rice', qty: 40, day: s.day }] : [];
+      if (who === 'stocker') { const c = makeCandidate(s, 'stocker'); s.staffPool.push(c); expect(applyCommand(s, { type: 'hire', candidateId: c.id }).ok).toBe(true); }
+      s.phase = 'open';
+      let astray = '';
+      for (let i = 0; i < 90 / TICK; i++) {
+        if (who === 'shoppers' && i % 100 === 0) { const p = spawnCustomer(s, true); if (p) p.list = [{ productId: 'rice', qty: 1 }]; }
+        tick(s);
+        if (i % 4) continue;
+        const g = gridFor(s), reach = reachableCells(s.shop, g);
+        for (const p of s.people) {
+          if (p.kind === 'walker' || p.kind === 'owner' || p.climb !== undefined || p.state === 'driving' || p.state === 'resting') continue;
+          // In a wall, or the void behind the shop, or up on floor the door does not reach.
+          const [cx, cz] = cellOf(g, p), l = toLocal(s.shop, p.x, p.z);
+          if ((isBlocked(g, cx, cz) && Math.abs(l.x) < 6 && l.z < 0) || (levelOfPerson(s.shop, p) > 0 && !reach[cellIndex(g, cx, cz)])) astray ||= `${who}: ${p.kind} ${p.state} at ${JSON.stringify(l)}`;
+        }
+      }
+      expect(astray).toBe('');
+      // Nothing taken from up there, nor put on it: the rice downstairs taken instead, and filled.
+      expect(cut.slots.reduce((a, sl) => a + sl.qty, 0)).toBe(who === 'shoppers' ? 30 * cut.slots.length : cut.slots.length);
+      if (who === 'shoppers') expect(low.slots[0]!.qty).toBe(0);
+      else expect(low.slots[0]!.qty).toBeGreaterThan(0);
+    }
   });
 });
