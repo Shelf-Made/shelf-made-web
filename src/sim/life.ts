@@ -97,7 +97,7 @@ function hangoutSpot(state: GameState, r: { next(): number; pick<T>(a: T[]): T; 
   }
   const open = state.rivals.filter((x) => x.open && x.boughtDay === undefined);
   // Beside the bus shelter (under its roof they would vanish from view).
-  if (k < 0.7 || !open.length) return { at: { x: BUS_STOP.x + r.range(1.9, 2.8), z: BUS_STOP.z }, mine: false, where: 'at the bus stop' };
+  if (k < 0.7 || !open.length) return { at: { x: BUS_STOP.x + r.range(-0.7, 0.7), z: BUS_STOP.z - 0.45 }, mine: false, where: 'at the bus stop' };
   const rv = r.pick(open);
   return { at: { x: rv.x + r.range(-1.2, 1.2), z: rv.z }, mine: false, where: `outside ${rv.name}` };
 }

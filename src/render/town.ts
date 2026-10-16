@@ -11,7 +11,7 @@
  * Every corner is a Lot (a property rectangle). Lots never overlap and never touch a road.
  */
 import { Rng } from '@/sim/rng';
-import { ROAD_Z, ROAD_FAR, PLOT_RECT, CORNERS, CORNER_IDS, SIDE_HALF, ZEBRA, SIDEWALK_W_X, SIDEWALK_E_X, STREET_BAYS, BUS_STOP, MAP_X, MAP_Z, cornerOfPlot, rectToWorld, lotLayout, SHOP_SIZES, type Rect as SimRect } from '@/sim/layout';
+import { ROAD_Z, ROAD_FAR, PLOT_RECT, CORNERS, CORNER_IDS, SIDE_HALF, ZEBRA, SIDEWALK_W_X, SIDEWALK_E_X, STREET_BAYS, BUS_STOP, BILLBOARDS, MAP_X, MAP_Z, cornerOfPlot, rectToWorld, lotLayout, SHOP_SIZES, type Rect as SimRect } from '@/sim/layout';
 import { rivalCorners, RIVAL_DEFS } from '@/sim/rivals';
 import type { CornerId } from '@/sim/types';
 
@@ -181,6 +181,9 @@ export function buildTown(seed: number, plotId: string): TownPlan {
       for (const r of [L.driveway, L.serviceLane, { x0: -0.6, z0: 0, x1: 0.6, z1: 1 }]) { const w = rectToWorld(fr, r); cuts.push([w.x0 - 0.5, w.x1 + 0.5]); }
     }
   }
+  // (Nor through the bus shelter or a billboard's legs.)
+  cuts.push([BUS_STOP.x - 1.9, BUS_STOP.x + 1.9]);
+  for (const b of BILLBOARDS) if (b.y === 0) cuts.push([b.x - 1.7, b.x + 1.7]);
   const clear = (x: number) => !cuts.some(([a, b]) => x > a && x < b);
   for (let x = -60; x <= 60; x += 6) {
     if (Math.abs(x) < 4) continue;

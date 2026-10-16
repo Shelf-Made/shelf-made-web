@@ -133,6 +133,49 @@ canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display:
 .card.t-help header .head-icon svg { stroke: var(--slate); }
 .card header .close { background: rgba(0,0,0,0.18); color: var(--white); width: 34px; height: 34px; border-radius: 9px; font-size: 1.1em; }
 .card .body { padding: 12px 16px 16px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+/* Full-screen cards (Stock): the world dims and waits behind them; nothing clicked on them reaches it. */
+.modal-backdrop { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; padding: 24px; background: rgba(28, 32, 38, 0.46); backdrop-filter: blur(3px); pointer-events: auto; animation: fade-in 0.16s ease; }
+.card.modal { position: relative; top: auto; right: auto; width: min(1040px, 100%); max-height: min(760px, 100%); animation: rise-in 0.2s ease; }
+.card.modal .body { padding: 14px 18px 18px; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+.card.modal.t-stock { height: min(760px, 100%); }
+.card.modal.t-stock .body { overflow: hidden; }
+.stock-layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); gap: 18px; min-height: 0; }
+.stock-goods, .stock-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow: auto; padding: 0 6px 6px 0; }
+.stock-goods .cats { flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 1; background: var(--white); padding: 2px 0 6px; }
+.list.goods { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
+.list.goods .item { grid-template-columns: minmax(0, 1fr) auto; border: 2px solid transparent; transition: border-color 0.12s, background 0.12s; }
+.list.goods .item.picked { border-color: var(--green); background: #effaf4; }
+.list.goods .item .name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.list.goods .item .sub { overflow-wrap: anywhere; }
+.list.goods .stepper .val { min-width: 34px; }
+.suppliers { display: flex; flex-direction: column; gap: 8px; }
+.supplier { display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: left; padding: 10px 12px; border-radius: 12px; background: #f6f7f9; color: var(--slate); border: 2px solid transparent; box-shadow: 0 2px 0 #dfe3e8; font-size: 0.95em; }
+.supplier.on { border-color: var(--sc, var(--green)); background: var(--sbg, #effaf4); }
+.supplier .s-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.supplier .s-top b { font-size: 1.05em; }
+.supplier .s-badge { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 0.78em; font-weight: 700; color: var(--white); background: var(--sc, var(--green)); }
+.supplier .s-line { font-weight: 600; opacity: 0.8; }
+.supplier .s-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.supplier .chip { padding: 1px 7px; border-radius: 7px; font-size: 0.8em; font-weight: 600; background: var(--white); border: 1px solid #dfe3e8; }
+.supplier .chip.warn { background: #fde3dd; border-color: #f3b9ab; color: #b8402e; }
+.supplier .s-cost { font-size: 0.9em; }
+.supplier.s-local { --sc: var(--green); --sbg: #effaf4; }
+.supplier.s-bulk { --sc: #d08a2e; --sbg: #fff6e6; }
+.supplier.s-express { --sc: var(--blue); --sbg: #edf4fd; }
+.basket { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--cream); }
+.basket .total { font-size: 1.15em; }
+.basket .btn.big { width: 100%; }
+@media (max-width: 820px) {
+  .modal-backdrop { padding: 8px; }
+  .card.modal { max-height: 100%; }
+  .card.modal.t-stock { height: auto; }
+  .card.modal.t-stock .body { overflow: auto; }
+  .stock-layout { grid-template-columns: minmax(0, 1fr); }
+  .stock-goods, .stock-side { overflow: visible; padding: 0; }
+  .stock-goods .cats { position: static; }
+}
 .card.night h2 { margin: 0 0 6px; font-size: 1.5em; color: var(--green-dark); }
 .card.night.loss h2 { color: #c4432d; }
 .card.night h2 .sym { font-size: 0.7em; vertical-align: 0.12em; }
@@ -177,7 +220,7 @@ canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display:
 .why li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
 .why li b { color: #c4432d; }
 .shares li { display: grid; grid-template-columns: minmax(0, 8.5em) 1fr 3em 4em; align-items: center; gap: 8px; }
-.shares .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shares .who { overflow-wrap: anywhere; }
 .shares li.mine .who { font-weight: 700; }
 .shares li.closed { opacity: 0.55; }
 .shares .sbar { height: 10px; background: #eef1f4; border-radius: 5px; overflow: hidden; }
@@ -196,13 +239,13 @@ canvas.world { position: absolute; inset: 0; width: 100%; height: 100%; display:
 .tomorrow li.sky-storm::before { content: '⚡'; color: #E8A33F; }
 
 /* The goal chip under the top bar, and the ladder in Stats. */
-.goal-chip { position: absolute; left: 12px; top: calc(var(--hud-top) - 4px); z-index: 5; display: flex; align-items: center; gap: 8px; max-width: min(420px, calc(100% - 330px)); min-width: 220px; height: calc(40px * var(--ui)); padding: 0 12px 0 6px; border-radius: 12px; background: var(--white); color: var(--slate); box-shadow: 0 3px 0 rgba(56,56,61,0.2), var(--shadow); text-align: left; }
+.goal-chip { position: absolute; left: 12px; top: calc(var(--hud-top) - 4px); z-index: 5; display: flex; align-items: center; gap: 8px; max-width: min(420px, calc(100% - 330px)); min-width: 220px; min-height: calc(40px * var(--ui)); padding: 4px 12px 4px 6px; border-radius: 12px; background: var(--white); color: var(--slate); box-shadow: 0 3px 0 rgba(56,56,61,0.2), var(--shadow); text-align: left; }
 .goal-chip .g-flag { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--yellow); flex: none; }
 .goal-chip .g-flag svg { width: 20px; height: 20px; fill: none; stroke: var(--slate); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .goal-chip .g-flag svg .fill { fill: var(--white); stroke: none; }
 .goal-chip .g-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; flex: 1; }
 .goal-chip .g-text b { font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.goal-chip .g-text small { font-size: 0.875em; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal-chip .g-text small { font-size: 0.875em; opacity: 0.75; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .goal-chip .g-bar { width: 64px; height: 8px; border-radius: 4px; background: #eef1f4; overflow: hidden; flex: none; }
 .goal-chip .g-bar i { display: block; height: 100%; background: var(--green); }
 .goal-chip .g-pct { font-weight: 700; font-size: 0.9em; font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; }
@@ -311,7 +354,7 @@ select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 2px soli
 .popup { position: absolute; transform: translate(-50%, -100%); font-weight: 700; font-size: 1.1em; color: var(--yellow); text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 0 6px rgba(0,0,0,0.25); white-space: nowrap; pointer-events: none; animation: rise 2.2s ease-out forwards; }
 .popup.info { color: var(--white); font-size: 1em; }
 .popup.bad { color: #FF8C6B; }
-.toast { position: absolute; left: 50%; bottom: calc(var(--dock-h) + 14px); transform: translateX(-50%); background: var(--slate); color: var(--white); padding: 10px 18px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow); animation: pop 0.2s ease; z-index: 6; }
+.toast { position: absolute; left: 50%; bottom: calc(var(--dock-h) + 14px); transform: translateX(-50%); background: var(--slate); color: var(--white); padding: 10px 18px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow); animation: pop 0.2s ease; z-index: 11; }
 .hint { position: absolute; left: 50%; bottom: calc(var(--dock-h) + 14px); transform: translateX(-50%); background: rgba(56,56,61,0.75); color: var(--white); padding: 6px 12px; border-radius: 10px; font-size: 0.85em; pointer-events: none; }
 
 /* Night card + plot picker (centre cards, but the store stays visible above) */
@@ -485,6 +528,11 @@ html.colour-blind .inspect .meter.low i { background-image: repeating-linear-gra
 .lobby.designing .brand { visibility: hidden; }
 .lobby.designing .menu .open-sign { display: none; }
 .designer .designer-title { margin-top: 0; font-size: 1.25em; }
+/* Title and Girl/Guy stay at the top of the scrolling panel, Done at the bottom: nothing half cut off at its edges. */
+.designer .designer-head { position: sticky; top: 0; z-index: 2; background: rgba(255,255,255,0.97); padding: 2px 0 8px; box-shadow: 0 8px 8px -8px rgba(56,56,61,0.18); }
+.designer .designer-foot { position: sticky; bottom: 0; z-index: 2; background: rgba(255,255,255,0.97); padding: 10px 0 2px; margin-top: 10px; box-shadow: 0 -8px 8px -8px rgba(56,56,61,0.18); display: flex; }
+.designer .designer-foot .btn { flex: 1; }
+.designer h3 { scroll-margin-top: 110px; }
 .designer .gender { gap: 8px; margin: 8px 0 2px; }
 .designer .gender .btn { flex: 1; min-height: 44px; font-size: 1.05em; }
 .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 6px; }

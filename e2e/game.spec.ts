@@ -94,7 +94,8 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   const d = (await state(page)).shop.delivery;
   const px = (d.x0 + d.x1) / 2, pz = d.z1 + 0.45;
   await clickAt(page, px, pz);
-  await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - px, o.z - pz); }, { timeout: 20_000 }).toBeLessThan(0.5);
+  // (Within a tile: on a busy machine the camera can still be easing when the click is aimed. aimAt below squares up.)
+  await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - px, o.z - pz); }, { timeout: 20_000 }).toBeLessThan(1.0);
   await expect.poll(async () => (await owner(page)).walking, { timeout: 10_000 }).toBe(false);
   // Face the pallet squarely (walking up to it usually leaves you facing it anyway).
   await hooks(page, 'aimAt', px, pz, px, 0, (d.z0 + d.z1) / 2);

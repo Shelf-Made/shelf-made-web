@@ -36,6 +36,8 @@ const goalKey = (s: GameState) => { const g = goalInfo(s); return `${s.goals.ind
 
 export type Speed = 0 | 1 | 2 | 4;
 export type CardId = 'stock' | 'prices' | 'build' | 'staff' | 'marketing' | 'stats' | 'settings' | 'reviews' | null;
+/** Cards that take the whole screen and stop the clock while open: ordering stock wants your full attention. */
+export const MODAL_CARDS: ReadonlySet<CardId> = new Set<CardId>(['stock']);
 
 export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'delivery' | 'button:prices' | 'button:stock' | 'button:build' | 'button:open' | 'night'; fixtureId?: number }
 
@@ -279,7 +281,7 @@ export class GameRuntime {
   showNightLog(open: boolean): void {
     if (open === !this.nightLogHidden) return;
     this.nightLogHidden = !open;
-    if (open && this.card) this.card = null;
+    if (open && this.card) { this.card = null; this.holdForModal(); }
     this.audio.play(open ? 'cardOpen' : 'cardClose');
     this.emit();
     requestAnimationFrame(() => this.updateSideOffset());
@@ -502,7 +504,7 @@ export class GameRuntime {
     this.lobbyState = null;
     if (this.renderer) { this.renderer.camera.lookY = 0; this.renderer.cutaway = true; }
     this.screen = 'game';
-    this.resetSpeed(); this.card = null;
+    this.modalPause = null; this.resetSpeed(); this.card = null;
     this.forgetSelection();
     this.renderer?.setTown(s.seed, s.shop.plotId);
     this.renderer?.setShop(s);
@@ -512,7 +514,7 @@ export class GameRuntime {
     this.emit();
   }
 
-  toLobby(): void { this.screen = 'lobby'; this.state = null; this.card = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
+  toLobby(): void { this.screen = 'lobby'; this.state = null; this.card = null; this.modalPause = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
   /** A different game: nobody is selected or followed. */
   private forgetSelection(): void {
     this.selectedPerson = null; this.followingPerson = false;
@@ -696,16 +698,29 @@ export class GameRuntime {
    * manager, who walks in real time, would keep crawling at a quarter of their pace after a fast-forwarded day.
    */
   private resetSpeed(): void {
-    this.speed = 1;
+    if (this.modalPause !== null) this.modalPause = 1; else this.speed = 1;
     if (this.state) applyCommand(this.state, { type: 'setTimeScale', scale: 1 });
   }
 
   setSpeed(speed: Speed): void {
+    // A full-screen card holds the clock still: a speed picked meanwhile is the one it comes back to.
+    if (this.modalPause !== null) { this.modalPause = speed; this.emit(); return; }
     if (speed !== this.speed) this.audio.play('speed');
     this.speed = speed;
     // The manager walks in real time whatever the clock speed.
     if (this.state && speed > 0) applyCommand(this.state, { type: 'setTimeScale', scale: speed });
     this.emit();
+  }
+  /** The speed to come back to when a full-screen card shuts (null while none is open). */
+  private modalPause: Speed | null = null;
+  /** Stop the clock while a full-screen card is open, and start it again as it was when it shuts. */
+  private holdForModal(): void {
+    const modal = this.card !== null && MODAL_CARDS.has(this.card);
+    if (modal && this.modalPause === null) { this.modalPause = this.speed; this.speed = 0; }
+    else if (!modal && this.modalPause !== null) {
+      const back = this.modalPause; this.modalPause = null; this.speed = back;
+      if (this.state && back > 0) applyCommand(this.state, { type: 'setTimeScale', scale: back });
+    }
   }
   togglePause(): void { if (this.speed === 0) this.setSpeed(this.prevSpeed || 1); else { this.prevSpeed = this.speed; this.setSpeed(0); } }
   /** The Build card's last tab, so it opens where you left it. */
@@ -740,13 +755,14 @@ export class GameRuntime {
     if (this.card !== 'build') this.unfitBuildView();
     if (card && this.state?.unlocks.newBadges.includes(card)) this.dispatch({ type: 'ackBadge', card });
     this.audio.play(this.card ? 'cardOpen' : 'cardClose');
+    this.holdForModal();
     this.updateSideOffset();
     this.emit();
   }
   closeCard(): void {
     if (this.building) { this.stopPlacing(); this.emit(); return; }
     // (The heat, exposure or paths view goes with the Build card, as when it is toggled shut.)
-    if (this.card) { if (this.card === 'build') this.setOverlay('none'); this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.updateSideOffset(); this.emit(); }
+    if (this.card) { if (this.card === 'build') this.setOverlay('none'); this.card = null; this.fitBuild = false; this.unfitBuildView(); this.audio.play('cardClose'); this.holdForModal(); this.updateSideOffset(); this.emit(); }
   }
   // ---- Your manager, designed in the lobby: kept with your settings, worn in every game you play.
   /** The look you designed, or the default shop worker. */

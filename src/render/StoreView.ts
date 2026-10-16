@@ -221,12 +221,7 @@ export class StoreView {
       const fin = floorPaint(shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino', sc);
       floorParts.push(box(pal, fin.joint, 1, 0.052, 1, ox + x + 0.5, -0.04, oz + z + 0.5));
       const i = Math.round(x - f.x0), j = Math.round(z - backZ);
-      if (fin.boards) {
-        // Boards: four to a tile, each its own shade of honey.
-        for (let k = 0; k < 4; k++) floorParts.push(box(pal, fin.boards[(i * 7 + j * 3 + k * 5) % fin.boards.length]!, 0.985, 0.003, 0.235, ox + x + 0.5, 0.011, oz + z + 0.125 + k * 0.25));
-        continue;
-      }
-      floorParts.push(box(pal, (i + j) % 2 === 1 ? fin.b : fin.a, fin.gap, 0.003, fin.gap, ox + x + 0.5, 0.011, oz + z + 0.5));
+      floorParts.push(...tileFace(pal, fin, ox + x, oz + z, 0, (i + j) % 2 === 1, i * 7 + j * 3));
     }
     // Door thresholds: steel strips across each opening.
     floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.door.x, -0.008, oz + f.z1 + WALL_T / 2));
@@ -520,8 +515,7 @@ export class StoreView {
       // Each tile in its own finish, as downstairs.
       const fin = floorPaint(shop.tileStyles?.[tileKey(x, zOnLevel(z, L))] ?? shop.floorStyle ?? 'lino', this.scheme);
       parts.push(box(pal, fin.joint, 1, 0.08, 1, x + 0.5, y0 - 0.068, z + 0.5));
-      if (fin.boards) { for (let b = 0; b < 4; b++) parts.push(box(pal, fin.boards[(Math.round(x * 7) + z * 3 + b * 5 + 99) % fin.boards.length]!, 0.985, 0.003, 0.235, x + 0.5, y0 + 0.011, z + 0.125 + b * 0.25)); continue; }
-      parts.push(box(pal, (Math.round(x - 0.5) + z) % 2 ? fin.b : fin.a, fin.gap, 0.003, fin.gap, x + 0.5, y0 + 0.011, z + 0.5));
+      parts.push(...tileFace(pal, fin, x, z, y0, (Math.round(x - 0.5) + z) % 2 !== 0, Math.round(x * 7) + z * 3 + 99));
     }
     // Where each flight comes up: no rail between its top step (or the lift's door) and the floor it lands on.
     const landings = new Set<string>();
@@ -1048,15 +1042,40 @@ export { mergeGeometries, paint };
 function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
-function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; gap: number; boards?: string[] } {
+function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean } {
   switch (style) {
-    case 'concrete': return { a: '#C4C0B8', b: '#BBB6AD', joint: '#A39E95', gap: 0.99 };
-    case 'checker': return { a: '#FFFFFF', b: '#38383D', joint: '#D8D8DC', gap: 0.985 };
-    case 'colour': return { a: '#FFFFFF', b: sc.light, joint: '#D8D8DC', gap: 0.975 };
-    case 'stone': return { a: '#F4F7FA', b: '#FFFFFF', joint: '#C9CBD1', gap: 0.97 };
-    case 'wood': return { a: '#D9A066', b: '#C99A62', joint: '#A87B45', gap: 1, boards: ['#D9A066', '#C99A62', '#C8925A', '#D9A066', '#B8824C'] };
-    default: return { a: LINO.a, b: LINO.b, joint: LINO.joint, gap: 0.975 };
+    case 'concrete': return { a: '#C4C0B8', b: '#BBB6AD', joint: '#A39E95' };
+    case 'checker': return { a: '#FFFFFF', b: '#38383D', joint: '#D8D8DC', quarters: true };
+    case 'colour': return { a: '#FFFFFF', b: sc.light, joint: '#D8D8DC' };
+    case 'stone': return { a: '#F4F7FA', b: '#FFFFFF', joint: '#C9CBD1' };
+    case 'wood': return { a: '#D9A066', b: '#C99A62', joint: '#A87B45', boards: ['#D9A066', '#C99A62', '#C8925A', '#D9A066', '#B8824C'] };
+    default: return { a: LINO.a, b: LINO.b, joint: LINO.joint };
   }
+}
+
+/** Every finish's tile face is this wide, so the joints run straight across tiles laid in different finishes. */
+const TILE_FACE = 0.975;
+/**
+ * A floor tile's face (corner x, z; floor at y): grout a few millimetres under it, so the tiles sit inlaid and
+ * flush with each other whatever their finish; wood as four boards, everything else one tile.
+ */
+function tileFace(pal: Parameters<typeof box>[0], fin: ReturnType<typeof floorPaint>, x: number, z: number, y: number, odd: boolean, seed: number): BufferGeometry[] {
+  const out = [box(pal, fin.joint, 1, 0.004, 1, x + 0.5, y + 0.004, z + 0.5)];
+  const inset = (1 - TILE_FACE) / 2;
+  if (fin.boards) {
+    // Four boards, each its own shade of honey, filling the same square as any other tile.
+    const gap = 0.01, deep = (TILE_FACE - 3 * gap) / 4;
+    for (let k = 0; k < 4; k++) out.push(box(pal, fin.boards[(seed + k * 5) % fin.boards.length]!, TILE_FACE, 0.003, deep, x + 0.5, y + 0.011, z + inset + deep / 2 + k * (deep + gap)));
+    return out;
+  }
+  if (fin.quarters) {
+    // Black and white: a little checkerboard in every tile, so one laid on its own looks like its name.
+    const q = TILE_FACE / 2;
+    for (let k = 0; k < 4; k++) out.push(box(pal, (k === 0 || k === 3) !== odd ? fin.a : fin.b, q, 0.003, q, x + inset + q / 2 + (k % 2) * q, y + 0.011, z + inset + q / 2 + Math.floor(k / 2) * q));
+    return out;
+  }
+  out.push(box(pal, odd ? fin.b : fin.a, TILE_FACE, 0.003, TILE_FACE, x + 0.5, y + 0.011, z + 0.5));
+  return out;
 }
 
 /** A window piece's frame, set back inside the wall's thickness (the layer of it nearest the wall faces): its extent on the wall. */
