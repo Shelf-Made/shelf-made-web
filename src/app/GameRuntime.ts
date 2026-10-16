@@ -1333,7 +1333,9 @@ export class GameRuntime {
     const o = s.people.find((p) => p.kind === 'owner');
     if (!o) return;
     r.follow.following = true;
-    r.follow.set(o.x, o.z, s.shop.flip ? Math.PI : 0, FollowCamera.DEFAULT, MathUtils.degToRad(52));
+    // Upstairs, where they are drawn (over the ground floor, a storey up a floor).
+    const l = liftWorld(s.shop, o.x, o.z);
+    r.follow.set(l.x, l.z, s.shop.flip ? Math.PI : 0, FollowCamera.DEFAULT, MathUtils.degToRad(52), l.y);
     r.follow.snap();
   }
 
