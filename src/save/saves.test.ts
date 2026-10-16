@@ -2,7 +2,10 @@ import { openGame } from '@/sim/testUtil';
 import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
-import { tick, SAVE_VERSION } from '@/sim/index';
+import { tick, SAVE_VERSION, gridFor, findPath } from '@/sim/index';
+import { toWorld, toLocal, zOnLevel, rideEnds, isFloor } from '@/sim/layout';
+import { ensureCeilings } from '@/sim/storeys';
+import { doorInside } from '@/sim/people';
 
 describe('saves', () => {
   it('round-trips a game through the backend and keeps determinism', async () => {
@@ -89,5 +92,26 @@ describe('saves', () => {
     // It plays on: the evening rolls tomorrow's plan.
     for (let i = 0; i < 20000 && st.phase !== 'night'; i++) tick(st);
     expect(st.tomorrow?.day).toBe(st.day + 1);
+  });
+
+  it('turns stairs an older save has facing out through a wall to step on from inside, and they go up meanwhile', () => {
+    const s = openGame({ seed: 93, plotId: 'main', name: 'Upstairs', tutorial: false });
+    const o = s.people.find((p) => p.kind === 'owner')!, by = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+    o.x = o.px = by.x; o.z = o.pz = by.z;
+    // As the first build of floors let them go: the foot out on the pavement, a shelf up there.
+    s.shop.fixtures.push({ id: s.nextId++, type: 'stairs', x: 1.5, z: -1, rot: 0, slots: [] });
+    ensureCeilings(s.shop)[1] = [...s.shop.ceilings![0]!];
+    s.shop.fixtures.push({ id: s.nextId++, type: 'shelf', x: -2.5, z: zOnLevel(-4, 1), rot: 1, slots: [] });
+    s.shop.layoutVersion++;
+    const up = toWorld(s.shop, -1, zOnLevel(-3.5, 1));
+    expect(findPath(gridFor(s), doorInside(s), up)).toBeTruthy();
+    expect(findPath(gridFor(s), up, doorInside(s))).toBeTruthy();
+    // Loaded, they are stepped onto from the floor inside, and the way up never goes out of the door.
+    const t = parse(serialize(s)).state, f = t.shop.fixtures.find((x) => x.type === 'stairs')!, b = rideEnds(f).bottom;
+    expect(isFloor(t.shop, b.x - 0.5, b.z - 0.5)).toBe(true);
+    expect(t.notices[t.notices.length - 1]!.text).toMatch(/^Stairs: turned/);
+    const path = findPath(gridFor(t), doorInside(t), up)!;
+    expect(path.some((w) => w.ride !== undefined)).toBe(true);
+    expect(path.every((w) => toLocal(t.shop, w.x, w.z).z < t.shop.floor.z1)).toBe(true);
   });
 });

@@ -100,10 +100,10 @@ function shopGrid(shop: Shop): Grid {
 /**
  * Cells someone coming in at the front door can walk to, by the grid's own steps (walls, the pallet
  * and fixtures block). A tile can be free floor and still sealed off (behind a fridge against the back
- * wall, say): nobody is sent to stand there.
+ * wall, say): nobody is sent to stand there. `ride`: only the rides it lets through (from cell `at`), not kept.
  */
-export function reachableCells(shop: Shop, g: Grid): Uint8Array {
-  const hit = reachCache.get(g);
+export function reachableCells(shop: Shop, g: Grid, ride?: (pt: Portal, at: number) => boolean): Uint8Array {
+  const hit = ride ? undefined : reachCache.get(g);
   if (hit) return hit;
   const r = new Uint8Array(g.w * g.h);
   const [sx, sz] = cellOf(g, toWorld(shop, shop.door.x, shop.floor.z1 - 0.25));
@@ -120,13 +120,13 @@ export function reachableCells(shop: Shop, g: Grid): Uint8Array {
       }
       // Up or down the stairs.
       for (const pt of g.portals?.get(cellIndex(g, x, z)) ?? []) {
-        if (r[pt.to] || isBlocked(g, pt.to % g.w, (pt.to / g.w) | 0)) continue;
+        if (r[pt.to] || isBlocked(g, pt.to % g.w, (pt.to / g.w) | 0) || (ride && !ride(pt, cellIndex(g, x, z)))) continue;
         r[pt.to] = 1;
         todo.push(pt.to % g.w, (pt.to / g.w) | 0);
       }
     }
   }
-  reachCache.set(g, r);
+  if (!ride) reachCache.set(g, r);
   return r;
 }
 
@@ -220,9 +220,8 @@ function addPortals(shop: Shop, g: Grid): void {
     const a = toWorld(shop, e.bottom.x, e.bottom.z), b = toWorld(shop, e.top.x, e.top.z);
     const [ax, az] = cellOf(g, a), [bx, bz] = cellOf(g, b);
     if (isBlocked(g, ax, az) || isBlocked(g, bx, bz)) continue;
+    // (A foot out through a wall, an older save's that could not be turned, still goes up: none is put or left so now.)
     const ia = cellIndex(g, ax, az), ib = cellIndex(g, bx, bz);
-    // Floor to floor only: a foot out through a wall (its tile sold, say) is no way up.
-    if (!g.inside[ia] || !g.inside[ib]) continue;
     const fw = fixtureFacingWorld(shop, f.rot);
     const into = Math.atan2(-fw.x, -fw.z), out = Math.atan2(fw.x, fw.z);
     add(ia, { to: ib, cost: r.cost, ride: r.secs, via: f.id, yaw: into, from: a, at: b });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, tilePrice, MAX_FLOOR, MAX_LEVELS, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
+import { FIXTURES, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, RACK_STANDS, floorTileCount, tilePrice, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
 import { PANEL_PRICE } from '@/sim/storeys';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { schemeById } from '@/sim/schemes';
@@ -15,8 +15,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'checkout', label: 'Tills' }, { id: 'shelves', label: 'Shelves' }, { id: 'furniture', label: 'Furniture' }, { id: 'decor', label: 'Decor' },
   { id: 'walls', label: 'Walls' }, { id: 'lights', label: 'Lights' }, { id: 'floors', label: 'Floors' }, { id: 'storeys', label: 'Upstairs' }, { id: 'outside', label: 'Outside' }, { id: 'shop', label: 'Shop' },
 ];
-/** What each floor is called. */
-const FLOOR_NAMES = ['Ground', '1st', '2nd', '3rd', '4th'];
 /** A word on what each piece is for (the tile's tooltip). */
 const NOTES: Partial<Record<FixtureType, string>> = {
   register: 'Where shoppers pay. You need one to open', kiosk: 'Shoppers scan their own: no cashier', rack: 'Snacks and sweets by the till',

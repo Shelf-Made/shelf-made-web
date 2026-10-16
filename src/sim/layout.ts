@@ -386,6 +386,8 @@ export function storeFrame(plotId: string): Frame {
 
 /** Five floors at most: the ground floor and four above it. */
 export const MAX_LEVELS = 5;
+/** What each floor is called. */
+export const FLOOR_NAMES = ['Ground', '1st', '2nd', '3rd', '4th'];
 /** How much further back each floor up is walked (shop-relative z). */
 export const LEVEL_DZ = -16;
 /** One storey's height (the walls are a unit tall). */

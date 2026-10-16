@@ -4,8 +4,9 @@
  * are open, their shapes, how upstairs is walked) live with the rest of the floor in layout.ts.
  */
 import type { GameState, FixtureType, Person, Rot, Vec2, Waypoint, Shop } from './types';
-import { FIXTURES, MAX_LEVELS, MAX_FLOOR, VERTICAL, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toLocal, zOnLevel, RESALE, type Rect } from './layout';
-import { buildGrid, fixtureStandWorld, fixtureFrontWorld, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid } from './grid';
+import { FIXTURES, MAX_LEVELS, MAX_FLOOR, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toLocal, zOnLevel, RESALE, type Rect } from './layout';
+import { buildGrid, fixtureStandWorld, fixtureFrontWorld, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
+import { findPath } from './pathfinding';
 import { setPath } from './people';
 import { gridFor } from './state';
 import { dollars } from './money';
@@ -87,19 +88,29 @@ export function withoutIt(shop: Shop, type: FixtureType, id?: number): Shop {
 
 /** What a layout's walking grid (the back door shut) reaches from the front door. */
 export interface Reach {
-  /** The ways up that go up: on at a foot or top someone gets to, off on the floor at the other end. */
+  /** The ways up that go up: on at a foot someone gets to (not only by coming down it), off on the floor above. */
   rides: Set<number>;
   /** The floors above with a way up to them. */
   floors: Set<number>;
   /** Pieces upstairs someone can get to (to use it, or get on it). */
   pieces: Set<number>;
-  /** Who upstairs can get back down to the door, and who is on the way up and can get there. */
+  /** Who upstairs (or halfway up) can get back down to the door. */
   people: Set<number>;
+  /** Who is bound for somewhere upstairs, on the way up or across, and can get there. */
+  going: Set<number>;
 }
 export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(shop, -1, true)): Reach {
-  const reach = reachableCells(shop, grid), out: Reach = { rides: new Set(), floors: new Set(), pieces: new Set(), people: new Set() };
+  const reach = reachableCells(shop, grid), out: Reach = { rides: new Set(), floors: new Set(), pieces: new Set(), people: new Set(), going: new Set() };
   const got = (p: Vec2) => { const [cx, cz] = cellOf(grid, nearestWalkable(grid, p, undefined, 1)); return inBounds(grid, cx, cz) && !!reach[cellIndex(grid, cx, cz)]; };
-  for (const [c, list] of grid.portals ?? []) if (reach[c]) for (const pt of list) out.rides.add(pt.via);
+  // A ride up from a foot the door reaches, without riding it: going only up, nobody gets back to a foot by its
+  // own top; failing that (a foot reached by coming down), with that piece left out.
+  const lv = grid.rowLevel, up = (pt: Portal, at: number) => lv![(pt.to / grid.w) | 0]! > lv![(at / grid.w) | 0]!;
+  let climb: Uint8Array | undefined;
+  for (const [c, list] of grid.portals ?? []) for (const pt of list) {
+    if (!reach[c] || !up(pt, c)) continue;
+    climb ??= reachableCells(shop, grid, up);
+    if (climb[c] || reachableCells(shop, grid, (q) => q.via !== pt.via)[c]) out.rides.add(pt.via);
+  }
   for (const f of shop.fixtures) {
     if (FIXTURES[f.type].outdoor) continue;
     const L = levelOf(f);
@@ -110,21 +121,21 @@ export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(sho
   }
   for (const p of state.people) {
     if (p.kind === 'walker') continue;
-    // Halfway up a flight: where they step off.
-    const at = p.climb !== undefined ? p.path[p.pathIdx] ?? p : p;
-    if (levelOfPerson(shop, at) > 0) { if (got(at)) out.people.add(p.id); }
-    else if (p.path.slice(p.pathIdx).some((w) => w.ride !== undefined) && got(p.path[p.path.length - 1]!)) out.people.add(p.id);
+    // Halfway up a flight: from where they step off, and on from there (every ride still to take, and the walk).
+    const on = p.climb !== undefined ? 1 : 0, at = on ? p.path[p.pathIdx] ?? p : p, to = p.path[p.path.length - 1];
+    if (levelOfPerson(shop, at) > 0 && got(at)) out.people.add(p.id);
+    if (to && p.pathIdx + on < p.path.length && levelOfPerson(shop, to) > 0 && got(to)) out.going.add(p.id);
   }
   return out;
 }
 
-const FLOOR_NAMES = ['ground', '1st', '2nd', '3rd', '4th'];
 /** Why the shop after a change (reaching `now`) would cut off something it reaches as it stands (`was`), or null. `skip`: the piece being put down, judged by itself. */
 export function cutOff(state: GameState, was: Reach, now: Reach, shop: Shop, skip?: number): string | null {
   const st = storeysOf(shop);
   for (const L of was.floors) if (st.built[L] && !now.floors.has(L)) return `Would cut off the ${FLOOR_NAMES[L]} floor`;
   for (const f of shop.fixtures) if (f.id !== skip && was.pieces.has(f.id) && !now.pieces.has(f.id)) return `Would cut off the ${FIXTURES[f.type].name.toLowerCase()} upstairs`;
-  for (const p of state.people) if (was.people.has(p.id) && !now.people.has(p.id)) return levelOfPerson(shop, p) > 0 ? 'Someone upstairs would have no way down' : 'Someone is on the way up';
+  for (const p of state.people) if (was.people.has(p.id) && !now.people.has(p.id)) return 'Someone upstairs would have no way down';
+  for (const p of state.people) if (was.going.has(p.id) && !now.going.has(p.id)) return levelOfPerson(shop, p) > 0 ? 'Someone upstairs is on their way across' : 'Someone is on the way up';
   for (const f of shop.fixtures) if (f.id !== skip && was.rides.has(f.id) && !now.rides.has(f.id)) return 'Would block the way up';
   return null;
 }
@@ -217,22 +228,30 @@ export function canTakeAway(state: GameState, id: number): string | null {
 }
 
 /**
- * After the floors or the ways up changed: anyone whose way is gone (a ride that is not there now, a stretch
- * upstairs over floor that is not there now) takes a new one to where they were going.
+ * After the building changed: anyone whose way is gone (a ride that is not there now, a stretch upstairs over
+ * floor that is not there now) takes a new one to where they were going; halfway up a flight (never one that
+ * went: see canTakeAway), on from where they step off. A spill nobody can get to now (on a floor that has shut)
+ * goes with it: no cleaner sets off for it.
  */
 export function repathAfterBuild(state: GameState): void {
   const g = gridFor(state), rides = new Set<string>();
   for (const list of g.portals?.values() ?? []) for (const pt of list) rides.add(`${pt.via}|${pt.at.x}|${pt.at.z}`);
   for (const p of state.people) {
-    if (p.kind === 'walker' || p.climb !== undefined || p.pathIdx >= p.path.length) continue;
-    let from: Vec2 = p, gone = false;
-    for (let i = p.pathIdx; i < p.path.length && !gone; i++) {
+    if (p.kind === 'walker' || p.pathIdx >= p.path.length) continue;
+    const ride = p.climb !== undefined && p.path[p.pathIdx]!.ride !== undefined ? p.path[p.pathIdx]! : null;
+    let from: Vec2 = ride ?? p, gone = false;
+    for (let i = p.pathIdx + (ride ? 1 : 0); i < p.path.length && !gone; i++) {
       const w = p.path[i]!;
       gone = w.ride !== undefined ? !rides.has(`${w.via}|${w.x}|${w.z}`) : levelOfPerson(state.shop, w) > 0 && !lineClear(g, from, w);
       from = w;
     }
-    if (gone) setPath(state, p, p.path[p.path.length - 1]!);
+    if (!gone) continue;
+    const end = p.path[p.path.length - 1]!, to = { x: end.x, z: end.z };
+    if (!ride) { setPath(state, p, to); continue; }
+    p.path = [ride, ...(findPath(g, { x: ride.x, z: ride.z }, to) ?? [to])]; p.pathIdx = 0;
   }
+  const reach = reachableCells(state.shop, g);
+  state.shop.litter = state.shop.litter.filter((l) => { const [cx, cz] = cellOf(g, nearestWalkable(g, l, undefined, 1)); return inBounds(g, cx, cz) && !!reach[cellIndex(g, cx, cz)]; });
 }
 
 /** Which floor a person is on (anyone out in the town is on the ground). */

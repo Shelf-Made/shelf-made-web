@@ -258,7 +258,9 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const opened = VERTICAL.has(fx.type) ? [...storeysOf(state.shop).built] : null;
       state.shop.fixtures.push(fx);
       state.shop.layoutVersion++;
-      if (opened) { ceilFloorsOpened(state.shop, opened); repathAfterBuild(state); }
+      if (opened) ceilFloorsOpened(state.shop, opened);
+      // Anyone whose way it stands in (upstairs, where nobody steps round) goes round it.
+      repathAfterBuild(state);
       popup(state, fixtureCentre(state.shop, fx), dollars(-check.price), 'bad', 1.2);
       cue(state, 'place');
       if (fx.type === 'register' || fx.type === 'kiosk') completeTutorial(state, 'counter');
@@ -283,7 +285,16 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (VERTICAL.has(f.type)) repathAfterBuild(state);
       return { ok: true };
     }
-    case 'moveFixture': { const err = moveFixture(state, cmd.fixtureId, cmd.x, cmd.z, cmd.rot); if (!err) repathAfterBuild(state); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'moveFixture': {
+      const cash = state.cash, err = moveFixture(state, cmd.fixtureId, cmd.x, cmd.z, cmd.rot);
+      if (err) return { ok: false, message: err };
+      // Put down as a new one is (a ceiling over a floor it opens is paid for).
+      const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId)!;
+      if (state.cash < cash) popup(state, fixtureCentre(state.shop, f), dollars(state.cash - cash), 'bad', 1.2);
+      cue(state, 'place');
+      repathAfterBuild(state);
+      return { ok: true };
+    }
     case 'expandShop': { const err = expandShop(state, cmd.sizeId); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'expandLot': { const err = expandLot(state); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'flyers': { const err = startFlyers(state, cmd.areaId); return err ? { ok: false, message: err } : { ok: true }; }

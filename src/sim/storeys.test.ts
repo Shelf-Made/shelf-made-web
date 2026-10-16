@@ -2,14 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType } from './index';
 import { openGame } from './testUtil';
 import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds } from './layout';
-import { fixtureFacingWorld } from './grid';
+import { fixtureFacingWorld, lineClear, isBlocked, cellOf } from './grid';
 import { canPlace, canSellTile, floorCost } from './build';
-import { spawnCustomer, setPath, doorInside } from './people';
+import { spawnCustomer, setPath, doorInside, addSpill } from './people';
 import { levelOfPerson, canAddPanel, canRemovePanel, ensureCeilings, PANEL_PRICE } from './storeys';
 import { looksOf } from './reviews';
 import { Rng } from './rng';
 import { gridFor } from './state';
 import { findPath } from './pathfinding';
+import { dollars } from './money';
+import { makeCandidate } from './staff';
 
 function shop(seed: number): GameState {
   const s = openGame({ seed, plotId: 'main', name: 'Upstairs', tutorial: false });
@@ -164,7 +166,7 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
     expect(place(s, 'shelf', -2.5, zOnLevel(-4, 1), 1).ok).toBe(true);
     // The foot of the stairs.
-    expect(canSellTile(s, 0.5, -1).reason).toMatch(/cut off|way up/);
+    expect(canSellTile(s, 0.5, -1).reason).toBe('You step onto the stairs from it');
     // A tile the floor above hangs from (the panels round it down): the shelf up there would be cut off.
     corridor(s);
     expect(canSellTile(s, -1.5, -4).reason).toBe('Would cut off the shelf upstairs');
@@ -180,6 +182,17 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(canRemovePanel(s, -0.5, -1).ok).toBe(true);
     expect(applyCommand(s, { type: 'removePanel', x: -1.5, z: -4 }).message).toBe('Would cut off the shelf upstairs');
     expect(s.shop.ceilings![0]!.includes('-1.5,-4')).toBe(true);
+  });
+
+  it('works out the floors of each trial layout from its own panels, however like another it is', () => {
+    const s = shop(69); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // Two panels sold, one each: the same pieces, the same layout version, as many panels.
+    const less = (k: string) => ({ ...s.shop, ceilings: ensureCeilings(s.shop).map((r, L) => L ? r : r.filter((t) => t !== k)) });
+    const a = less('-1.5,-4'), b = less('-1.5,-5');
+    expect(storeysOf(a).floors[1]!.has('-1.5,-4')).toBe(false);
+    expect(storeysOf(b).floors[1]!.has('-1.5,-4')).toBe(true);
+    expect(storeysOf(b).floors[1]!.has('-1.5,-5')).toBe(false);
   });
 
   it('puts the foot of the stairs on the floor inside, never out through a wall', () => {
@@ -271,6 +284,20 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(st.top).toBe(2);
     expect(s.shop.ceilings![2]!.length).toBe(n);
     expect(s.cash).toBe(cash - n * PANEL_PRICE);
+    // Shown going, as placing shows the price.
+    expect(s.popups[s.popups.length - 1]!.text).toBe(dollars(-n * PANEL_PRICE));
+  });
+
+  it('pays back the panels over a tile sold, on the floors above, as taking them down would', () => {
+    const s = shop(87); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // The panel over it downstairs came with the tile; the one over it upstairs was bought.
+    const tile = Math.round(RESALE * tilePriceAt(floorTileCount(s.shop) - 1)), panel = Math.round(RESALE * PANEL_PRICE);
+    expect(canSellTile(s, 1.5, -5).price).toBe(-(tile + panel));
+    const cash = s.cash;
+    expect(applyCommand(s, { type: 'sellTile', x: 1.5, z: -5 }).ok).toBe(true);
+    expect(s.cash).toBe(cash + tile + panel);
+    expect(s.shop.ceilings![1]!.includes('1.5,-5')).toBe(false);
   });
 
   it('never pays out for going round: sell the panels, sell the stairs, put them back', () => {
@@ -349,5 +376,96 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(looksOf(s).extras).toBeGreaterThan(before);
     expect(floorCost(s, 'wood')).toBe(7 * 30);
     expect(floorCost(s, 'stone')).toBe(9 * (30 + up.length));
+  });
+});
+
+describe('building up: nobody caught halfway, nothing left behind', () => {
+  /** A shopper by the stairs set off for `to`, and halfway up the first ride on the way. */
+  const climber = (s: GameState, to: { x: number; z: number }) => {
+    const p = spawnCustomer(s, true)!;
+    const at = toWorld(s.shop, 1, -0.6);
+    p.x = p.px = at.x; p.z = p.pz = at.z;
+    expect(setPath(s, p, to)).toBe(true);
+    s.phase = 'open'; p.state = 'browsing'; p.timer = -1; p.list = [{ productId: 'apples', qty: 1 }]; p.listIdx = 0;
+    p.pathIdx = p.path.findIndex((w) => w.ride !== undefined); p.climb = 0.1;
+    return p;
+  };
+
+  it('will not sell a flight someone halfway up another is to take next, and sends them up one left', () => {
+    const s = shop(91); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // On up from the first floor, by where the first comes up: the second floor is open, and bare.
+    expect(place(s, 'stairs', -0.5, zOnLevel(-4, 1), 1).ok).toBe(true);
+    const first = idOf(s, 'stairs'), next = idOf(s, 'stairs', 1);
+    const p = climber(s, toWorld(s.shop, -1.5, zOnLevel(-3.5, 2)));
+    expect(p.path[p.pathIdx]!.via).toBe(first);
+    expect(p.path.slice(p.pathIdx + 1).some((w) => w.via === next)).toBe(true);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: next }).message).toBe('Someone is on the way up.');
+    // With another way up there it goes, and they ride on up the first and take the other.
+    expect(place(s, 'stairs', 1.5, zOnLevel(-4, 1), 0).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: next }).ok).toBe(true);
+    expect(p.climb).toBeDefined();
+    expect(p.path[p.pathIdx]!.via).toBe(first);
+    expect(p.path.some((w) => w.via === next)).toBe(false);
+    let ghost = false;
+    for (let i = 0; i < 30 / TICK && levelOfPerson(s.shop, p) !== 2; i++) {
+      const w = p.path[p.pathIdx];
+      if (p.climb !== undefined && !s.shop.fixtures.some((f) => f.id === w?.via)) ghost = true;
+      tick(s);
+    }
+    expect(ghost).toBe(false);
+    expect(levelOfPerson(s.shop, p)).toBe(2);
+  });
+
+  it('sends someone halfway up the stairs round a panel taken out of their way up there', () => {
+    const s = shop(92); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    const p = climber(s, toWorld(s.shop, -2, zOnLevel(-5.5, 1)));
+    // Right across where they were to walk from the top of the stairs.
+    expect(applyCommand(s, { type: 'removePanel', x: -0.5, z: -4 }).ok).toBe(true);
+    expect(p.climb).toBeDefined();
+    const g = gridFor(s);
+    let from = p.path[p.pathIdx]!;
+    for (const w of p.path.slice(p.pathIdx + 1)) { expect(lineClear(g, from, w)).toBe(true); from = w; }
+    let over = 0;
+    for (let i = 0; i < 20 / TICK && !(p.climb === undefined && p.pathIdx >= p.path.length); i++) {
+      tick(s);
+      const [cx, cz] = cellOf(gridFor(s), p);
+      if (levelOfPerson(s.shop, p) > 0 && isBlocked(gridFor(s), cx, cz)) over++;
+    }
+    expect(levelOfPerson(s.shop, p)).toBe(1);
+    expect(over).toBe(0);
+  });
+
+  it('counts a way up only when its foot is got to from the door, not just down it from its top', () => {
+    const s = shop(94); aside(s);
+    expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).ok).toBe(true);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    // A spare flight by the side wall, its foot on (3.5, -4): walls round that would leave it got on only at the top.
+    expect(place(s, 'stairs', 3.5, -5, 0).ok).toBe(true);
+    const spare = s.shop.fixtures[s.shop.fixtures.length - 1]!.id;
+    expect(place(s, 'wall', 2.5, -4, 0).ok).toBe(true);
+    expect(canPlace(s, 'wall', 3.5, -3, 0).reason).toBe('Would block the way up');
+    // Without it, the walls go up; a flight or a lift with its foot in there would go up from nowhere.
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: spare }).ok).toBe(true);
+    expect(place(s, 'wall', 3.5, -3, 0).ok).toBe(true);
+    expect(canPlace(s, 'stairs', 3.5, -5, 0).reason).toBe('Nobody could get on it from inside');
+    expect(canPlace(s, 'elevator', 3.5, -5, 0).reason).toBe('Nobody could get on it from inside');
+  });
+
+  it('takes a spill up there away with a floor that shuts, so no cleaner goes up for it', () => {
+    const s = shop(95); aside(s);
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    const at = toWorld(s.shop, -1, zOnLevel(-2.5, 1)), n = s.shop.litter.length;
+    expect(addSpill(s, at.x, at.z)).toBe(true);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: idOf(s, 'stairs') }).ok).toBe(true);
+    expect(s.shop.litter.length).toBe(n);
+    const c = makeCandidate(s, 'cleaner');
+    s.staffPool.push(c);
+    expect(applyCommand(s, { type: 'hire', candidateId: c.id }).ok).toBe(true);
+    s.phase = 'open';
+    let up = false;
+    for (let i = 0; i < 60 / TICK; i++) { tick(s); if (s.people.some((p) => p.kind === 'staff' && levelOfPerson(s.shop, p) > 0)) up = true; }
+    expect(up).toBe(false);
   });
 });
