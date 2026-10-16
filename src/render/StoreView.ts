@@ -796,7 +796,8 @@ export class StoreView {
     const lamps = lit.filter((f) => LAMPS.has(f.type));
     if (lamps.length) {
       this.lampPools = new InstancedMesh(spillGeometry(0.95, 0.95, 0, 0.02, 0, 0.5), SPILL, lamps.length);
-      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); this.lampPools!.setMatrixAt(i, m); });
+      // On the floor: a hanging light under a double-height ceiling hangs a storey up, its pool does not.
+      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, f.type === 'pendant' && doubleHeight(shop, f.x, f.z) ? -STOREY : 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); this.lampPools!.setMatrixAt(i, m); });
       this.lampPools.renderOrder = 1;
       this.root.add(this.lampPools);
     }
