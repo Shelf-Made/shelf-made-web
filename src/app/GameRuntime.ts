@@ -5,7 +5,7 @@ import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
-import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, rideEnds } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, rideEnds, STOREY } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
@@ -983,7 +983,9 @@ export class GameRuntime {
   /** Click (or touch) and drag: grab the ground and pull the view along. */
   dragPan(x0: number, y0: number, x1: number, y1: number): void {
     const r = this.renderer; if (!r || !this.inPlay) return;
-    const a = r.groundAt(x0, y0), b = r.groundAt(x1, y1);
+    // Both on the floor grabbed: from outside (every floor drawn) a move off the top boards onto the lawn, or across
+    // the stairwell, would measure from one floor to another (a storey down, and a floor's region away).
+    const a = r.groundAt(x0, y0), b = a && r.groundAt(x1, y1, Math.round(a.y / STOREY));
     if (!a || !b) return;
     if (this.followingPerson) this.stopFollowQuietly();
     r.follow.panWorld(a.x - b.x, a.z - b.z);

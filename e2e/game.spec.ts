@@ -723,6 +723,33 @@ test('from outside, every floor drawn: a spill under the top boards is not drawn
   expect(await aimText(page)).not.toMatch(/spill/i);
 });
 
+test('from outside, every floor drawn: a brisk drag off the top boards pans as far as the pointer went', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upFromOutside(page);
+  const target = () => page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { state: () => { shop: { originX: number; originZ: number; flip?: boolean } }; cameraTarget: () => { x: number; z: number } } }).__shelf;
+    const s = h.state(), t = h.cameraTarget(), f = s.shop.flip ? -1 : 1;
+    return { x: (t.x - s.shop.originX) * f, z: (t.z - s.shop.originZ) * f };
+  });
+  // Grab the first floor's boards by their left edge and drag briskly out over the lawn, a pointer move at a time.
+  const edge = await screenAt(page, -2.5, -3 - 16, 0);
+  const was = await target();
+  await page.mouse.move(edge.x + 20, edge.y);
+  await page.mouse.down();
+  let last = was;
+  for (let i = 1; i <= 4; i++) {
+    await page.mouse.move(edge.x + 20 - 25 * i, edge.y);
+    await drawFrames(page);
+    const now = await target();
+    expect.soft(Math.hypot(now.x - last.x, now.z - last.z), `move ${i}`).toBeLessThan(2);
+    last = now;
+  }
+  await page.mouse.up();
+  // The view went the way the boards were pulled (to the right, the pointer going left), and no further.
+  expect(last.x - was.x).toBeGreaterThan(0.3);
+  expect(Math.abs(last.z - was.z)).toBeLessThan(1.5);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
