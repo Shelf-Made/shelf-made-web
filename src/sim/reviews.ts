@@ -14,7 +14,7 @@ import type { GameState, Person, Look, CustomerType } from './types';
 import { withRng } from './state';
 import type { Rng } from './rng';
 import { productDef } from './products';
-import { FIXTURES, FLOORS, WALLS, DAY_SECONDS, TICK, floorTileList, tileKey, wallSegments, shopArea, highCeilings } from './layout';
+import { FIXTURES, FLOORS, WALLS, DAY_SECONDS, TICK, shopTileList, tileKey, wallSegments, shopArea, highCeilings } from './layout';
 import { priceIndex } from './customers';
 import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
@@ -112,8 +112,8 @@ export function looksOf(state: GameState): Looks {
   const outside = clamp(1 - mess * 0.18 - (teens ? 0.35 : 0), 0, 1);
   // The lot itself: flower beds, trees, benches, paving.
   const curb = lotAppeal(shop);
-  // The floor, tile by tile: what each finish adds, averaged over the shop.
-  const tiles = floorTileList(shop);
+  // The floor, tile by tile on every open floor: what each finish adds, averaged over the shop.
+  const tiles = shopTileList(shop);
   const floor = tiles.reduce((a, t) => a + (FLOORS.find((x) => x.id === (shop.tileStyles?.[tileKey(t.x, t.z)] ?? shop.floorStyle ?? 'lino'))?.looks ?? 0), 0) / Math.max(1, tiles.length);
   // The walls, stretch by stretch, as the floor.
   const segs = wallSegments(shop);

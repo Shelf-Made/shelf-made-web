@@ -386,6 +386,8 @@ export function storeFrame(plotId: string): Frame {
 
 /** Five floors at most: the ground floor and four above it. */
 export const MAX_LEVELS = 5;
+/** What each floor is called. */
+export const FLOOR_NAMES = ['Ground', '1st', '2nd', '3rd', '4th'];
 /** How much further back each floor up is walked (shop-relative z). */
 export const LEVEL_DZ = -16;
 /** One storey's height (the walls are a unit tall). */
@@ -415,7 +417,9 @@ export interface Storeys {
   /** Openings in each floor (keys): where the stairs, an escalator or a lift come up through it. */
   holes: Set<string>[];
 }
-const storeyCache = new WeakMap<object, { sig: string; st: Storeys }>();
+// Keyed on the fixtures, checked against the very gaps and ceiling rows it was worked out from (both are only
+// ever replaced, never edited): a trial shop with the same counts but other tiles must not be handed another's.
+const storeyCache = new WeakMap<object, { sig: string; gaps?: string[]; rows?: string[][]; st: Storeys }>();
 /** The panels over floor `level` (keys); an old save has them over the whole ground floor. */
 export function panelsOver(shop: FloorShape, level: number): Set<string> {
   const row = shop.ceilings?.[level];
@@ -435,7 +439,7 @@ export function storeysOf(shop: FloorShape): Storeys {
   for (const f of fixtures) if (VERTICAL.has(f.type)) sig += `${f.type}${f.x},${f.z},${f.rot};`;
   const key = (shop.fixtures ?? shop) as object;
   const hit = storeyCache.get(key);
-  if (hit && hit.sig === sig) return hit.st;
+  if (hit && hit.sig === sig && hit.gaps === shop.gaps && (hit.rows ?? []).every((r, i) => r === shop.ceilings?.[i])) return hit.st;
   const ground = new Set(groundTiles(shop).map((t) => tileKey(t.x, t.z)));
   const st: Storeys = { built: [true], top: 0, floors: [ground], inside: [ground], holes: [new Set()] };
   for (let L = 1; L < MAX_LEVELS; L++) {
@@ -459,7 +463,7 @@ export function storeysOf(shop: FloorShape): Storeys {
     st.inside.push(inside);
     if (built) st.top = L;
   }
-  storeyCache.set(key, { sig, st });
+  storeyCache.set(key, { sig, gaps: shop.gaps, rows: shop.ceilings && [...shop.ceilings], st });
   return st;
 }
 /** The floor area people can shop on: the ground floor and every open floor above it. */
@@ -488,6 +492,11 @@ function upperFloor(shop: FloorShape, x: number, z: number): boolean {
 export function levelTileList(shop: FloorShape, level: number): { x: number; z: number }[] {
   if (level === 0) return floorTileList(shop);
   return [...(storeysOf(shop).floors[level] ?? [])].map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z: zOnLevel(z, level) }; });
+}
+/** Every floor tile of every open floor (corners in each floor's region): the whole shop, for its finish. */
+export function shopTileList(shop: FloorShape): { x: number; z: number }[] {
+  const st = storeysOf(shop);
+  return st.built.flatMap((b, L) => b ? levelTileList(shop, L) : []);
 }
 /** Is the tile (ground corner) inside the building on floor `level` (floor, an opening, or a double-height space)? */
 export function insideOn(shop: FloorShape, level: number, x: number, z: number): boolean { return storeysOf(shop).inside[level]?.has(tileKey(x, z)) ?? false; }

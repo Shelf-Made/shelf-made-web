@@ -6,7 +6,7 @@ import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
 import { inferGoals } from '@/sim/goals';
 import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
-import { windowsFromSides } from '@/sim/build';
+import { windowsFromSides, stepOnInside } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
 import type { StorageBackend } from './storage';
 
@@ -118,6 +118,8 @@ export function migrate(file: SaveFile): SaveFile {
   }
   // Staff all wore the one shop-worker character: each gets a look of their own.
   for (const p of st.people ?? []) if (p.kind === 'staff' && p.look.model >= 12) p.look = staffLook(p.id, { model: p.id % 12, variant: p.look.variant, height: p.look.height });
+  // Stairs put facing out through a wall (the first build of floors let that by) are turned to step on from inside.
+  stepOnInside(st);
   return { ...file, version: v, state: st };
 }
 

@@ -441,7 +441,8 @@ test('building up: stairs open the first floor, a shelf goes up there, and a cei
   await expect(build.getByRole('group', { name: 'Which floor' }).getByRole('button')).toHaveText(['Ground']);
   await build.getByRole('button', { name: /^Stairs/ }).dispatchEvent('click');
   await pointAt(page, 1.0, -1.5);
-  await expect.poll(() => aimText(page)).toMatch(/^Place Stairs/);
+  // The price takes in the ceiling over the floor they open (30 panels at $25).
+  await expect.poll(() => aimText(page)).toMatch(/^Place Stairs · \$1,200/);
   await clickAt(page, 1.0, -1.5);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'stairs').map((f) => `${f.x},${f.z}`)).toEqual(['0.5,-2']);
   await page.keyboard.press('Escape');

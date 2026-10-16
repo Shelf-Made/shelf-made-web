@@ -4,15 +4,17 @@
  * stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
-import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS } from './layout';
-import { placeUpstairs, rideReachable, ensureCeilings, levelOfPerson } from './storeys';
+import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
+import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
 import { buildGrid, fixtureFrontWorld, fixtureBackWorld, fixtureStandWorld, frontInside } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
+import { resetGridCache } from './state';
 import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays } from './lot';
 
-export interface PlaceCheck { ok: boolean; reason: string; price: number }
+/** `ceiling`: the part of the price that is a ceiling over a floor it opens (all a move costs). */
+export interface PlaceCheck { ok: boolean; reason: string; price: number; ceiling?: number }
 
 /** Can this fixture go here? Reason is in plain words for the ghost label. */
 export function canPlace(state: GameState, type: FixtureType, x: number, z: number, rot: Rot, ignoreId?: number): PlaceCheck {
@@ -21,12 +23,12 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (def.outdoor) return canPlaceOutside(state, type, x, z, rot, ignoreId);
   const shop = state.shop;
   const f = shop.floor;
-  const price = def.price;
+  let price = def.price;
   if (Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6) return { ok: false, reason: 'Snap to a floor tile', price };
   const level = levelOfZ(z + 0.5);
   const up = placeUpstairs(state, type, x, z, rot, ignoreId);
   if (up) return up;
-  if (!isFloor(shop, x, z)) return { ok: false, reason: level > 0 ? 'Only on the floor up here' : 'Only inside the shop floor', price };
+  if (!isFloor(withoutIt(shop, type, ignoreId), x, z)) return { ok: false, reason: level > 0 ? 'Only on the floor up here' : 'Only inside the shop floor', price };
   // One thing per tile, except a window: it is up in the wall behind, so a shelf can stand in front of it
   // (but a light hung on the same wall cannot share it). The stairs take two.
   const sameWall = (fx: Fixture) => !!def.onWall && !!FIXTURES[fx.type].onWall && fx.rot === rot;
@@ -48,7 +50,13 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   }
   const d = shop.delivery;
   if (!def.onWall && d && overlaps(mine, d)) return { ok: false, reason: 'That is where deliveries go', price };
-  if (state.cash < price && ignoreId === undefined) return { ok: false, reason: `Need ${dollars(price)}`, price };
+  // Trial layout (a piece moved keeps its id): a floor it opens gets its ceiling, at the panel price.
+  const trial: Fixture = { id: ignoreId ?? -1, type, x, z, rot, slots: [] };
+  const fixtures = shop.fixtures.filter((fx) => fx.id !== ignoreId).concat([trial]);
+  const trialShop = { ...shop, fixtures };
+  const ceiling = VERTICAL.has(type) ? ceilingPrice(shop, trialShop) : 0, cost = (ignoreId === undefined ? price : 0) + ceiling;
+  price += ceiling;
+  if (state.cash < cost) return { ok: false, reason: `Need ${dollars(cost)}${ceiling ? ', with a ceiling over the floor it opens' : ''}`, price };
   // Never on top of the manager.
   const owner = state.people.find((p) => p.kind === 'owner');
   if (owner && !def.onWall) { const lo = toLocal(shop, owner.x, owner.z); if (lo.x > mine.x0 - 0.3 && lo.x < mine.x1 + 0.3 && lo.z > mine.z0 - 0.3 && lo.z < mine.z1 + 0.3) return { ok: false, reason: 'You are standing there', price }; }
@@ -56,10 +64,10 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
     const bx = x - [0, 1, 0, -1][rot]!, bz = z - [1, 0, -1, 0][rot]!;
     if (!isFloor(shop, bx, bz)) return { ok: false, reason: 'Leave room behind the counter to stand', price };
   }
-  // Trial layout: every front and both doors must stay reachable.
-  const trial: Fixture = { id: -1, type, x, z, rot, slots: [] };
-  const fixtures = shop.fixtures.filter((fx) => fx.id !== ignoreId).concat([trial]);
-  const grid = buildGrid({ ...shop, fixtures }, -1);
+  // A way up moved must not shut a floor with anything or anyone on it (as selling it would not).
+  if (ignoreId !== undefined && VERTICAL.has(type)) { const why = strands(state, trialShop); if (why) return { ok: false, reason: why, price }; }
+  // Every front and both doors must stay reachable.
+  const grid = buildGrid(trialShop, -1);
   const from = doorInside(state);
   if (!findPath(grid, doorOutside(state), from)) return { ok: false, reason: 'Would block the door', price };
   // Nor boxing the manager in.
@@ -68,11 +76,10 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the back door', price };
   // Inside, from the front door: never by going out and round to the back door (a wall across the
   // shop must not cut the back half off).
-  const inside = buildGrid({ ...shop, fixtures }, -1, true);
+  const inside = buildGrid(trialShop, -1, true);
   if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) return { ok: false, reason: 'Would cut the shop in two', price };
   // The pallet where deliveries land: whoever stocks the shelves must be able to reach it.
   if (!findPath(inside, from, storeroomPoint(state))) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
-  const trialShop = { ...shop, fixtures };
   for (const fx of fixtures) {
     if (FIXTURES[fx.type].slots === 0 && fx.type !== 'register' && fx.type !== 'kiosk') continue;
     // Shoppers queue at a till's front: it has to face into the room. Shelves are used from whichever side is free inside.
@@ -82,15 +89,13 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
     if (!stand || !findPath(inside, from, stand)) return { ok: false, reason: fx === trial ? 'Nobody could reach it from inside' : `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()}`, price };
     if (fx.type === 'register' && !findPath(inside, from, fixtureBackWorld(shop, fx))) return { ok: false, reason: fx === trial ? 'You could not get behind it' : 'Would block the way behind the counter', price };
   }
-  // Every way up still goes up (from its foot to the floor above), and the new one too.
-  for (const fx of fixtures) if (VERTICAL.has(fx.type) && !rideReachable(state, inside, fx)) return { ok: false, reason: fx === trial ? 'Nobody could get on it from inside' : 'Would block the way up', price };
-  // Upstairs, nothing may be cut off from the stairs.
-  for (const fx of fixtures) {
-    if (fx === trial || FIXTURES[fx.type].outdoor || FIXTURES[fx.type].walkable || levelOf(fx) === 0 || FIXTURES[fx.type].slots > 0 || fx.type === 'register' || fx.type === 'kiosk') continue;
-    const stand = VERTICAL.has(fx.type) ? fixtureFrontWorld(shop, fx) : fixtureStandWorld(trialShop, fx, undefined, grid);
-    if (stand && !findPath(inside, from, stand)) return { ok: false, reason: `Would cut off the ${FIXTURES[fx.type].name.toLowerCase()} upstairs`, price };
-  }
-  return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : VERTICAL.has(type) ? `${def.name} up to the next floor` : def.name, price };
+  // A way up goes up: on from the floor at its foot, off on the floor above.
+  const now = reachOf(state, trialShop, inside);
+  if (VERTICAL.has(type) && !now.rides.has(trial.id)) return { ok: false, reason: 'Nobody could get on it from inside', price };
+  // Nothing upstairs cut off (a floor, a piece, someone up there or on the way), and every way up that goes up still does.
+  const why = cutOff(state, reachOf(state, shop), now, trialShop, trial.id);
+  if (why) return { ok: false, reason: why, price };
+  return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : VERTICAL.has(type) ? `${def.name} up to the next floor${ceiling ? `, and a ceiling over it for ${dollars(ceiling)}` : ''}` : def.name, price, ...(ceiling ? { ceiling } : {}) };
 }
 
 /** The finish on one tile of floor. */
@@ -98,10 +103,10 @@ export function styleAt(shop: GameState['shop'], x: number, z: number): FloorSty
   return shop.tileStyles?.[tileKey(x, z)] ?? shop.floorStyle ?? 'lino';
 }
 
-/** What laying a finish over the whole shop would cost now (the tiles that have another finish). */
+/** What laying a finish over the whole shop (every open floor) would cost now (the tiles that have another finish). */
 export function floorCost(state: GameState, style: FloorStyle): number {
   const per = FLOORS.find((x) => x.id === style)?.perTile ?? 0;
-  return per * floorTileList(state.shop).filter((t) => styleAt(state.shop, t.x, t.z) !== style).length;
+  return per * shopTileList(state.shop).filter((t) => styleAt(state.shop, t.x, t.z) !== style).length;
 }
 
 /** Lay a finish over the whole shop. */
@@ -109,7 +114,7 @@ export function setFloor(state: GameState, style: FloorStyle): string | null {
   const def = FLOORS.find((x) => x.id === style);
   if (!def) return 'No such floor.';
   const cost = floorCost(state, style);
-  if (!floorTileList(state.shop).some((t) => styleAt(state.shop, t.x, t.z) !== style)) return 'That floor is down already.';
+  if (!shopTileList(state.shop).some((t) => styleAt(state.shop, t.x, t.z) !== style)) return 'That floor is down already.';
   if (state.cash < cost) return `Need ${dollars(cost)}`;
   state.cash -= cost;
   state.shop.floorStyle = style;
@@ -163,7 +168,9 @@ export function paintWall(state: GameState, key: string, style: WallStyle): stri
  * anyone standing on it, nor one the rest of the floor hangs from (it must stay one room).
  */
 export function canSellTile(state: GameState, x: number, z: number): PlaceCheck {
-  const shop = state.shop, n = floorTileCount(shop), price = -Math.round(RESALE * tilePriceAt(n - 1));
+  // The panels over it on the floors above go with it, 60% back as taken down (the one over the ground floor came with it).
+  const shop = state.shop, n = floorTileCount(shop), above = shop.ceilings?.slice(1).filter((r) => r.includes(tileKey(x, z))).length ?? 0;
+  const price = -Math.round(RESALE * tilePriceAt(n - 1)) - above * Math.round(RESALE * PANEL_PRICE);
   if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Upstairs, take the ceiling panel down instead (Upstairs tab)', price };
   if (!isFloor(shop, x, z)) return { ok: false, reason: 'Point at a tile of floor', price };
   if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z + 1 === shop.floor.z1) return { ok: false, reason: 'The front door stands here', price };
@@ -175,6 +182,7 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
     if (shop.fixtures.some((f) => !FIXTURES[f.type].outdoor && levelOf(f) === L && overlaps(footprintOf(f.type, f.x, f.z, f.rot), t))) return { ok: false, reason: 'Something upstairs stands over it', price };
   }
   if (shop.fixtures.some((f) => VERTICAL.has(f.type) && (() => { const t = rideEnds(f).top; return t.x - 0.5 === x && groundZ(t.z - 0.5) === z; })())) return { ok: false, reason: 'The stairs come up over it', price };
+  if (shop.fixtures.some((f) => VERTICAL.has(f.type) && (() => { const b = rideEnds(f).bottom; return b.x - 0.5 === x && groundZ(b.z - 0.5) === z; })())) return { ok: false, reason: 'You step onto the stairs from it', price };
   if (state.people.some((p) => p.kind !== 'walker' && levelOfPerson(shop, p) > 0 && (() => { const l = toLocal(shop, p.x, p.z); return l.x > x && l.x < x + 1 && groundZ(l.z) > z && groundZ(l.z) < z + 1; })())) return { ok: false, reason: 'Someone is standing over it upstairs', price };
   if (state.people.some((p) => { const l = toLocal(shop, p.x, p.z); return l.x > x && l.x < x + 1 && l.z > z && l.z < z + 1; })) return { ok: false, reason: 'Someone is standing there', price };
   // The back door's column keeps a tile.
@@ -195,7 +203,11 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   if (paintedBays(trial).bays.length < paintedBays(shop).bays.length) return { ok: false, reason: 'A bay at the back would go: paint it out first', price };
   const clash = lotClash(state, trial);
   if (clash) return { ok: false, reason: clash, price };
-  return { ok: true, reason: 'Sell this tile', price };
+  // The floors above lose it too: nothing up there (nor the way up to them) may be cut off.
+  trial.ceilings = shop.ceilings?.map((row) => row.filter((k) => k !== tileKey(x, z)));
+  const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
+  if (why) return { ok: false, reason: why, price };
+  return { ok: true, reason: above ? 'Sell this tile, and the panels over it' : 'Sell this tile', price };
 }
 
 /** Sell a tile of floor back: the walls come in round it. */
@@ -209,7 +221,9 @@ export function sellTile(state: GameState, x: number, z: number): string | null 
   const rows = ensureCeilings(shop);
   for (let L = 0; L < rows.length; L++) rows[L] = rows[L]!.filter((k) => k !== tileKey(x, z));
   setFloorTiles(shop, rest);
-  if (shop.tileStyles?.[tileKey(x, z)]) { const st = { ...shop.tileStyles }; delete st[tileKey(x, z)]; shop.tileStyles = st; }
+  // Its finish goes with it, on every floor (bought back, it is bare again up there too).
+  const keys = Array.from({ length: MAX_LEVELS }, (_, L) => tileKey(x, zOnLevel(z, L)));
+  if (keys.some((k) => shop.tileStyles?.[k])) { const st = { ...shop.tileStyles }; for (const k of keys) delete st[k]; shop.tileStyles = st; }
   // The back door comes forward to the back edge of its column.
   const col = rest.filter((t) => Math.abs(t.x + 0.5 - shop.backDoor.x) < 0.01);
   if (col.length) shop.backDoor = { x: shop.backDoor.x, z: Math.min(...col.map((t) => t.z)) };
@@ -381,7 +395,32 @@ export function moveFixture(state: GameState, id: number, x: number, z: number, 
   if (state.people.some((p) => p.climb !== undefined && p.path[p.pathIdx]?.via === id)) return 'Someone is on it: wait till they are off.';
   const check = canPlace(state, f.type, x, z, rot, id);
   if (!check.ok) return check.reason;
+  const opened = VERTICAL.has(f.type) ? [...storeysOf(state.shop).built] : null;
   f.x = x; f.z = z; f.rot = rot;
   state.shop.layoutVersion++;
+  // A floor it opens where it goes gets its ceiling, as placing it there would.
+  if (opened) { ceilFloorsOpened(state.shop, opened); state.cash -= check.ceiling ?? 0; }
   return null;
+}
+
+/**
+ * Loading an older save: a way up facing out through a wall (the first build of floors let one be put so) is
+ * turned, or moved a tile or two, to be stepped onto from the floor inside. With nowhere it fits, it stays and
+ * still goes up, from outside, and the news says so.
+ */
+export function stepOnInside(state: GameState): void {
+  const shop = state.shop, out = shop.fixtures.filter((f) => VERTICAL.has(f.type) && (() => { const b = rideEnds(f).bottom; return !isFloor(shop, b.x - 0.5, b.z - 0.5); })());
+  if (!out.length) return;
+  // Never the walking grid of the game played before this one.
+  resetGridCache();
+  for (const f of out) {
+    let moved = false;
+    for (let r = 0; r <= 2 && !moved; r++) for (let dz = -r; dz <= r && !moved; dz++) for (let dx = -r; dx <= r && !moved; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      for (const k of [2, 1, 3, 0]) if (!moved) moved = !moveFixture(state, f.id, f.x + dx, f.z + dz, ((f.rot + k) % 4) as Rot);
+    }
+    const name = FIXTURES[f.type].name;
+    state.notices.push({ day: state.day, text: moved ? `${name}: turned to be stepped onto from inside the shop.` : `${name}: stepped onto from outside. Turn or move it to step on from inside.`, kind: 'info' });
+  }
+  repathAfterBuild(state);
 }
