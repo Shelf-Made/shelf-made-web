@@ -345,7 +345,7 @@ export interface Shop {
   scheme: string;
   /** The floor's finish (older saves: the checker lino). */
   floorStyle?: FloorStyle;
-  /** The inside finish of the outer walls, stretch by stretch where it differs from `wallStyle` (keys from wallKey). Old saves: painted bands. */
+  /** The inside finish of the outer walls, stretch by stretch where it differs from `wallStyle` (keys from wallKey). Old saves had painted bands, said nowhere: written down on loading (bandsWrittenDown). */
   wallStyle?: WallStyle;
   wallStyles?: Record<string, WallStyle>;
   /** Windows bought for the side and back walls. */

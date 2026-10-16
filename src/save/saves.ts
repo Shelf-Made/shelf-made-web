@@ -6,7 +6,7 @@ import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
 import { inferGoals } from '@/sim/goals';
 import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
-import { windowsFromSides, stepOnInside } from '@/sim/build';
+import { windowsFromSides, stepOnInside, bandsWrittenDown } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
 import type { StorageBackend } from './storage';
 
@@ -111,6 +111,8 @@ export function migrate(file: SaveFile): SaveFile {
   if (sr && sr.z1 > sr.z0) { st.shop.floor = { ...st.shop.floor, z0: Math.min(st.shop.floor.z0, sr.z0) }; st.shop.storeroom = { x0: st.shop.floor.x0, z0: st.shop.floor.z0, x1: st.shop.floor.x1, z1: st.shop.floor.z0 }; }
   // Whole walls of windows become a Window piece on each tile of them.
   windowsFromSides(st);
+  // Painted bands on every wall, said nowhere: written down stretch by stretch, and new walls come plain.
+  bandsWrittenDown(st);
   // Bays were painted a row at a time: the same bays, in the same order, as a plan to paint one at a time from.
   if (!st.shop.bayPlan) {
     st.shop.bayPlan = paintedBays(st.shop).bays.map((b) => b.id);

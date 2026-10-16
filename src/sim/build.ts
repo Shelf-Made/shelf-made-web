@@ -346,6 +346,17 @@ export function facingOffWall(state: GameState, type: FixtureType, x: number, z:
   return null;
 }
 
+/**
+ * Old saves had painted bands on every wall, said nowhere: each stretch there is keeps them, written down, and walls
+ * gained later come plain, as in a new game (bands for nothing on every new stretch sold back as plain paid out).
+ */
+export function bandsWrittenDown(state: GameState): void {
+  const shop = state.shop;
+  if (shop.wallStyle) return;
+  shop.wallStyles = { ...Object.fromEntries(wallSegments(shop).map((w) => [w.key, 'bands' as WallStyle])), ...shop.wallStyles };
+  shop.wallStyle = 'plain';
+}
+
 /** Old saves glazed whole walls: a window on every tile of them instead. */
 export function windowsFromSides(state: GameState): void {
   const shop = state.shop, sides = shop.windows;

@@ -3,7 +3,9 @@ import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
 import { tick, SAVE_VERSION, gridFor, findPath, applyCommand, type GameState } from '@/sim/index';
-import { toWorld, toLocal, zOnLevel, rideEnds, isFloor } from '@/sim/layout';
+import { toWorld, toLocal, zOnLevel, rideEnds, isFloor, wallSegments } from '@/sim/layout';
+import { wallStyleAt } from '@/sim/build';
+import { looksOf } from '@/sim/reviews';
 import { ensureCeilings } from '@/sim/storeys';
 import { doorInside } from '@/sim/people';
 
@@ -143,5 +145,24 @@ describe('saves', () => {
       expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).message, name).toBeUndefined();
       expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: 1.5, z: -5, rot: 0 }).message, name).toBeUndefined();
     }
+  });
+  it("keeps an older save's painted walls, and walls it gains come plain, never paint to sell back", () => {
+    const s = openGame({ seed: 6, plotId: 'main', name: 'Bands', tutorial: false });
+    // Saved before wall finishes went on a stretch at a time: painted bands all round, said nowhere.
+    delete s.shop.wallStyle; delete s.shop.ceilings;
+    const looks = looksOf(s).score;
+    const t = parse(serialize(s)).state, was = wallSegments(t.shop).map((w) => w.key);
+    expect(was.every((k) => wallStyleAt(t.shop, k) === 'bands')).toBe(true);
+    expect(looksOf(t).score).toBeCloseTo(looks, 6);
+    const o = t.people.find((p) => p.kind === 'owner')!, by = toWorld(t.shop, t.shop.door.x, t.shop.floor.z1 + 0.8);
+    o.x = o.px = by.x; o.z = o.pz = by.z;
+    // A panel down makes walls round the space above; painting them plain and the panel back up pays nothing.
+    t.cash = 1000;
+    expect(applyCommand(t, { type: 'removePanel', x: -1.5, z: -3 }).ok).toBe(true);
+    const fresh = wallSegments(t.shop).filter((w) => !was.includes(w.key));
+    expect(fresh.length).toBeGreaterThan(0);
+    for (const w of fresh) { expect(wallStyleAt(t.shop, w.key)).toBe('plain'); applyCommand(t, { type: 'paintWall', key: w.key, style: 'plain' }); }
+    expect(applyCommand(t, { type: 'addPanel', x: -1.5, z: -3 }).ok).toBe(true);
+    expect(t.cash).toBeLessThan(1000);
   });
 });
