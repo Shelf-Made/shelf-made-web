@@ -36,6 +36,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (shop.fixtures.some((fx) => fx.id !== ignoreId && !FIXTURES[fx.type].outdoor && (fx.x === x && fx.z === z
     ? (sameWall(fx) || (type !== 'window' && fx.type !== 'window'))
     : type !== 'window' && fx.type !== 'window' && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), mine)))) return { ok: false, reason: 'Something is already there', price };
+  // Nor where a ride is got on or comes off: whoever steps off would step into it (nor may a flight come up onto anything).
+  const ends = def.walkable ? undefined : shop.fixtures.find((fx) => fx.id !== ignoreId && VERTICAL.has(fx.type) && (() => { const e = rideEnds(fx); return [e.bottom, e.top].some((t) => overlaps(mine, { x0: t.x - 0.5, z0: t.z - 0.5, x1: t.x + 0.5, z1: t.z + 0.5 })); })());
+  if (ends) return { ok: false, reason: `Keep the way on and off the ${FIXTURES[ends.type].name.toLowerCase()} clear`, price };
   // A doormat, a rug, a light on the wall: nothing anyone could bump into, so they may go by the doors.
   if (!def.walkable && overlaps(mine, { x0: shop.door.x - 0.5, z0: f.z1 - 1, x1: shop.door.x + 0.5, z1: f.z1 })) return { ok: false, reason: 'Keep the front door clear', price };
   if (!def.walkable && overlaps(mine, { x0: shop.backDoor.x - 0.5, z0: shop.backDoor.z, x1: shop.backDoor.x + 0.5, z1: shop.backDoor.z + 1 })) return { ok: false, reason: 'Keep the back door clear', price };

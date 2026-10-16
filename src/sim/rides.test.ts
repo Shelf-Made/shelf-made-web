@@ -161,6 +161,25 @@ describe('on and off a ride', () => {
       expect(cut, type).toEqual([]);
     }
   });
+
+  // Something put on the tile a ride starts or ends on (a shallow piece fits beside where they step off) had riders
+  // stepping off into it; the other way round, a flight may not come up onto something.
+  it('nothing goes on the tile a ride starts or ends on', () => {
+    for (const type of ['stairs', 'escalator', 'elevator'] as const) {
+      const s = shop(8);
+      expect(place(s, type, STAIRS.x, STAIRS.z).ok).toBe(true);
+      const e = rideEnds({ type, x: STAIRS.x, z: STAIRS.z, rot: 0 });
+      for (const t of [e.bottom, e.top]) for (const piece of ['fridge', 'endcap', 'bench'] as const) for (const rot of [0, 1, 2, 3] as const) {
+        expect(canPlace(s, piece, t.x - 0.5, t.z - 0.5, rot).reason, `${piece} on ${type}'s ${t === e.top ? 'top' : 'foot'}`).toMatch(/clear/);
+      }
+      // A rug is walked over.
+      expect(canPlace(s, 'rug', e.bottom.x - 0.5, e.bottom.z - 0.5, 0).ok).toBe(true);
+      // Nor a way up put in with something where it is got on.
+      const t = shop(8);
+      expect(place(t, 'fridge', e.bottom.x - 0.5, e.bottom.z - 0.5, 0).ok).toBe(true);
+      expect(canPlace(t, type, STAIRS.x, STAIRS.z, 0).reason).toMatch(/clear/);
+    }
+  });
 });
 
 describe('a key tapped on the way up a flight clicked for', () => {

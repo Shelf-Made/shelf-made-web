@@ -60,6 +60,8 @@ export function placeUpstairs(state: GameState, type: FixtureType, x: number, z:
   // Stepped onto from the floor in front of it (a lift's door the same), never from out through a wall.
   const ends = rideEnds({ type, x, z, rot });
   if (!isFloor(shop, ends.bottom.x - 0.5, ends.bottom.z - 0.5)) return { ok: false, reason: 'Turn it to step on from the floor', price };
+  const foot = { x0: ends.bottom.x - 0.5, z0: ends.bottom.z - 0.5, x1: ends.bottom.x + 0.5, z1: ends.bottom.z + 0.5 };
+  if (onLevel(shop, level).some((f) => f.id !== ignoreId && !FIXTURES[f.type].walkable && overlaps(footprintOf(f.type, f.x, f.z, f.rot), foot))) return { ok: false, reason: 'Keep the way on clear: something stands where you get on', price };
   // Where it comes off upstairs: a tile with a panel over it (the floor up there), clear of anything.
   const top = ends.top, tx = top.x - 0.5, tz = groundZ(top.z - 0.5);
   if (!isFloor(shop, tx, zOnLevel(tz, level)) && !st.holes[level]?.has(tileKey(tx, tz))) return { ok: false, reason: 'Turn it to come up over the floor', price };

@@ -232,11 +232,11 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
     // A second flight with a plant on its foot: nobody could get on it (the first one is no excuse).
     expect(place(s, 'plant', SECOND.x, SECOND.z + 1, 0).ok).toBe(true);
-    expect(canPlace(s, 'stairs', SECOND.x, SECOND.z, 0).reason).toBe('Nobody could get on it from inside');
+    expect(canPlace(s, 'stairs', SECOND.x, SECOND.z, 0).reason).toBe('Keep the way on clear: something stands where you get on');
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: idOf(s, 'plant') }).ok).toBe(true);
     // In properly, nothing may then stand on its foot.
     expect(place(s, 'stairs', SECOND.x, SECOND.z, 0).ok).toBe(true);
-    expect(canPlace(s, 'plant', SECOND.x, SECOND.z + 1, 0).reason).toBe('Would block the way up');
+    expect(canPlace(s, 'plant', SECOND.x, SECOND.z + 1, 0).reason).toBe('Keep the way on and off the stairs clear');
     // A flight left blocked (an older save): selling the one that works would leave the floor above with no way up...
     s.shop.fixtures.push({ id: s.nextId++, type: 'plant', x: SECOND.x, z: SECOND.z + 1, rot: 0, slots: [] });
     s.shop.layoutVersion++;
