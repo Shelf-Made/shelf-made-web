@@ -405,12 +405,12 @@ export class WorldRenderer {
   private readonly tmpA = new Vector3();
   private readonly tmpB = new Vector3();
 
-  /** Ground point under a canvas pixel: on the floor in view, as the sim has it (upstairs, in that floor's region). */
-  groundAt(px: number, py: number): Vector3 | null {
+  /** Ground point under a canvas pixel: on the floor in view (or floor `level`), as the sim has it (upstairs, in that floor's region). */
+  groundAt(px: number, py: number, level = this.viewLevel ?? 0): Vector3 | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
-    const level = this.viewLevel ?? 0, h = level * STOREY;
+    const h = level * STOREY;
     const t = (h - this.ray.ray.origin.y) / this.ray.ray.direction.y;
     if (t <= 0) return null;
     const p = new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);
