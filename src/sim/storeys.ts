@@ -144,11 +144,14 @@ export function cutOff(state: GameState, was: Reach, now: Reach, shop: Shop, ski
   return null;
 }
 
-/** Would this layout shut a floor with anything or anyone still on it? Why, or null. */
+/**
+ * Would this layout shut a floor open now with anything or anyone still on it? Why, or null. (A floor an older
+ * save has shut already, things on it and all, holds up no other way up: a flight put up to it opens it again.)
+ */
 export function strands(state: GameState, shop: Shop): string | null {
-  const st = storeysOf(shop);
-  if (shop.fixtures.some((x) => !FIXTURES[x.type].outdoor && !st.built[levelOf(x)])) return 'It is the only way up: clear the floor above first';
-  if (state.people.some((p) => p.kind !== 'walker' && !st.built[levelOfPerson(shop, p)])) return 'Someone is upstairs';
+  const was = storeysOf(state.shop).built, st = storeysOf(shop), shuts = (L: number) => !!was[L] && !st.built[L];
+  if (shop.fixtures.some((x) => !FIXTURES[x.type].outdoor && shuts(levelOf(x)))) return 'It is the only way up: clear the floor above first';
+  if (state.people.some((p) => p.kind !== 'walker' && shuts(levelOfPerson(shop, p)))) return 'Someone is upstairs';
   return null;
 }
 

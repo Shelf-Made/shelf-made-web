@@ -520,4 +520,23 @@ describe('building up: a counter keeps its queue and its back, and what is cut o
     // Nor does the counter stop the panels near it being bought back.
     expect(applyCommand(s, { type: 'addPanel', x: -1.5, z: -4 }).message).toBeUndefined();
   });
+  it('sells or moves a way up whatever an older layout left on a floor shut already', () => {
+    const s = shop(98); aside(s);
+    // Two flights up from the ground, one on to the second floor, a shelf up there...
+    expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+    expect(place(s, 'stairs', SECOND.x, SECOND.z, 0).ok).toBe(true);
+    expect(place(s, 'stairs', 1.5, zOnLevel(-4, 1), 0).ok).toBe(true);
+    expect(place(s, 'shelf', -2.5, zOnLevel(-4, 2), 1).ok).toBe(true);
+    // ...and the flight to it gone (as moving it could, once): the second floor shut with the shelf on it.
+    s.shop.fixtures = s.shop.fixtures.filter((f) => !(f.type === 'stairs' && levelOf(f) === 1));
+    s.shop.layoutVersion++;
+    expect(storeysOf(s.shop).built[2]).toBe(false);
+    // Neither ground flight has anything to do with it: each turns where it stands, and one sells.
+    const [a, b] = s.shop.fixtures.filter((f) => f.type === 'stairs').map((f) => f.id) as [number, number];
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: a, x: STAIRS.x, z: STAIRS.z, rot: 0 }).message).toBeUndefined();
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: b }).message).toBeUndefined();
+    // A floor open now still never shuts with anything on it.
+    expect(place(s, 'plant', -1.5, zOnLevel(-5, 1), 0).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: a }).message).toMatch(/only way up/);
+  });
 });
