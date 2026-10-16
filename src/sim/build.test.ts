@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { newGame, applyCommand, FIXTURES, buildGrid, findPath, type GameState } from './index';
+import { newGame, applyCommand, tick, TICK, FIXTURES, buildGrid, findPath, type GameState } from './index';
 import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt, wallStyleAt, canSellTile } from './build';
 import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, lotLayout, FLOORS, wallSegments } from './layout';
 import { looksOf } from './reviews';
-import { doorInside, storeroomPoint } from './people';
+import { doorInside, storeroomPoint, spawnCustomer } from './people';
+import { openGame } from './testUtil';
+import { gridFor } from './state';
+import { cellOf, isBlocked } from './grid';
 
 /** A new shop with money to spend, the manager stood out of the way by the front door. */
 function shop(seed = 3): GameState {
@@ -338,5 +341,41 @@ describe('nothing on the ground floor cut off either', () => {
     o.x = o.px = corner.x; o.z = o.pz = corner.z;
     expect(place(s, 'wall', 1.5, -2).ok).toBe(true);
     expect(canPlace(s, 'wall', 0.5, -1, 0).reason).toBe('Would box you in');
+  });
+});
+
+describe('building across someone downstairs', () => {
+  /** A fitted-out shop, open, nobody about but a shopper set walking (or standing) at (x, z), the manager out by the door. */
+  const one = (seed: number, x: number, z: number) => {
+    const s = openGame({ seed, plotId: 'main', name: 'Across', tutorial: false });
+    s.cash = 20000;
+    const o = s.people.find((p) => p.kind === 'owner')!, out = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+    o.x = o.px = out.x; o.z = o.pz = out.z;
+    s.people = [o];
+    for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+    s.phase = 'open';
+    const p = spawnCustomer(s, true)!, at = toWorld(s.shop, x, z);
+    p.x = p.px = at.x; p.z = p.pz = at.z; p.xings = undefined; p.path = []; p.pathIdx = 0; p.list = []; p.basket = [];
+    return { s, p };
+  };
+
+  it('a piece put down, or a tile sold, across a walk sends them round it, as upstairs', () => {
+    for (const how of ['wall', 'sell'] as const) {
+      const { s, p } = one(63, -2, -1.5);
+      p.state = 'leaving'; p.path = [toWorld(s.shop, 2, -1.5)];
+      tick(s);
+      const r = how === 'wall' ? place(s, 'wall', -0.5, -2, 1) : applyCommand(s, { type: 'sellTile', x: -0.5, z: -2 });
+      expect(r.message, how).toBeUndefined();
+      let into = 0;
+      for (let i = 0; i < 10 / TICK && p.state === 'leaving'; i++) { tick(s); const g = gridFor(s), [cx, cz] = cellOf(g, p); if (isBlocked(g, cx, cz)) into++; }
+      expect(into, how).toBe(0);
+    }
+  });
+
+  it('never walls a shopper in downstairs, as upstairs', () => {
+    const { s, p } = one(77, -2, -0.5);
+    p.state = 'browsing'; p.timer = 5;
+    expect(place(s, 'wall', -2.5, -2, 0).ok).toBe(true);
+    expect(canPlace(s, 'wall', -1.5, -1, 0).reason).toBe('Would shut someone in');
   });
 });

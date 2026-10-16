@@ -96,7 +96,7 @@ export interface Reach {
   pieces: Set<number>;
   /** Counters with the tile behind them clear to stand on and serve from. */
   behind: Set<number>;
-  /** Who upstairs (or halfway up) can get back down to the door. */
+  /** Who upstairs (or halfway up), or in the shop downstairs, can get back to the door. */
   people: Set<number>;
 }
 export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(shop, -1, true)): Reach {
@@ -126,9 +126,10 @@ export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(sho
   for (const p of state.people) {
     if (p.kind === 'walker') continue;
     // Halfway up a flight: from where they step off. (Where they are bound need not stay reached: with no way
-    // there now they stop, at the top of a ride they are on. See repathAfterBuild.)
-    const at = p.climb !== undefined ? p.path[p.pathIdx] ?? p : p;
-    if (levelOfPerson(shop, at) > 0 && got(at)) out.people.add(p.id);
+    // there now they stop, at the top of a ride they are on. See repathAfterBuild.) Downstairs, anyone in the shop
+    // (the manager has the ways that stay open: see waysShut).
+    const at = p.climb !== undefined ? p.path[p.pathIdx] ?? p : p, [cx, cz] = cellOf(grid, at);
+    if ((levelOfPerson(shop, at) > 0 || (p.kind !== 'owner' && inBounds(grid, cx, cz) && !!grid.inside[cellIndex(grid, cx, cz)])) && got(at)) out.people.add(p.id);
   }
   return out;
 }
@@ -139,7 +140,7 @@ export function cutOff(state: GameState, was: Reach, now: Reach, shop: Shop, ski
   for (const L of was.floors) if (st.built[L] && !now.floors.has(L)) return `Would cut off the ${FLOOR_NAMES[L]} floor`;
   for (const f of shop.fixtures) if (f.id !== skip && was.pieces.has(f.id) && !now.pieces.has(f.id)) return `Would cut off the ${FIXTURES[f.type].name.toLowerCase()}${levelOf(f) ? ' upstairs' : ''}`;
   for (const f of shop.fixtures) if (f.id !== skip && was.behind.has(f.id) && !now.behind.has(f.id)) return 'Would block the way behind the counter';
-  for (const p of state.people) if (was.people.has(p.id) && !now.people.has(p.id)) return 'Someone upstairs would have no way down';
+  for (const p of state.people) if (was.people.has(p.id) && !now.people.has(p.id)) return levelOfPerson(shop, p) > 0 ? 'Someone upstairs would have no way down' : 'Would shut someone in';
   for (const f of shop.fixtures) if (f.id !== skip && was.rides.has(f.id) && !now.rides.has(f.id)) return 'Would block the way up';
   return null;
 }
@@ -326,15 +327,17 @@ function rideStands(state: GameState, from: Vec2, w: Waypoint, on = false): bool
 
 /**
  * Does someone's way on ride stairs, an escalator or a lift that is not there any more (sold, moved), or up to a
- * floor that has closed? `legs`: or walk a stretch upstairs over floor that is not there now (a panel taken out:
- * nobody steps round a gap), from where they stand or step off the ride they are on. Each tick checks the rides
- * alone; a change to the building checks both.
+ * floor that has closed? `legs`: or walk a stretch of the plot through what was not there before (a piece put
+ * down, a panel or a tile sold: nobody steps round a wall or a gap), from where they stand or step off the ride they
+ * are on, on any floor (out in the town, past the first kerb, the grid has nothing to say). Each tick checks the
+ * rides alone; a change to the building checks both.
  */
 function wayGone(state: GameState, p: Person, legs = false): boolean {
-  const g = legs ? gridFor(state) : null;
+  const g = legs ? gridFor(state) : null, kerb = p.xings?.[0] ?? Infinity;
+  const on = (q: Vec2) => { const [cx, cz] = cellOf(g!, q); return inBounds(g!, cx, cz); };
   for (let i = p.pathIdx; i < p.path.length; i++) {
     const w = p.path[i]!, from = i > p.pathIdx ? p.path[i - 1]! : p;
-    if (w.ride !== undefined ? !rideStands(state, from, w, i === p.pathIdx && p.climb !== undefined) : !!g && levelOfPerson(state.shop, w) > 0 && !lineClear(g, from, w)) return true;
+    if (w.ride !== undefined ? !rideStands(state, from, w, i === p.pathIdx && p.climb !== undefined) : !!g && i <= kerb && on(from) && on(w) && !lineClear(g, from, w)) return true;
   }
   return false;
 }
