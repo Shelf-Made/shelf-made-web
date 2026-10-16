@@ -296,4 +296,33 @@ describe('nothing on the ground floor cut off either', () => {
     expect(place(s, 'plant', 0.5, -5, 0).message).toBeUndefined();
     expect(applyCommand(s, { type: 'sellTile', x: 1.5, z: -6 }).message).toBeUndefined();
   });
+
+  it('never sells a tile that cuts the back door or the pallet off from inside (nor boxes the manager in), as building would not', () => {
+    const s = shop();
+    // A wall across the shop but for one tile, the way through to the back half.
+    for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(place(s, 'wall', x, -4).ok, `wall at ${x}`).toBe(true);
+    expect(canPlace(s, 'plant', 1.5, -4, 0).reason).toBe('Would cut the shop in two');
+    expect(canSellTile(s, 1.5, -4).reason).toBe('Would cut the shop in two');
+    // The manager in a nook only that tile opens onto (the back door shut on that side).
+    const o = s.people.find((p) => p.kind === 'owner')!, nook = toWorld(s.shop, 2, -4.5);
+    for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(applyCommand(s, { type: 'removeFixture', fixtureId: s.shop.fixtures.find((f) => f.type === 'wall' && f.x === x)!.id }).ok).toBe(true);
+    for (const [x, z] of [[0.5, -5], [1.5, -6]] as const) expect(place(s, 'wall', x, z).ok, `wall at ${x}, ${z}`).toBe(true);
+    o.x = o.px = nook.x; o.z = o.pz = nook.z;
+    expect(canSellTile(s, 1.5, -4).reason).toBe('Would box you in');
+  });
+
+  it('builds on in a shop an older save left with the back half cut off from inside', () => {
+    const s = shop();
+    for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(place(s, 'wall', x, -4).ok, `wall at ${x}`).toBe(true);
+    // As selling a tile let it be: the one way through sold.
+    s.shop.gaps = [...s.shop.gaps ?? [], '1.5,-4'];
+    s.shop.layoutVersion++;
+    expect(findPath(buildGrid(s.shop, -1, true), doorInside(s), storeroomPoint(s))).toBeNull();
+    expect(place(s, 'plant', -2.5, -1, 0).message).toBeUndefined();
+    // Nothing more shut for it: the manager in the corner by the front wall is not walled in.
+    const o = s.people.find((p) => p.kind === 'owner')!, corner = toWorld(s.shop, 2, -0.5);
+    o.x = o.px = corner.x; o.z = o.pz = corner.z;
+    expect(place(s, 'wall', 1.5, -2).ok).toBe(true);
+    expect(canPlace(s, 'wall', 0.5, -1, 0).reason).toBe('Would box you in');
+  });
 });

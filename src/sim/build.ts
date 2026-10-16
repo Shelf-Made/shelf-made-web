@@ -3,14 +3,14 @@
  * Placement never blocks a path: the door, the back door and every fixture's front reached now
  * must stay reachable after the change.
  */
-import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle } from './types';
+import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop } from './types';
 import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
-import { buildGrid, frontInside } from './grid';
+import { buildGrid, frontInside, type Grid } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
-import { resetGridCache } from './state';
+import { resetGridCache, gridFor } from './state';
 import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays } from './lot';
 
 /** `ceiling`: the part of the price that is a ceiling over a floor it opens (all a move costs). */
@@ -66,20 +66,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   }
   // A way up moved must not shut a floor with anything or anyone on it (as selling it would not).
   if (ignoreId !== undefined && VERTICAL.has(type)) { const why = strands(state, trialShop); if (why) return { ok: false, reason: why, price }; }
-  // Every front and both doors must stay reachable.
-  const grid = buildGrid(trialShop, -1);
-  const from = doorInside(state);
-  if (!findPath(grid, doorOutside(state), from)) return { ok: false, reason: 'Would block the door', price };
-  // Nor boxing the manager in.
-  if (owner && !findPath(grid, { x: owner.x, z: owner.z }, doorOutside(state))) return { ok: false, reason: 'Would box you in', price };
-  const back = toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6);
-  if (!findPath(grid, from, back)) return { ok: false, reason: 'Would block the back door', price };
-  // Inside, from the front door: never by going out and round to the back door (a wall across the
-  // shop must not cut the back half off).
-  const inside = buildGrid(trialShop, -1, true);
-  if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) return { ok: false, reason: 'Would cut the shop in two', price };
-  // The pallet where deliveries land: whoever stocks the shelves must be able to reach it.
-  if (!findPath(inside, from, storeroomPoint(state))) return { ok: false, reason: 'Would block the way to the delivery pallet', price };
+  // The doors, the pallet and the manager's way out stay open.
+  const inside = buildGrid(trialShop, -1, true), shut = shuts(state, trialShop, inside);
+  if (shut) return { ok: false, reason: shut, price };
   // The piece itself: shoppers queue at a till's front (facing into the room, the tile clear), whoever serves stands
   // behind a counter; shelves are used from whichever side is free inside; a way up is got on at its foot.
   const now = reachOf(state, trialShop, inside), till = type === 'register' || type === 'kiosk';
@@ -92,6 +81,28 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const why = cutOff(state, reachOf(state, shop), now, trialShop, trial.id);
   if (why) return { ok: false, reason: why, price };
   return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : VERTICAL.has(type) ? `${def.name} up to the next floor${ceiling ? `, and a ceiling over it for ${dollars(ceiling)}` : ''}` : def.name, price, ...(ceiling ? { ceiling } : {}) };
+}
+
+/**
+ * What a layout shuts of the ways that must stay open, by the reason each gives: in at the front door, the manager
+ * out of it, round to the back door, and inside from the front door (never out and round: a wall across the shop
+ * must not cut the back half off) to the back door and to the pallet, where whoever stocks the shelves goes.
+ */
+function waysShut(state: GameState, shop: Shop, inside: Grid, open = buildGrid(shop, -1)): string[] {
+  const at = { ...state, shop }, from = doorInside(at), owner = state.people.find((p) => p.kind === 'owner'), out: string[] = [];
+  if (!findPath(open, doorOutside(at), from)) out.push('Would block the door');
+  if (owner && !findPath(open, { x: owner.x, z: owner.z }, doorOutside(at))) out.push('Would box you in');
+  if (!findPath(open, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6))) out.push('Would block the back door');
+  if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) out.push('Would cut the shop in two');
+  if (!findPath(inside, from, storeroomPoint(at))) out.push('Would block the way to the delivery pallet');
+  return out;
+}
+/** Why a change (making the shop `trial`, `inside` its grid with the back door shut) would shut one of those ways that is open now, or null. What is shut already (an older save's) stops nobody. */
+function shuts(state: GameState, trial: Shop, inside: Grid): string | null {
+  const now = waysShut(state, trial, inside);
+  if (!now.length) return null;
+  const was = waysShut(state, state.shop, buildGrid(state.shop, -1, true), gridFor(state));
+  return now.find((r) => !was.includes(r)) ?? null;
 }
 
 /** The finish on one tile of floor. */
@@ -201,9 +212,12 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   if (paintedBays(trial).bays.length < paintedBays(shop).bays.length) return { ok: false, reason: 'A bay at the back would go: paint it out first', price };
   const clash = lotClash(state, trial);
   if (clash) return { ok: false, reason: clash, price };
-  // The floors above lose it too: nothing up there (nor the way up to them) may be cut off.
+  // The floors above lose it too: nothing up there (nor the way up to them) may be cut off. The back door comes
+  // forward with its column (see sellTile), and the ways that stay open when building stay open.
   trial.ceilings = shop.ceilings?.map((row) => row.filter((k) => k !== tileKey(x, z)));
-  const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
+  const col = rest.filter((t) => Math.abs(t.x + 0.5 - shop.backDoor.x) < 0.01);
+  if (col.length) trial.backDoor = { x: shop.backDoor.x, z: Math.min(...col.map((t) => t.z)) };
+  const inside = buildGrid(trial, -1, true), why = cutOff(state, reachOf(state, shop), reachOf(state, trial, inside), trial) ?? shuts(state, trial, inside);
   if (why) return { ok: false, reason: why, price };
   return { ok: true, reason: above ? 'Sell this tile, and the panels over it' : 'Sell this tile', price };
 }

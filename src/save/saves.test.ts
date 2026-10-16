@@ -157,7 +157,7 @@ describe('saves', () => {
       for (const [x, z] of [[-1.5, -6], [-2.5, -5]] as const) expect(applyCommand(s, { type: 'removePanel', x, z }).ok).toBe(true);
       const at = where === 'road' ? toWorld(s.shop, 2, 7.9) : toWorld(s.shop, -2, zOnLevel(-5.5, 1));
       o.x = o.px = at.x; o.z = o.pz = at.z;
-      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).ok, where).toBe(false);
+      expect(findPath(gridFor(s), o, doorInside(s)), where).toBeNull();
       const t = parse(serialize(s)).state, p = t.people.find((q) => q.kind === 'owner')!;
       expect(findPath(gridFor(t), p, doorInside(t)), where).toBeTruthy();
       expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).message, where).toBeUndefined();
