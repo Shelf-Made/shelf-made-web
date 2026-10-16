@@ -55,3 +55,19 @@ export function underFloors(shop: Shop, eye: { x: number; y: number; z: number }
   }
   return false;
 }
+
+/**
+ * The floor a look along `dir` from `eye` meets first, with the whole building drawn (none lifted off): the boards of
+ * the highest floor under it, down through openings and double-height spaces; the ground (and the lawn) under them all.
+ */
+export function floorMet(shop: Shop, eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }): number {
+  const st = storeysOf(shop);
+  if (dir.y >= 0) return 0;
+  for (let L = st.top; L > 0; L--) {
+    const h = L * STOREY;
+    if (eye.y <= h) continue;
+    const t = (h - eye.y) / dir.y, l = toLocal(shop, eye.x + dir.x * t, eye.z + dir.z * t);
+    if (st.floors[L]?.has(tileKey(Math.floor(l.x + 0.5) - 0.5, Math.floor(l.z)))) return L;
+  }
+  return 0;
+}

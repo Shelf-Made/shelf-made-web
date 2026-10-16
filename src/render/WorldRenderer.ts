@@ -22,13 +22,13 @@ import { buildTown, type TownPlan } from './town';
 import { renderProductThumbs, renderCharacterThumbs, renderGeometryThumbs } from './thumbnails';
 import type { FixtureType } from '@/sim/types';
 import { PRODUCTS } from '@/sim/products';
-import type { GameState, CustomerType, Look } from '@/sim/types';
+import type { GameState, CustomerType, Look, Shop } from '@/sim/types';
 import type { ReviewPhoto } from '@/sim/reviews';
 import { box, merge } from './geometry';
 import { PhotoBooth, PHOTO_W, PHOTO_H, haulScene, photoRng, photoProduct } from './photos';
 import { shopScheme } from '@/sim/schemes';
-import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld, liftWorld, sinkWorld, STOREY, type Frame } from '@/sim/layout';
-import { poseOf, underFloors } from './levels';
+import { DAY_SECONDS, FIXTURES, toLocal, toWorld, rectToWorld, liftWorld, sinkWorld, STOREY } from '@/sim/layout';
+import { poseOf, underFloors, floorMet } from './levels';
 
 export interface RenderStats { fps: number; drawCalls: number; triangles: number; people: number }
 
@@ -88,8 +88,8 @@ export class WorldRenderer {
   buildLevel: number | null = null;
   /** The floor in view this frame (null: every floor, from outside). */
   viewLevel: number | null = null;
-  /** The player's shop frame, for carrying points upstairs to where they are drawn. */
-  private frame: Frame | null = null;
+  /** The player's shop (its frame), for carrying points upstairs to where they are drawn, and which floor a click meets. */
+  private frame: Shop | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -360,7 +360,7 @@ export class WorldRenderer {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
-    return this.store.pick(this.ray, state.shop, this.viewLevel ?? 0);
+    return this.store.pick(this.ray, state.shop, this.viewLevel ?? floorMet(state.shop, this.ray.ray.origin, this.ray.ray.direction));
   }
 
   /**
@@ -405,12 +405,15 @@ export class WorldRenderer {
   private readonly tmpA = new Vector3();
   private readonly tmpB = new Vector3();
 
-  /** Ground point under a canvas pixel: on the floor in view (or floor `level`), as the sim has it (upstairs, in that floor's region). */
-  groundAt(px: number, py: number, level = this.viewLevel ?? 0): Vector3 | null {
+  /**
+   * Ground point under a canvas pixel: on the floor in view (or floor `level`), as the sim has it (upstairs, in that
+   * floor's region). With every floor drawn (from outside), on the boards the pixel shows: the top floor's, or down a gap.
+   */
+  groundAt(px: number, py: number, at?: number): Vector3 | null {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((px - r.left) / r.width) * 2 - 1, -((py - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.activeCamera);
-    const h = level * STOREY;
+    const level = at ?? this.viewLevel ?? (this.frame ? floorMet(this.frame, this.ray.ray.origin, this.ray.ray.direction) : 0), h = level * STOREY;
     const t = (h - this.ray.ray.origin.y) / this.ray.ray.direction.y;
     if (t <= 0) return null;
     const p = new Vector3().copy(this.ray.ray.origin).addScaledVector(this.ray.ray.direction, t);

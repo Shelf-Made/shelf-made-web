@@ -637,6 +637,31 @@ test('a card opened on the way to use something lets it go: never done from the 
   expect(await spilt()).toBe(true);
 });
 
+test('upstairs from outside, every floor drawn: a click on the top floor means it, never what is under it', async ({ page }) => {
+  const UP = -16;
+  test.setTimeout(300_000);
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'setSpeed', 0);
+  await hooks(page, 'quickSetup', false);
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  // Just outside the door, zoomed in: the roof off and the first floor drawn over the ground floor's shelves.
+  await hooks(page, 'fp', 0.0, 1.0, 0, 0.91, 15);
+  await pointAt(page, -1.8, -2.5 + UP);
+  expect.soft(await aimText(page), 'the boards, not the shelf under them').not.toMatch(/shelf/i);
+  await clickAt(page, -1.8, -2.5 + UP);
+  await drawFrames(page);
+  await expect.soft(page.locator('.fixture-menu')).toHaveCount(0);
+  const end = await page.evaluate(() => {
+    const s = (window as unknown as { __shelf: Shelf }).__shelf.state(), o = s.people.find((p) => p.kind === 'owner')!, f = s.shop.flip ? -1 : 1, w = o.path[o.path.length - 1];
+    return w ? { x: (w.x - s.shop.originX) * f, z: (w.z - s.shop.originZ) * f } : null;
+  });
+  expect.soft(end, 'walking up to where it was clicked').not.toBeNull();
+  if (end) expect.soft(Math.hypot(end.x + 1.8, end.z - (-2.5 + UP)), 'walking up to where it was clicked').toBeLessThan(0.8);
+  await page.keyboard.press('Escape');
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });

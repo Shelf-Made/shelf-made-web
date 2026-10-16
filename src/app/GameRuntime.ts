@@ -1121,7 +1121,7 @@ export class GameRuntime {
     const hit = r.pick(px, py, s);
     // Mess on the frontage, outside: picked against the ground under the pointer.
     if (s.life?.litter.length) {
-      const g = r.groundAt(px, py);
+      const g = r.groundAt(px, py, 0);
       const m = g ? frontageLitter(s).find((l) => Math.hypot(l.x - g.x, l.z - g.z) < 0.4) : undefined;
       if (m) return { kind: 'mess', id: m.id };
     }

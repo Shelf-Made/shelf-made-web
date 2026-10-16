@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand } from '@/sim/index';
 import { openGame } from '@/sim/testUtil';
 import { toWorld } from '@/sim/layout';
-import { underFloors } from './levels';
+import { underFloors, floorMet } from './levels';
 
 describe('what is in sight upstairs', () => {
   it('hides what is under a floor over it, but not under an opening or a double-height space', () => {
@@ -30,5 +30,22 @@ describe('what is in sight upstairs', () => {
     // The stairs' rail, up through their opening, seen from out front: the boards past it are not in the way.
     const rail = toWorld(s.shop, 1.4, -2.9), eye = toWorld(s.shop, 1, 2);
     expect(underFloors(s.shop, { x: eye.x, y: 4, z: eye.z }, rail.x, 1.3, rail.z, 0, 1)).toBe(false);
+  });
+  it('says which floor a look down meets first with the whole building drawn: the top boards, else down a gap', () => {
+    const s = openGame({ seed: 92, plotId: 'main', name: 'Upstairs', tutorial: false });
+    s.cash = 50000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removePanel', x: -1.5, z: -1 }).ok).toBe(true);
+    // Straight down onto a point of the ground floor's (x, z), from out front and above.
+    const met = (x: number, z: number) => { const w = toWorld(s.shop, x, z), e = toWorld(s.shop, x, z + 6); return floorMet(s.shop, { x: e.x, y: 12, z: e.z }, { x: w.x - e.x, y: -12, z: w.z - e.z }); };
+    // Over the shelves: the first floor's boards.
+    expect(met(-2, -3.5)).toBe(1);
+    // Down the stairwell, into the double-height space, and out on the lawn: the ground.
+    expect(met(1, -2.5)).toBe(0);
+    expect(met(-1, -0.5)).toBe(0);
+    expect(met(-6, -3)).toBe(0);
+    // Looking up from under the boards meets none of them.
+    const w = toWorld(s.shop, -2, -3.5);
+    expect(floorMet(s.shop, { x: w.x, y: 0.5, z: w.z }, { x: 0, y: 1, z: 0 })).toBe(0);
   });
 });
