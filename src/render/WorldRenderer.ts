@@ -170,7 +170,8 @@ export class WorldRenderer {
     if (this.frame !== state.shop) { this.frame = state.shop; const f = state.shop; this.marker.lift = (x, z) => liftWorld(f, x, z); }
     const pose = fp && tracked ? poseOf(state, tracked, alpha) : null;
     if (fp && tracked && pose) {
-      this.follow.follow(pose.x, pose.z, pose.y);
+      // At the height of the floor they are on, or of the one the Build card builds on.
+      this.follow.follow(pose.x, pose.z, this.buildLevel !== null ? this.buildLevel * STOREY : pose.y);
       this.follow.update(dt);
       focus = this.tmpFocus.set(this.follow.target.x, 0, this.follow.target.z);
     } else {

@@ -808,6 +808,21 @@ test("the panel of a shopper gone up to a floor lifted off stays put, not beside
   expect(await panel.boundingBox()).toEqual(was);
 });
 
+test("the Build card's view goes up (and down) to the floor picked", async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  const camY = () => page.evaluate(() => (window as unknown as { __shelf: Up }).__shelf.runtime.renderer.follow.target.y);
+  await hooks(page, 'fp', 0, -3.5);
+  await page.keyboard.press('KeyB');
+  const floors = page.locator('.card.t-build').getByRole('group', { name: 'Which floor' });
+  await expect(floors.getByRole('button', { name: 'Ground' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(camY).toBeCloseTo(0, 1);
+  await floors.getByRole('button', { name: '1st' }).click();
+  await expect.poll(camY).toBeCloseTo(1, 1);
+  await floors.getByRole('button', { name: 'Ground' }).click();
+  await expect.poll(camY).toBeCloseTo(0, 1);
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);
