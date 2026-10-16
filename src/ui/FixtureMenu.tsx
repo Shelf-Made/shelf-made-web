@@ -61,7 +61,7 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
           ))}
         </div>
       )}
-      {menu.words !== undefined && <SignWords runtime={runtime} id={menu.id} words={menu.words} />}
+      {menu.words !== undefined && <SignWords key={menu.id} runtime={runtime} id={menu.id} words={menu.words} />}
       {!menu.fixed && <div className="fm-actions">
         {menu.use && (
           <button type="button" role="menuitem" className="fm-btn primary" onClick={act('use')}>

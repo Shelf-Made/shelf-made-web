@@ -140,10 +140,10 @@ export function chargerReachesBay(shop: Shop, x: number, z: number): boolean {
 
 // ---- Your bus stop.
 
-/** A bus stop goes in the front row of the lot, by the sidewalk, side-on to the street. */
+/** A bus stop goes in the front row of the lot, by the sidewalk, facing the street. */
 export function busStopRule(r: { z1: number }, rot: number): string | null {
   if (r.z1 < LOT_FRONT - 0.5) return 'A bus stop goes by the sidewalk, in the front row of the lot';
-  if (rot & 1) return 'Turn it side-on to the street (R)';
+  if ((rot & 3) !== 0) return 'Turn it to face the street (R)';
   return null;
 }
 

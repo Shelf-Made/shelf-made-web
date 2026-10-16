@@ -130,6 +130,7 @@ describe('your own bus stop', () => {
     const at = spot(s, 'busStop', 0);
     expect(at.z + 1).toBeGreaterThan(LOT_FRONT - 0.5);
     expect(canPlace(s, 'busStop', at.x, at.z, 1).ok).toBe(false);
+    expect(canPlace(s, 'busStop', at.x, at.z, 2).ok).toBe(false);
     const base = total(s);
     expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'busStop', x: at.x, z: at.z, rot: 0 }).ok).toBe(true);
     expect(total(s) / base).toBeCloseTo(BUS_PULL, 5);
@@ -146,6 +147,28 @@ describe('your own bus stop', () => {
     expect(n).toBeGreaterThan(20);
     expect(off / n).toBeGreaterThan(0.35);
     expect(off / n).toBeLessThan(0.85);
+  });
+
+  it('riders off the bus walk in from the stop and shop like anyone else', () => {
+    const s = shop(19);
+    const at = spot(s, 'busStop', 0);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'busStop', x: at.x, z: at.z, rot: 0 }).ok).toBe(true);
+    applyCommand(s, { type: 'openShop' });
+    s.phase = 'open'; s.time = 10;
+    const riders = new Set<number>();
+    const inside = new Set<number>();
+    for (let i = 0; i < 600 / TICK; i++) {
+      tick(s);
+      for (const p of s.people) {
+        if (p.kind !== 'customer') continue;
+        const l = toLocal(s.shop, p.x, p.z);
+        if (p.state === 'walking' && Math.abs(l.z - FRONT_WALK_Z) < 0.05 && Math.abs(l.x - (at.x + 1)) < 0.7 && s.tick - (p.arrivedTick ?? 0) < 2) riders.add(p.id);
+        if (riders.has(p.id) && (p.state === 'entering' || p.state === 'shopping' || p.state === 'browsing' || p.state === 'queued' || p.state === 'paying')) inside.add(p.id);
+      }
+    }
+    expect(riders.size).toBeGreaterThan(2);
+    expect(inside.size).toBeGreaterThan(riders.size * 0.5);
+    expect(s.stuckRescues).toBe(0);
   });
 });
 
