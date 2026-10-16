@@ -774,6 +774,24 @@ async function upstairs(page: Page): Promise<void> {
 }
 const UPS = -16;
 
+test('with the floor the manager is on lifted off, nothing in front of them is offered or outlined over the floor in view', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'shelf', x: -1.5, z: -6 + UPS, rot: 0 })).ok).toBe(true);
+  const marker = () => page.evaluate(() => (window as unknown as { __shelf: Up }).__shelf.runtime.renderer.marker.group.visible);
+  // Upstairs, facing the shelf there: with the Build card on that floor, F moves it.
+  await hooks(page, 'aimAt', -1, -4.4 + UPS, -1, 0, -6 + UPS);
+  await page.keyboard.press('KeyB');
+  const floors = page.locator('.card.t-build').getByRole('group', { name: 'Which floor' });
+  await expect(floors.getByRole('button', { name: '1st' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => aimText(page)).toMatch(/^Move Shelf/);
+  await expect.poll(marker).toBe(true);
+  // The ground floor picked: the first floor, the manager and the shelf lifted off. Nothing over the empty tiles.
+  await floors.getByRole('button', { name: 'Ground' }).click();
+  await expect.poll(() => aimText(page)).toBe('');
+  await expect.poll(marker).toBe(false);
+});
+
 test('a popup from a floor out of view is not drawn over the floor in view', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);

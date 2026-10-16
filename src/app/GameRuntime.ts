@@ -1310,7 +1310,8 @@ export class GameRuntime {
     const owner = s.people.find((p) => p.kind === 'owner'); if (!owner) return none;
     // On the way up or down: nothing to use until they step off.
     if (owner.climb !== undefined) { r.marker.set(null); return none; }
-    const kb = this.thingInFront(s);
+    // In front of a manager out of sight (on a floor lifted off to build on one under it): nothing (as a click finds nothing there).
+    const kb = r.inSight(s, owner.x, 0.5, owner.z) ? this.thingInFront(s) : null;
     const hov = this.mousePos ? this.thingAt(this.mousePos.x, this.mousePos.y) : null;
     const show = kb ?? hov;
     if (!show) { if (!this.pendingUse) r.marker.set(null); return none; }
