@@ -311,6 +311,20 @@ describe('nothing on the ground floor cut off either', () => {
     expect(canSellTile(s, 1.5, -4).reason).toBe('Would box you in');
   });
 
+  it("never sells the back door's tile when the back door, coming forward, would open onto something", () => {
+    for (const type of ['plant', 'shelf', 'wall'] as const) {
+      const s = shop(5), bd = { ...s.shop.backDoor };
+      expect(place(s, type, bd.x - 0.5, bd.z + 1, 0).ok, type).toBe(true);
+      expect(canSellTile(s, bd.x - 0.5, bd.z).reason, type).toBe('Keep the back door clear');
+      expect(applyCommand(s, { type: 'sellTile', x: bd.x - 0.5, z: bd.z }).ok, type).toBe(false);
+      expect(s.shop.backDoor, type).toEqual(bd);
+    }
+    // Nothing there: it sells, and the back door comes forward.
+    const s = shop(5), bd = { ...s.shop.backDoor };
+    expect(applyCommand(s, { type: 'sellTile', x: bd.x - 0.5, z: bd.z }).message).toBeUndefined();
+    expect(s.shop.backDoor).toEqual({ x: bd.x, z: bd.z + 1 });
+  });
+
   it('builds on in a shop an older save left with the back half cut off from inside', () => {
     const s = shop();
     for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(place(s, 'wall', x, -4).ok, `wall at ${x}`).toBe(true);

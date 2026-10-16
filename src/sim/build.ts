@@ -6,7 +6,7 @@
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop } from './types';
 import { FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
-import { buildGrid, frontInside, type Grid } from './grid';
+import { buildGrid, frontInside, cellOf, isBlocked, type Grid } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
@@ -85,14 +85,16 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
 
 /**
  * What a layout shuts of the ways that must stay open, by the reason each gives: in at the front door, the manager
- * out of it, round to the back door, and inside from the front door (never out and round: a wall across the shop
- * must not cut the back half off) to the back door and to the pallet, where whoever stocks the shelves goes.
+ * out of it, round to the back door, the tile just inside the back door clear (a path's end is only near where it
+ * is asked for: the doorway itself may not be), and inside from the front door (never out and round: a wall across
+ * the shop must not cut the back half off) to the back door and to the pallet, where whoever stocks the shelves goes.
  */
 function waysShut(state: GameState, shop: Shop, inside: Grid, open = buildGrid(shop, -1)): string[] {
   const at = { ...state, shop }, from = doorInside(at), owner = state.people.find((p) => p.kind === 'owner'), out: string[] = [];
   if (!findPath(open, doorOutside(at), from)) out.push('Would block the door');
   if (owner && !findPath(open, { x: owner.x, z: owner.z }, doorOutside(at))) out.push('Would box you in');
   if (!findPath(open, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6))) out.push('Would block the back door');
+  if ([-0.25, 0.25].some((dx) => [0.25, 0.75].some((dz) => { const [cx, cz] = cellOf(inside, toWorld(shop, shop.backDoor.x + dx, shop.backDoor.z + dz)); return isBlocked(inside, cx, cz); }))) out.push('Keep the back door clear');
   if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) out.push('Would cut the shop in two');
   if (!findPath(inside, from, storeroomPoint(at))) out.push('Would block the way to the delivery pallet');
   return out;
