@@ -868,6 +868,34 @@ test('nothing on a floor pokes up through the boards of the one above', async ({
   expect(Object.keys(tops)).toEqual(expect.arrayContaining(['market/bottle-return', 'market/shelf-end']));
 });
 
+test('an aisle photo under a floor above still has its white ceiling and lights', async ({ page }) => {
+  test.setTimeout(300_000);
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: Up }).__shelf.state().cash = 20000; });
+  await hooks(page, 'fp', 0, 1.5);
+  /** How bright the top of an aisle photo is (its ceiling), 0..1. */
+  const ceiling = () => page.evaluate(async () => {
+    const url = (window as unknown as { __shelf: Up }).__shelf.photo('aisle', 7);
+    if (!url) return -1;
+    const img = new Image(); img.src = url; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d')!; g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, img.width, Math.round(img.height * 0.12)).data;
+    let sum = 0; for (let i = 0; i < d.length; i += 4) sum += (d[i]! + d[i + 1]! + d[i + 2]!) / 765;
+    return sum / (d.length / 4);
+  });
+  const one = await ceiling();
+  expect(one).toBeGreaterThan(0.5);
+  // Stairs up to a first floor, and an escalator on up from it: the photo's ceiling as bright as it was.
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  expect((await hooks<{ ok: boolean; message?: string }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'escalator', x: -1.5, z: -2 + UPS, rot: 0 })).message).toBeUndefined();
+  await drawFrames(page);
+  expect(await ceiling()).toBeGreaterThan(one * 0.9);
+});
+
 test('with the Build card open, a click (or the use key) on a placed piece picks it up to move', async ({ page }) => {
   test.setTimeout(300_000);
   await ready(page);

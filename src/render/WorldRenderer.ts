@@ -303,9 +303,10 @@ export class WorldRenderer {
     const off = [this.reactions.group, this.marker.group, this.overlays.group].filter((g) => g.visible);
     for (const g of off) g.visible = false;
     // The whole building, whatever floor the view has the ones over lifted off from (the manager inside downstairs,
-    // the Build card on a lower floor): the frame after puts it back.
-    const view = this.viewLevel;
-    this.store.setViewLevel(null); this.people.viewLevel = null;
+    // the Build card on a lower floor): the frame after puts it back. Down the aisles, the ground floor as it is seen
+    // from on it: the floors over it lifted off (their boards, an escalator's truss under them), the photo's ceiling instead.
+    const view = this.viewLevel, shot = ph.kind === 'aisle' ? 0 : null;
+    this.store.setViewLevel(shot); this.people.viewLevel = shot;
     const t = Math.max(0, Math.min(1, ph.t));
     const lights = t > 0.86;
     if (lights !== this.night) { this.statics.setNight(lights); this.store.setNight(lights); this.rivals.setNight(lights); }
@@ -345,7 +346,9 @@ export class WorldRenderer {
     const lights: BufferGeometry[] = [];
     for (let x = f.x0 + 1; x < f.x1 - 0.5; x += 2) for (let z = f.z0 + 0.8; z < f.z1 - 0.3; z += 1.6) lights.push(box(pal, '#FFFFFF', 0.5, 0.01, 0.16, x, 0.948, z));
     const g = new GroupObj();
-    g.add(new Mesh(box(pal, '#F4F7FA', f.x1 - f.x0 + 0.2, 0.012, f.z1 - f.z0 + 0.2, (f.x0 + f.x1) / 2, 0.955, (f.z0 + f.z1) / 2), this.assets.plainMaterial));
+    // (It keeps the sun out, as the roof does: with floors over it, the roof is lifted off with them.)
+    const deck = new Mesh(box(pal, '#F4F7FA', f.x1 - f.x0 + 0.2, 0.012, f.z1 - f.z0 + 0.2, (f.x0 + f.x1) / 2, 0.955, (f.z0 + f.z1) / 2), this.assets.plainMaterial);
+    deck.castShadow = true; g.add(deck);
     // The panels glow: unlit, pushed past white.
     this.panelMat ??= new MeshBasicMaterial({ color: new Color(1.7, 1.68, 1.6) });
     if (lights.length) g.add(new Mesh(merge(lights), this.panelMat));
