@@ -7,7 +7,7 @@ import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSe
 import { MANAGER_DEFAULT_MODEL } from '@/sim/commands';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, rideEnds } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
-import { canAddPanel, canRemovePanel, levelOfPerson } from '@/sim/storeys';
+import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
 import { fixtureCentre, fixtureBackWorld, fixtureAccessWorld } from '@/sim/grid';
 import { hint } from '@/sim/progression';
 import { productDef } from '@/sim/products';
@@ -1185,8 +1185,9 @@ export class GameRuntime {
     // An extra pallet: its boxes are the delivery's, picked up and put back the same way.
     if (f.type === 'pallet') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
     if (VERTICAL.has(f.type)) {
-      // Up or down, from whichever end you are at (walking into it does the same).
+      // Up or down, from whichever end you are at (walking into it does the same); beside it, round to that end first.
       const up = levelOfPerson(s.shop, owner) === levelOf(f), dir = up ? 'up' : 'down';
+      if (near && !rideOn(s, owner, f.id)) return { text: f.type === 'elevator' ? 'Walk round to the lift door' : `Walk round to the ${up ? 'foot' : 'top'} of the ${f.type === 'escalator' ? 'escalator' : 'stairs'}`, ok: false, key: null, run: null };
       const text = f.type === 'elevator' ? `Take the lift ${dir}` : f.type === 'escalator' ? `Ride the escalator ${dir}` : `Go ${dir} the stairs`;
       return { text, ok: true, key: 'use', run: () => { const r = this.dispatch({ type: 'ride', fixtureId: f.id }); if (!r.ok && r.message) this.showToast(r.message, 1400); } };
     }
