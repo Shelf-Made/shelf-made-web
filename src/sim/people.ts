@@ -1338,6 +1338,19 @@ export function letOthersOut(state: GameState): void {
   }
 }
 
+/**
+ * A till an older save left where nobody can queue or be served (see tillOpen): out of its line, and off it, everyone
+ * chooses again, another till or home (never on to pay there in a straight line, through the walls).
+ */
+export function leaveShutTills(state: GameState): void {
+  for (const f of state.shop.fixtures) {
+    if ((f.type !== 'register' && f.type !== 'kiosk') || tillOpen(state, f)) continue;
+    const line = new Set([...f.queue ?? [], ...(f.serving !== null && f.serving !== undefined ? [f.serving] : [])]);
+    f.queue = f.queue && []; f.serving = null; f.scanned = 0;
+    for (const p of state.people) if (line.has(p.id)) { p.registerId = null; p.state = 'shopping'; p.anim = p.basket?.length ? 'carry' : 'walk'; p.path = []; p.pathIdx = 0; }
+  }
+}
+
 /** Nobody stays stuck: a person who has not moved toward a path target for 8 s is placed on the nearest walkable cell and re-pathed. */
 function watchdog(state: GameState, p: Person, dyn: Set<number>): void {
   // Out on the streets (waiting at a kerb, off at a rival's) nobody is stuck: the grid only covers our plot.

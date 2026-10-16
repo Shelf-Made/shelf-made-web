@@ -9,7 +9,7 @@ import { looksOf } from '@/sim/reviews';
 import { ensureCeilings, levelOfPerson } from '@/sim/storeys';
 import { cellOf, cellIndex, inBounds, isBlocked, reachableCells } from '@/sim/grid';
 import { makeCandidate } from '@/sim/staff';
-import { doorInside, spawnCustomer, addSpill } from '@/sim/people';
+import { doorInside, spawnCustomer, addSpill, queueSlot } from '@/sim/people';
 
 describe('saves', () => {
   it('round-trips a game through the backend and keeps determinism', async () => {
@@ -211,6 +211,61 @@ describe('saves', () => {
     const u = parse(serialize(w)).state;
     expect(u.shop.litter.some((l) => Math.abs(l.z - at.z) < 0.01 && Math.abs(l.x - at.x) < 0.01)).toBe(false);
   });
+  // The till's line was kept as it was: in at the door (let out of the void), the shopper still in the line of a counter
+  // up on floor the door does not reach, and on to pay there in a straight line, out of the back wall and over the void.
+  it('loads an older save with shoppers in the line of a till nobody can get to: they choose again', () => {
+    const s = openGame({ seed: 99, plotId: 'main', name: 'Upstairs', tutorial: false });
+    s.cash = 50000;
+    const o = s.people.find((p) => p.kind === 'owner')!, by = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+    o.x = o.px = by.x; o.z = o.pz = by.z;
+    s.people = [o];
+    for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+    for (const z of [-6, -4, -3, -2, -1]) expect(applyCommand(s, { type: 'removePanel', x: -0.5, z }).ok, `${z}`).toBe(true);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'register', x: -1.5, z: zOnLevel(-3, 1), rot: 0 }).ok).toBe(true);
+    const reg = s.shop.fixtures[s.shop.fixtures.length - 1]!;
+    const c = spawnCustomer(s, true)!, at = queueSlot(s, reg, 0);
+    c.x = c.px = at.x; c.z = c.pz = at.z; c.xings = undefined; c.path = []; c.pathIdx = 0;
+    c.state = 'queued'; c.list = [{ productId: 'bread', qty: 1 }]; c.listIdx = 1; c.basket = [{ productId: 'bread', qty: 1, price: 2.5 }];
+    c.registerId = reg.id; reg.queue = [c.id];
+    // The tile an older build let you sell, cutting the counter off.
+    s.shop.gaps = [...s.shop.gaps ?? [], '-0.5,-5'];
+    s.shop.layoutVersion++;
+    s.phase = 'open';
+    const t = parse(serialize(s)).state, d = t.people.find((p) => p.id === c.id)!, r = t.shop.fixtures.find((f) => f.id === reg.id)!;
+    expect(r.queue).toEqual([]);
+    let lost = '';
+    for (let i = 0; i < 20 / TICK; i++) {
+      tick(t);
+      const g = gridFor(t), [cx, cz] = cellOf(g, d), l = toLocal(t.shop, d.x, d.z);
+      if (t.people.includes(d) && inBounds(g, cx, cz) && isBlocked(g, cx, cz) && Math.abs(l.x) < 6 && l.z < 0) lost ||= `${d.state} at ${JSON.stringify(l)}`;
+    }
+    expect(lost).toBe('');
+    expect(r.serving).not.toBe(d.id);
+  });
+
+  // Nothing planned a way again after a build (the first floors' code), so a way through a piece put down since was
+  // walked through as soon as the save loaded.
+  it('loads an older save with a way planned through something built since: they go round it', () => {
+    const s = openGame({ seed: 63, plotId: 'main', name: 'Across', tutorial: false });
+    s.cash = 20000;
+    const o = s.people.find((p) => p.kind === 'owner')!, out = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+    o.x = o.px = out.x; o.z = o.pz = out.z;
+    s.people = [o];
+    for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+    s.phase = 'open';
+    const p = spawnCustomer(s, true)!, at = toWorld(s.shop, -2, -1.5);
+    p.x = p.px = at.x; p.z = p.pz = at.z; p.xings = undefined; p.list = []; p.basket = [];
+    p.state = 'leaving'; p.path = [toWorld(s.shop, 2, -1.5)]; p.pathIdx = 0;
+    // Put across the way, as the old code did, nobody planning again.
+    s.shop.fixtures.push({ id: s.nextId++, type: 'wall', x: -0.5, z: -2, rot: 1, slots: [] });
+    s.shop.layoutVersion++;
+    const t = parse(serialize(s)).state, q = t.people.find((x) => x.id === p.id)!;
+    let into = 0;
+    for (let i = 0; i < 10 / TICK && q.state === 'leaving'; i++) { tick(t); const g = gridFor(t), [cx, cz] = cellOf(g, q); if (isBlocked(g, cx, cz)) into++; }
+    expect(into).toBe(0);
+  });
+
   it("keeps an older save's painted walls, and walls it gains come plain, never paint to sell back", () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'Bands', tutorial: false });
     // Saved before wall finishes went on a stretch at a time: painted bands all round, said nowhere.
