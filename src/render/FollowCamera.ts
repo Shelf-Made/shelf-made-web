@@ -42,8 +42,14 @@ export class FollowCamera {
   }
   get goalYaw(): number { return this.goal.yaw; }
 
-  /** Track the manager (only while following), at the height of the floor they are on. */
-  follow(x: number, z: number, y = 0): void { if (this.following) { this.goal.x = x; this.goal.z = z; this.goal.y = y; this.clamp(); } }
+  /**
+   * Track the manager (only while following), at the height of the floor they are on. Dragged away to look about, the
+   * view stays where it was put but still at the height of the floor in view (not out over the town).
+   */
+  follow(x: number, z: number, y = 0): void {
+    if (this.following) { this.goal.x = x; this.goal.z = z; this.goal.y = y; this.clamp(); }
+    else if (this.goal.distance <= FollowCamera.FOLLOW_MAX) this.goal.y = y;
+  }
 
   /** Jump straight to a framing (screenshots, load, after picking a plot). */
   set(x: number, z: number, yaw?: number, distance?: number, pitch?: number, y = 0): void {

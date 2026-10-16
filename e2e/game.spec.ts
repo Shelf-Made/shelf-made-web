@@ -853,6 +853,21 @@ test("the Build card's view goes up (and down) to the floor picked", async ({ pa
   await expect.poll(camY).toBeCloseTo(0, 1);
 });
 
+test("after a drag of the view, the Build card's view still goes up to the floor picked", async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  const camY = () => page.evaluate(() => (window as unknown as { __shelf: Up }).__shelf.runtime.renderer.follow.target.y);
+  await hooks(page, 'fp', 0, -3.5);
+  // Looking about: the view no longer follows the manager.
+  await page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { follow: { panWorld: (x: number, z: number) => void } } } } }).__shelf.runtime.renderer.follow.panWorld(0.4, 0.2));
+  await page.keyboard.press('KeyB');
+  const floors = page.locator('.card.t-build').getByRole('group', { name: 'Which floor' });
+  await floors.getByRole('button', { name: '1st' }).click();
+  await expect.poll(camY).toBeCloseTo(1, 1);
+  await floors.getByRole('button', { name: 'Ground' }).click();
+  await expect.poll(camY).toBeCloseTo(0, 1);
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);
