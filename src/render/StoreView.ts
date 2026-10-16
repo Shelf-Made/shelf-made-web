@@ -160,8 +160,8 @@ export class StoreView {
   /** Is a piece on a floor in view? */
   private shown(f: Fixture): boolean { return this.viewLevel === null || FIXTURES[f.type].outdoor === true || levelOf(f) <= this.viewLevel; }
 
-  /** The roof: off whenever you are inside (so the camera sees the floor), on from outside once pulled back. */
-  setRoof(on: boolean): void { if (this.roof) this.roof.visible = on; }
+  /** The roof: off whenever you are inside (so the camera sees the floor), on from outside once pulled back; never over floors lifted off. */
+  setRoof(on: boolean): void { if (this.roof) this.roof.visible = on && !this.levelGroups.some((g) => g && !g.visible && g.children.length > 0); }
 
   /** Chunky rounded letters from Fredoka Bold: cream faces, sunny-yellow sides (or any two colours). */
   /** Extruded lettering in two colours. `bevel` rounds the edges (the shop's own fascia); signs seen from afar go without, at a tenth of the triangles. */
