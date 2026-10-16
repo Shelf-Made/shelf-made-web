@@ -905,6 +905,27 @@ test("a piece's menu goes when the piece goes out of sight: never acting on one 
   expect((await state(page)).shop.fixtures.some((f) => f.id === shelf.id)).toBe(true);
 });
 
+test("a shopper's panel fades once they are under the floor in view", async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  await hooks(page, 'fp', 0, -1.5);
+  await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: Up }).__shelf, s = h.state(), f = s.shop.flip ? -1 : 1;
+    h.crowd(1);
+    const c = s.people[s.people.length - 1]!;
+    c.x = c.px = s.shop.originX - 1.5 * f; c.z = c.pz = s.shop.originZ - 3.5 * f; c.path = []; c.state = 'browsing'; c.timer = 999;
+    h.selectPerson(c.id);
+  });
+  const panel = page.locator('.inspect');
+  await expect(panel).toHaveCount(1);
+  await drawFrames(page, 6);
+  await expect(panel).not.toHaveClass(/offscreen/);
+  // The manager up on the first floor: the shopper is under its boards, not drawn, and the panel says so.
+  await hooks(page, 'fp', 0, -1.5 + UPS);
+  await drawFrames(page, 6);
+  await expect(panel).toHaveClass(/offscreen/);
+});
+
 test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
   test.setTimeout(300_000);
   await upstairs(page);

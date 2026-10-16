@@ -61,7 +61,7 @@ export function InspectPanel({ runtime, snap }: { runtime: GameRuntime; snap: Sn
       if (!el || !s || !r) return;
       if (window.innerWidth <= 640) { el.classList.add('docked'); el.style.left = ''; el.style.top = ''; return; }
       el.classList.remove('docked');
-      // Out of sight (on a floor lifted off): left where it was, faded.
+      // Out of sight (on a floor lifted off, or under the boards in view): left where it was, faded.
       const a = r.personAnchor(s, id);
       if (!a) { el.classList.add('offscreen'); return; }
       r.project(a.x, a.y, a.z, proj);

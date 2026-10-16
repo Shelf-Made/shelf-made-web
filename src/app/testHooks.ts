@@ -191,10 +191,10 @@ export function installTestHooks(rt: GameRuntime): void {
       s.people.push({ id: 90000 + model * 10 + variant, kind: 'walker', look: { model, variant, height: 1 }, x, z, yaw: 0, px: x, pz: z, state: 'idle', anim: 'idle', path: [], pathIdx: 0, speed: 0, timer: 0 });
       return { x, z };
     },
-    /** Where a person stands on the page (the middle of their figure), for clicking on them. */
+    /** Where a person stands on the page (the middle of their figure), for clicking on them (under the boards in view too). */
     personScreen: (id: number) => {
       const s = rt.state; const r = rt.renderer; if (!s || !r) return null;
-      const a = r.personAnchor(s, id); if (!a) return null;
+      const a = r.personAnchor(s, id, true); if (!a) return null;
       // As the click will see it, even before the next frame is drawn.
       r.activeCamera.updateMatrixWorld();
       const p = { x: 0, y: 0, visible: false };

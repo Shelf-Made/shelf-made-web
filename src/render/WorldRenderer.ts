@@ -400,13 +400,14 @@ export class WorldRenderer {
     return best;
   }
 
-  /** Just above a person's head, in world space (for the inspect panel), or null once they are out of sight. */
-  personAnchor(state: GameState, id: number): { x: number; y: number; z: number } | null {
+  /** Just above a person's head, in world space (for the inspect panel), or null once they are out of sight (`under`: under the boards in view too). */
+  personAnchor(state: GameState, id: number, under = false): { x: number; y: number; z: number } | null {
     const p = state.people.find((q) => q.id === id);
     if (!p || p.state === 'gone') return null;
     const pose = poseOf(state, p, this.lastAlpha);
-    // On a floor lifted off: not drawn (see People).
+    // On a floor lifted off, or under the boards of the floor in view: not drawn (see People), as a click finds them.
     if (this.viewLevel !== null && pose.level > this.viewLevel) return null;
+    if (!under && underFloors(state.shop, this.activeCamera.position, pose.x, pose.y + 0.5, pose.z, pose.level, this.viewLevel)) return null;
     return { x: pose.x, y: p.state === 'driving' ? 1.2 : pose.y + 0.95 * p.look.height + 0.15, z: pose.z };
   }
 
