@@ -637,7 +637,7 @@ test('a card opened on the way to use something lets it go: never done from the 
   expect(await spilt()).toBe(true);
 });
 
-test('upstairs from outside, every floor drawn: a click on the top floor means it, and bubbles under it hide', async ({ page }) => {
+test('upstairs from outside, every floor drawn: a click on the top floor means it, bubbles under it hide, and photos show the whole building', async ({ page }) => {
   const UP = -16;
   test.setTimeout(300_000);
   await ready(page);
@@ -646,6 +646,8 @@ test('upstairs from outside, every floor drawn: a click on the top floor means i
   await hooks(page, 'quickSetup', false);
   await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
   expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'shelf', x: 1.5, z: -5 + UP, rot: 3 })).ok).toBe(true);
+  const upShelf = (await state(page)).shop.fixtures.find((f) => f.type === 'shelf' && f.z < -12)!.id;
   // Just outside the door, zoomed in: the roof off and the first floor drawn over the ground floor's shelves.
   await hooks(page, 'fp', 0.0, 1.0, 0, 0.91, 15);
   await pointAt(page, -1.8, -2.5 + UP);
@@ -674,6 +676,20 @@ test('upstairs from outside, every floor drawn: a click on the top floor means i
   expect.soft(await bubbles(), 'no bubble over the boards upstairs').toBe(0);
   await hooks(page, 'fp', -0.5, -1.5);
   await expect.poll(bubbles).toBe(1);
+  // Inside downstairs (the floors over it lifted off), a photo of the shopfront still has every floor, and what is up there.
+  const photo = () => page.evaluate(() => {
+    const h = (window as unknown as { __shelf: Shelf }).__shelf, r = h.runtime.renderer;
+    h.photo('outside', 5);
+    const booth = r.booth!, shoot = booth.shoot;
+    let seen: { levels: boolean[]; ids: number[] } | null = null;
+    booth.shoot = (...a: unknown[]) => { seen = { levels: r.store.levelGroups.filter((g) => g && g.children.length).map((g) => g!.visible), ids: r.store.debugFixtures().flatMap((e) => e.ids) }; return shoot.apply(booth, a); };
+    try { h.photo('outside', 5); } finally { booth.shoot = shoot; }
+    return seen as { levels: boolean[]; ids: number[] } | null;
+  });
+  const shot = await photo();
+  expect.soft(shot?.levels.length).toBeGreaterThan(0);
+  expect.soft(shot?.levels.every((v) => v), 'every floor in the photo').toBe(true);
+  expect.soft(shot?.ids.includes(upShelf), 'the shelf upstairs in the photo').toBe(true);
 });
 
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {

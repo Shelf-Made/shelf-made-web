@@ -300,6 +300,10 @@ export class WorldRenderer {
     // The town as the photo sees it: whole walls, no markers or bubbles, the light of that hour.
     const off = [this.reactions.group, this.marker.group, this.overlays.group].filter((g) => g.visible);
     for (const g of off) g.visible = false;
+    // The whole building, whatever floor the view has the ones over lifted off from (the manager inside downstairs,
+    // the Build card on a lower floor): the frame after puts it back.
+    const view = this.viewLevel;
+    this.store.setViewLevel(null); this.people.viewLevel = null;
     const t = Math.max(0, Math.min(1, ph.t));
     const lights = t > 0.86;
     if (lights !== this.night) { this.statics.setNight(lights); this.store.setNight(lights); this.rivals.setNight(lights); }
@@ -325,6 +329,7 @@ export class WorldRenderer {
       if (fig) this.scene.remove(fig);
       if (panels) { this.scene.remove(panels); for (const c of panels.children) (c as Mesh).geometry.dispose(); }
       for (const g of off) g.visible = true;
+      this.store.setViewLevel(view); this.people.viewLevel = view;
       if (ph.kind === 'aisle') this.store.setInteriorLight(null);
       if (lights !== this.night) { this.statics.setNight(this.night); this.store.setNight(this.night); this.rivals.setNight(this.night); }
     }
