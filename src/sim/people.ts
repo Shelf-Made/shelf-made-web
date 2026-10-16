@@ -238,7 +238,7 @@ export function spawnWalker(state: GameState): void {
 }
 
 /** Can someone in at the front door get to a piece to use it? (An older save may have left one cut off: nobody is sent there.) */
-function getsTo(state: GameState, f: Fixture): boolean { return !!fixtureStandWorld(state.shop, f, undefined, gridFor(state)); }
+export function getsTo(state: GameState, f: Fixture): boolean { return !!fixtureStandWorld(state.shop, f, undefined, gridFor(state)); }
 
 function findFixtureWith(state: GameState, productId: string): Fixture | null {
   let best: Fixture | null = null, bestQty = 0;
@@ -1056,9 +1056,9 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   switch (p.state) {
     case 'idle': {
       if (p.task && p.carrying) {
-        // Already holding stock: take it straight to the shelf.
+        // Already holding stock: take it straight to the shelf (not to one an older save left cut off).
         const f = state.shop.fixtures.find((x) => x.id === p.task!.fixtureId);
-        if (f) { p.state = 'carrying'; p.anim = 'carry'; setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn); }
+        if (f && getsTo(state, f)) { p.state = 'carrying'; p.anim = 'carry'; setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn); }
         else p.task = null;
       } else if (p.task) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
       else if (dist(p, home) > 0.35) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }

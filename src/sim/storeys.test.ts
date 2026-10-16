@@ -165,6 +165,18 @@ function astray(s: GameState): string {
   }
   return '';
 }
+/** A shelf on the left of the first floor, which hangs from the tile over ground (-0.5, -5), and that tile sold, as an older build let it be: the shelf is cut off. */
+function cutShelf(s: GameState) {
+  aside(s);
+  expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
+  for (const z of [-6, -4, -3, -2, -1]) expect(applyCommand(s, { type: 'removePanel', x: -0.5, z }).ok, `panel at ${z}`).toBe(true);
+  expect(place(s, 'shelf', -2.5, zOnLevel(-5, 1), 1).ok).toBe(true);
+  const cut = s.shop.fixtures.find((f) => f.type === 'shelf' && levelOf(f) === 1)!;
+  s.shop.gaps = [...s.shop.gaps ?? [], '-0.5,-5'];
+  s.shop.layoutVersion++;
+  expect(fixtureStandWorld(s.shop, cut, undefined, gridFor(s))).toBeNull();
+  return cut;
+}
 /** Floor 1's left strip hanging from one tile: every panel along x = -1.5 down but the one at z = -4. */
 function corridor(s: GameState): void {
   for (const z of [-6, -5, -3, -2, -1]) expect(applyCommand(s, { type: 'removePanel', x: -1.5, z }).ok, `panel at ${z}`).toBe(true);
@@ -571,16 +583,7 @@ describe('building up: a counter keeps its queue and its back, and what is cut o
 
   it('sends nobody through the walls to a shelf an older layout left cut off upstairs', () => {
     for (const who of ['shoppers', 'stocker'] as const) {
-      const s = shop(99); aside(s);
-      expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
-      // The left of the first floor hangs from the tile over ground (-0.5, -5)...
-      for (const z of [-6, -4, -3, -2, -1]) expect(applyCommand(s, { type: 'removePanel', x: -0.5, z }).ok, `panel at ${z}`).toBe(true);
-      expect(place(s, 'shelf', -2.5, zOnLevel(-5, 1), 1).ok).toBe(true);
-      const cut = s.shop.fixtures.find((f) => f.type === 'shelf' && levelOf(f) === 1)!;
-      // ...and that tile sold, as an older build let it be: the shelf up there, full of rice, is cut off.
-      s.shop.gaps = [...s.shop.gaps ?? [], '-0.5,-5'];
-      s.shop.layoutVersion++;
-      expect(fixtureStandWorld(s.shop, cut, undefined, gridFor(s))).toBeNull();
+      const s = shop(99), cut = cutShelf(s);
       for (const f of s.shop.fixtures) f.slots = f.slots.map((sl) => sl.productId === 'rice' ? { productId: null, qty: 0 } : sl);
       cut.slots = cut.slots.map(() => ({ productId: 'rice', qty: who === 'shoppers' ? 30 : 1 }));
       // A little rice on a shelf downstairs too.
@@ -603,6 +606,40 @@ describe('building up: a counter keeps its queue and its back, and what is cut o
       if (who === 'shoppers') expect(low.slots[0]!.qty).toBe(0);
       else expect(low.slots[0]!.qty).toBeGreaterThan(0);
     }
+  });
+
+  it('will not send the manager to a shelf an older layout left cut off, box in hand or not, and says so', () => {
+    for (const hands of ['box', 'empty'] as const) {
+      const s = shop(99), cut = cutShelf(s), o = s.people.find((p) => p.kind === 'owner')!;
+      s.people = [o];
+      for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+      cut.slots = cut.slots.map(() => ({ productId: 'rice', qty: 1 }));
+      s.shop.storage = [{ productId: 'rice', qty: 40, day: s.day }];
+      if (hands === 'box') o.carrying = { productId: 'rice', qty: 6 };
+      s.phase = 'open';
+      const was = JSON.stringify(o);
+      const r = applyCommand(s, { type: 'carry', fixtureId: cut.id });
+      expect(r.ok, hands).toBe(false);
+      expect(r.message, hands).toBe("You can't get there.");
+      // Nothing set going: the manager as they were.
+      expect(JSON.stringify(o), hands).toBe(was);
+      let lost = '';
+      for (let i = 0; i < 60 / TICK; i++) {
+        tick(s);
+        const g = gridFor(s), [cx, cz] = cellOf(g, o);
+        if (isBlocked(g, cx, cz) || (levelOfPerson(s.shop, o) > 0 && !reachableCells(s.shop, g)[cellIndex(g, cx, cz)])) lost ||= `${o.state} at ${JSON.stringify(toLocal(s.shop, o.x, o.z))}`;
+      }
+      expect(lost, hands).toBe('');
+      expect(cut.slots.map((sl) => sl.qty), hands).toEqual([1, 1, 1, 1]);
+      expect(s.shop.storage[0]!.qty, hands).toBe(40);
+    }
+    // A box an older save left the manager carrying there: not taken through the walls either.
+    const s = shop(99), cut = cutShelf(s), o = s.people.find((p) => p.kind === 'owner')!;
+    s.people = [o]; s.phase = 'open';
+    o.carrying = { productId: 'rice', qty: 6 }; o.task = { type: 'carry', fixtureId: cut.id, productId: 'rice', qty: 6 }; o.state = 'idle';
+    for (let i = 0; i < 60 / TICK; i++) tick(s);
+    expect(cut.slots.map((sl) => sl.qty)).toEqual(cut.slots.map(() => 0));
+    expect(o.carrying).toEqual({ productId: 'rice', qty: 6 });
   });
 
   it('sends nobody to queue at, or serve at, a counter an older layout left cut off', () => {
