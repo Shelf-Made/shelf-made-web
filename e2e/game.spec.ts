@@ -577,8 +577,14 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await hooks(page, 'openCard', 'build');
   await expect(floors.getByRole('button', { name: 'Ground' })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(roof).toBe(false);
+  // Nor over the top floor picked: it is the floor being built on.
   await floors.getByRole('button', { name: '1st' }).click();
+  await expect(floors.getByRole('button', { name: '1st' })).toHaveAttribute('aria-pressed', 'true');
+  await drawFrames(page);
+  expect(await roof()).toBe(false);
+  await hooks(page, 'openCard', 'build');
   await expect.poll(roof).toBe(true);
+  await hooks(page, 'openCard', 'build');
   // The stairs sold: the first floor closes, and the floor picker comes down to the ground floor.
   const stairs = (await state(page)).shop.fixtures.find((f) => f.type === 'stairs')!;
   await hooks(page, 'fp', -0.5, -0.5);

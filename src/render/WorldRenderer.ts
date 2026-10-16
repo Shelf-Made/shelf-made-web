@@ -212,7 +212,8 @@ export class WorldRenderer {
     this.people.viewLevel = this.viewLevel; this.reactions.viewLevel = this.viewLevel;
     const camYaw = fp ? this.follow.yaw : this.camera.yaw;
     this.store.update(state, fp ? (inside || this.buildLevel !== null ? camYaw : null) : (this.cutaway ? camYaw : null), this.activeCamera.position);
-    this.store.setRoof(fp ? !inside && this.follow.distance > 16 : !this.cutaway);
+    // (Never over the floor the Build card builds on, the top one too.)
+    this.store.setRoof(fp ? !inside && this.buildLevel === null && this.follow.distance > 16 : !this.cutaway);
     if (fp && tracked) this.rivals.occlude(this.follow.camera.position, tracked.x, tracked.z); else this.rivals.occlude(null, 0, 0);
     // Skinned people are never frustum-culled by three.js (their bounds move with the bones): skip the ones out of view here.
     const cam = this.activeCamera; cam.updateMatrixWorld();
