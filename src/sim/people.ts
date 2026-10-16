@@ -966,8 +966,12 @@ function spillFor(state: GameState, p: Person): { id: number; x: number; z: numb
   return best;
 }
 
-/** Where a worker stands when idle. */
+/** Where a worker stands when idle (a post an older save left cut off: just inside the front door). */
 function homeOf(state: GameState, p: Person): Vec2 {
+  const at = postOf(state, p);
+  return p.kind === 'owner' || doorReaches(state, at) ? at : doorInside(state, p.id);
+}
+function postOf(state: GameState, p: Person): Vec2 {
   const reg = state.shop.fixtures.find((f) => f.type === 'register');
   if (p.kind === 'owner') return { x: p.x, z: p.z }; // the manager stays where the player leaves them
   switch (p.role) {
@@ -978,6 +982,8 @@ function homeOf(state: GameState, p: Person): Vec2 {
   // Everyone else, and a spare cashier with no till of their own: by the pallet.
   const sp = storeroomPoint(state); return { x: sp.x + 2.2, z: sp.z + 0.6 };
 }
+/** Can someone in at the front door get to where boxes are picked up? (An older save may have left it cut off.) */
+export function palletReached(state: GameState): boolean { return doorReaches(state, storeroomPoint(state)); }
 
 /** A cashier on shift without a till takes one nobody on shift is working (its own cashier's shift is over). One cut off is given up. */
 function takeTill(state: GameState, p: Person): void {
@@ -1049,7 +1055,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         const cap = def.slots * def.capacity; const have = f.slots.reduce((a, sl) => a + sl.qty, 0);
         const ratio = have / cap;
         // Any shelf with room for something on the pallet, the emptiest first (one they can get to).
-        if (ratio < 1 && (!best || ratio < best.ratio) && pickCarryTask(state, f) && getsTo(state, f)) best = { f, ratio };
+        if (ratio < 1 && (!best || ratio < best.ratio) && pickCarryTask(state, f) && getsTo(state, f) && palletReached(state)) best = { f, ratio };
       }
       if (best) { const t = pickCarryTask(state, best.f)!; p.task = { type: 'carry', fixtureId: best.f.id, productId: t.productId, qty: t.qty }; p.idleFor = 0; }
     }
@@ -1077,7 +1083,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         const f = state.shop.fixtures.find((x) => x.id === p.task!.fixtureId);
         if (f && getsTo(state, f)) { p.state = 'carrying'; p.anim = 'carry'; setPath(state, p, fixtureAccessWorld(state.shop, f, p, gridFor(state)), dyn); }
         else p.task = null;
-      } else if (p.task) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
+      } else if (p.task && palletReached(state)) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
+      else if (p.task) p.task = null;
       else if (dist(p, home) > 0.35) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }
       else {
         p.anim = p.carrying ? 'carry' : 'idle';

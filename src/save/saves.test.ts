@@ -266,6 +266,34 @@ describe('saves', () => {
     expect(into).toBe(0);
   });
 
+  // The delivery pallet, or a worker's post, left where the door does not reach (as older rules let pieces stand):
+  // stockers set off for it all the same, in a straight line through the walls.
+  it('loads an older save with the pallet cut off: no worker walks through the walls to it', () => {
+    const s = openGame({ seed: 65, plotId: 'main', name: 'Pallet', tutorial: false });
+    s.cash = 50000;
+    const o = s.people.find((p) => p.kind === 'owner')!, by = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+    o.x = o.px = by.x; o.z = o.pz = by.z;
+    s.people = [o];
+    for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
+    for (const role of ['stocker', 'cleaner'] as const) { const k = makeCandidate(s, role); s.staffPool.push(k); expect(applyCommand(s, { type: 'hire', candidateId: k.id }).ok).toBe(true); }
+    for (const [x, z] of [[-1.5, -4], [-0.5, -4], [-0.5, -5]] as const) s.shop.fixtures.push({ id: s.nextId++, type: 'wall', x, z, rot: 0, slots: [] });
+    s.shop.layoutVersion++;
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    shelf.slots[0]!.qty = 0;
+    s.shop.storage = [{ productId: shelf.slots[0]!.productId!, qty: 20, day: s.day }];
+    s.phase = 'open';
+    const t = parse(serialize(s)).state;
+    const staff = t.people.filter((p) => p.kind === 'staff');
+    let through = '';
+    for (let i = 0; i < 40 / TICK; i++) {
+      tick(t);
+      const g = gridFor(t);
+      for (const p of staff) if (isBlocked(g, ...cellOf(g, p))) through ||= `${p.role} ${p.state} at ${JSON.stringify(toLocal(t.shop, p.x, p.z))}`;
+    }
+    expect(through).toBe('');
+    expect(applyCommand(t, { type: 'carry', fixtureId: shelf.id }).message).toBe("You can't get there.");
+  });
+
   it("keeps an older save's painted walls, and walls it gains come plain, never paint to sell back", () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'Bands', tutorial: false });
     // Saved before wall finishes went on a stretch at a time: painted bands all round, said nowhere.

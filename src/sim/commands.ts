@@ -7,7 +7,7 @@ import { replyToReview } from './reviews';
 import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder } from './types';
 import { saveOrder, editSavedOrder, deleteSavedOrder, placeSaved } from './savedOrders';
 import { placeOrder, openTomorrow } from './economy';
-import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo } from './people';
+import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
 import { PLOTS, FIXTURES, PALLET_UNITS, RACK_STANDS, storageCap, VERTICAL, storeysOf } from './layout';
@@ -200,7 +200,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!owner) return { ok: false, message: 'Nobody to carry.' };
       if (owner.task && owner.state !== 'idle' && owner.state !== 'walking') return { ok: false, message: 'Already carrying something.' };
       // A shelf an older save left cut off: nobody walks there (the manager is left as they were).
-      if (!getsTo(state, f)) return { ok: false, message: "You can't get there." };
+      if (!getsTo(state, f) || (!owner.carrying && !palletReached(state))) return { ok: false, message: "You can't get there." };
       if (owner.carrying) {
         owner.task = { type: 'carry', fixtureId: f.id, productId: owner.carrying.productId, qty: owner.carrying.qty };
         owner.moveDir = null; owner.state = 'idle';
