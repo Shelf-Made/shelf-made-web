@@ -114,6 +114,25 @@ export function cutDown(geo: BufferGeometry, h: number): BufferGeometry {
   return out;
 }
 
+/**
+ * A model standing taller than `h` pressed down to it: what is over `from` squeezed in between (its normals with it),
+ * what is under left where it was (a shelf's boards, the stock on them). No taller than `h`: as it was.
+ */
+export function pressUnder(geo: BufferGeometry, h: number, from: number): BufferGeometry {
+  const pos = geo.getAttribute('position');
+  let top = -Infinity;
+  for (let i = 0; i < pos.count; i++) top = Math.max(top, pos.getY(i));
+  if (top <= h) return geo;
+  const out = geo.clone(), p = out.getAttribute('position'), n = out.getAttribute('normal'), k = (h - from) / (top - from);
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    if (y <= from) continue;
+    p.setY(i, from + (y - from) * k);
+    if (n) { const nx = n.getX(i), ny = n.getY(i) / k, nz = n.getZ(i), l = Math.hypot(nx, ny, nz); n.setXYZ(i, nx / l, ny / l, nz / l); }
+  }
+  return out;
+}
+
 /** Drop triangles matching a predicate on their centroid (e.g. the painted glass lid of a chest freezer). */
 export function dropTriangles(geo: BufferGeometry, drop: (x: number, y: number, z: number) => boolean): BufferGeometry {
   const out = geo.index ? geo.toNonIndexed() : geo.clone();

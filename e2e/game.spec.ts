@@ -782,6 +782,21 @@ test('a popup from a floor out of view is not drawn over the floor in view', asy
   await expect.poll(() => shown('up-pop')).toBe(false);
 });
 
+test('nothing on a floor pokes up through the boards of the one above', async ({ page }) => {
+  test.setTimeout(300_000);
+  await upstairs(page);
+  for (const [type, x] of [['kiosk', -1.5], ['endcap', -2.5]] as const) expect((await hooks<{ ok: boolean; message?: string }>(page, 'dispatch', { type: 'placeFixture', fixtureType: type, x, z: -2, rot: 0 })).message, type).toBeUndefined();
+  await hooks(page, 'fp', 0, -1.5);
+  await drawFrames(page);
+  // Each piece's top over its floor: at most a storey (the boards above are 0.08 thick, their top a hair over it).
+  const tops = await page.evaluate(() => {
+    const st = (window as unknown as { __shelf: Up }).__shelf.runtime.renderer.store;
+    return Object.fromEntries([...st.fixtureMeshes.entries()].filter(([k]) => !k.endsWith(':glass')).map(([k, { mesh }]) => { mesh.computeBoundingBox(); return [k, +(mesh.boundingBox?.max.y ?? 0).toFixed(3)]; }));
+  });
+  for (const [model, top] of Object.entries(tops)) if (!/stairs|escalator|elevator|tallWall/.test(model)) expect.soft(top, model).toBeLessThanOrEqual(1.0);
+  expect(Object.keys(tops)).toEqual(expect.arrayContaining(['market/bottle-return', 'market/shelf-end']));
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });

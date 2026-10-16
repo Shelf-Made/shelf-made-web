@@ -22,7 +22,7 @@ const BOX_MAX = 220;
 const NORTH_Z = -1.6;
 import { MAIN_N, PAVEMENT } from './town';
 import { box, merge, paint, place } from './geometry';
-import { recolor, cutDown, dropTriangles, paintStrips } from './recolor';
+import { recolor, cutDown, dropTriangles, paintStrips, pressUnder } from './recolor';
 import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOURS, FIXTURE_PAINT, LINO, WALL_BANDS, SKIRTING, RAIL, type SlotBox } from './storeArt';
 import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle, WallStyle } from '@/sim/types';
@@ -653,6 +653,12 @@ export class StoreView {
       if (model === 'gen:billboard') {
         const pal = this.assets.palette, name = this.shopName.toUpperCase();
         src = merge([src, place(textGeometry(pal, name, Math.min(0.2, 1.6 / Math.max(5, name.length * 0.85)), 0.02, CREAM, CREAM), 0, 1.25, -0.305), place(textGeometry(pal, 'FRESH EVERY DAY', 0.08, 0.015, YELLOW, YELLOW), 0, 1.02, -0.305)]);
+      }
+      // No taller than a storey, so nothing pokes up through the boards of a floor over it (a kiosk, an end cap):
+      // pressed down over its stock (the whole of one with none). Our own fittings are made to measure.
+      if (!model.startsWith('gen:')) {
+        const stock = (Object.keys(FIXTURE_MODEL) as FixtureType[]).flatMap((t) => FIXTURE_MODEL[t] === model ? SLOT_BOXES[t] ?? [] : []);
+        src = pressUnder(src, STOREY, Math.max(0, ...stock.map((b) => b.y + b.h)));
       }
       const map = FIXTURE_PAINT[model];
       g = map ? paintStrips(src, this.assets.palette, map) : src;
