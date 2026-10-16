@@ -1,5 +1,5 @@
 import type { AnimationAction, BufferGeometry, Vector3, Frustum } from 'three';
-import { Group, Mesh, AnimationMixer, AnimationClip, LoopRepeat, LoopOnce, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color, SkinnedMesh, MeshBasicMaterial, BackSide, ConeGeometry } from 'three';
+import { Group, Mesh, AnimationMixer, AnimationClip, LoopRepeat, LoopOnce, Object3D, Float32BufferAttribute, Sphere, Vector3 as V3, InstancedMesh, Color, SkinnedMesh, MeshBasicMaterial, BackSide, ConeGeometry, SphereGeometry } from 'three';
 import { BlobShadows } from './blobs';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -8,6 +8,7 @@ import type { GameState, Person, Anim as SimAnim, CustomerType, Look } from '@/s
 import { box, merge, paint } from './geometry';
 import { rectToWorld } from '@/sim/layout';
 import { staffLevel } from '@/sim/staff';
+import { companyOf, onScooter, noveltyOf, idHash, type Novelty } from '@/sim/visitors';
 import { bagsGeometry, basketGeometry, BAG_HEIGHT, rideBikeGeometry } from './props';
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
@@ -29,7 +30,10 @@ const HAIR_STRIP: Record<string, string> = {
 };
 /** The manager's own colours, if designed (null when it is the character's own look). */
 type Custom = { skin?: string; hair?: string; top?: string; bottom?: string } | null;
+/** What the unexpected visitors wear. */
+const NOVELTY_LOOK: Record<Novelty, NonNullable<Custom>> = { astronaut: { top: '#F2F2F0', bottom: '#F2F2F0' }, mascot: { top: '#FFD84A', bottom: '#FFD84A', skin: '#FFD84A' }, royal: { top: '#B5235A', bottom: '#5A1E3C' } };
 const customOf = (p: Person, shirt?: string): Custom => {
+  { const n = p.kind === 'customer' ? noveltyOf(p) : null; if (n) return NOVELTY_LOOK[n]; }
   // Staff: their own skin, hair and trousers, in a shirt of the shop's colour.
   if (p.kind === 'staff' && p.look.model < 12) return { skin: p.look.skin, hair: p.look.hair, top: shirt ?? p.look.top, bottom: p.look.bottom };
   return (p.kind === 'owner' && (p.look.skin || p.look.hair || p.look.top || p.look.bottom)) ? { skin: p.look.skin, hair: p.look.hair, top: p.look.top, bottom: p.look.bottom } : null;
@@ -68,6 +72,30 @@ const OUTFIT_PERMS: number[][] = [
 export const BIKE_COLOURS = ['#E8573F', '#4F8FE0', '#3FA87A', '#FFC044', '#38383D', '#9B6FD0'];
 /** How high a rider sits (the 'sit' pose on the saddle). */
 const RIDE_SEAT = 0.17;
+/** How high a mobility scooter's seat sits them. */
+const MOBILITY_SEAT = 0.1;
+/** A mobility scooter: a low red body on four small wheels, a seat, a basket and a tiller (in the rider's frame). */
+function mobilityScooterGeometry(pal: AssetLibrary['palette']): BufferGeometry {
+  const parts = [box(pal, '#C8423A', 0.3, 0.08, 0.62, 0, 0.04, 0.02), box(pal, '#38383D', 0.26, 0.05, 0.22, 0, 0.12, -0.08), box(pal, '#38383D', 0.26, 0.2, 0.05, 0, 0.17, -0.2),
+    box(pal, '#9AA0A8', 0.03, 0.34, 0.03, 0, 0.1, 0.26), box(pal, '#222226', 0.22, 0.03, 0.04, 0, 0.44, 0.27), box(pal, '#D8D8DC', 0.2, 0.08, 0.12, 0, 0.32, 0.3)];
+  for (const [x, z] of [[-0.15, 0.24], [0.15, 0.24], [-0.15, -0.2], [0.15, -0.2]]) parts.push(box(pal, '#222226', 0.05, 0.08, 0.08, x!, 0, z!));
+  return merge(parts);
+}
+/** A gold crown, a white astronaut's helmet with its gold visor, and a banana suit round a mascot (on the figure's root). */
+function crownGeometry(pal: AssetLibrary['palette']): BufferGeometry {
+  const parts = [box(pal, '#FFC044', 0.2, 0.05, 0.2, 0, 0.93, 0)];
+  for (const [x, z] of [[-0.08, -0.08], [0.08, -0.08], [-0.08, 0.08], [0.08, 0.08], [0, 0.09], [0, -0.09], [0.09, 0], [-0.09, 0]]) parts.push(box(pal, '#FFC044', 0.03, 0.05, 0.03, x!, 0.98, z!));
+  parts.push(box(pal, '#E8305A', 0.03, 0.03, 0.01, 0, 0.95, 0.105));
+  return merge(parts);
+}
+function helmetGeometry(pal: AssetLibrary['palette']): BufferGeometry {
+  const shell = new SphereGeometry(0.25, 14, 10); paint(shell, pal, '#F2F2F0'); shell.translate(0, 0.77, 0);
+  return merge([shell, box(pal, '#E2A93B', 0.3, 0.16, 0.06, 0, 0.7, 0.21), box(pal, '#D8D8DC', 0.34, 0.05, 0.34, 0, 0.52, 0)]);
+}
+function bananaSuitGeometry(pal: AssetLibrary['palette']): BufferGeometry {
+  const body = new SphereGeometry(0.22, 12, 10); paint(body, pal, '#FFD84A'); body.scale(1, 2.3, 0.9); body.translate(0, 0.55, 0);
+  return merge([body, box(pal, '#6B4A35', 0.06, 0.1, 0.06, 0, 1.03, 0)]);
+}
 /** A guard's scooter: how high its deck lifts them, and the navy guards wear. */
 const SCOOTER_DECK = 0.07;
 const GUARD_NAVY = '#2C3E66';
@@ -77,6 +105,9 @@ function scooterGeometry(pal: AssetLibrary['palette']): BufferGeometry {
   return merge([wheel(0.13), wheel(-0.13), box(pal, '#38383D', 0.16, 0.025, 0.3, 0, 0.045, 0), box(pal, '#F2F2F0', 0.17, 0.012, 0.31, 0, 0.07, 0),
     box(pal, '#9AA0A8', 0.025, 0.42, 0.025, 0, 0.07, 0.13), box(pal, '#222226', 0.3, 0.025, 0.035, 0, 0.48, 0.13)]);
 }
+
+/** Someone who came along with a shopper: a figure of their own that walks where the shopper walked. */
+interface Follower { root: Group; mixer: AnimationMixer; walk: AnimationAction | null; idle: AnimationAction | null; moving: boolean; back: number; side: number }
 
 interface Instance {
   root: Group;
@@ -103,6 +134,13 @@ interface Instance {
   bike?: Mesh | null;
   /** A guard's scooter (from level 3). */
   scooter?: Mesh | null;
+  /** Who came with them (a child or two, a partner), walking along behind; where they have walked, for them to follow. */
+  followers?: Follower[];
+  trail?: number[];
+  /** An older regular's mobility scooter, a driver's trolley, an unexpected visitor's helmet, suit or crown. */
+  mobility?: Mesh | null;
+  cart?: Mesh | null;
+  costume?: Mesh | null;
   armL: Object3D | null;
   /** Regulars wave at the staff once as they pass. */
   greetUntil: number;
@@ -351,6 +389,7 @@ export class PeopleView {
     if (p.kind === 'owner') root.add(this.badge());
     else if (p.kind === 'staff') root.add(this.nameBadge());
     if (p.look.dog) { inst.dog = this.makeDog(); this.group.add(inst.dog); }
+    if (p.kind === 'customer') this.dressVisitor(p, inst);
     // Randomise the phase so a crowd does not march in step.
     mixer.setTime((p.id % 13) * 0.17);
     this.group.add(root);
@@ -578,6 +617,70 @@ export class PeopleView {
   /** A bike to ride, in one of a few colours (by who rides it). */
   private bikeGeo = new Map<string, BufferGeometry>();
   private scooterGeo: BufferGeometry | null = null;
+  private mobilityGeo: BufferGeometry | null = null;
+  private crownGeo: BufferGeometry | null = null;
+  private helmetGeo: BufferGeometry | null = null;
+  private suitGeo: BufferGeometry | null = null;
+
+  /** A shopper's company, scooter and costume, made when they first appear. */
+  private dressVisitor(p: Person, inst: Instance): void {
+    const pal = this.assets.palette, c = companyOf(p);
+    const follow = (kid: boolean, k: number): Follower => {
+      const h = idHash(p.id, 10 + k);
+      const look: Look = { model: h % 12, variant: (h >>> 4) % 4, height: kid ? 0.6 + ((h >>> 8) % 10) / 100 : 0.94 + ((h >>> 8) % 12) / 100 };
+      const model = PEOPLE_MODELS[look.model]!, asset = this.assets.character(model);
+      const root = skeletonClone(asset.scene) as Group;
+      root.traverse((o) => { const m = o as SkinnedMesh; if (m.isSkinnedMesh) { m.geometry = this.variantGeometry(model, look.variant, m.geometry, m.name, '', null); m.material = this.assets.plainMaterial; m.frustumCulled = false; m.castShadow = false; } });
+      root.scale.setScalar(look.height);
+      const mixer = new AnimationMixer(root);
+      const clip = (n: string) => asset.clips.find((x) => x.name === n);
+      const walk = clip('walk') ? mixer.clipAction(clip('walk')!) : null, idle = clip('idle') ? mixer.clipAction(clip('idle')!) : null;
+      idle?.play();
+      this.group.add(root);
+      // A partner at their shoulder; children a step or two behind, to the other side.
+      return { root, mixer, walk, idle, moving: false, back: kid ? 0.5 + k * 0.32 : 0.42, side: kid ? -0.24 : 0.3 };
+    };
+    const f: Follower[] = [];
+    if (c.partner) f.push(follow(false, 0));
+    for (let k = 0; k < c.kids; k++) f.push(follow(true, k + 1));
+    if (f.length) { inst.followers = f; inst.trail = []; }
+    if (onScooter(p)) { inst.mobility = new Mesh(this.mobilityGeo ??= mobilityScooterGeometry(pal), this.assets.plainMaterial); inst.root.add(inst.mobility); }
+    const n = noveltyOf(p);
+    if (n === 'royal') { inst.costume = new Mesh(this.crownGeo ??= crownGeometry(pal), this.assets.plainMaterial); inst.root.add(inst.costume); }
+    if (n === 'astronaut') { inst.costume = new Mesh(this.helmetGeo ??= helmetGeometry(pal), this.assets.plainMaterial); inst.root.add(inst.costume); }
+    if (n === 'mascot') { inst.costume = new Mesh(this.suitGeo ??= bananaSuitGeometry(pal), this.assets.plainMaterial); inst.root.add(inst.costume); }
+  }
+
+  /** The company walk where the shopper walked: along their trail, the right distance back. */
+  private walkFollowers(inst: Instance, x: number, y: number, z: number, yaw: number, moving: boolean, dt: number, visible: boolean): void {
+    const f = inst.followers, t = inst.trail;
+    if (!f || !t) return;
+    if (!visible) { for (const q of f) q.root.visible = false; return; }
+    const n = t.length;
+    if (!n || Math.hypot(t[n - 2]! - x, t[n - 1]! - z) > 0.06) { t.push(x, z); if (t.length > 120) t.splice(0, t.length - 120); }
+    for (const q of f) {
+      // Back along the trail by `back` (straight behind them, by the way they face, until there is a trail that long).
+      let need = q.back, px = x, pz = z, hx = -Math.sin(yaw), hz = -Math.cos(yaw);
+      for (let i = t.length - 4; i >= 0 && need > 0; i -= 2) {
+        const ax = t[i]!, az = t[i + 1]!, d = Math.hypot(ax - px, az - pz);
+        if (d >= need) { px += (ax - px) * (need / d); pz += (az - pz) * (need / d); need = 0; break; }
+        if (d > 1e-4) { hx = (ax - px) / d; hz = (az - pz) / d; }
+        need -= d; px = ax; pz = az;
+      }
+      if (need > 0) { px += hx * need; pz += hz * need; }
+      // Beside the line walked, not on it.
+      const fy = Math.atan2(-hx, -hz);
+      px += Math.cos(fy) * q.side * 0.6; pz -= Math.sin(fy) * q.side * 0.6;
+      q.root.visible = true;
+      q.root.position.set(px, y, pz);
+      q.root.rotation.set(0, moving ? fy : yaw, 0);
+      if (moving !== q.moving) { q.moving = moving; const on = moving ? q.walk : q.idle, off = moving ? q.idle : q.walk; if (on) { on.reset().play(); if (off) on.crossFadeFrom(off, 0.2, false); } }
+      if (!PeopleView.freeze) q.mixer.update(dt);
+      this.blobs.add(px, pz, 0.5 * q.root.scale.x);
+    }
+  }
+  private dropFollowers(inst: Instance): void { for (const q of inst.followers ?? []) { this.group.remove(q.root); q.mixer.stopAllAction(); } inst.followers = undefined; }
+
   bikeMesh(id: number): Mesh {
     const hex = BIKE_COLOURS[id % BIKE_COLOURS.length]!;
     let g = this.bikeGeo.get(hex);
@@ -621,6 +724,7 @@ export class PeopleView {
       if (inst && (p.kind === 'owner' || p.kind === 'staff') && inst.lookKey !== lookKey(p)) { this.despawn(inst); this.live.delete(p.id); inst = undefined; }
       if (!inst) { inst = this.spawn(state, p); this.live.set(p.id, inst); }
       inst.seen = this.frame;
+      if (inst.followers) for (const q of inst.followers) q.root.visible = false;
       const pose = poseOf(state, p, alpha);
       const x = pose.x, z = pose.z, y = pose.y;
       // Upstairs above the floor in view is out of sight (the camera looks in under it).
@@ -658,7 +762,11 @@ export class PeopleView {
       // (reaches are made with the left hand).
       const bagged = shoppingBags(p);
       const picked = !bagged && p.kind === 'customer' && !p.paid ? (p.basket ?? []).reduce((a, b) => a + b.qty, 0) : 0;
-      const bags = bagged ?? (picked > 0 ? { store: 'basket', n: Math.min(3, picked) } : null);
+      // A driver with a trolley pushes it round until they have paid (no basket in hand then).
+      const pushing = !!p.trolley && p.kind === 'customer' && !p.paid && (p.state === 'shopping' || p.state === 'browsing' || p.state === 'toQueue' || p.state === 'queued' || p.state === 'paying' || p.state === 'resting');
+      if (pushing && !inst.cart) { inst.cart = new Mesh(this.assets.geometry('market/shopping-cart'), this.assets.plainMaterial); inst.root.add(inst.cart); }
+      if (inst.cart) { inst.cart.visible = pushing; inst.cart.scale.setScalar(0.8 / p.look.height); inst.cart.position.set(0, 0, 0.42 / p.look.height); }
+      const bags = bagged ?? (picked > 0 && !pushing ? { store: 'basket', n: Math.min(3, picked) } : null);
       const bk = bags ? `${bags.store}:${bags.n}` : '';
       if (bk !== inst.bagKey) {
         if (inst.bags) { inst.bags.removeFromParent(); inst.bags = null; }
@@ -675,7 +783,9 @@ export class PeopleView {
       // Shopping bags swing from one hand: walk normally. Only a box needs both arms.
       let rate = Math.max(0.6, p.speed / 1.6);
       let anim: Anim;
-      if (riding) anim = 'sit';
+      // On a mobility scooter: sat on it, a little way up, whatever they are doing.
+      if (inst.mobility) { inst.mobility.scale.setScalar(1 / p.look.height); inst.mobility.position.set(0, -MOBILITY_SEAT / p.look.height, 0); inst.root.position.y += MOBILITY_SEAT; }
+      if (riding || inst.mobility) anim = 'sit';
       else if (moving) anim = carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk';
       else if (carryBox) anim = 'carry';
       else if (p.anim === 'browse' || p.anim === 'pay') ({ anim, rate } = this.hands(state, p, inst));
@@ -691,6 +801,7 @@ export class PeopleView {
       if (inst.greetUntil > this.frame && inst.actions.greet) anim = 'greet';
       this.play(inst, anim, rate);
       if (d < 30 && !PeopleView.freeze) inst.mixer.update(dt);
+      if (inst.followers) this.walkFollowers(inst, x, y, z, p.yaw, moving, dt, d < 26);
       if (inst.bags) this.hangBags(inst);
       if (inst.prop) this.holdProp(inst);
       // Out in the rain: an umbrella (shoppers and passers-by; never inside the shop).
@@ -716,6 +827,7 @@ export class PeopleView {
       if (inst.seen !== this.frame) {
         this.group.remove(inst.root);
         if (inst.dog) this.group.remove(inst.dog);
+        this.dropFollowers(inst);
         inst.mixer.stopAllAction();
         this.live.delete(id);
       }
@@ -726,12 +838,13 @@ export class PeopleView {
   private despawn(inst: Instance): void {
     this.group.remove(inst.root);
     if (inst.dog) this.group.remove(inst.dog);
+    this.dropFollowers(inst);
     inst.mixer.stopAllAction();
     if (this.outline && this.outline.parent && inst.root.getObjectById(this.outline.parent.id)) { this.outline.removeFromParent(); this.outline = null; }
   }
 
   private clear(): void {
-    for (const inst of this.live.values()) { this.group.remove(inst.root); if (inst.dog) this.group.remove(inst.dog); inst.mixer.stopAllAction(); }
+    for (const inst of this.live.values()) { this.group.remove(inst.root); if (inst.dog) this.group.remove(inst.dog); this.dropFollowers(inst); inst.mixer.stopAllAction(); }
     this.live.clear();
   }
 

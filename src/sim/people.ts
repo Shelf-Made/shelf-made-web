@@ -12,6 +12,7 @@ import { listWeight, budgetFor, explainChoice, computeScores } from './customers
 import { pickType } from './tick';
 import { effectivePrice } from './marketing';
 import { cashierMistake, onShift, gainXp, levelBoost } from './staff';
+import { arrive, maybeLitter, stepRoundCrowd } from './visitors';
 import { CARD_FEE } from './money';
 import { formatMoney, dollars } from './money';
 import { planDogStop, dogWalk, teenStep, arriveAtHangout, driverStep } from './life';
@@ -527,6 +528,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         p.state = 'shopping';
         // A basket or a trolley by the door, music, the promo screen: lists grow on the way in.
         onEnter(state, p);
+        arrive(state, p);
         // A messy floor is the first thing they see.
         if (state.shop.cleanliness < 0.6 || state.shop.litter.length >= 2) { complain(state, 'dirty'); p.sawMess = true; }
         if (p.ctype === 'impulse') {
@@ -561,6 +563,8 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         if (desk) { p.rest = { kind: 'desk', fixtureId: desk.id, seat: 0, productId: item.productId }; p.state = 'resting'; p.anim = 'walk'; p.timer = -1; setPath(state, p, fixtureAccessWorld(state.shop, desk, p, gridFor(state)), dyn); break; }
       }
       if (!f) { p.missed = (p.missed ?? 0) + 1; noteId(p, 'missedIds', item.productId); state.today.missedItems++; complain(state, 'outOfStock', item.productId); p.listIdx!++; react(state, p.id, 'outOfStock'); break; }
+      // A crowd at that shelf: something else on the list first.
+      if (stepRoundCrowd(state, p, f)) break;
       p.targetFixture = f.id;
       p.state = 'browsing'; p.anim = 'walk'; p.timer = -1;
       // From the room side: a shelf pushed against a wall is never browsed through it.
@@ -597,6 +601,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
           else { p.basket!.push({ productId: item.productId, qty: take, price }); cue(state, 'pick'); }
         } else if (!slot) { p.missed = (p.missed ?? 0) + 1; noteId(p, 'missedIds', item.productId); state.today.missedItems++; complain(state, 'outOfStock', item.productId); react(state, p.id, 'outOfStock'); }
         p.listIdx = (p.listIdx ?? 0) + 1;
+        maybeLitter(state, p, f);
         p.state = 'shopping'; p.anim = p.basket!.length ? 'carry' : 'walk';
       }
       break;

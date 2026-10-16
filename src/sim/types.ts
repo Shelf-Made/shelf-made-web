@@ -204,6 +204,10 @@ export interface Person {
   /** A shoplifter held still a moment by a smart camera (seconds left), and whether one has already (it works once). */
   frozen?: number;
   zapped?: boolean;
+  /** Took a trolley at the door (drivers, when there is a trolley bay): pushed round the shop. */
+  trolley?: boolean;
+  /** How many times this visit they have stepped round a crowd at a shelf (twice at most). */
+  dodged?: number;
   /** Bought something at the vending machine (paid there): served, even with nothing for the till. */
   vended?: boolean;
   /** A shoplifter who has run through the tag gates (they sound once). */
