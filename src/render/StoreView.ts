@@ -19,7 +19,7 @@ const DEPT_COLOURS: Partial<Record<string, string>> = {
   bakery: '#D9A066', frozen: '#4F8FE0', pets: '#C8423A', toys: '#FFC044', clothing: '#9B6FE0', electronics: '#38383D', home: '#3FA87A',
   books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
 };
-const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending']);
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail']);
 
 /** Delivery boxes drawn at most (about four units each). */
 const BOX_MAX = 220;
@@ -68,6 +68,7 @@ export class StoreView {
   private wells!: InstancedMesh;
   private stickers!: InstancedMesh;
   private headers!: InstancedMesh;
+  private belts!: InstancedMesh;
   private layoutVersion = -1;
   private stockKey = '';
   private shellKey = '';
@@ -140,6 +141,12 @@ export class StoreView {
     // A department's board over a shelf given over to it (toys, the bakery...): the shelf turns into that department's.
     const header = merge([box(pal, '#FFFFFF', 0.72, 0.13, 0.03, 0, 0, 0), box(pal, '#FFFFFF', 0.025, 0.12, 0.025, -0.3, -0.12, 0), box(pal, '#FFFFFF', 0.025, 0.12, 0.025, 0.3, -0.12, 0)]);
     this.headers = new InstancedMesh(header, this.assets.plainMaterial, 64); this.headers.count = 0; this.headers.frustumCulled = false;
+    // A conveyor belt along a till's counter top, with a divider bar and the belt's dark rubber.
+    // (In the counter model's own space: the dark packing ledge at its −x side, 0.25 up, takes the belt; rails either side, a divider bar.)
+    const belt = merge([box(pal, '#222226', 0.32, 0.012, 0.6, -0.24, 0.25, -0.02), box(pal, '#9AA0A8', 0.02, 0.045, 0.62, -0.075, 0.24, -0.02), box(pal, '#9AA0A8', 0.02, 0.045, 0.62, -0.405, 0.24, -0.02),
+      box(pal, '#FFC044', 0.3, 0.022, 0.03, -0.24, 0.262, 0.06), ...[-0.24, -0.08, 0.08, 0.22].map((z) => box(pal, '#38383D', 0.3, 0.004, 0.012, -0.24, 0.262, z))]);
+    this.belts = new InstancedMesh(belt, this.assets.material, 24); this.belts.count = 0; this.belts.frustumCulled = false; this.belts.castShadow = true;
+    this.root.add(this.belts);
     this.root.add(this.headers);
     try { this.font = await new FontLoader().loadAsync('/fonts/fredoka-bold.typeface.json'); } catch { this.font = null; }
   }
@@ -906,6 +913,14 @@ export class StoreView {
       this.headers.setMatrixAt(hi, this.dummy.matrix); this.headers.setColorAt(hi, this.color.set(colour)); hi++;
     }
     this.headers.count = hi; this.headers.instanceMatrix.needsUpdate = true;
+    // Conveyor belts on the tills that have them.
+    let bi = 0;
+    for (const f of shop.fixtures) {
+      if (!f.conveyor || !this.shown(f) || bi >= 24) continue;
+      this.fixtureMatrix(shop, f, m, 0, true);
+      this.belts.setMatrixAt(bi++, m);
+    }
+    this.belts.count = bi; this.belts.instanceMatrix.needsUpdate = true;
     if (this.headers.instanceColor) this.headers.instanceColor.needsUpdate = true;
     for (const [id, pm] of this.productMeshes) {
       const c = counts.get(id) ?? 0;

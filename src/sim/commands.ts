@@ -7,7 +7,7 @@ import { replyToReview } from './reviews';
 import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder } from './types';
 import { saveOrder, editSavedOrder, deleteSavedOrder, placeSaved } from './savedOrders';
 import { placeOrder, openTomorrow } from './economy';
-import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached } from './people';
+import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
 import { PLOTS, FIXTURES, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf } from './layout';
@@ -100,6 +100,7 @@ export type Command =
   | { type: 'grabThief'; personId: number }
   | { type: 'topUp'; fixtureId: number }
   | { type: 'topUpAll' }
+  | { type: 'upgradeTill'; fixtureId: number }
   | { type: 'recycle'; productId: string }
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
@@ -366,6 +367,17 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!f || !FIXTURES[f.type].slots) return { ok: false };
       if (!state.shop.storage.length) return { ok: false, message: 'The pallet is empty: order some stock first.' };
       return topUp(state, f) > 0 ? { ok: true } : { ok: false, message: 'Nothing on the pallet fits there, or it is full.' };
+    }
+    case 'upgradeTill': {
+      const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId && x.type === 'register');
+      if (!f) return { ok: false };
+      if (f.conveyor) return { ok: false, message: 'It has a conveyor belt already.' };
+      if (state.cash < CONVEYOR_PRICE) return { ok: false, message: `A conveyor belt costs ${dollars(CONVEYOR_PRICE)}.` };
+      state.cash -= CONVEYOR_PRICE;
+      f.conveyor = true; state.shop.layoutVersion = (state.shop.layoutVersion ?? 0) + 1;
+      popup(state, fixtureCentre(state.shop, f), 'Conveyor belt fitted!', 'info', 1.2);
+      cue(state, 'build');
+      return { ok: true };
     }
     case 'topUpAll': {
       if (!state.shop.storage.length) return { ok: false, message: 'The pallet is empty: order some stock first.' };

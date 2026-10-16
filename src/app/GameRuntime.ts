@@ -5,6 +5,7 @@ import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile, canPushWall, canPullWall, wallRun } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
+import { CONVEYOR_PRICE } from '@/sim/people';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
@@ -95,7 +96,7 @@ export interface Snapshot {
   inspect: (InspectInfo & { following: boolean }) | null;
   /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
   /** A piece's menu (id -1: the delivery pallet). A pallet's lists what is on it to pick up; the delivery pallet cannot be moved. */
-  fixtureMenu: { id: number; name: string; use: string | null; refund?: number; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean } | null;
+  fixtureMenu: { id: number; name: string; use: string | null; refund?: number; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean; upgrade?: { label: string; price: number } } | null;
   /** At night, whether the day's log is up (it can be closed, and comes back from the bar at the top). */
   nightLog: boolean;
   /** The shop's listing on the map app: how many reviews, the rating, and how many came in since you last looked. */
@@ -310,7 +311,8 @@ export class GameRuntime {
     if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
-    return { id, name: def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: Math.round(def.price * 0.6), ...(f.type === 'pallet' ? { picks: picks() } : {}) };
+    return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: Math.round(def.price * 0.6), ...(f.type === 'pallet' ? { picks: picks() } : {}),
+      ...(f.type === 'register' && !f.conveyor ? { upgrade: { label: 'Conveyor belt', price: CONVEYOR_PRICE } } : {}) };
   }
   /** Picked from a pallet's menu: walk over and pick that box up. */
   palletPick(productId: string): void {
@@ -326,7 +328,7 @@ export class GameRuntime {
   private palletWant: string | null = null;
   private palletAfter: string | null = null;
   /** A choice from the menu: its use (Stock, serve at the till), pick it up to Move it, or Turn it where it stands. */
-  fixtureMenuAction(action: 'use' | 'move' | 'turn' | 'sell'): void {
+  fixtureMenuAction(action: 'use' | 'move' | 'turn' | 'sell' | 'upgrade'): void {
     const s = this.state, id = this.fixtureMenu;
     this.fixtureMenu = null;
     const f = s?.shop.fixtures.find((x) => x.id === id);
@@ -334,6 +336,7 @@ export class GameRuntime {
     if (!s || !f || !this.fixtureInSight(f.id)) { this.emit(); return; }
     this.audio.start();
     if (action === 'use') this.walkAndUse({ kind: 'fixture', id: f.id });
+    else if (action === 'upgrade') { const r = this.dispatch({ type: 'upgradeTill', fixtureId: f.id }); if (r.ok) this.showToast('Conveyor belt fitted: people get through quicker.', 2000); }
     else if (action === 'sell') {
       // Sold where it stands, for part of what it cost (its stock goes back on the pallet).
       this.snapshotForUndo();
@@ -1239,7 +1242,9 @@ export class GameRuntime {
   scanHere(repeat = false): void {
     const s = this.state; if (!s) return;
     this.audio.start();
-    const reg = s.shop.fixtures.find((f) => f.type === 'register' && ownerAt(s, f));
+    // (Between two tills back to back: the one with someone at it.)
+    const mine = s.shop.fixtures.filter((f) => f.type === 'register' && ownerAt(s, f));
+    const reg = mine.find((f) => f.serving) ?? mine[0];
     // Away from the tills, Space jumps (saying where to scan if someone is waiting at a counter nobody is behind).
     if (!reg) {
       if (repeat) return;

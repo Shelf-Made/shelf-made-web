@@ -72,7 +72,9 @@ export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>
 export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   const front = fixtureFrontWorld(state.shop, reg);
   const f = fixtureFacingWorld(state.shop, reg.rot);
-  const straight = 3;
+  // Queue barriers along the line out from the till: it runs straight on beside them instead of bending.
+  const railed = state.shop.fixtures.some((q) => q.type === 'queueRail' && (() => { const c = fixtureCentre(state.shop, q), dx = c.x - front.x, dz = c.z - front.z, along = dx * f.x + dz * f.z; return along > -0.2 && along < 4.5 && Math.abs(dx * f.z - dz * f.x) < 1.3; })());
+  const straight = railed ? 6 : 3;
   const spacing = 0.7;
   const want = (k: number): Vec2 => {
     if (k < straight) return { x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing };
@@ -449,12 +451,22 @@ export function completeTutorial(state: GameState, step: string): void {
 }
 
 /** The player (or a cashier) scans one item at a register. */
+/** A conveyor belt: how much quicker a cashier gets people through, and what it costs to fit one. */
+export const CONVEYOR_SPEED = 1.6, CONVEYOR_PRICE = 450;
+/** The till back to back with this one (the same spot behind both), if there is one. */
+export function twinTill(state: GameState, reg: Fixture): Fixture | undefined {
+  if (reg.type !== 'register') return undefined;
+  const b = fixtureBackWorld(state.shop, reg);
+  return state.shop.fixtures.find((o) => o !== reg && o.type === 'register' && dist(fixtureBackWorld(state.shop, o), b) < 0.3);
+}
+
 export function scanItem(state: GameState, reg: Fixture): boolean {
   if (!reg.serving) return false;
   const p = state.people.find((x) => x.id === reg.serving);
   if (!p || p.state !== 'paying') return false;
   const units = (p.basket ?? []).reduce((a, b) => a + b.qty, 0);
-  reg.scanned = (reg.scanned ?? 0) + 1;
+  // With a conveyor belt the goods come along ready: two at a press.
+  reg.scanned = Math.min(units, (reg.scanned ?? 0) + (reg.conveyor && reg.type === 'register' ? 2 : 1));
   cue(state, 'beep');
   if (reg.scanned >= units) completeSale(state, p, reg);
   return true;
@@ -631,7 +643,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       }
       const slot = idx + (reg.serving ? 1 : 0);
       if (slot !== p.queueSlot) { p.queueSlot = slot; p.state = 'toQueue'; p.anim = 'walk'; setPath(state, p, queueSlot(state, reg, slot), dyn); break; }
-      p.patience = (p.patience ?? 100) - dt * queueDrain(state);
+      p.patience = (p.patience ?? 100) - dt * queueDrain(state, p);
       if (p.patience <= 0) {
         state.today.walkedOut++; complain(state, 'queue');
         react(state, p.id, 'queue');
@@ -652,10 +664,12 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         break;
       }
       // A cashier scans automatically; at a kiosk the shopper does it (slowly, with the odd hiccup); otherwise the player clicks.
-      const cashier = state.people.find((s) => s.id === reg.staffId && s.kind === 'staff' && onShift(s, state.time) && dist(s, fixtureBackWorld(state.shop, reg)) < 0.8);
+      // A cashier at this till, or at one back to back with it (they stand between the two and serve both).
+      const twin = twinTill(state, reg);
+      const cashier = state.people.find((s) => (s.id === reg.staffId || (twin && s.id === twin.staffId)) && s.kind === 'staff' && onShift(s, state.time) && dist(s, fixtureBackWorld(state.shop, reg)) < 0.8);
       if (cashier) {
         p.timer += dt;
-        const rate = 0.55 / (0.6 + (cashier.skill ?? 0.5)) / levelBoost(cashier);
+        const rate = 0.55 / (0.6 + (cashier.skill ?? 0.5)) / levelBoost(cashier) / (reg.conveyor ? CONVEYOR_SPEED : 1);
         if (p.timer >= rate) { p.timer = 0; scanItem(state, reg); gainXp(state, cashier, 1); }
       } else if (reg.type === 'kiosk') {
         p.timer += dt;
@@ -666,7 +680,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
           else popup(state, { x: p.x, z: p.z }, 'Kiosk hiccup', 'bad', 1.0);
         }
       } else {
-        p.patience = (p.patience ?? 100) - dt * queueDrain(state);
+        p.patience = (p.patience ?? 100) - dt * queueDrain(state, p);
         if (p.patience <= 0) {
           state.today.walkedOut++; complain(state, 'queue');
           react(state, p.id, 'queue');

@@ -31,7 +31,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
   camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
   iceChest: 'gen:iceChest', coolProduce: 'gen:coolProduce', wallShelf: 'gen:wallShelf', glassCase: 'gen:glassCase', displayTable: 'gen:displayTable',
-  bakeryCase: 'gen:bakeryCase', clothesRail: 'gen:clothesRail', vending: 'gen:vending',
+  bakeryCase: 'gen:bakeryCase', clothesRail: 'gen:clothesRail', vending: 'gen:vending', queueRail: 'gen:queueRail',
 };
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
@@ -177,6 +177,11 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       box(pal, sc.primary, 0.58, 0.16, 0.56, -0.06, 0.04, -0.17), box(pal, '#222226', 0.4, 0.06, 0.02, -0.06, 0.08, 0.11),
       ...[0.2, 0.38, 0.56, 0.74].map((y) => box(pal, '#D8D8DC', 0.52, 0.012, 0.5, -0.06, y, -0.17)),
       box(pal, '#38383D', 0.1, 0.18, 0.012, 0.285, 0.55, 0.112), box(pal, '#FFFFFF', 0.13, 0.08, 0.02, 0.285, 0.8, 0.112), box(pal, '#FFC044', 0.58, 0.04, 0.012, -0.06, 0.92, 0.112),
+    ]);
+    // Belt barrier posts: a chrome post at each side of the tile (neighbours share the look of one line), a red belt between.
+    case 'gen:queueRail': return merge([
+      ...[-0.46, 0.46].flatMap((x) => [cylinder(pal, '#38383D', 0.07, 0.02, x, 0, 0, 12), cylinder(pal, '#D8D8DC', 0.018, 0.48, x, 0.02, 0, 8), cylinder(pal, '#D8D8DC', 0.028, 0.03, x, 0.48, 0, 10)]),
+      box(pal, '#C8203A', 0.9, 0.05, 0.012, 0, 0.42, 0),
     ]);
     // Grey steel racking two tiles long, three shelves of brown boxes and the odd shrink-wrapped pallet load.
     case 'gen:storeRack': {

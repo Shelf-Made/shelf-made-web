@@ -16,6 +16,8 @@ export type Rot = 0 | 1 | 2 | 3;
 export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce' | 'endcap' | 'kiosk' | 'rack' | 'sign' | 'plant' | 'bench' | 'basketStack' | 'pallet' | 'storeRack'
   /** More displays: an ice-cream chest, chilled produce, a wall shelf, a glass counter, a display table, a bakery case, a clothes rail, a vending machine. */
   | 'iceChest' | 'coolProduce' | 'wallShelf' | 'glassCase' | 'displayTable' | 'bakeryCase' | 'clothesRail' | 'vending'
+  /** Belt barrier posts to keep a queue in line. */
+  | 'queueRail'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'
@@ -92,6 +94,8 @@ export interface Fixture {
   scanned?: number;
   /** Register only: id of the staff member working it. */
   staffId?: number | null;
+  /** Register only: upgraded with a conveyor belt (goods come along to be scanned: quicker through). */
+  conveyor?: boolean;
   /** Bike rack only: who has a bike in each stand (a person id), or null. */
   bikes?: (number | null)[];
 }

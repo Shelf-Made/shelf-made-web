@@ -556,6 +556,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   displayTable: { type: 'displayTable', name: 'Display table', price: 180, w: 2, d: 1, slots: 4, capacity: 10, chilled: false, upkeep: 0, accepts: ['toys', 'electronics', 'home', 'books', 'sports', 'clothing', 'beauty', 'seasonal'], category: 'shelves' },
   bakeryCase: { type: 'bakeryCase', name: 'Bakery case', price: 190, w: 1, d: 1, depth: 0.61, slots: 3, capacity: 10, chilled: false, upkeep: 2, accepts: ['bakery'], category: 'shelves' },
   clothesRail: { type: 'clothesRail', name: 'Clothes rail', price: 90, w: 1, d: 1, slots: 2, capacity: 12, chilled: false, upkeep: 0, accepts: ['clothing'], category: 'shelves' },
+  /** Belt barrier posts: a queue beside them keeps a straight, calmer line. */
+  queueRail: { type: 'queueRail', name: 'Queue barrier', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'checkout' },
   /** Shoppers pay at the machine: no till. */
   vending: { type: 'vending', name: 'Vending machine', price: 700, w: 1, d: 1, depth: 0.61, slots: 4, capacity: 8, chilled: true, mixed: true, upkeep: 4, accepts: ['drinks', 'dry'], category: 'checkout' },
   /** Tall metal racking two tiles long: a lot more room for deliveries. */

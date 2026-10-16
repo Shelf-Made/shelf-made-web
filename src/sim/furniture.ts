@@ -71,9 +71,11 @@ export function tillExtras(state: GameState): { revenue: number; cost: number } 
 }
 
 /** How fast patience runs out in the queue (music, plants and rugs calm it, up to a quarter slower). */
-export function queueDrain(state: GameState): number {
+export function queueDrain(state: GameState, p?: { x: number; z: number }): number {
   const calm = 0.12 * count(state, 'speaker', 1) + 0.04 * count(state, 'plant', 3) + 0.03 * count(state, 'rug', 2);
-  return 1 - Math.min(0.25, calm);
+  // In line beside the queue barriers, an orderly queue: a good deal calmer.
+  const railed = p && state.shop.fixtures.some((f) => f.type === 'queueRail' && Math.hypot(fixtureCentre(state.shop, f).x - p.x, fixtureCentre(state.shop, f).z - p.z) < 1.3);
+  return (1 - Math.min(0.25, calm)) * (railed ? 0.7 : 1);
 }
 
 /** How much a sale dirties the floor (a doormat wipes feet). */

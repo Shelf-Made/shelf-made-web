@@ -31,7 +31,7 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   elevator: 'A lift to the floor above: one tile, doors on both floors',
   iceChest: 'Frozen goods and ice cream: 4 big wells', coolProduce: 'Fruit and veg kept fresh: holds the chilled ones too', wallShelf: 'Two small boards on an outside wall',
   glassCase: 'Beauty, gadgets, clothes and toys behind glass', displayTable: 'Two tiles of table for toys, gadgets, home and books', bakeryCase: 'Bread, buns and cakes under glass',
-  clothesRail: 'Clothes on a rail, folded ones underneath', vending: 'Drinks and snacks: shoppers pay at the machine, no till needed',
+  clothesRail: 'Clothes on a rail, folded ones underneath', queueRail: 'Belt posts: the queue beside them keeps a straight, calmer line', vending: 'Drinks and snacks: shoppers pay at the machine, no till needed',
   camera: 'On a wall, watching the floor in front of it: fewer shoplifters, and every free hand sees one run',
   dome: 'On the ceiling, watching all round it (over a shelf too)',
   smartCam: 'Watches all round, further, and freezes a running thief for a moment',
