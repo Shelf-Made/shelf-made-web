@@ -463,6 +463,79 @@ test('building up: stairs open the first floor, a shelf goes up there, and a cei
   await expect.poll(async () => (await hooks<{ shop: { ceilings: string[][] } }>(page, 'state')).shop.ceilings[1]!.includes('-1.5,-1')).toBe(false);
 });
 
+test('upstairs as it looks: nothing picked through the floor, the stairs ridden from an end, the lot built from any floor', async ({ page }) => {
+  const UP = -16;
+  test.setTimeout(300_000);
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
+  await hooks(page, 'quickSetup', false);
+  await hooks(page, 'setSpeed', 0);
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
+  // A shopper and a spill on the ground floor, under the first floor's boards.
+  const shopper = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { crowd: (n: number) => void; state: () => { shop: { originX: number; originZ: number; flip?: boolean; litter: { id: number; x: number; z: number }[] }; people: { id: number; x: number; z: number; px: number; pz: number; path: unknown[]; state: string; timer: number }[] } } }).__shelf;
+    const s = h.state(), f = s.shop.flip ? -1 : 1, at = (x: number, z: number) => ({ x: s.shop.originX + x * f, z: s.shop.originZ + z * f });
+    h.crowd(1);
+    const c = s.people[s.people.length - 1]!, w = at(-1.5, -3.5);
+    c.x = c.px = w.x; c.z = c.pz = w.z; c.path = []; c.state = 'browsing'; c.timer = 999;
+    s.shop.litter.push({ id: 9901, ...at(-1.5, -1.5) });
+    return c.id;
+  });
+  // Upstairs over the ground floor's shelves: a click on the boards walks there, never picks the shelf under them.
+  await hooks(page, 'fp', -0.5, -2.5 + UP);
+  await pointAt(page, -2.2, -3.2 + UP);
+  expect(await aimText(page)).not.toMatch(/shelf/i);
+  await clickAt(page, -2.2, -3.2 + UP);
+  await expect(page.locator('.fixture-menu')).toHaveCount(0);
+  await expect.poll(async () => (await owner(page)).walking).toBe(true);
+  // Nor the spill or the shopper down there.
+  await pointAt(page, -1.5, -1.5, 0.03);
+  expect(await aimText(page)).not.toMatch(/spill/i);
+  const seen = await hooks<Pt>(page, 'personScreen', shopper);
+  await page.mouse.click(seen.x, seen.y);
+  await settle(page, 300);
+  expect(await hooks(page, 'inspect')).toBeNull();
+  // Loaded with the manager up there, the camera starts over them, not out in their floor's region behind the shop.
+  await hooks(page, 'fp', -0.5, -2.5 + UP);
+  const off = await page.evaluate(() => {
+    const h = (window as unknown as { __shelf: { runtime: { state: unknown; loadState: (s: unknown) => void }; state: () => { shop: { originX: number; originZ: number; flip?: boolean }; people: { kind: string; x: number; z: number }[] }; cameraTarget: () => { x: number; z: number } } }).__shelf;
+    h.runtime.loadState(JSON.parse(JSON.stringify(h.runtime.state)));
+    const s = h.state(), o = s.people.find((p) => p.kind === 'owner')!, t = h.cameraTarget(), f = s.shop.flip ? -1 : 1;
+    return { dx: (t.x - o.x) * f, dz: (t.z - o.z) * f };
+  });
+  expect(off.dx).toBeCloseTo(0, 1);
+  expect(off.dz).toBeCloseTo(-UP, 1);
+  await hooks(page, 'setSpeed', 0);
+  // Beside the flight the prompt says to go round to its foot; at the foot, up.
+  await hooks(page, 'aimAt', -0.1, -2.0, 1.0, 0, -2.0);
+  await expect.poll(() => aimText(page)).toBe('Walk round to the foot of the stairs');
+  await hooks(page, 'aimAt', 1.0, -0.4, 1.0, 0, -2.0);
+  await expect.poll(() => aimText(page)).toBe('Go up the stairs');
+  // Building on the first floor, a flower bed still goes out on the lot.
+  await page.evaluate(() => { (window as unknown as { __shelf: { state: () => { cash: number } } }).__shelf.state().cash = 20000; });
+  await hooks(page, 'fp', 1.5, -0.5 + UP);
+  await page.keyboard.press('KeyB');
+  const build = page.locator('.card.t-build');
+  const floors = build.getByRole('group', { name: 'Which floor' });
+  await expect(floors.getByRole('button', { name: '1st' })).toHaveAttribute('aria-pressed', 'true');
+  await build.getByRole('tab', { name: 'Outside' }).click();
+  await build.getByRole('button', { name: /^Flower bed/ }).dispatchEvent('click');
+  await pointAt(page, 3.5, 2.0);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Flower bed/);
+  await clickAt(page, 3.5, 2.0);
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'flowerBed').map((f) => `${f.x},${f.z}`)).toEqual(['3,1.5']);
+  await page.keyboard.press('Escape');
+  // The stairs sold: the first floor closes, and the floor picker comes down to the ground floor.
+  const stairs = (await state(page)).shop.fixtures.find((f) => f.type === 'stairs')!;
+  await hooks(page, 'fp', -0.5, -0.5);
+  expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'removeFixture', fixtureId: stairs.id })).ok).toBe(true);
+  await build.getByRole('tab', { name: 'Upstairs' }).click();
+  await expect(floors.getByRole('button')).toHaveText(['Ground']);
+  await expect(floors.getByRole('button', { name: 'Ground' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(build.locator('.item', { hasText: 'over the ground floor' })).toHaveCount(1);
+});
+
 test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
