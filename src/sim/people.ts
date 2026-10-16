@@ -1,7 +1,7 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf } from './layout';
-import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep } from './grid';
+import { fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
@@ -1245,6 +1245,23 @@ function separate(state: GameState, dyn: Set<number>): void {
   }
 }
 
+/** Does the front door reach this point (its walking cell, or the nearest one)? */
+export function doorReaches(state: GameState, p: Vec2): boolean {
+  const g = gridFor(state), [cx, cz] = cellOf(g, nearestWalkable(g, p, undefined, 1));
+  return inBounds(g, cx, cz) && !!reachableCells(state.shop, g)[cellIndex(g, cx, cz)];
+}
+
+/**
+ * The manager somewhere the door does not reach (walled in, or out past the walking grid: a refused click took
+ * them there in an older save), and nothing could be built round them: back just inside the front door.
+ */
+export function letOwnerOut(state: GameState): void {
+  const o = state.people.find((p) => p.kind === 'owner');
+  if (!o || o.climb !== undefined || doorReaches(state, o)) return;
+  const at = doorInside(state);
+  o.x = o.px = at.x; o.z = o.pz = at.z; o.path = []; o.pathIdx = 0; o.moveDir = null; o.task = null; o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle';
+}
+
 /** Nobody stays stuck: a person who has not moved toward a path target for 8 s is placed on the nearest walkable cell and re-pathed. */
 function watchdog(state: GameState, p: Person, dyn: Set<number>): void {
   // Out on the streets (waiting at a kerb, off at a rival's) nobody is stuck: the grid only covers our plot.
@@ -1259,7 +1276,10 @@ function watchdog(state: GameState, p: Person, dyn: Set<number>): void {
     const target = p.path[p.path.length - 1]!;
     const spot = nearestWalkable(gridFor(state), { x: p.x, z: p.z }, dyn);
     p.x = spot.x; p.z = spot.z;
-    if (!setPath(state, p, target, dyn)) { p.x = target.x; p.z = target.z; p.pathIdx = p.path.length; }
+    if (setPath(state, p, target, dyn)) return;
+    // No way there: put there. Never the manager into somewhere the door does not reach (walled in): they stop.
+    if (p.kind === 'owner' && !doorReaches(state, target)) { p.path = []; p.pathIdx = 0; p.task = null; p.state = 'idle'; p.anim = p.carrying ? 'carry' : 'idle'; return; }
+    p.x = target.x; p.z = target.z; p.pathIdx = p.path.length;
   }
 }
 

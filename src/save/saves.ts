@@ -8,6 +8,8 @@ import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
 import { windowsFromSides, stepOnInside, bandsWrittenDown } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
+import { letOwnerOut } from '@/sim/people';
+import { resetGridCache } from '@/sim/state';
 import type { StorageBackend } from './storage';
 
 export interface SaveFile { format: 'shelf-made-save'; version: number; savedAt: string; name: string; day: number; cash: number; state: GameState }
@@ -122,6 +124,9 @@ export function migrate(file: SaveFile): SaveFile {
   for (const p of st.people ?? []) if (p.kind === 'staff' && p.look.model >= 12) p.look = staffLook(p.id, { model: p.id % 12, variant: p.look.variant, height: p.look.height });
   // Stairs put facing out through a wall (the first build of floors let that by) are turned to step on from inside.
   stepOnInside(st);
+  // The manager walled in, or out past the walking grid (a click refused once still walked them there): back inside.
+  resetGridCache();
+  letOwnerOut(st);
   return { ...file, version: v, state: st };
 }
 

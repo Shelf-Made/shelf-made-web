@@ -654,6 +654,13 @@ describe('a click nobody can walk to', () => {
       expect(s.stuckRescues, `walking ${walking}`).toBe(0);
       expect(canPlace(s, 'plant', -2.5, -1, 0).reason, `walking ${walking}`).toBe(FIXTURES.plant.name);
     }
+    // A way there left over (an older save's), never walked: nobody stuck is ever put in there for it.
+    const s = sealed(), o = owner(s), inside = toWorld(s.shop, 2, -4.5);
+    o.path = [inside]; o.pathIdx = 0; o.state = 'idle';
+    run(s, 20);
+    expect(s.stuckRescues).toBe(1);
+    expect(out(s)).not.toBeNull();
+    expect(o.path.length - o.pathIdx).toBe(0);
   });
 
   it('a lone tile left upstairs (its panels round it sold): the manager is not walked onto it', () => {

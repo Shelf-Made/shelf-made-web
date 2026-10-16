@@ -146,6 +146,23 @@ describe('saves', () => {
       expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: 1.5, z: -5, rot: 0 }).message, name).toBeUndefined();
     }
   });
+  it('loads an older save with the manager walled in, or out on the road (a refused click took them), back inside the door', () => {
+    for (const where of ['upstairs', 'road']) {
+      const s = openGame({ seed: 62, plotId: 'main', name: 'Upstairs', tutorial: false });
+      s.cash = 50000;
+      const o = s.people.find((p) => p.kind === 'owner')!, by = toWorld(s.shop, s.shop.door.x, s.shop.floor.z1 + 0.8);
+      o.x = o.px = by.x; o.z = o.pz = by.z;
+      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+      // A tile left on its own up there (the panels round it sold), the manager on it; or stood out over the road.
+      for (const [x, z] of [[-1.5, -6], [-2.5, -5]] as const) expect(applyCommand(s, { type: 'removePanel', x, z }).ok).toBe(true);
+      const at = where === 'road' ? toWorld(s.shop, 2, 7.9) : toWorld(s.shop, -2, zOnLevel(-5.5, 1));
+      o.x = o.px = at.x; o.z = o.pz = at.z;
+      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).ok, where).toBe(false);
+      const t = parse(serialize(s)).state, p = t.people.find((q) => q.kind === 'owner')!;
+      expect(findPath(gridFor(t), p, doorInside(t)), where).toBeTruthy();
+      expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'plant', x: -2.5, z: -1, rot: 0 }).message, where).toBeUndefined();
+    }
+  });
   it("keeps an older save's painted walls, and walls it gains come plain, never paint to sell back", () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'Bands', tutorial: false });
     // Saved before wall finishes went on a stretch at a time: painted bands all round, said nowhere.
