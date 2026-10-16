@@ -1,7 +1,7 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
 import { PRODUCTS, productDef } from './products';
 import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
-import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
+import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, cellCentre, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
@@ -63,24 +63,41 @@ export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>
   return !!path;
 }
 
-/** Queue slot k for a register: straight back from the front, then bending toward the middle of the shop. */
+/**
+ * Queue slot k for a register: straight back from the front, then bending toward the middle of the shop. A spot on
+ * something goes to the nearest floor the door reaches that is a body clear of the spots before it (not into a
+ * pocket walked to through a piece, nor onto the one in front: queued and paying, nobody is shoved apart).
+ */
 export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   const front = fixtureFrontWorld(state.shop, reg);
   const f = fixtureFacingWorld(state.shop, reg.rot);
   const straight = 3;
   const spacing = 0.7;
-  let p: Vec2;
-  if (k < straight) p = { x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing };
-  else {
+  const want = (k: number): Vec2 => {
+    if (k < straight) return { x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing };
     // Bend toward the shop's centre so the line never runs into a wall.
     const base = { x: front.x + f.x * (straight - 1) * spacing, z: front.z + f.z * (straight - 1) * spacing };
     const { x: cx, z: cz } = toWorld(state.shop, (state.shop.floor.x0 + state.shop.floor.x1) / 2, zOnLevel((state.shop.floor.z0 + state.shop.floor.z1) / 2, levelOf(reg)));
     let side = { x: -f.z, z: f.x };
     if ((cx - base.x) * side.x + (cz - base.z) * side.z < 0) side = { x: f.z, z: -f.x };
     const j = k - straight + 1;
-    p = { x: base.x + side.x * j * spacing, z: base.z + side.z * j * spacing };
+    return { x: base.x + side.x * j * spacing, z: base.z + side.z * j * spacing };
+  };
+  // (The front is the front: a till an older save left cut off is shut, see tillOpen.)
+  const g = gridFor(state), reach = reachableCells(state.shop, g), spots: Vec2[] = [nearestWalkable(g, front, undefined, 4)];
+  const ok = (q: Vec2, cx: number, cz: number) => !isBlocked(g, cx, cz) && !!reach[cellIndex(g, cx, cz)] && spots.every((o) => Math.hypot(o.x - q.x, o.z - q.z) > 0.6);
+  for (let i = 1; i <= k; i++) {
+    const p = want(i), [px, pz] = cellOf(g, p);
+    let at: Vec2 | null = ok(p, px, pz) ? p : null;
+    for (let r = 1, bd = Infinity; r <= 4 && !at; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.abs(dx) !== r && Math.abs(dz) !== r) continue;
+      const q = cellCentre(g, px + dx, pz + dz), d = Math.hypot(q.x - p.x, q.z - p.z);
+      if (d < bd && inBounds(g, px + dx, pz + dz) && ok(q, px + dx, pz + dz)) { bd = d; at = q; }
+    }
+    // (Nowhere: as near as it gets, as ever.)
+    spots.push(at ?? nearestWalkable(g, p, undefined, 4));
   }
-  return nearestWalkable(gridFor(state), p, undefined, 4);
+  return spots[k]!;
 }
 
 function stockedProducts(state: GameState): Set<string> {
