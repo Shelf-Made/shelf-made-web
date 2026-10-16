@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR } from './layout';
+import { storeysOf, zOnLevel, toWorld, MAX_LEVELS, levelTileList, wallSegments, levelOf, FIXTURES, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds } from './layout';
 import { fixtureFacingWorld } from './grid';
 import { canPlace, canSellTile, floorCost } from './build';
-import { spawnCustomer, setPath } from './people';
+import { spawnCustomer, setPath, doorInside } from './people';
 import { levelOfPerson, canAddPanel, canRemovePanel, ensureCeilings, PANEL_PRICE } from './storeys';
 import { looksOf } from './reviews';
 import { Rng } from './rng';
@@ -326,11 +326,14 @@ describe('building up: nothing cut off, nothing for free', () => {
         else if (a === 8) { const at = plot(); ok = applyCommand(s, { type: 'buyTile', x: at.x, z: at.z }).ok; }
         else { const at = plot(); ok = applyCommand(s, { type: 'sellTile', x: at.x, z: at.z }).ok; }
         if (ok) done++;
-        if (storeysOf(s.shop).top > before) opened++;
-        top = Math.max(top, storeysOf(s.shop).top);
+        const st = storeysOf(s.shop);
+        if (st.top > before) opened++;
+        top = Math.max(top, st.top);
         const now = worth(s);
         expect(now, `seed ${seed}, step ${i}, action ${a}`).toBeLessThanOrEqual(was);
         was = now;
+        // Nor is any floor that is open ever left with no way up to it from the door.
+        for (let L = 1; L <= st.top; L++) expect(ups().some((u) => levelOf(u) === L - 1 && !!findPath(gridFor(s), doorInside(s), toWorld(s.shop, rideEnds(u).top.x, rideEnds(u).top.z))), `seed ${seed}, step ${i}, floor ${L}`).toBe(true);
       }
     }
     expect(done).toBeGreaterThan(120);
