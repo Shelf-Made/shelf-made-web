@@ -561,12 +561,18 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await clickAt(page, 3.5, 2.0);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'flowerBed').map((f) => `${f.x},${f.z}`)).toEqual(['3,1.5']);
   await page.keyboard.press('Escape');
-  // Selling tiles from the first floor works on the ground floor too, like adding them (not the corner right of the
-  // door: past the stairs, the only way round behind the counter).
+  // Selling tiles from the first floor sells the column under the boards pointed at (not the corner right of the
+  // door: past the stairs, the only way round behind the counter), its edge tiles too, and the tile lit is that one.
   await build.getByRole('tab', { name: 'Shop' }).click();
   await build.getByRole('button', { name: 'Sell tiles' }).click();
-  await pointAt(page, -2.0, -0.5);
-  await expect.poll(() => aimText(page)).toMatch(/^Sell this tile/);
+  const hover = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { build: { hover: { x: number; z: number } | null } } } }).__shelf.runtime.build.hover);
+  for (const [x, z] of [[-1.5, -2], [-2.5, -1], [-2.5, -2]] as const) {
+    await pointAt(page, x + 0.5, z + 0.5 + UP);
+    await expect.poll(hover).toEqual({ x, z: z + UP });
+    await expect.poll(() => aimText(page)).toMatch(/^Sell this tile/);
+  }
+  await clickAt(page, -2.0, -1.5 + UP);
+  await expect.poll(async () => (await hooks<{ shop: { gaps?: string[] } }>(page, 'state')).shop.gaps ?? []).toEqual(['-2.5,-2']);
   await page.keyboard.press('Escape');
   // From out front: the roof on; with the Build card on the ground floor, the first floor lifted off and no roof floating over it.
   const roof = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { renderer: { store: { roof: { visible: boolean } } } } } }).__shelf.runtime.renderer.store.roof.visible);
