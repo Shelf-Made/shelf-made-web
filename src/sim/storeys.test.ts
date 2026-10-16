@@ -247,22 +247,25 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(applyCommand(s, { type: 'moveFixture', fixtureId: up, x: SECOND.x, z: zOnLevel(SECOND.z - 1, 1), rot: 2 }).message).toBeUndefined();
   });
 
-  it('will not sell the stairs from under someone on the way up, and walks them round by another', () => {
+  it('sells the stairs from under someone on the way up: they go round by another, or stop downstairs', () => {
     const s = shop(75); aside(s);
     expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
-    const first = idOf(s, 'stairs');
+    expect(place(s, 'stairs', SECOND.x, SECOND.z, 0).ok).toBe(true);
     const p = spawnCustomer(s, true)!;
     const at = toWorld(s.shop, 1, -0.5);
-    p.x = p.px = at.x; p.z = p.pz = at.z;
+    // In the shop (off the street's crossings).
+    p.x = p.px = at.x; p.z = p.pz = at.z; p.xings = undefined;
     expect(setPath(s, p, toWorld(s.shop, -1, zOnLevel(-2.5, 1)))).toBe(true);
-    expect(p.path.some((w) => w.via === first)).toBe(true);
-    expect(applyCommand(s, { type: 'removeFixture', fixtureId: first }).message).toBe('Someone is on the way up.');
+    // The one they are on their way to goes first.
+    const first = p.path.find((w) => w.ride !== undefined)!.via!, second = s.shop.fixtures.find((f) => f.type === 'stairs' && f.id !== first)!.id;
     // With another way up, it goes, and they take that one instead.
-    expect(place(s, 'stairs', SECOND.x, SECOND.z, 0).ok).toBe(true);
-    const second = s.shop.fixtures.find((f) => f.type === 'stairs' && f.id !== first)!.id;
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: first }).ok).toBe(true);
     expect(p.path.slice(p.pathIdx).some((w) => w.via === first)).toBe(false);
     expect(p.path.slice(p.pathIdx).some((w) => w.via === second)).toBe(true);
+    // The last one goes too (nothing up there): they stop where they are, never up on a floor that has shut.
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: second }).ok).toBe(true);
+    expect(p.path.length - p.pathIdx).toBe(0);
+    expect(levelOfPerson(s.shop, p)).toBe(0);
   });
 
   it('puts a ceiling over a floor it opens, at the panel price, however it opens', () => {
@@ -384,25 +387,24 @@ describe('building up: nobody caught halfway, nothing left behind', () => {
   const climber = (s: GameState, to: { x: number; z: number }) => {
     const p = spawnCustomer(s, true)!;
     const at = toWorld(s.shop, 1, -0.6);
-    p.x = p.px = at.x; p.z = p.pz = at.z;
+    p.x = p.px = at.x; p.z = p.pz = at.z; p.xings = undefined;
     expect(setPath(s, p, to)).toBe(true);
     s.phase = 'open'; p.state = 'browsing'; p.timer = -1; p.list = [{ productId: 'apples', qty: 1 }]; p.listIdx = 0;
     p.pathIdx = p.path.findIndex((w) => w.ride !== undefined); p.climb = 0.1;
     return p;
   };
 
-  it('will not sell a flight someone halfway up another is to take next, and sends them up one left', () => {
+  it('sells a flight someone halfway up another is to take next, and sends them up one left', () => {
     const s = shop(91); aside(s);
     expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
     // On up from the first floor, by where the first comes up: the second floor is open, and bare.
     expect(place(s, 'stairs', -0.5, zOnLevel(-4, 1), 1).ok).toBe(true);
     const first = idOf(s, 'stairs'), next = idOf(s, 'stairs', 1);
+    expect(place(s, 'stairs', 1.5, zOnLevel(-4, 1), 0).ok).toBe(true);
     const p = climber(s, toWorld(s.shop, -1.5, zOnLevel(-3.5, 2)));
     expect(p.path[p.pathIdx]!.via).toBe(first);
     expect(p.path.slice(p.pathIdx + 1).some((w) => w.via === next)).toBe(true);
-    expect(applyCommand(s, { type: 'removeFixture', fixtureId: next }).message).toBe('Someone is on the way up.');
-    // With another way up there it goes, and they ride on up the first and take the other.
-    expect(place(s, 'stairs', 1.5, zOnLevel(-4, 1), 0).ok).toBe(true);
+    // It goes, and they ride on up the first and take the other.
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: next }).ok).toBe(true);
     expect(p.climb).toBeDefined();
     expect(p.path[p.pathIdx]!.via).toBe(first);

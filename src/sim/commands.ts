@@ -113,11 +113,15 @@ export const MANAGER_MODELS = 12;
 /** Who you are until you design your own: the first of the women. */
 export const MANAGER_DEFAULT_MODEL = 0;
 
+/** Commands that change the building: after each, anyone whose way it took away goes another (repathAfterBuild). */
+const REBUILDS = new Set<Command['type']>(['placeFixture', 'removeFixture', 'moveFixture', 'expandShop', 'buyTile', 'sellTile', 'addPanel', 'removePanel']);
+
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
   const before = state.sounds.length;
   const res = apply(state, cmd);
   const c = COMMAND_CUES[cmd.type];
   if (res.ok && c && state.sounds.length === before) cue(state, c);
+  if (res.ok && REBUILDS.has(cmd.type)) repathAfterBuild(state);
   return res;
 }
 
@@ -168,7 +172,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!o) return { ok: false };
       const l = Math.hypot(cmd.x, cmd.z);
       o.moveDir = l > 0.01 ? { x: cmd.x / l, z: cmd.z / l } : null;
-      if (!o.moveDir && o.state !== 'carrying' && o.state !== 'pickBox' && o.state !== 'stocking' && o.state !== 'toStock') { o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle'; }
+      // Let go: stop (on a ride, at its end: the keys took over from any walk clicked for beyond it).
+      if (!o.moveDir && o.state !== 'carrying' && o.state !== 'pickBox' && o.state !== 'stocking' && o.state !== 'toStock') { o.state = 'idle'; o.anim = o.carrying ? 'carry' : 'idle'; o.path = o.path.slice(0, o.pathIdx + (o.climb !== undefined ? 1 : 0)); }
       return { ok: true };
     }
     case 'walkTo': {
@@ -259,8 +264,6 @@ function apply(state: GameState, cmd: Command): CommandResult {
       state.shop.fixtures.push(fx);
       state.shop.layoutVersion++;
       if (opened) ceilFloorsOpened(state.shop, opened);
-      // Anyone whose way it stands in (upstairs, where nobody steps round) goes round it.
-      repathAfterBuild(state);
       popup(state, fixtureCentre(state.shop, fx), dollars(-check.price), 'bad', 1.2);
       cue(state, 'place');
       if (fx.type === 'register' || fx.type === 'kiosk') completeTutorial(state, 'counter');
@@ -281,8 +284,6 @@ function apply(state: GameState, cmd: Command): CommandResult {
       state.shop.fixtures.splice(i, 1);
       state.shop.layoutVersion++;
       state.cash += refund;
-      // Anyone on their way up it goes round by another.
-      if (VERTICAL.has(f.type)) repathAfterBuild(state);
       return { ok: true };
     }
     case 'moveFixture': {
@@ -292,7 +293,6 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const f = state.shop.fixtures.find((x) => x.id === cmd.fixtureId)!;
       if (state.cash < cash) popup(state, fixtureCentre(state.shop, f), dollars(state.cash - cash), 'bad', 1.2);
       cue(state, 'place');
-      repathAfterBuild(state);
       return { ok: true };
     }
     case 'expandShop': { const err = expandShop(state, cmd.sizeId); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
@@ -308,7 +308,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'setFloor': { const err = setFloor(state, cmd.style); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintFloor': { const err = paintFloor(state, cmd.x, cmd.z, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'buyTile': { const err = buyTile(state, cmd.x, cmd.z); if (!err) cue(state, 'build'); return err ? { ok: false, message: err } : { ok: true }; }
-    case 'sellTile': { const err = sellTile(state, cmd.x, cmd.z); if (!err) { cue(state, 'coin'); repathAfterBuild(state); } return err ? { ok: false, message: err } : { ok: true }; }
+    case 'sellTile': { const err = sellTile(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'ride': {
       const o = state.people.find((p) => p.kind === 'owner');
       const w = o && o.climb === undefined ? rideOn(state, o, cmd.fixtureId) : null;
@@ -317,7 +317,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       return { ok: true };
     }
     case 'addPanel': { const err = addPanel(state, cmd.x, cmd.z); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
-    case 'removePanel': { const err = removePanel(state, cmd.x, cmd.z); if (!err) { cue(state, 'coin'); repathAfterBuild(state); } return err ? { ok: false, message: err } : { ok: true }; }
+    case 'removePanel': { const err = removePanel(state, cmd.x, cmd.z); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintWall': { const err = paintWall(state, cmd.key, cmd.style); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'pave': { const err = pave(state, cmd.x, cmd.z, cmd.surface); if (!err) cue(state, cmd.surface ? 'place' : 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'paintBay': { const err = paintBay(state, cmd.slot); if (!err) cue(state, 'place'); return err ? { ok: false, message: err } : { ok: true }; }

@@ -194,7 +194,7 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   open the one above it, which gets its own ceiling (at the panel price, unless panels went up there
   before); five floors at most. Each is stepped onto from the floor in front of it, inside. Anything
   that goes on the ground floor goes on any open floor. Nothing built, moved or sold may cut off a
-  floor above, anything on it or anyone up there (or on the way) from the front door, nor stop a way
+  floor above, anything on it or anyone up there (or halfway up) from the front door, nor stop a way
   up that works (its foot reached from the door) from working; a tile sold takes the panels over it
   with it, 60% back. Taking a panel down (60% back) leaves a double-height
   space: the building stands a storey taller there, a hanging light hangs from the high ceiling, and
@@ -203,7 +203,11 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   grid, so paths, distances and every "is it near" test work unchanged; the renderer lifts each
   floor back over the ground one a storey up, carries riders up the flight, and lifts the floors
   above the one in view off. Walk into the foot of the stairs (or their top, or a lift's door), or
-  press Use there, to ride them; a click on them from across the room walks over and rides.
+  press Use there, to ride them; a click on them from across the room walks over and rides. A ride
+  once begun goes to the other end whatever the keys, a card or a change of plan do; riding back
+  takes letting go or stepping off and on again. Anyone whose way a change to the building takes
+  away (stairs sold or moved, a panel out of their way upstairs) goes another way, or stops where
+  they are (at the top of a ride under way) when there is none.
 - **Business profile** (the storefront button by the speed controls, badge = review count, red
   while some are unread; the rating under it). The shop's listing on a made-up map app, Pinpoint,
   in that app's own look (white, Roboto/Arial, teal accents, yellow stars), docked like a card:
