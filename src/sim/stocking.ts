@@ -23,7 +23,7 @@ export function topUp(state: GameState, f: Fixture): number {
   if (!FIXTURES[f.type].slots || !getsTo(state, f)) return 0;
   let moved = 0;
   for (let guard = 0; guard < 40; guard++) {
-    const t = pickCarryTask(state, f), before = moved;
+    const t = pickCarryTask(state, f, true), before = moved;
     if (!t) break;
     let want = t.qty;
     // Off the pallet, oldest first.

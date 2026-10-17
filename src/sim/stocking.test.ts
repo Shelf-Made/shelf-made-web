@@ -39,28 +39,24 @@ describe('the stock tool', () => {
     expect(applyCommand(s, { type: 'topUpAll' }).message).toMatch(/pallet is empty/);
   });
 
-  it('only puts goods where the manager could: no bread in a Chiller, no flour in a vending machine, no eggs in the ice-cream chest', () => {
+  it('puts cold goods in a Chiller first, and only snacks in a vending machine or frozen goods in the ice-cream chest', () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'T', tutorial: false });
     const chiller = place(s, 'fridge'), vending = place(s, 'vending'), chest = place(s, 'iceChest');
-    // Dry goods ordered first: the Chiller still gets the milk, and none of the bread.
+    // Dry goods ordered first: the Chiller still gives its first slot to the milk (dry goods only fill what is spare).
     s.shop.storage = ['bread', 'pasta', 'chips', 'rice'].map((productId) => ({ productId, qty: 20, day: 1 })).concat({ productId: 'milk', qty: 24, day: 1 });
     expect(applyCommand(s, { type: 'topUp', fixtureId: chiller.id }).ok).toBe(true);
-    expect(chiller.slots.some((sl) => sl.productId === 'milk' && sl.qty > 0)).toBe(true);
-    expect(chiller.slots.every((sl) => !sl.productId || sl.productId === 'milk')).toBe(true);
+    expect(chiller.slots[0]!.productId).toBe('milk');
+    expect(chiller.slots[0]!.qty).toBe(FIXTURES.fridge.capacity);
     s.shop.storage = ['flour', 'rice', 'eggs', 'milk', 'cola', 'chips', 'icecream', 'pizza'].map((productId) => ({ productId, qty: 20, day: 1 }));
     expect(applyCommand(s, { type: 'topUpAll' }).ok).toBe(true);
-    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId && sl.qty > 0) expect(wrongFixture(sl.productId, f.type), `${sl.productId} on the ${f.type}`).toBeNull();
+    // Nothing chilled on a dry shelf; nothing but snacks in the machine, nothing but frozen goods and ice cream in the chest.
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId && sl.qty > 0 && f.type !== 'fridge') expect(wrongFixture(sl.productId, f.type), `${sl.productId} on the ${f.type}`).toBeNull();
     expect(new Set(vending.slots.flatMap((sl) => sl.productId ?? []))).toEqual(new Set(['cola', 'chips']));
     expect(new Set(chest.slots.flatMap((sl) => sl.productId ?? []))).toEqual(new Set(['icecream', 'pizza']));
     // By hand the same: crisps and drinks in the machine, frozen goods and ice cream in the chest.
     expect(wrongFixture('flour', 'vending')).toBe('Flour does not go in the vending machine');
     expect(wrongFixture('milk', 'iceChest')).not.toBeNull();
     expect(wrongFixture('icecream', 'iceChest')).toBeNull();
-    // Bread an older game left in the Chiller is not topped up again.
-    const bread = chiller.slots[0]!; bread.productId = 'bread'; bread.qty = 1;
-    s.shop.storage = [{ productId: 'bread', qty: 20, day: 1 }];
-    expect(applyCommand(s, { type: 'topUp', fixtureId: chiller.id }).ok).toBe(false);
-    expect(bread.qty).toBe(1);
   });
 
   it('counts for the first day\'s "stock a shelf" step, and says "1 unit"', () => {

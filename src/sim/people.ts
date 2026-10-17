@@ -1346,12 +1346,13 @@ export function placeOnFixture(state: GameState, f: Fixture, productId: string, 
 }
 
 /** What the owner should carry to this fixture, or null if nothing fits. */
-export function pickCarryTask(state: GameState, f: Fixture): { productId: string; qty: number } | null {
+export function pickCarryTask(state: GameState, f: Fixture, coldFirst = false): { productId: string; qty: number } | null {
   const def = FIXTURES[f.type];
   if (def.slots === 0) return null;
   const storage = state.shop.storage.filter((s) => s.qty > 0);
-  // The same rule as stocking by hand: no bread in the Chiller, no flour in the vending machine.
-  const fits = (pid: string) => !wrongFixture(pid, f.type);
+  // What goes where, as stocking by hand, except that the Chiller takes dry goods too when there is room (staff have
+  // always filled a spare one that way): no flour in the vending machine, nothing chilled on a dry shelf.
+  const fits = (pid: string) => { const why = wrongFixture(pid, f.type); return !why || (f.type === 'fridge' && !productDef(pid).chilled); };
   // Lowest-stocked slot whose product is in storage (not one an older game left where it does not go).
   let best: { productId: string; qty: number; need: number } | null = null;
   for (const s of f.slots) {
@@ -1367,7 +1368,10 @@ export function pickCarryTask(state: GameState, f: Fixture): { productId: string
   // slot with a product new to the shop (one already on another shelf never takes a sold-out product's
   // place, or the range would shrink to whatever the pallet has most of).
   if (f.slots.some((s) => !s.productId)) {
-    const entry = storage.find((e) => fits(e.productId) && !f.slots.some((s) => s.productId === e.productId && s.qty > 0));
+    // With the stock tool (coldFirst), a cold slot goes to cold goods first: dry goods take a Chiller's empty slot only
+    // when nothing chilled is waiting, so the milk is never shut out by the bread. Staff fill it as it comes.
+    const open = storage.filter((e) => fits(e.productId) && !f.slots.some((s) => s.productId === e.productId && s.qty > 0));
+    const entry = coldFirst && def.chilled ? open.find((e) => productDef(e.productId).chilled) ?? open[0] : open[0];
     if (entry) return { productId: entry.productId, qty: Math.min(def.capacity, entry.qty, 8) };
   }
   if (f.slots.some((s) => s.productId && s.qty === 0)) {
