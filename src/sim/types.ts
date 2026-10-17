@@ -288,7 +288,11 @@ export interface SavedOrder {
   /** The day it was last placed (a manager places each at most once a day). */
   lastDay?: number;
 }
-export interface Litter { id: number; x: number; z: number }
+export interface Litter {
+  id: number; x: number; z: number;
+  /** How much cleanliness it took off the shop: mopping it up gives just that back (older saves: none recorded). */
+  dirt?: number;
+}
 
 export type CarState = 'arriving' | 'parking' | 'parked' | 'leaving' | 'passing' | 'delivering' | 'unloading' | 'gone' | 'turnedAway';
 

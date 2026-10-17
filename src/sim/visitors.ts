@@ -9,6 +9,7 @@ import type { GameState, Person, Fixture } from './types';
 import { withRng, popup, react } from './state';
 import { fixtureAccessWorld, fixtureCentre } from './grid';
 import { gridFor } from './state';
+import { addLitter } from './people';
 
 /** A fixed scramble of an id (the same every time). */
 export function idHash(id: number, salt = 0): number {
@@ -17,10 +18,10 @@ export function idHash(id: number, salt = 0): number {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
-/** Who a shopper brings along (drawn walking behind them): none, a child or two, or a partner (and a child). */
+/** Who a shopper brings along (drawn walking behind them): none, a child or two, or a partner (and a child). Cyclists come alone. */
 export type Company = { kids: number; partner: boolean };
-export function companyOf(p: Pick<Person, 'id' | 'kind' | 'ctype' | 'thief' | 'life'>): Company {
-  if (p.kind !== 'customer' || p.thief) return { kids: 0, partner: false };
+export function companyOf(p: Pick<Person, 'id' | 'kind' | 'ctype' | 'thief' | 'bike' | 'riding'>): Company {
+  if (p.kind !== 'customer' || p.thief || p.bike || p.riding) return { kids: 0, partner: false };
   const h = idHash(p.id, 1) % 100;
   // Impulse buyers are kids and teens themselves; the rest bring a child now and then, or come as a couple.
   if (p.ctype === 'impulse') return { kids: 0, partner: h < 12 };
@@ -31,9 +32,9 @@ export function companyOf(p: Pick<Person, 'id' | 'kind' | 'ctype' | 'thief' | 'l
   return { kids: 0, partner: false };
 }
 
-/** Older regulars now and then come on a mobility scooter. */
-export function onScooter(p: Pick<Person, 'id' | 'kind' | 'ctype' | 'bike' | 'thief'>): boolean {
-  return p.kind === 'customer' && p.ctype === 'loyalist' && !p.bike && !p.thief && idHash(p.id, 2) % 100 < 14;
+/** Older regulars now and then come on a mobility scooter (never a cyclist, on the way in or riding home). */
+export function onScooter(p: Pick<Person, 'id' | 'kind' | 'ctype' | 'bike' | 'riding' | 'thief'>): boolean {
+  return p.kind === 'customer' && p.ctype === 'loyalist' && !p.bike && !p.riding && !p.thief && idHash(p.id, 2) % 100 < 14;
 }
 
 /** Someone nobody expected, once in a long while. */
@@ -57,15 +58,16 @@ export function arrive(state: GameState, p: Person): void {
 
 /**
  * Done at a shelf: now and then a wrapper or a receipt is dropped on the floor (from the second day; a bin
- * within a few steps catches most of them). Their own draws, so nothing else in the day changes.
+ * within a few steps catches most of them). Their own draws, so nothing else in the day changes. It lands like
+ * any litter (open floor, six pieces at most) and takes a little off the shop's cleanliness, just what picking
+ * it up gives back.
  */
 export function maybeLitter(state: GameState, p: Person, f: Fixture | undefined): void {
   if (state.day < 2 || !f) return;
   const c = fixtureCentre(state.shop, f);
   const bin = state.shop.fixtures.some((b) => b.type === 'bin' && Math.hypot(fixtureCentre(state.shop, b).x - c.x, fixtureCentre(state.shop, b).z - c.z) < 3.5);
   if (!withRng(state, 'litter', (r) => r.chance(bin ? 0.004 : 0.018))) return;
-  state.shop.litter.push({ id: state.nextId++, x: p.x + 0.15, z: p.z + 0.1 });
-  state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.01);
+  addLitter(state, p.x + 0.15, p.z + 0.1, 0.01);
 }
 
 /**

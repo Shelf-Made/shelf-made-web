@@ -371,9 +371,8 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
   if (reg && reg.serving === p.id) { reg.serving = null; reg.scanned = 0; }
   p.registerId = null;
   if (!happy && (p.basket?.length ?? 0) > 0) {
-    // An angry walkout knocks something over: a small spill on the floor until someone mops it.
-    addSpill(state, p.x, p.z);
-    state.shop.cleanliness = Math.max(0.2, state.shop.cleanliness - 0.06);
+    // An angry walkout knocks something over: a small spill on the floor (a mess off the shop's cleanliness) until someone mops it.
+    addSpill(state, p.x, p.z, 0.06);
   }
   if (!happy) {
     cue(state, 'grumble');
@@ -383,13 +382,35 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
   setPath(state, p, doorInside(state, p.id));
 }
 
-/** A spill on the floor until someone mops it: only ever on open floor inside the shop (never under a fixture or outside). */
-export function addSpill(state: GameState, x: number, z: number): boolean {
+/**
+ * Litter on the floor until someone mops it: only ever on open floor inside the shop (never under a fixture or
+ * outside), six pieces at most (all of them drawn). It takes `dirt` off the shop's cleanliness (not below 0.2), and
+ * mopping it up gives back just that: no more, so a bin catching litter never leaves a shop dirtier.
+ */
+export function addLitter(state: GameState, x: number, z: number, dirt = 0): boolean {
   const g = gridFor(state);
   const [cx, cz] = cellOf(g, { x, z });
   if (!g.inside[cellIndex(g, cx, cz)] || isBlocked(g, cx, cz) || state.shop.litter.length >= 6) return false;
-  state.shop.litter.push({ id: nextId(state), x, z });
+  const took = Math.max(0, Math.min(dirt, state.shop.cleanliness - 0.2));
+  state.shop.cleanliness -= took;
+  state.shop.litter.push({ id: nextId(state), x, z, dirt: took });
+  return true;
+}
+
+/** A spill on the floor (litter, with a splash), until someone mops it. */
+export function addSpill(state: GameState, x: number, z: number, dirt = 0): boolean {
+  if (!addLitter(state, x, z, dirt)) return false;
   cue(state, 'spill');
+  return true;
+}
+
+/** Mop up a piece of litter: the shop gets back what it took (a piece from an older save: what a mop always gave). */
+export function mopUp(state: GameState, id: number): boolean {
+  const i = state.shop.litter.findIndex((l) => l.id === id);
+  if (i < 0) return false;
+  const [l] = state.shop.litter.splice(i, 1);
+  state.shop.cleanliness = Math.min(1, state.shop.cleanliness + (l!.dirt ?? 0.08));
+  cue(state, 'pick');
   return true;
 }
 
@@ -1213,8 +1234,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         }
         if (p.timer === -2) {
           // Cleaning trip: pick up the litter.
-          const i = state.shop.litter.findIndex((l) => l.id === p.targetFixture);
-          if (i >= 0) { state.shop.litter.splice(i, 1); state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.08); cue(state, 'pick'); gainXp(state, p, 5); }
+          if (mopUp(state, p.targetFixture ?? -1)) gainXp(state, p, 5);
           // (A cleaner with no bin in the shop to empty into takes longer over it.)
           const binless = p.kind === 'staff' && p.role === 'cleaner' && !state.shop.fixtures.some((x) => x.type === 'bin');
           p.state = 'stocking'; p.anim = 'browse'; p.timer = (binless ? 1.5 : 1.0) / levelBoost(p); p.carrying = null; p.task = null; p.targetFixture = null;

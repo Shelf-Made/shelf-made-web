@@ -8,7 +8,7 @@ import { replyToReview } from './reviews';
 import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder, SignStyle } from './types';
 import { saveOrder, editSavedOrder, deleteSavedOrder, placeSaved } from './savedOrders';
 import { placeOrder, openTomorrow } from './economy';
-import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE } from './people';
+import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE, mopUp } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
 import { PLOTS, FIXTURES, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf, refundOf, VARIANTS } from './layout';
@@ -415,14 +415,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'raise': { const err = giveRaise(state, cmd.staffId); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setRules': { state.rules = { ...state.rules, ...cmd.rules }; return { ok: true }; }
     case 'ackBadge': { state.unlocks.newBadges = state.unlocks.newBadges.filter((b) => b !== cmd.card); return { ok: true }; }
-    case 'clean': {
-      const i = state.shop.litter.findIndex((l) => l.id === cmd.litterId);
-      if (i < 0) return { ok: false };
-      state.shop.litter.splice(i, 1);
-      state.shop.cleanliness = Math.min(1, state.shop.cleanliness + 0.08);
-      cue(state, 'pick');
-      return { ok: true };
-    }
+    case 'clean': return mopUp(state, cmd.litterId) ? { ok: true } : { ok: false };
     case 'cleanTown': return pickUpLitter(state, cmd.litterId) ? { ok: true } : { ok: false };
     case 'moveAlong': return moveAlong(state, cmd.hangoutId) ? { ok: true } : { ok: false };
     case 'replyReview': return replyToReview(state, cmd.reviewId, cmd.text) ? { ok: true } : { ok: false, message: 'Nothing to reply to.' };
