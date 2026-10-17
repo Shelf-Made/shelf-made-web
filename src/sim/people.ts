@@ -317,6 +317,8 @@ function vend(state: GameState, p: Person, f: Fixture, productId: string, qty: n
   state.cash = Math.round((state.cash + total) * 100) / 100;
   state.today.revenue += total; state.today.cogs += productDef(productId).cost * qty; state.today.itemsSold += qty;
   p.vended = true;
+  // It comes out of what they meant to spend, as the basket does.
+  if (p.budget !== undefined) p.budget = Math.max(0, Math.round((p.budget - total) * 100) / 100);
   popup(state, fixtureCentre(state.shop, f), `${formatMoney(total, { sign: true })} vend`, 'money', 1.1);
   cue(state, 'coin');
 }

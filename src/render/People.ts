@@ -98,7 +98,8 @@ function bananaSuitGeometry(pal: AssetLibrary['palette']): BufferGeometry {
 }
 /** A guard's scooter: how high its deck lifts them, and the navy guards wear. */
 const SCOOTER_DECK = 0.07;
-const GUARD_NAVY = '#2C3E66';
+// (The darkest blue in the palette: a colour not in it comes out as the nearest one, a grey for a navy.)
+const GUARD_NAVY = '#285795';
 /** A two-wheeled scooter: a deck between two wheels, a stem up to handlebars (in the rider's frame, facing +z). */
 function scooterGeometry(pal: AssetLibrary['palette']): BufferGeometry {
   const wheel = (z: number) => box(pal, '#222226', 0.06, 0.07, 0.07, 0, 0, z);

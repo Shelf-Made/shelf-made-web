@@ -11,7 +11,7 @@ import { rivalDay, rivalsNight, planRivals } from './rivals';
 import { computeScores, priceIndex, playerShare } from './customers';
 import { marketDay, inShortage } from './market';
 import { closingCharges, checkFailState, addBill, PAYROLL_TAX, formatMoney, dollars } from './money';
-import { staffNight, autoOrder, managerPrices, wageFor } from './staff';
+import { staffNight, autoOrder, managerPrices, wageToday } from './staff';
 import { reviewsNight, ratingPull } from './reviews';
 import { applyUnlocks } from './progression';
 import { marketingDay, planEvents } from './marketing';
@@ -109,7 +109,7 @@ export function dailyUtilities(state: GameState): number {
 }
 
 export function dailyWages(state: GameState): number {
-  return state.people.filter((p) => p.kind === 'staff').reduce((a, p) => a + wageFor(p), 0);
+  return state.people.filter((p) => p.kind === 'staff').reduce((a, p) => a + wageToday(p, state.time), 0);
 }
 
 /** Close the books for the day. Called once when the last customer has left. */
@@ -188,6 +188,8 @@ export function openTomorrow(state: GameState): void {
   state.day++;
   state.time = 0;
   state.today = emptyDayStats(state.day);
+  // Yesterday's breaks were paid for at closing: today's are counted afresh.
+  for (const p of state.people) if (p.breakSecs) p.breakSecs = undefined;
   state.phase = 'open';
   // Yesterday's waits fade; rivals make their moves.
   state.scores.waitSum *= 0.4; state.scores.waitSamples = Math.max(1, Math.floor(state.scores.waitSamples * 0.4));
@@ -225,9 +227,9 @@ export function openTomorrow(state: GameState): void {
 
 export function isClosingTime(state: GameState): boolean { return state.time >= CLOSE_TIME; }
 
-/** Orderers and managers act at opening time. */
+/** Orderers and managers act at opening time (not one on a break). */
 export function dailyAutomation(state: GameState): void {
-  const staff = state.people.filter((p) => p.kind === 'staff');
+  const staff = state.people.filter((p) => p.kind === 'staff' && !p.onBreak);
   const manager = staff.find((p) => p.role === 'manager');
   const orderer = staff.find((p) => p.role === 'orderer');
   // Your saved orders first (their conditions are yours), then the manager's own top-ups.

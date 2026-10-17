@@ -5,9 +5,9 @@
 import type { GameState, Person, StaffRole, Candidate, ManagerRules, Look } from './types';
 import { withRng, popup, cue } from './state';
 import { doorOutside } from './people';
-import { FIXTURES, storageCap, storageUsed } from './layout';
+import { FIXTURES, CLOSE_TIME, storageCap, storageUsed } from './layout';
 import { productDef, inSeason, sizeOf } from './products';
-import { placeOrder } from './economy';
+import { placeOrder, unitCost, INSTANT_MUL } from './economy';
 import { formatMoney, dollars } from './money';
 
 const FIRST = ['Ada', 'Ben', 'Cleo', 'Dev', 'Ellis', 'Fay', 'Gus', 'Hana', 'Ivo', 'June', 'Kai', 'Lena', 'Milo', 'Nia', 'Oz', 'Pia', 'Quinn', 'Rae', 'Sam', 'Tess', 'Uma', 'Val', 'Wren', 'Yuki', 'Zed'];
@@ -40,7 +40,7 @@ const BASE_WAGE: Record<StaffRole, number> = { cashier: 48, stocker: 42, cleaner
 /**
  * Experience: every member of staff gets better at the job by doing it (a scan, a box shelved, a spill
  * mopped, a thief caught, a reorder), and it shows as a level from 1 to 5. Each level makes them quicker
- * at it; a guard from level 3 patrols on a scooter.
+ * at it; a guard instead patrols on a scooter from level 3.
  */
 export const LEVEL_XP = [0, 60, 180, 400, 800];
 export const MAX_LEVEL = LEVEL_XP.length;
@@ -85,8 +85,17 @@ export function setShift(state: GameState, staffId: number, shift: 'full' | 'mor
   return null;
 }
 
-/** Daily wage after the shift pattern. */
+/** Daily wage after the shift pattern (at half while on a break). */
 export function wageFor(p: Person): number { return Math.round((p.wage ?? 0) * (p.shift && p.shift !== 'full' ? 0.55 : 1) * (p.onBreak ? 0.5 : 1)); }
+
+/**
+ * What today's work costs at closing: a break is half pay for as long as it lasts, not the whole day. The
+ * seconds on one while the shop was open count, and (while still on one) the rest of the day.
+ */
+export function wageToday(p: Person, time: number): number {
+  const off = Math.min(1, ((p.breakSecs ?? 0) + (p.onBreak ? Math.max(0, CLOSE_TIME - time) : 0)) / CLOSE_TIME);
+  return Math.round((p.wage ?? 0) * (p.shift && p.shift !== 'full' ? 0.55 : 1) * (1 - 0.5 * off));
+}
 
 /** On a break, or back to work: off the floor at half pay, keeping what they have learned. */
 export function setBreak(state: GameState, staffId: number, on: boolean): string | null {
@@ -174,9 +183,9 @@ function releaseStaff(state: GameState, p: Person): void {
   if (p.carrying) state.shop.storage.push({ productId: p.carrying.productId, qty: p.carrying.qty, day: state.day });
 }
 
-/** Nightly: morale drifts, the overworked and underpaid quit, managers lift the team. */
+/** Nightly: morale drifts, the overworked and underpaid quit, managers (not on a break) lift the team. */
 export function staffNight(state: GameState): void {
-  const manager = state.people.find((p) => p.kind === 'staff' && p.role === 'manager');
+  const manager = state.people.find((p) => p.kind === 'staff' && p.role === 'manager' && !p.onBreak);
   for (const p of state.people) {
     if (p.kind !== 'staff') continue;
     const busy = state.today.customers > 45 ? 0.04 : 0;
@@ -220,12 +229,15 @@ export function autoOrder(state: GameState, rules: ManagerRules, spendCap: numbe
   // The pallet's room: an order too big for it is refused whole, so a line that will not fit (a stack of
   // Christmas trees, say) waits for another day and the rest still comes.
   let room = storageCap(state.shop) - storageUsed(state.shop);
+  // Never stocked up past "stock up to": a reorder point over it counts as that.
+  const target = rules.stockTarget ?? 1.5;
   for (const [pid, cap] of capacity) {
     const have = onHand.get(pid) ?? 0;
-    const point = cap * rules.reorderPoint;
+    const point = cap * Math.min(rules.reorderPoint, target);
     if (have < point) {
-      const qty = Math.max(6, Math.ceil(cap * (rules.stockTarget ?? 1.5) - have));
-      const cost = qty * productDef(pid).cost;
+      const qty = Math.max(6, Math.ceil(cap * target - have));
+      // Instant delivery is a quarter more (at today's prices), and the spend cap holds with it.
+      const cost = qty * (rules.instant ? Math.round(unitCost(pid, 'local', state) * INSTANT_MUL * 100) / 100 : productDef(pid).cost);
       if (spend + cost > spendCap) continue;
       if (qty * sizeOf(pid) > room) continue;
       room -= qty * sizeOf(pid);
@@ -236,8 +248,8 @@ export function autoOrder(state: GameState, rules: ManagerRules, spendCap: numbe
     const res = placeOrder(state, 'local', lines, !!rules.instant);
     if (typeof res !== 'string') {
       state.notices.push({ day: state.day, text: `Stock reordered: ${lines.length} product${lines.length > 1 ? 's' : ''} for ${dollars(res.total)}.`, kind: 'staff' });
-      for (const o of state.people) if (o.kind === 'staff' && (o.role === 'orderer' || o.role === 'manager')) gainXp(state, o, 8);
-    }
+      for (const o of state.people) if (o.kind === 'staff' && (o.role === 'orderer' || o.role === 'manager') && !o.onBreak) gainXp(state, o, 8);
+    } else state.notices.push({ day: state.day, text: `Couldn't reorder stock. ${res}`, kind: 'staff' });
   }
 }
 

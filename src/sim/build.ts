@@ -16,6 +16,9 @@ import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays } from './lot';
 /** `ceiling`: the part of the price that is a ceiling over a floor it opens (all a move costs). */
 export interface PlaceCheck { ok: boolean; reason: string; price: number; ceiling?: number }
 
+/** Pieces that reach up to the ceiling (or hang from it): a camera up there would be inside them. */
+const TO_CEILING: ReadonlySet<FixtureType> = new Set<FixtureType>(['pendant', 'vending', 'storeRack', 'freezer', 'kiosk', 'endcap', 'sign', 'wall', 'wallWindow', 'doorway', 'tallWall', ...VERTICAL]);
+
 /** Is (x, z) not a tile's corner? (The Build card snaps to tiles; a command need not.) */
 function offTile(shop: Shop, x: number, z: number): boolean { const f = shop.floor; return Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6; }
 
@@ -36,8 +39,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   // (but a light hung on the same wall cannot share it). The stairs take two.
   const sameWall = (fx: Fixture) => !!def.onWall && !!FIXTURES[fx.type].onWall && fx.rot === rot;
   const mine = footprintOf(type, x, z, rot);
-  // (A camera up on the ceiling shares its tile with what stands under it, but not with another up there.)
-  const apart = (fx: Fixture) => !!def.overhead !== !!FIXTURES[fx.type].overhead;
+  // (A camera up on the ceiling shares its tile with what stands under it, but not with another up there,
+  // nor with anything that reaches up to the ceiling.)
+  const apart = (fx: Fixture) => !!def.overhead !== !!FIXTURES[fx.type].overhead && !TO_CEILING.has(def.overhead ? fx.type : type);
   if (shop.fixtures.some((fx) => fx.id !== ignoreId && !FIXTURES[fx.type].outdoor && !apart(fx) && (fx.x === x && fx.z === z
     ? (sameWall(fx) || (type !== 'window' && fx.type !== 'window'))
     : type !== 'window' && fx.type !== 'window' && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), mine)))) return { ok: false, reason: 'Something is already there', price };

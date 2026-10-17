@@ -7,7 +7,7 @@ import type { GameState, Person, CustomerType, StaffRole } from './types';
 import { productDef } from './products';
 import { reasonText, TYPE_NAMES, rivalShoppersByType } from './customers';
 import { DAY_SECONDS } from './layout';
-import { ROLE_NAMES } from './staff';
+import { ROLE_NAMES, onShift, wageFor } from './staff';
 
 export type Mood = 'happy' | 'ok' | 'annoyed';
 
@@ -63,6 +63,8 @@ function doing(state: GameState, p: Person): string {
     return 'Off to meet friends';
   }
   if (p.dogStop !== undefined) return 'Waiting for the dog';
+  // Staff out by the back door: on a break, or not on shift now.
+  if (p.kind === 'staff' && !onShift(p, state.time)) return p.onBreak ? 'On a break' : 'Off shift';
   switch (p.state) {
     case 'driving': return 'Driving';
     case 'toDoor': case 'entering': return 'Heading in';
@@ -88,7 +90,7 @@ export function inspectPerson(state: GameState, id: number): InspectInfo | null 
   if (!p || p.kind === 'owner') return null;
   const base = { id: p.id, name: personName(p), mood: moodOf(p), doing: doing(state, p) };
   if (p.kind === 'staff') {
-    return { ...base, kind: 'staff', staff: { role: p.role!, roleName: ROLE_NAMES[p.role!], skill: Math.round((p.skill ?? 0.5) * 100) / 100, morale: Math.round((p.morale ?? 1) * 100) / 100, wage: p.wage ?? 0 } };
+    return { ...base, kind: 'staff', staff: { role: p.role!, roleName: ROLE_NAMES[p.role!], skill: Math.round((p.skill ?? 0.5) * 100) / 100, morale: Math.round((p.morale ?? 1) * 100) / 100, wage: wageFor(p) } };
   }
   const type = p.ctype;
   const typeName = type ? TYPE_NAMES[type] : undefined;

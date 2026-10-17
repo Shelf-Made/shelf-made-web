@@ -64,6 +64,8 @@ export function tick(state: GameState): void {
     tickRivalSpawns(state, dayCurve(state.time));
     // Twice a minute the manager looks over your saved orders for one whose stock condition has come true.
     if (state.tick % 600 === 0) managerSavedOrders(state, false);
+    // A break is half pay for as long as it lasts: its seconds while the shop is open go toward the day's wage.
+    for (const p of state.people) if (p.onBreak) p.breakSecs = (p.breakSecs ?? 0) + TICK;
     if (isClosingTime(state)) state.phase = 'closing';
   }
   ambient(state, 1);

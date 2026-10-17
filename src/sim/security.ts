@@ -2,11 +2,11 @@
  * Security: cameras, tag gates and guards. A camera watches part of a floor (one on a wall a quarter
  * turn out from it, a dome on the ceiling all round, a smart dome further and it can hold a running
  * thief still a moment). Fewer shoplifters try their luck where they are watched, and one who bolts
- * on camera is seen by every free hand at once. Tag gates by the door beep at a thief running out
- * and stop most of them. Guards stand by the door, put thieves off and run them down.
+ * on camera has three of the staff after them, not two. Tag gates by the door beep at a thief running
+ * out and stop most of them. Guards stand by the door, put thieves off and run them down.
  */
 import type { GameState, Person, FixtureType, Shop } from './types';
-import { toLocal, levelOfZ, zOnLevel, levelTileList, tileKey, footprintOf } from './layout';
+import { toLocal, levelOfZ, zOnLevel, levelTileList, shopTileList, tileKey, footprintOf } from './layout';
 import { onShift } from './staff';
 
 /** How far each camera sees (tiles), how wide (radians, whole cone), and how much a thief in view is put off and found. */
@@ -66,14 +66,14 @@ export function guardsOnDuty(state: GameState): Person[] {
 }
 
 /**
- * How much the shop's security puts shoplifters off: cameras by how much of the floor they watch, and each
- * guard on duty a good deal more.
+ * How much the shop's security puts shoplifters off: cameras by how much of the floor they watch (every open
+ * floor, so cameras upstairs count for the floor they are on), and each guard on duty a good deal more.
  */
 export function securityFactor(state: GameState): number {
   const cover = cameraCover(state.shop);
   let k = 1;
   if (cover.size) {
-    const all = levelTileList(state.shop, 0).length || 1;
+    const all = shopTileList(state.shop).length || 1;
     let w = 0; for (const t of cover.values()) w += t.watch;
     k *= 1 - 0.5 * Math.min(1, w / all);
   }

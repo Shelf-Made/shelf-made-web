@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { FIXTURES, VARIANTS, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, lotLayout, storeysOf, panelsOver } from '@/sim/layout';
 import { PANEL_PRICE } from '@/sim/storeys';
@@ -33,7 +33,7 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   iceChest: 'Frozen goods and ice cream: 4 big wells', coolProduce: 'Fruit and veg kept fresh: holds the chilled ones too', wallShelf: 'Two small boards on an outside wall',
   glassCase: 'Beauty, gadgets, clothes and toys behind glass', displayTable: 'Two tiles of table for toys, gadgets, home and books', bakeryCase: 'Bread, buns and cakes under glass',
   clothesRail: 'Clothes on a rail, folded ones underneath', queueRail: 'Belt posts: the queue beside them keeps a straight, calmer line', vending: 'Drinks and snacks: shoppers pay at the machine, no till needed',
-  camera: 'On a wall, watching the floor in front of it: fewer shoplifters, and every free hand sees one run',
+  camera: 'On a wall, watching the floor in front of it: fewer shoplifters, and one more of your staff gives chase when one runs past it',
   dome: 'On the ceiling, watching all round it (over a shelf too)',
   smartCam: 'Watches all round, further, and freezes a running thief for a moment',
   tagGate: 'Just inside the door: beeps at a thief running out, and stops most of them', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
@@ -138,6 +138,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
     if (t === 'security' && b.overlay === 'none') runtime.setOverlay('security');
     else if (t !== 'security' && b.overlay === 'security') runtime.setOverlay('none');
   };
+  // (Opened again on the Security tab, as it was left: the cameras' view comes back on with it.)
+  useEffect(() => { if (tab === 'security' && b.overlay === 'none') runtime.setOverlay('security'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const thumbs = runtime.renderer?.fixtureThumbs ?? {};
   const items = (Object.keys(FIXTURES) as FixtureType[]).filter((t) => FIXTURES[t].category === tab);
   const floor = s.shop.floorStyle ?? 'lino';

@@ -234,6 +234,8 @@ export interface Person {
   xp?: number;
   /** Staff: on a break (half pay, off the floor, keeps their experience). */
   onBreak?: boolean;
+  /** Staff: seconds on a break today while the shop was open (paid at half at closing). */
+  breakSecs?: number;
   /** Staff: the tick they last said what they need to do their job. */
   needTick?: number;
   /** Staff: seconds at their post with nothing to do (they go and tidy a shelf after a while). */

@@ -11,6 +11,10 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const r = s.rules;
   const set = (patch: Partial<typeof r>) => runtime.dispatch({ type: 'setRules', rules: patch });
   const pct = (v: number) => `${Math.round(v * 100)}%`;
+  // What a level does: quicker at the job, or for a guard (who runs, not scans) a scooter from level 3.
+  const levelText = (p: (typeof team)[number]) => p.role === 'guard' ? (staffLevel(p) >= 3 ? 'on a scooter' : 'a scooter at level 3') : `+${(staffLevel(p) - 1) * 20}% quicker`;
+  // "Stock up to" is never under the reorder point: moving one past the other takes it along.
+  const stockTarget = r.stockTarget ?? 1.5;
   return (
     <>
       <h3>Your team ({team.length})</h3>
@@ -20,7 +24,7 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           <div className={`item staff-item${p.onBreak ? ' on-break' : ''}`} key={p.id}>
             <div className="staff-main">
               <div className="name">{p.name} <span className="tag">{ROLE_NAMES[p.role ?? 'cashier']}</span>
-                <span className="lvl" title={`Level ${staffLevel(p)} of ${MAX_LEVEL}: +${(staffLevel(p) - 1) * 20}% quicker`}>Lv {staffLevel(p)}</span>
+                <span className="lvl" title={`Level ${staffLevel(p)} of ${MAX_LEVEL}: ${levelText(p)}`}>Lv {staffLevel(p)}</span>
                 {p.onBreak && <span className="tag break">On a break</span>}
               </div>
               <div className="xp" aria-label={`Experience: ${Math.round(levelProgress(p) * 100)}% to the next level`}><i style={{ width: `${Math.round(levelProgress(p) * 100)}%` }} /></div>
@@ -57,13 +61,13 @@ export function StaffCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         ))}
       </div>
       <h3>Rules for orderers and managers</h3>
-      <label className="row between"><span>Reorder when below</span><span className="row"><span className="key">{pct(r.reorderPoint)} of shelf</span><button className="btn small ghost" onClick={() => set({ reorderPoint: Math.max(0.3, r.reorderPoint - 0.1) })}>−</button><button className="btn small ghost" onClick={() => set({ reorderPoint: Math.min(2, r.reorderPoint + 0.1) })}>+</button></span></label>
+      <label className="row between"><span>Reorder when below</span><span className="row"><span className="key">{pct(r.reorderPoint)} of shelf</span><button className="btn small ghost" onClick={() => set({ reorderPoint: Math.max(0.3, r.reorderPoint - 0.1) })}>−</button><button className="btn small ghost" onClick={() => { const v = Math.min(2, r.reorderPoint + 0.1); set(v > stockTarget ? { reorderPoint: v, stockTarget: v } : { reorderPoint: v }); }}>+</button></span></label>
       <label className="row between"><span>Daily spend cap</span><span className="row"><span className="key">{money(r.spendCap)}</span><button className="btn small ghost" onClick={() => set({ spendCap: Math.max(50, r.spendCap - 50) })}>−</button><button className="btn small ghost" onClick={() => set({ spendCap: r.spendCap + 50 })}>+</button></span></label>
       <label className="row between"><span>Price range (vs average)</span><span className="row"><span className="key">{pct(r.priceMin)}–{pct(r.priceMax)}</span><button className="btn small ghost" onClick={() => set({ priceMin: Math.max(0.7, r.priceMin - 0.05), priceMax: Math.max(0.8, r.priceMax - 0.05) })}>−</button><button className="btn small ghost" onClick={() => set({ priceMin: Math.min(1.3, r.priceMin + 0.05), priceMax: Math.min(1.6, r.priceMax + 0.05) })}>+</button></span></label>
-      <label className="row between"><span>Stock up to</span><span className="row"><input type="range" min={50} max={200} step={10} value={Math.round((r.stockTarget ?? 1.5) * 100)} onChange={(e) => set({ stockTarget: Number(e.target.value) / 100 })} aria-label="Stock up to, percent of what the shelves hold" /><span className="key">{pct(r.stockTarget ?? 1.5)} of shelf</span></span></label>
+      <label className="row between"><span>Stock up to</span><span className="row"><input type="range" min={50} max={200} step={10} value={Math.round(stockTarget * 100)} onChange={(e) => { const v = Number(e.target.value) / 100; set(v < r.reorderPoint ? { stockTarget: v, reorderPoint: v } : { stockTarget: v }); }} aria-label="Stock up to, percent of what the shelves hold" /><span className="key">{pct(stockTarget)} of shelf</span></span></label>
       <label className="row between"><span>Instant delivery (+{Math.round((INSTANT_MUL - 1) * 100)}%)</span><input type="checkbox" checked={!!r.instant} onChange={(e) => set({ instant: e.target.checked })} aria-label="Reorders come by instant delivery" /></label>
       <label className="row between"><span>Wage cap for hires</span><span className="row"><span className="key">{money(r.wageCap)}</span><button className="btn small ghost" onClick={() => set({ wageCap: Math.max(30, r.wageCap - 5) })}>−</button><button className="btn small ghost" onClick={() => set({ wageCap: r.wageCap + 5 })}>+</button></span></label>
-      <p className="muted">Paid nightly, plus 12% tax. Half shifts pay 55%, a break half. Rushed days and low pay hurt morale. Everyone levels up by doing the job: +20% quicker a level, up to level 5.</p>
+      <p className="muted">Paid nightly, plus 12% tax. Half shifts pay 55%, and time on a break half. Rushed days and low pay hurt morale. Everyone levels up by doing the job, up to level 5: +20% quicker a level (a guard gets a scooter at level 3).</p>
     </>
   );
 }

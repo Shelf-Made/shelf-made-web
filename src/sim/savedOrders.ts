@@ -94,7 +94,7 @@ export function ruleMet(state: GameState, o: SavedOrder, morning: boolean): bool
  */
 export function managerSavedOrders(state: GameState, morning: boolean): void {
   if (!state.savedOrders?.length) return;
-  if (!state.people.some((p) => p.kind === 'staff' && p.role === 'manager')) return;
+  if (!state.people.some((p) => p.kind === 'staff' && p.role === 'manager' && !p.onBreak)) return;
   for (const o of state.savedOrders) {
     if (o.lastDay === state.day) continue;
     if (state.orders.some((x) => x.savedId === o.id && x.state !== 'delivered')) continue;
