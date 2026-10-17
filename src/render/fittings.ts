@@ -45,9 +45,16 @@ export const VARIANT_MODEL: Partial<Record<FixtureType, string[]>> = {
 /** The model a piece is drawn with, for the look it has. */
 export function modelOf(type: FixtureType, variant: number | undefined, base: string): string { return (variant && VARIANT_MODEL[type]?.[variant]) || base; }
 
+/** How thick every wall is drawn, round the shop or across it: Kenney's pieces (0.6 deep) squeezed to this. */
+export const WALL_THICK = 0.2;
+export const WALL_SQUEEZE = WALL_THICK / 0.6;
+/**
+ * A wall round the shop stands this far in over the floor's edge (its inside face: where its paint and what hangs on it
+ * go), and reaches out past it to WALL_OUT; the rest of the band out to the lot is a concrete step.
+ */
+export const WALL_IN = 0.05;
+export const WALL_OUT = WALL_THICK - WALL_IN;
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
-/** How much thinner a wall across the shop is drawn than one round it (the shell's, in the band past the floor). */
-export const INNER_WALL_DEPTH = 0.38;
 export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim', 'gen:tallWall']);
 /** Pieces that vanish (rather than being cut down) with the walls: a window's frame has nothing left to frame. */
 export const GONE_WITH_WALLS: ReadonlySet<string> = new Set(['gen:windowTrim']);
@@ -90,7 +97,7 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
   const pal = assets.palette;
   const m = (model: string, x = 0, y = 0, z = 0, yaw = 0, s = 1, sy = s, sz = s) => place(assets.geometry(model).clone(), x, y, z, yaw, s, sy, sz);
   // Walls inside the shop wear the outside's paint: white with the stripe in the shop's colour.
-  const wall = (model: string) => place(paintStrips(recolor(assets.geometry(model), WALL_COLOURS), pal, { '2:1': sc.primary }), 0, 0, 0, 0, 1, 1, INNER_WALL_DEPTH);
+  const wall = (model: string) => place(paintStrips(recolor(assets.geometry(model), WALL_COLOURS), pal, { '2:1': sc.primary }), 0, 0, 0, 0, 1, 1, WALL_SQUEEZE);
   // A low timber edge round dark soil, planted in rows of these flowers.
   const flowerBed = (kinds: string[]) => {
     const parts: BufferGeometry[] = [box(pal, '#6B4A35', 0.84, 0.05, 0.84, 0, 0, 0)];

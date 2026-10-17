@@ -7,7 +7,7 @@ import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSe
 import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
 import { CONVEYOR_PRICE, twinTill } from '@/sim/people';
 import { onShift } from '@/sim/staff';
-import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, edgeOf, edgeSide, WALL_T, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, justBought, VARIANTS } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, edgeOf, edgeSide, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, justBought, VARIANTS } from '@/sim/layout';
 import { canPave } from '@/sim/lot';
 import { bayMouth, lotNet, onLotGrid, tileIndex } from '@/sim/drive';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
@@ -20,7 +20,7 @@ import { WorldRenderer } from '@/render/WorldRenderer';
 import { FollowCamera } from '@/render/FollowCamera';
 import type { StoreHit } from '@/render/StoreView';
 import { statureOf } from '@/render/figure';
-import { INNER_WALL_DEPTH } from '@/render/fittings';
+import { WALL_THICK, WALL_IN, WALL_OUT } from '@/render/fittings';
 import { keyLabel } from '@/save/settings';
 import { AudioEngine, type Cue } from '@/audio/AudioEngine';
 import { defaultBackend, type StorageBackend } from '@/save/storage';
@@ -1417,10 +1417,10 @@ export class GameRuntime {
     if (t.kind === 'fixture') {
       const f = s.shop.fixtures.find((x) => x.id === t.id)!;
       let r = footprintOf(f.type, f.x, f.z, f.rot);
-      // A wall: the strip it stands in (round the shop, the band outside the floor; across it, astride its line).
+      // A wall: the strip it stands on (round the shop, over the floor's edge and out past it; across it, astride its line).
       if (FIXTURES[f.type].edge) {
-        const e = edgeOf(f), out = edgeSide(s.shop, f) === 'outer', o = (e.nx || e.nz) * WALL_T;
-        const a = out ? Math.min(e.line, e.line + o) : e.line - INNER_WALL_DEPTH / 2, b = out ? Math.max(e.line, e.line + o) : e.line + INNER_WALL_DEPTH / 2;
+        const e = edgeOf(f), out = edgeSide(s.shop, f) === 'outer', n = e.nx || e.nz;
+        const a = out ? Math.min(e.line - n * WALL_IN, e.line + n * WALL_OUT) : e.line - WALL_THICK / 2, b = out ? Math.max(e.line - n * WALL_IN, e.line + n * WALL_OUT) : e.line + WALL_THICK / 2;
         r = e.axis === 'x' ? { x0: e.t - 0.5, z0: a, x1: e.t + 0.5, z1: b } : { x0: a, z0: e.t - 0.5, x1: b, z1: e.t + 0.5 };
       }
       // The stairs seen from the floor they come up to: their opening up there.

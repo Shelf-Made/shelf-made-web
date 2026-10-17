@@ -90,8 +90,8 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   with Kenney's own clips, head and body merged into one draw; nobody casts a shadow-map shadow
   (a soft instanced blob under every person and car instead), and from far off people become
   instanced stand-ins.
-- The shop: a concrete slab, Kenney walls (each one a piece: see Walls below) standing just outside
-  the floor's edge, the name in Fredoka letters on a fascia and a pylon. With the manager inside, the
+- The shop: a concrete slab, thin Kenney walls (each one a piece: see Walls below) standing on the
+  floor's edge, a low concrete step round them, the name in Fredoka letters on a fascia and a pylon. With the manager inside, the
   roof comes off and the walls between the camera and the manager drop to stubs; from outside and
   zoomed out the shop wears its roof. A rival's building that hides the manager drops to stubs the same way.
 - Stock is Kenney Food Kit and Mini Market models, scaled uniformly to fit each slot box measured
@@ -192,9 +192,10 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - **Walls** (Walls tab): every wall is a piece, as Retail Tycoon 2 has them: a Wall, a Wall with
   window, a Doorway, a Railing, a Gate or a Tall wall stands on an edge of its tile (the edge behind
   it as it faces: R turns it round the tile), one to an edge, never on the tile, so a shelf stands in
-  front of one. Round the floor it stands in the band just outside the edge, as thick as the shop's
-  walls have always been; across the floor it is a thin wall on the line between two tiles, and
-  nobody steps over its line. A new shop comes walled all round (the front all glass, a front door
+  front of one. Every wall is drawn a fifth of a tile thick: round the floor it stands on the edge
+  (its inside face just over the floor, where its paint and what hangs on it go), the rest of the
+  half-tile band out to the lot a low concrete step; across the floor it stands on the line between
+  two tiles, and nobody steps over its line. A new shop comes walled all round (the front all glass, a front door
   and a back door), each wall one it came with: taken down for nothing back, and no looks for it.
   The doors are pieces too: the front door slides along the front wall, the back door goes in any
   wall at the back; they move, but are never sold or turned. Buying or selling floor never puts a

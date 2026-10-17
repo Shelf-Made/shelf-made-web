@@ -49,7 +49,7 @@ import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOU
 import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle, WallStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
-import { fittingGeometry, fittingGlass, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf, INNER_WALL_DEPTH } from './fittings';
+import { fittingGeometry, fittingGlass, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf, WALL_THICK, WALL_SQUEEZE, WALL_IN, WALL_OUT } from './fittings';
 import { BlobShadows } from './blobs';
 import { cornerProps, pylonSpot, cornerGarden, playerCorner } from './dressing';
 import { tuftMesh } from './StaticWorld';
@@ -389,13 +389,15 @@ export class StoreView {
     floorMesh.receiveShadow = true;
     this.shell.add(floorMesh);
 
-    // ---- Walls: Kenney wall pieces recoloured, standing just outside the floor edge.
-    // Outside: white, with the stripe in the shop's colour. Inside: painted bands (see paintPanels).
-    const outside = (id: string) => paintStrips(recolor(this.assets.geometry(id), WALL_COLOURS), pal, { '2:1': sc.primary });
+    // ---- Walls: Kenney wall pieces recoloured and squeezed thin, standing on the floor's edge (in over it by WALL_IN,
+    // out past it to WALL_OUT). Outside: white, with the stripe in the shop's colour. Inside: painted bands (see paintPanels).
+    const outside = (id: string) => paintStrips(recolor(this.assets.geometry(id), WALL_COLOURS), pal, { '2:1': sc.primary }).scale(1, 1, WALL_SQUEEZE);
     const wallG = outside('market/wall');
     const windowG = outside('market/wall-window');
     const doorG = outside('market/wall-door');
-    const windowGlass = this.assets.glassGeometry('market/wall-window');
+    const windowGlass = this.assets.glassGeometry('market/wall-window')?.clone().scale(1, 1, WALL_SQUEEZE) ?? null;
+    // (A wall's middle, out from the line it stands on.)
+    const centre = WALL_THICK / 2 - WALL_IN;
     let pane: { x0: number; x1: number; y0: number; y1: number; z1: number } | null = null;
     if (windowGlass) { windowGlass.computeBoundingBox(); const b = windowGlass.boundingBox!; pane = { x0: b.min.x, x1: b.max.x, y0: b.min.y, y1: b.max.y, z1: b.max.z }; }
     // Where the inside paint stops around a window: its pane, or (Kenney's glass is painted in the atlas) the frame set back in the wall.
@@ -458,11 +460,11 @@ export class StoreView {
             if (!atL(nx + dir.nx, nz + dir.nz)) return 'run' as const;
             return wallAt.has(`${nx + dir.nx},${nz + dir.nz},${dirName(-ax * e, -az * e)}`) ? 'notch' as const : 'open' as const;
           });
-          // Along x, a piece that meets a notch's wall gives way to it by half a tile at that end.
+          // Along x, a piece that meets a notch's wall gives way to it at that end, by as far as that wall stands out.
           const cutLo = dir.axis === 'x' && ends[0] === 'notch', cutHi = dir.axis === 'x' && ends[1] === 'notch';
-          const len = 1 - (cutLo ? 0.5 : 0) - (cutHi ? 0.5 : 0), mid = t + (cutLo ? 0.25 : 0) - (cutHi ? 0.25 : 0);
-          const px = dir.axis === 'x' ? ox + mid : ox + line + outward * WALL_T / 2;
-          const pz = dir.axis === 'x' ? oz + line + outward * WALL_T / 2 : oz + mid;
+          const len = 1 - (cutLo ? WALL_OUT : 0) - (cutHi ? WALL_OUT : 0), mid = t + (cutLo ? WALL_OUT / 2 : 0) - (cutHi ? WALL_OUT / 2 : 0);
+          const px = dir.axis === 'x' ? ox + mid : ox + line + outward * centre;
+          const pz = dir.axis === 'x' ? oz + line + outward * centre : oz + mid;
           // A shortened piece is the plain wall (a window or door never sits by a notch's end).
           const piece = len < 1 ? wallG : src;
           // A tall wall stands two storeys; any wall under a double-height space reaches up into it.
@@ -475,11 +477,12 @@ export class StoreView {
           ledge.push(place(isDoor ? src.clone() : cutDown(isWindow ? wallG : piece, LEDGE), px, y0, pz, dir.yaw, len, 1, 1));
           if (isWindow && windowGlass && len === 1) glass.push(place(windowGlass.clone(), px, y0, pz, dir.yaw));
           // Offers in every other front window, on the outside of the glass; the front windows glow at night.
-          if (L === 0 && isFront && isWindow && pane && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + WALL_T / 2 + pane.z1 + 0.006));
-          if (isFront && isWindow && pane) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, y0 + pane.y0 + 0.01, line + 0.08));
-          // Where it is clicked to pick it up (a box over the band it stands in).
-          const bx = dir.axis === 'x' ? { x0: t - 0.5, x1: t + 0.5 } : { x0: Math.min(line, line + outward * WALL_T), x1: Math.max(line, line + outward * WALL_T) };
-          const bz = dir.axis === 'z' ? { z0: t - 0.5, z1: t + 0.5 } : { z0: Math.min(line, line + outward * WALL_T), z1: Math.max(line, line + outward * WALL_T) };
+          if (L === 0 && isFront && isWindow && pane && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + centre + pane.z1 + 0.006));
+          if (isFront && isWindow && pane) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, y0 + pane.y0 + 0.01, line + centre - 0.17 * WALL_SQUEEZE));
+          // Where it is clicked to pick it up (a box round it).
+          const inner = line - outward * WALL_IN, outer = line + outward * WALL_OUT;
+          const bx = dir.axis === 'x' ? { x0: t - 0.5, x1: t + 0.5 } : { x0: Math.min(inner, outer), x1: Math.max(inner, outer) };
+          const bz = dir.axis === 'z' ? { z0: t - 0.5, z1: t + 0.5 } : { z0: Math.min(inner, outer), z1: Math.max(inner, outer) };
           // (A door stands full height either way.)
           const lo = new Vector3(ox + bx.x0, y0, oz + bz.z0);
           boxes.push({ id: p.id, level: L, box: new Box3(lo, new Vector3(ox + bx.x1, y0 + storeys * STOREY, oz + bz.z1)), low: new Box3(lo.clone(), new Vector3(ox + bx.x1, y0 + (isDoor ? STOREY : LEDGE), oz + bz.z1)) });
@@ -509,38 +512,40 @@ export class StoreView {
         this.sides.push(side);
         if (dir.name === 'front' && L === 0) front = side;
       }
-      // Corner posts: a half-width wall piece closing the square outside each outer corner of the floor a wall comes to.
-      const corner = place(wallG.clone(), 0, 0, 0, 0, 0.5, 1, 1);
+      // Corner posts: a wall piece as wide as a wall is thick, closing the square outside each outer corner of the floor a wall comes to.
+      const corner = place(wallG.clone(), 0, 0, 0, 0, WALL_THICK, 1, 1);
       const posts: BufferGeometry[] = [];
       const seen = new Set<string>();
       for (const tile of mine.map((p) => ({ x: p.x, z: groundZ(p.z) }))) for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
         if (atL(tile.x + dx, tile.z) || atL(tile.x, tile.z + dz)) continue;
         if (!wallAt.has(`${tile.x},${tile.z},${dirName(dx, 0)}`) && !wallAt.has(`${tile.x},${tile.z},${dirName(0, dz)}`)) continue;
-        const cx = tile.x + 0.5 + dx * 0.75, cz = tile.z + 0.5 + dz * 0.75, k = `${cx},${cz}`;
+        const cx = tile.x + 0.5 + dx * (0.5 + centre), cz = tile.z + 0.5 + dz * (0.5 + centre), k = `${cx},${cz}`;
         if (seen.has(k)) continue;
         seen.add(k);
         posts.push(place(corner.clone(), ox + cx, y0, oz + cz));
       }
       if (posts.length) { const postMesh = new Mesh(merge(posts), this.assets.material); postMesh.castShadow = true; parent.add(postMesh); }
-      // Where no wall stands round the ground floor (or a door, a doorway, a railing or a gate does), the band is a
-      // threshold: concrete, or the steel strip across a door.
+      // Round the ground floor the band out to the lot is a low concrete step, under the walls and on past them, and
+      // where no wall stands, a threshold anyone walks over; under a door (or a doorway) a steel strip across it.
       if (L === 0) {
         const strip: BufferGeometry[] = [];
-        const bandOf = (x: number, z: number, nx: number, nz: number) => nx
-          ? { x0: nx < 0 ? x - WALL_T : x + 1, z0: z, x1: nx < 0 ? x : x + 1 + WALL_T, z1: z + 1 }
-          : { x0: x, z0: nz < 0 ? z - WALL_T : z + 1, x1: x + 1, z1: nz < 0 ? z : z + 1 + WALL_T };
+        // The band beside a tile's edge, from a to b out past the floor's edge.
+        const bandOf = (x: number, z: number, nx: number, nz: number, a = 0, b = WALL_T) => nx
+          ? { x0: nx < 0 ? x - b : x + 1 + a, z0: z, x1: nx < 0 ? x - a : x + 1 + b, z1: z + 1 }
+          : { x0: x, z0: nz < 0 ? z - b : z + 1 + a, x1: x + 1, z1: nz < 0 ? z - a : z + 1 + b };
+        const slab = (r: { x0: number; z0: number; x1: number; z1: number }, colour: string, h: number, y: number) => strip.push(box(pal, colour, r.x1 - r.x0, h, r.z1 - r.z0, ox + (r.x0 + r.x1) / 2, y, oz + (r.z0 + r.z1) / 2));
+        const sill = WALL_OUT + 0.06;
         for (const tile of tiles) for (const d of DIRS) {
           if (at(tile.x + d.nx, tile.z + d.nz)) continue;
-          const w = wallAt.get(`${tile.x},${tile.z},${d.name}`), r = bandOf(tile.x, tile.z, d.nx, d.nz);
-          if (w && w.type !== 'frontDoor' && w.type !== 'backDoor' && w.type !== 'doorway') continue;
-          if (w) strip.push(box(pal, '#9AA0A8', r.x1 - r.x0 + (d.axis === 'x' ? 0.2 : 0), 0.02, r.z1 - r.z0 + (d.axis === 'z' ? 0.2 : 0), ox + (r.x0 + r.x1) / 2, -0.008, oz + (r.z0 + r.z1) / 2));
-          else strip.push(box(pal, '#CFCBC2', r.x1 - r.x0, 0.04, r.z1 - r.z0, ox + (r.x0 + r.x1) / 2, -0.012, oz + (r.z0 + r.z1) / 2));
+          const w = wallAt.get(`${tile.x},${tile.z},${d.name}`);
+          const door = !!w && (w.type === 'frontDoor' || w.type === 'backDoor' || w.type === 'doorway');
+          if (door) slab(bandOf(tile.x, tile.z, d.nx, d.nz, 0, sill), '#9AA0A8', 0.02, -0.008);
+          slab(bandOf(tile.x, tile.z, d.nx, d.nz, door ? sill : 0), '#CFCBC2', 0.04, -0.012);
         }
-        // (And the square outside a corner no wall comes to.)
+        // (And the square outside each outer corner of the floor.)
         for (const tile of tiles) for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
           if (at(tile.x + dx, tile.z) || at(tile.x, tile.z + dz)) continue;
-          if (wallAt.has(`${tile.x},${tile.z},${dirName(dx, 0)}`) || wallAt.has(`${tile.x},${tile.z},${dirName(0, dz)}`)) continue;
-          strip.push(box(pal, '#CFCBC2', WALL_T, 0.04, WALL_T, ox + tile.x + 0.5 + dx * 0.75, -0.012, oz + tile.z + 0.5 + dz * 0.75));
+          strip.push(box(pal, '#CFCBC2', WALL_T, 0.04, WALL_T, ox + tile.x + 0.5 + dx * (0.5 + WALL_T / 2), -0.012, oz + tile.z + 0.5 + dz * (0.5 + WALL_T / 2)));
         }
         if (strip.length) { const sm = new Mesh(merge(strip), this.assets.ground); sm.receiveShadow = true; this.shell.add(sm); }
       }
@@ -557,7 +562,8 @@ export class StoreView {
     while (fronted(rx1)) rx1++;
     const fr = { x0: rx0, x1: rx1 };
     const width = fr.x1 - fr.x0;
-    const fz = oz + f.z1 + WALL_T + 0.02;
+    // (Set into the front wall's outside face.)
+    const fz = oz + f.z1 + WALL_OUT - 0.03;
     const awning: BufferGeometry[] = [];
     let k = 0;
     for (let x = ox + fr.x0; x < ox + fr.x1 - 0.01; x += 0.25, k++) {
@@ -630,18 +636,19 @@ export class StoreView {
     if (shop.loadingBay) {
       const ts = lotLayout(shop).truckStop, bay: BufferGeometry[] = [];
       // Against the back door's own wall (a shop grown back a tile elsewhere has its back edge deeper).
-      const len = 2.8, wid = 1.25, wallOut = shop.backDoor.z - WALL_T;
+      const len = 2.8, wid = 1.25, wallOut = shop.backDoor.z - WALL_T, face = shop.backDoor.z - WALL_OUT;
       for (const s of [-1, 1]) bay.push(box(pal, '#FFC844', len, 0.012, 0.07, ts.x, 0.018, ts.z + s * wid / 2));
       for (let i = 0; i < 8; i++) bay.push(box(pal, i % 2 ? '#38383D' : '#FFC844', 0.16, 0.012, wid - 0.1, ts.x + len / 2 - 0.12 - i * 0.16, 0.018, ts.z));
       const dx = shop.backDoor.x;
-      bay.push(box(pal, '#B9BCC4', 1.4, 0.12, 0.42, dx, 0, wallOut - 0.21), box(pal, '#FFC844', 1.4, 0.03, 0.04, dx, 0.1, wallOut - 0.42));
+      // (The dock runs back over the step to the wall itself.)
+      bay.push(box(pal, '#B9BCC4', 1.4, 0.12, face - wallOut + 0.42, dx, 0, (face + wallOut - 0.42) / 2), box(pal, '#FFC844', 1.4, 0.03, 0.04, dx, 0.1, wallOut - 0.42));
       for (const s of [-1, 1]) bay.push(box(pal, '#222226', 0.1, 0.18, 0.07, dx + s * 0.55, 0.06, wallOut - 0.46));
       this.shell.add(Object.assign(new Mesh(merge(bay), this.assets.material), { receiveShadow: true }));
     }
     // Roof: a flat deck with a parapet in the shop's green, worn when you are outside and pulled back.
     { // Over the floor and its walls, tile by tile, on top of however many storeys stand there, with the parapet round each outline.
       const roof: BufferGeometry[] = [];
-      const T = WALL_T;
+      const T = WALL_OUT;
       const height = (x: number, z: number) => { let h = -1; for (let L = 0; L < MAX_LEVELS; L++) if (st.inside[L]?.has(tileKey(x, z))) h = L; return h; };
       for (const tile of tiles) {
         const h = height(tile.x, tile.z), y = (h + 1) * STOREY;
@@ -960,7 +967,8 @@ export class StoreView {
 
   private fixtureMatrix(shop: Shop, f: Fixture, out: Matrix4, yOffset = 0, modelOffset = false): Matrix4 {
     const yaw = f.rot * Math.PI / 2;
-    const dz = modelOffset ? this.offsetOf(f.type) : 0;
+    // (Hung on a wall across the shop: on that wall's face, out from its line; a wall round the shop has its face where the models hang.)
+    const dz = modelOffset ? this.offsetOf(f.type) + (FIXTURES[f.type].onWall && edgeSide(shop, f) === 'inner' ? WALL_THICK / 2 - WALL_IN : 0) : 0;
     // The middle of its footprint (a billboard spans two tiles), up on its floor; a hanging light under a
     // double-height ceiling hangs from that.
     const r = footprintOf(f.type, f.x, f.z, f.rot), L = levelOf(f);
@@ -1299,10 +1307,10 @@ export class StoreView {
     this.ghost.position.set((r.x0 + r.x1) / 2 + Math.sin(yaw) * dz, L * STOREY + 0.02, zOnLevel((r.z0 + r.z1) / 2, -L) + Math.cos(yaw) * dz);
     this.ghost.rotation.set(0, yaw, 0);
     this.ghost.scale.set(1, 1, 1);
-    // A wall going round the building stands out in the band past the floor's edge, as thick as the rest of them.
+    // A wall going round the building stands out over the floor's edge, as the rest of them do.
     if (FIXTURES[type].edge && SHELL_WALLS.has(type) && isFloor(shop, x, z)) {
-      const e = edgeOf({ x, z, rot });
-      if (!insideOn(shop, L, e.bx, groundZ(e.bz))) { this.ghost.position.x += e.nx * WALL_T / 2; this.ghost.position.z += e.nz * WALL_T / 2; this.ghost.scale.set(1, 1, 1 / INNER_WALL_DEPTH); }
+      const e = edgeOf({ x, z, rot }), c = WALL_THICK / 2 - WALL_IN;
+      if (!insideOn(shop, L, e.bx, groundZ(e.bz))) { this.ghost.position.x += e.nx * c; this.ghost.position.z += e.nz * c; }
     }
   }
 

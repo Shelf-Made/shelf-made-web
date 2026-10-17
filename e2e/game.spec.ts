@@ -323,16 +323,16 @@ test('walls are pieces: one clicked opens its menu, a door only moves, and the f
   await hooks(page, 'fp', 0.5, -1.5, 0);
   await settle(page, 600);
   // The left wall, standing full height: one the shop came with, so it comes down for nothing.
-  await pointAt(page, -2.75, -2.5, 1.5);
+  await pointAt(page, -2.55, -2.5, 0.7);
   await expect.poll(() => aimText(page)).toBe('Wall: Move, Turn or Take down');
-  await clickAt(page, -2.75, -2.5, 1.5);
+  await clickAt(page, -2.55, -2.5, 0.7);
   const menu = page.getByRole('menu', { name: 'Wall' });
   await expect(menu.getByRole('menuitem')).toHaveText(['Move', 'Turn', 'Take down']);
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   // The front door moves along the front, and that is all.
   const door = (await hooks<{ shop: { door: { x: number } } }>(page, 'state')).shop.door;
-  await pointAt(page, door.x, 0.25, 1.0);
+  await pointAt(page, door.x, 0.05, 0.6);
   await expect.poll(() => aimText(page)).toBe('Front door: Move');
   // Just inside the front windows (drawn as a ledge from here): the floor is what the pointer is on, not the wall.
   await pointAt(page, -1.5, -0.6);
