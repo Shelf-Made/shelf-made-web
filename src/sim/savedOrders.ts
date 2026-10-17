@@ -7,6 +7,7 @@
 import type { GameState, SavedOrder, OrderRule } from './types';
 import { placeOrder, unitCost } from './economy';
 import { productDef } from './products';
+import { storageUsed } from './layout';
 import { dollars } from './money';
 
 export const MAX_SAVED = 8;
@@ -83,7 +84,8 @@ export function ruleMet(state: GameState, o: SavedOrder, morning: boolean): bool
     case 'never': return false;
     case 'daily': return morning;
     case 'everyDays': return morning && (o.lastDay === undefined || state.day - o.lastDay >= r.days);
-    case 'palletBelow': return state.shop.storage.reduce((a, e) => a + e.qty, 0) < r.units;
+    // (Room used, as the pallet counts it: a Christmas tree takes five units of it.)
+    case 'palletBelow': return storageUsed(state.shop) < r.units;
     case 'productBelow': return onHand(state, r.productId) < r.units;
   }
 }

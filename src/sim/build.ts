@@ -60,8 +60,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
     if (onDoor) return { ok: false, reason: 'Not over a door', price };
     if (type === 'window' && bz >= f.z1) return { ok: false, reason: 'The front is all windows already', price };
   }
+  // (A light or a window hangs up on the wall over the boxes; a wall shelf's goods would be in among them.)
   const d = shop.delivery;
-  if (!def.onWall && d && overlaps(mine, d)) return { ok: false, reason: 'That is where deliveries go', price };
+  if ((!def.onWall || def.slots > 0) && d && overlaps(mine, d)) return { ok: false, reason: 'That is where deliveries go', price };
   // Trial layout (a piece moved keeps its id): a floor it opens gets its ceiling, at the panel price.
   const trial: Fixture = { id: ignoreId ?? -1, type, x, z, rot, slots: [] };
   const fixtures = shop.fixtures.filter((fx) => fx.id !== ignoreId).concat([trial]);

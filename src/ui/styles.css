@@ -744,10 +744,10 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 @media (max-width: 760px) { .stock-bar { top: 162px; right: 8px; width: min(300px, calc(100vw - 16px)); } }
 .pallet-list .item { padding: 6px 10px; }
 
-/* Stock card: the departments' row, the holiday's tab lit up, bulky and holiday tags, goods out of season. */
+/* Stock card: the departments' row, a red dot on the holidays' tab in the days to order ahead, bulky and holiday tags, goods out of season. */
 .stock-goods .cats.depts { position: static; margin-top: -4px; flex-wrap: wrap; align-items: center; gap: 4px; }
 .stock-goods .cats.depts .muted { font-size: 12px; margin-right: 2px; }
-.stock-goods .cats .btn.hot { background: #E8573F; color: #fff; }
+.stock-goods .cats .btn.hot::after { content: ''; display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: #E8573F; box-shadow: 0 0 0 2px #fff; vertical-align: 1px; }
 .stock-goods .dept-note { margin: 4px 2px 8px; font-size: 13px; }
 .tag.bulky { background: #EFE7DA; color: #8B5A3C; }
 .tag.season { background: #FDE1E8; color: #B5235A; }
@@ -767,7 +767,7 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .build-tools .btn.on { background: var(--slate); color: #fff; }
 /* The shop front: the sign up now stands out; the slogan box sits under its label. */
 .item.current { background: #eaf6ef; box-shadow: inset 0 0 0 2px #bfe3cf; }
-.item .name .tag { margin-left: 6px; background: #dff5ea; color: var(--green-dark); vertical-align: 1px; }
+.item.current .name .tag { margin-left: 6px; background: #dff5ea; color: var(--green-dark); vertical-align: 1px; }
 .item.slogan { grid-template-columns: 1fr; }
 .item .text-in { margin-top: 6px; padding: 7px 10px; font-size: 14px; }
 .sign-words { display: flex; gap: 6px; align-items: center; margin-top: 6px; }

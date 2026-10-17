@@ -276,6 +276,16 @@ export function spawnWalker(state: GameState): void {
 /** Can someone in at the front door get to a piece to use it? (An older save may have left one cut off: nobody is sent there.) */
 export function getsTo(state: GameState, f: Fixture): boolean { return !!fixtureStandWorld(state.shop, f, undefined, gridFor(state)); }
 
+/**
+ * Turn to a piece to use it: toward its middle. A wall shelf is stood at on its own tile, its middle right
+ * underfoot, so whoever uses it faces the wall it hangs on (never sideways, the way they walked in).
+ */
+function faceFixture(state: GameState, p: Person, f: Fixture): void {
+  const c = fixtureCentre(state.shop, f);
+  if (FIXTURES[f.type].walkable) { const fw = fixtureFacingWorld(state.shop, f.rot); c.x -= fw.x; c.z -= fw.z; }
+  p.yaw = Math.atan2(c.x - p.x, c.z - p.z);
+}
+
 function findFixtureWith(state: GameState, productId: string): Fixture | null {
   let best: Fixture | null = null, bestQty = 0;
   for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId === productId && s.qty > bestQty && getsTo(state, f)) { best = f; bestQty = s.qty; }
@@ -634,7 +644,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
           p.timer = withRng(state, 'customers', (r) => r.range(1.2, 2.6));
           p.anim = 'browse';
           const f = state.shop.fixtures.find((x) => x.id === p.targetFixture);
-          if (f) { const c = fixtureCentre(state.shop, f); p.yaw = Math.atan2(c.x - p.x, c.z - p.z); }
+          if (f) faceFixture(state, p, f);
         }
         break;
       }
@@ -1229,7 +1239,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         if (p.timer === -3) {
           // Tidying: face the shelf and straighten it for a moment.
           const f = state.shop.fixtures.find((x) => x.id === p.targetFixture);
-          if (f) { const c = fixtureCentre(state.shop, f); p.yaw = Math.atan2(c.x - p.x, c.z - p.z); }
+          if (f) faceFixture(state, p, f);
           p.state = 'stocking'; p.anim = 'browse'; p.timer = 2.5; p.task = null; p.targetFixture = null;
           break;
         }
@@ -1264,7 +1274,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
       if (followPath(p, p.speed, dt, 12, 0.22)) {
         p.state = 'stocking'; p.anim = 'browse'; p.timer = 1.2 / Math.max(0.5, p.kind === 'staff' ? 0.6 + (p.skill ?? 0.5) : 1) / levelBoost(p);
         const f = state.shop.fixtures.find((x) => x.id === p.task?.fixtureId);
-        if (f) { const c = fixtureCentre(state.shop, f); p.yaw = Math.atan2(c.x - p.x, c.z - p.z); }
+        if (f) faceFixture(state, p, f);
       }
       break;
     }

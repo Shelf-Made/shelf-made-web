@@ -1,8 +1,8 @@
-import type { BufferGeometry } from 'three';
+import { TorusGeometry, type BufferGeometry } from 'three';
 import type { AssetLibrary } from './assets';
 import type { FixtureType } from '@/sim/types';
 import type { Scheme } from '@/sim/schemes';
-import { box, cylinder, sphere, merge, place } from './geometry';
+import { box, cylinder, sphere, merge, place, paint } from './geometry';
 import { recolor, paintStrips } from './recolor';
 import { WALL_COLOURS } from './storeArt';
 
@@ -131,9 +131,11 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     }
     // ---- More for the lot.
     case 'gen:fountain': {
-      // Two tiers of stone over a round pool (the spray and its sparkle are drawn live).
+      // Two tiers of stone over a round pool (the spray and its sparkle are drawn live). The pool's rim is a ring, its
+      // water up over the stone under it, so the pool shows inside the rim.
       const stone = '#B9BCC4', water = '#5BB8E8';
-      const parts = [cylinder(pal, stone, 0.86, 0.22, 0, 0, 0, 28), cylinder(pal, '#9AA0A8', 0.9, 0.04, 0, 0.2, 0, 28), cylinder(pal, water, 0.76, 0.02, 0, 0.2, 0, 28),
+      const rim = paint(new TorusGeometry(0.83, 0.05, 6, 28).rotateX(Math.PI / 2), pal, '#9AA0A8');
+      const parts = [cylinder(pal, stone, 0.86, 0.22, 0, 0, 0, 28), place(rim, 0, 0.22, 0), cylinder(pal, water, 0.8, 0.035, 0, 0.2, 0, 28),
         cylinder(pal, stone, 0.1, 0.5, 0, 0.2, 0, 12, 0.08), cylinder(pal, stone, 0.2, 0.08, 0, 0.66, 0, 18, 0.36), cylinder(pal, water, 0.32, 0.015, 0, 0.735, 0, 18),
         cylinder(pal, stone, 0.05, 0.16, 0, 0.74, 0, 8, 0.035), sphere(pal, stone, 0.055, 0, 0.93, 0)];
       return merge(parts);
@@ -229,7 +231,7 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:iceChest': return merge([
       box(pal, '#F7F7F5', 0.86, 0.2, 0.6, 0, 0, -0.15), box(pal, '#F7F7F5', 0.86, 0.22, 0.04, 0, 0.2, 0.13), box(pal, '#F7F7F5', 0.86, 0.22, 0.04, 0, 0.2, -0.43),
       box(pal, '#F7F7F5', 0.04, 0.22, 0.6, -0.41, 0.2, -0.15), box(pal, '#F7F7F5', 0.04, 0.22, 0.6, 0.41, 0.2, -0.15), box(pal, '#4F8FE0', 0.87, 0.05, 0.61, 0, 0.12, -0.15),
-      box(pal, '#BFEFFF', 0.87, 0.02, 0.05, 0, 0.42, 0.13), box(pal, '#BFEFFF', 0.87, 0.02, 0.05, 0, 0.42, -0.43), box(pal, '#9AA0A8', 0.82, 0.01, 0.56, 0, 0.19, -0.15),
+      box(pal, '#BFEFFF', 0.87, 0.02, 0.05, 0, 0.42, 0.13), box(pal, '#BFEFFF', 0.87, 0.02, 0.05, 0, 0.42, -0.43), box(pal, '#9AA0A8', 0.82, 0.006, 0.56, 0, 0.2, -0.15),
     ]);
     // Chilled produce: a stepped stand of crates under a canopy with a light bar, misted greens on the back board.
     case 'gen:coolProduce': return merge([
@@ -242,21 +244,20 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       box(pal, '#D9A066', 0.82, 0.03, 0.22, 0, 0.33, WALL_FACE + 0.11), box(pal, '#D9A066', 0.82, 0.03, 0.22, 0, 0.6, WALL_FACE + 0.11),
       ...[-0.36, 0.36].flatMap((x) => [box(pal, '#38383D', 0.02, 0.36, 0.02, x, 0.28, WALL_FACE + 0.01), box(pal, '#38383D', 0.02, 0.02, 0.18, x, 0.31, WALL_FACE + 0.1), box(pal, '#38383D', 0.02, 0.02, 0.18, x, 0.58, WALL_FACE + 0.1)]),
     ]);
-    // A glass counter: a wooden base, a shelf of goods behind the glass, the glass top and corner posts.
+    // A glass counter: a wooden base, a shelf of goods behind the glass, corner posts (the glass top: fittingGlass).
     case 'gen:glassCase': return merge([
       box(pal, '#B8824C', 0.86, 0.28, 0.56, 0, 0, -0.17), box(pal, '#E9DCC4', 0.84, 0.02, 0.54, 0, 0.28, -0.17),
       ...[[-0.42, 0.1], [0.42, 0.1], [-0.42, -0.44], [0.42, -0.44]].map(([x, z]) => box(pal, '#D8D8DC', 0.02, 0.2, 0.02, x!, 0.3, z!)),
-      box(pal, '#CFEFFF', 0.86, 0.015, 0.56, 0, 0.5, -0.17), box(pal, '#FFC044', 0.86, 0.02, 0.01, 0, 0.26, 0.115),
+      box(pal, '#FFC044', 0.86, 0.02, 0.01, 0, 0.26, 0.115),
     ]);
     // A display table two tiles long: a pale top on four legs, a skirt in the shop's colour.
     case 'gen:displayTable': return merge([
       box(pal, '#F3E6CF', 1.86, 0.04, 0.74, 0, 0.32, 0), box(pal, sc.primary, 1.86, 0.06, 0.745, 0, 0.27, 0),
       ...[[-0.88, 0.32], [0.88, 0.32], [-0.88, -0.32], [0.88, -0.32]].map(([x, z]) => box(pal, '#B8824C', 0.05, 0.27, 0.05, x!, 0, z!)),
     ]);
-    // A bakery case: a cream base, a stepped shelf behind a curved glass front, a striped awning.
+    // A bakery case: a cream base, a stepped shelf behind a glass front and top (fittingGlass), a striped awning.
     case 'gen:bakeryCase': return merge([
       box(pal, '#F3E6CF', 0.88, 0.3, 0.58, 0, 0, -0.16), box(pal, '#B8824C', 0.89, 0.03, 0.59, 0, 0.3, -0.16),
-      box(pal, '#CFEFFF', 0.88, 0.2, 0.015, 0, 0.32, 0.12), box(pal, '#CFEFFF', 0.88, 0.015, 0.3, 0, 0.53, -0.02),
       ...[-0.43, 0.43].map((x) => box(pal, '#B8824C', 0.02, 0.24, 0.58, x, 0.3, -0.16)),
       box(pal, '#E8573F', 0.9, 0.05, 0.16, 0, 0.62, -0.38), box(pal, '#FFFFFF', 0.3, 0.051, 0.161, 0, 0.62, -0.38),
     ]);
@@ -382,6 +383,15 @@ function beam(pal: AssetLibrary['palette'], hex: string, w: number, x: number, y
   g.rotateX(Math.atan2(y1 - y0, z0 - z1));
   g.translate(x, (y0 + y1) / 2, (z0 + z1) / 2);
   return g;
+}
+
+/** The glass of the cases made here, drawn apart in see-through glass so their goods show (tile space, like the piece). */
+export function fittingGlass(id: string, pal: AssetLibrary['palette']): BufferGeometry | null {
+  switch (id) {
+    case 'gen:glassCase': return box(pal, '#CFEFFF', 0.86, 0.015, 0.56, 0, 0.5, -0.17);
+    case 'gen:bakeryCase': return merge([box(pal, '#CFEFFF', 0.88, 0.2, 0.015, 0, 0.32, 0.12), box(pal, '#CFEFFF', 0.88, 0.015, 0.3, 0, 0.53, -0.02)]);
+    default: return null;
+  }
 }
 
 /** The part of a light that glows: the lamp's shade or bulb, the neon's tubes (tile space, like the piece), for the look it has. */

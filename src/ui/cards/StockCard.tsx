@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { PRODUCTS, CATEGORY_NAMES, GROCERY_CATEGORIES, DEPARTMENTS, HOLIDAYS, YEAR_DAYS, productDef, holidayOn, holidayName, inSeason, type Category } from '@/sim/products';
+import { PRODUCTS, CATEGORY_NAMES, GROCERY_CATEGORIES, DEPARTMENTS, HOLIDAYS, YEAR_DAYS, productDef, holidayOn, holidayName, inSeason, sizeOf, type Category } from '@/sim/products';
 import { SUPPLIERS, unitCost, deliveryStatus, orderEta, INSTANT_MUL } from '@/sim/economy';
 import { RECYCLE_BACK } from '@/sim/stocking';
 import { keyLabel } from '@/save/settings';
@@ -41,7 +41,9 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const pending = s.orders.filter((o) => o.state !== 'delivered');
   const visible = PRODUCTS.filter((p) => cat === 'all' ? (onShelf.has(p.id) || inStore(p.id) > 0 || (qty[p.id] ?? 0) > 0 || (p.demand >= 1.2 && !p.extra)) : p.category === cat);
   const soon = holidayOn(s.day, 2);
-  const units = lines.reduce((a, l) => a + l.qty, 0);
+  // (After the first days some holiday's goods can always be ordered: the tab is marked only in the two days to order ahead of one.)
+  const ahead = soon && !holidayOn(s.day) ? soon : null;
+  const units = lines.reduce((a, l) => a + l.qty, 0), room = lines.reduce((a, l) => a + l.qty * sizeOf(l.productId), 0);
   // As the order will come: at once in setup (the clock stands still until you open), sooner with a loading bay.
   const etaOf = (sid: string) => orderEta(s, sid);
 
@@ -56,12 +58,12 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         </div>
         <div className="row cats depts" role="tablist" aria-label="Departments">
           <span className="muted">Departments</span>
-          {DEPARTMENTS.map((c) => <button key={c} role="tab" aria-selected={cat === c} className={`btn small ${cat === c ? '' : 'ghost'}${c === 'seasonal' && soon ? ' hot' : ''}`} onClick={() => setCat(c)}>{CATEGORY_NAMES[c]}{c === 'seasonal' && soon ? ` · ${holidayName(soon)}` : ''}</button>)}
+          {DEPARTMENTS.map((c) => <button key={c} role="tab" aria-selected={cat === c} className={`btn small ${cat === c ? '' : 'ghost'}${c === 'seasonal' && ahead ? ' hot' : ''}`} title={c === 'seasonal' && ahead ? `${holidayName(ahead)} starts soon: order its goods now` : undefined} onClick={() => setCat(c)}>{CATEGORY_NAMES[c]}{c === 'seasonal' && soon ? ` · ${holidayName(soon)}` : ''}</button>)}
         </div>
         {(DEPARTMENTS.includes(cat as Category) || cat === 'bakery' || cat === 'frozen' || cat === 'pets') && (
           <p className="muted dept-note">{cat === 'seasonal'
             ? (soon ? `${holidayName(soon)} goods sell only around ${holidayName(soon)}: order them now.` : `Holiday goods come round with each holiday (every ${YEAR_DAYS / HOLIDAYS.length} days). The next: ${nextHoliday(s.day)}.`)
-            : 'Shoppers come in for these once you sell them (and bring the money for them). Any shelf takes them.'}</p>
+            : `Shoppers come in for these once you sell them (and bring the money for them). ${whereTheyGo(cat as Category)}`}</p>
         )}
         <div className="list goods">
           {visible.map((p) => {
@@ -105,7 +107,7 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           })}
         </div>
         <div className="basket">
-          <div className="row between"><span>{units > 0 ? `${units} units` : 'Nothing picked yet'}</span><b className="total">Total {money(total)}</b></div>
+          <div className="row between"><span>{units > 0 ? (room > units ? `${units} items · ${room} units of room` : `${units} units`) : 'Nothing picked yet'}</span><b className="total">Total {money(total)}</b></div>
           <label className={`instant${instant ? ' on' : ''}`}>
             <input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} />
             <span><b>Instant delivery</b> +{Math.round((INSTANT_MUL - 1) * 100)}%<small>Straight onto the pallet, no truck to wait for</small></span>
@@ -159,10 +161,16 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           </div>
         )}
         <SavedOrders runtime={runtime} />
-        <p className="muted">{productDef('milk').chilled ? 'Fridge goods need a chiller or tall fridge on the floor.' : ''}</p>
+        <p className="muted">{productDef('milk').chilled ? 'Fridge goods need a chiller: it takes them all (a tall fridge takes only dairy and meat).' : ''}</p>
       </aside>
     </div>
   );
+}
+
+/** What a department's goods go on: any shelf, unless they need a fridge (all the frozen goods do, a birthday cake too). */
+function whereTheyGo(cat: Category): string {
+  if (cat === 'frozen') return 'They need a chiller or an ice-cream chest.';
+  return PRODUCTS.some((p) => p.category === cat && p.chilled) ? 'Any shelf takes them, but the ones marked fridge need a chiller.' : 'Any shelf takes them.';
 }
 
 /** The next holiday and how soon (for the Holidays tab out of season). */

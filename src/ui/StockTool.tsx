@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { GameRuntime, Snapshot, StockFilter } from '@/app/GameRuntime';
-import { FIXTURES } from '@/sim/layout';
+import { FIXTURES, storageUsed } from '@/sim/layout';
 import { productDef } from '@/sim/products';
 import { keyLabel } from '@/save/settings';
 import type { Fixture } from '@/sim/types';
@@ -55,7 +55,8 @@ export function StockTool({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
     raf = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(raf); for (const n of nodes.values()) n.remove(); };
   }, [runtime]);
-  const units = runtime.state?.shop.storage.reduce((a, e) => a + e.qty, 0) ?? 0;
+  // Room taken on the pallet, as the Stock card counts it (bulky goods take more).
+  const units = runtime.state ? storageUsed(runtime.state.shop) : 0;
   // On a touch screen a drag pans the camera: a tap fills one shelf.
   const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   return (

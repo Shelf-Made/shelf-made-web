@@ -8,7 +8,7 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
 import { DEFAULT_PAINT } from '@/sim/layout';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
 import { wordsTexture, tickerTexture } from './labels';
@@ -16,8 +16,15 @@ import { doubleHeight } from '@/sim/storeys';
 import { underFloors, spillMark } from './levels';
 
 /** Pieces that stand free in the middle of their tile, and ones drawn where they hang or divide (see offsetOf). */
-/** Shelves that take a department's board, and each department's colour. */
-const HEADER_ON: ReadonlySet<FixtureType> = new Set<FixtureType>(['shelf', 'endcap', 'displayTable', 'glassCase']);
+/**
+ * Shelves that take a department's board, and where on each its lower edge goes (in the piece's own space; its posts go on
+ * down from there): up out of a shelf's middle, on the face of an end cap's own header, on its posts at the back of a glass
+ * top or a table. None reaches the floor above: an end cap's is no taller than its header, the rest stay under the ceiling
+ * (0.92). Then each department's colour.
+ */
+const HEADER_AT: Partial<Record<FixtureType, { y: number; z: number }>> = {
+  shelf: { y: 0.77, z: 0 }, endcap: { y: 0.85, z: -0.31 }, glassCase: { y: 0.635, z: -0.42 }, displayTable: { y: 0.48, z: -0.34 },
+};
 const DEPT_COLOURS: Partial<Record<string, string>> = {
   bakery: '#D9A066', frozen: '#4F8FE0', pets: '#C8423A', toys: '#FFC044', clothing: '#9B6FE0', electronics: '#38383D', home: '#3FA87A',
   books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
@@ -39,7 +46,7 @@ import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOU
 import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle, WallStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
-import { fittingGeometry, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf } from './fittings';
+import { fittingGeometry, fittingGlass, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf } from './fittings';
 import { BlobShadows } from './blobs';
 import { cornerProps, pylonSpot, cornerGarden } from './dressing';
 import { tuftMesh } from './StaticWorld';
@@ -836,6 +843,13 @@ export class StoreView {
     return g;
   }
 
+  /** The see-through glass of one of our own cases (cached per model), or null. */
+  private caseGlass(model: string): BufferGeometry | null {
+    const key = `${model}:pane`;
+    if (!this.painted.has(key)) { const g = fittingGlass(model, this.assets.palette); if (!g) return null; this.painted.set(key, g); }
+    return this.painted.get(key)!;
+  }
+
   /** Per frame: wall cut-down (cinematic camera only), fixtures, stock, boxes, spills. */
   update(state: GameState, cameraYaw: number | null, eye?: Vector3): void {
     const shop = state.shop;
@@ -944,7 +958,8 @@ export class StoreView {
         this.root.add(cut);
         this.wallCut.push({ full: mesh, cut });
       }
-      const glass = model === 'chiller' ? null : this.assets.glassGeometry(model);
+      // Kenney's glass, or our own cases' (the glass counter's top, the bakery case's front): their goods show through.
+      const glass = model === 'chiller' ? null : this.assets.glassGeometry(model) ?? this.caseGlass(model);
       if (glass) {
         const gm = new InstancedMesh(glass, this.assets.glass, list.length);
         gm.frustumCulled = false;
@@ -1061,14 +1076,15 @@ export class StoreView {
     // Department boards: over a shelf most of whose stock is one department beyond groceries.
     let hi = 0;
     for (const f of shop.fixtures) {
-      if (!this.shown(f) || !HEADER_ON.has(f.type) || hi >= 64) continue;
+      const at = HEADER_AT[f.type];
+      if (!this.shown(f) || !at || hi >= 64) continue;
       const by = new Map<string, number>();
       for (const sl of f.slots) if (sl.productId && sl.qty > 0) { const c = productDef(sl.productId).category; by.set(c, (by.get(c) ?? 0) + sl.qty); }
       const top = [...by.entries()].sort((a, b) => b[1] - a[1])[0];
       const colour = top && DEPT_COLOURS[top[0]];
       if (!colour || top[1] < f.slots.reduce((a, sl) => a + sl.qty, 0) * 0.6) continue;
       this.fixtureMatrix(shop, f, m, 0, true);
-      this.dummy.position.set(0, f.type === 'displayTable' ? 0.78 : 0.9, f.type === 'displayTable' ? -0.3 : 0).applyMatrix4(m);
+      this.dummy.position.set(0, at.y, at.z).applyMatrix4(m);
       this.dummy.rotation.set(0, f.rot * Math.PI / 2, 0); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix();
       this.headers.setMatrixAt(hi, this.dummy.matrix); this.headers.setColorAt(hi, this.color.set(colour)); hi++;
     }
@@ -1112,8 +1128,8 @@ export class StoreView {
   }
 
   private rebuildBoxes(shop: Shop): void {
-    const units = shop.storage.reduce((a, e) => a + e.qty, 0);
-    // A box is about four units. The delivery pallet fills first, the extra Pallets take the overflow.
+    const units = storageUsed(shop);
+    // A box is about four units of room (a bulky one takes more). The delivery pallet fills first, the extra Pallets take the overflow.
     const all = Math.min(BOX_MAX, Math.ceil(units / 4));
     const n = Math.min(all, Math.ceil(shop.storageCapacity / 4));
     let k = n;
@@ -1158,8 +1174,9 @@ export class StoreView {
     }
     if (type === 'window') return paintStrips(recolor(this.assets.geometry('market/wall-window'), WALL_COLOURS), this.assets.palette, { '2:1': this.scheme.primary });
     const g = this.fixtureGeometry(type === 'fridge' && this.chillerGeo ? 'chiller' : FIXTURE_MODEL[type]);
-    const glow = glowGeometry(type, this.assets.palette);
-    return glow ? merge([g.clone(), glow]) : g.clone();
+    // (A case's glass is pictured in its pale blue, as part of it.)
+    const extra = [glowGeometry(type, this.assets.palette), fittingGlass(FIXTURE_MODEL[type], this.assets.palette)].filter((x): x is BufferGeometry => !!x);
+    return extra.length ? merge([g.clone(), ...extra]) : g.clone();
   }
 
   /** A tile tool's tile under the pointer: green when it can be bought or laid, red when not. */
@@ -1259,7 +1276,7 @@ export class StoreView {
 function stockKey(shop: Shop): string {
   let k = `${shop.layoutVersion}|`;
   for (const f of shop.fixtures) for (const s of f.slots) k += `${s.productId ?? '-'}:${s.qty},`;
-  k += '|' + shop.storage.reduce((a, e) => a + e.qty, 0);
+  k += '|' + storageUsed(shop);
   return k;
 }
 

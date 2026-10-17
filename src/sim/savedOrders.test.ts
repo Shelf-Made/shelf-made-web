@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK } from './index';
 import { openGame } from './testUtil';
 import { ruleMet, savedOrderCost } from './savedOrders';
+import { storageUsed } from './layout';
 
 describe('saved orders', () => {
   it('saves an order, places it by hand, and a manager places it when its condition comes true', () => {
@@ -40,5 +41,18 @@ describe('saved orders', () => {
     expect(applyCommand(s, { type: 'editSavedOrder', id: o.id, patch: { minCash: 1e9 } }).ok).toBe(true);
     expect(applyCommand(s, { type: 'deleteSavedOrder', id: o.id }).ok).toBe(true);
     expect(s.savedOrders!.length).toBe(0);
+  });
+
+  it('counts the pallet by the room its goods take, as placing an order does (bulky goods take more)', () => {
+    const s = openGame({ seed: 62, plotId: 'main', name: 'Saved', tutorial: false });
+    expect(applyCommand(s, { type: 'saveOrder', name: 'Top up', supplierId: 'local', lines: [{ productId: 'milk', qty: 12 }] }).ok).toBe(true);
+    const o = s.savedOrders![0]!;
+    o.when = { kind: 'palletBelow', units: 50 };
+    // Twenty Christmas trees: twenty on the pallet, but a hundred units of its room.
+    s.shop.storage = [{ productId: 'xmastree', qty: 20, day: s.day }];
+    expect(storageUsed(s.shop)).toBe(100);
+    expect(ruleMet(s, o, false)).toBe(false);
+    s.shop.storage = [{ productId: 'milk', qty: 20, day: s.day }];
+    expect(ruleMet(s, o, false)).toBe(true);
   });
 });
