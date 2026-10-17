@@ -6,7 +6,7 @@
  */
 import type { GameState, Fixture } from './types';
 import { FIXTURES } from './layout';
-import { pickCarryTask, placeOnFixture, getsTo } from './people';
+import { pickCarryTask, placeOnFixture, getsTo, completeTutorial } from './people';
 import { productDef } from './products';
 import { popup, cue } from './state';
 import { fixtureCentre } from './grid';
@@ -44,6 +44,8 @@ export function topUp(state: GameState, f: Fixture): number {
     const c = fixtureCentre(state.shop, f);
     popup(state, c, `+${moved}`, 'money', 1.1);
     cue(state, 'stock');
+    // (The first day's "stock a shelf" step, done with the tool as well as by hand.)
+    completeTutorial(state, 'stock');
   }
   return moved;
 }

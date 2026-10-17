@@ -894,6 +894,7 @@ export function wrongFixture(productId: string, type: Fixture['type']): string |
   if (def.chilled && !fdef.chilled) return `${def.name} needs a chiller`;
   if (!def.chilled && fdef.chilled && !fdef.mixed) return `${def.name} does not go in the chiller`;
   if (fdef.accepts && !fdef.accepts.includes(def.category)) return `${def.name} does not go on the ${fdef.name.toLowerCase()}`;
+  if (fdef.snacksOnly?.includes(def.category) && !def.impulse) return `${def.name} does not go in the ${fdef.name.toLowerCase()}`;
   return null;
 }
 
@@ -1290,17 +1291,12 @@ export function pickCarryTask(state: GameState, f: Fixture): { productId: string
   const def = FIXTURES[f.type];
   if (def.slots === 0) return null;
   const storage = state.shop.storage.filter((s) => s.qty > 0);
-  const fits = (pid: string) => {
-    const p = productDef(pid);
-    if (p.chilled && !def.chilled) return false;
-    if (!p.chilled && def.chilled && f.type !== 'fridge' && !def.mixed) return false;
-    if (def.accepts && !def.accepts.includes(p.category)) return false;
-    return true;
-  };
-  // Lowest-stocked slot whose product is in storage.
+  // The same rule as stocking by hand: no bread in the Chiller, no flour in the vending machine.
+  const fits = (pid: string) => !wrongFixture(pid, f.type);
+  // Lowest-stocked slot whose product is in storage (not one an older game left where it does not go).
   let best: { productId: string; qty: number; need: number } | null = null;
   for (const s of f.slots) {
-    if (!s.productId) continue;
+    if (!s.productId || !fits(s.productId)) continue;
     const entry = storage.find((e) => e.productId === s.productId);
     if (!entry) continue;
     const need = def.capacity - s.qty;

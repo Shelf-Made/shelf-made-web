@@ -15,6 +15,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const [supplierId, setSupplierId] = useState('local');
   const [qty, setQty] = useState<Record<string, number>>({});
   const [saveName, setSaveName] = useState('');
+  // Recycling throws a whole line away: the first click asks, the second does it.
+  const [recycling, setRecycling] = useState<string | null>(null);
   // Instant delivery: straight onto the pallet, no truck to wait for, a quarter dearer.
   const [instant, setInstant] = useState(false);
   // Opened from a shelf: start at the products that go on it (a chiller's dairy, a stand's produce).
@@ -128,7 +130,7 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               return (
                 <div className="item" key={pid}>
                   <div><div className="name">{productDef(pid).name}</div><div className="sub">{n} on the pallet</div></div>
-                  <button className="btn small ghost" title={`Recycle all ${n} for half what they cost`} onClick={() => runtime.dispatch({ type: 'recycle', productId: pid })}>Recycle +{money(back)}</button>
+                  <button className={`btn small ${recycling === pid ? 'danger' : 'ghost'}`} title={`Recycle all ${n} for half their usual cost`} onClick={() => { if (recycling !== pid) { setRecycling(pid); return; } setRecycling(null); runtime.dispatch({ type: 'recycle', productId: pid }); }}>{recycling === pid ? `Recycle all ${n}? +${money(back)}` : `Recycle +${money(back)}`}</button>
                 </div>
               );
             })}

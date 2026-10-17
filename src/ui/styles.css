@@ -730,8 +730,8 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .stock-label.full u { background: #3FA87A; } .stock-label.mid u { background: #F2B33D; } .stock-label.low u { background: #E8573F; }
 .stock-label.empty { background: #E8573F; } .stock-label.empty b { color: #fff; } .stock-label.empty i { background: rgba(255,255,255,0.35); }
 .stock-label.found { outline: 3px solid #4F8FE0; }
-/* Down the left under the goal, so the shop stays in view. */
-.stock-bar { position: fixed; top: 118px; left: 16px; z-index: 6; width: min(300px, calc(100vw - 32px)); padding: 12px 14px 14px; border-radius: 18px; background: var(--white, #fff); box-shadow: 0 4px 0 rgba(56,56,61,0.18), var(--shadow); }
+/* Where the cards open (none is open while it is out), clear of the goal, the tips and the shop. On a phone, under the goal. */
+.stock-bar { position: fixed; top: var(--hud-top); right: 16px; z-index: 6; width: min(300px, calc(100vw - 32px)); padding: 12px 14px 14px; border-radius: 18px; background: var(--white, #fff); box-shadow: 0 4px 0 rgba(56,56,61,0.18), var(--shadow); }
 .stock-bar .sb-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
 .stock-bar .sb-title { font-weight: 800; font-size: 16px; color: var(--slate); }
 .stock-bar .sb-title kbd { margin-left: 4px; }
@@ -741,6 +741,7 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .stock-bar .sb-chip { padding: 4px 10px; border-radius: 12px; background: #F1EEE8; font-size: 13px; font-weight: 700; color: var(--slate); }
 .stock-bar .sb-chip.on { background: var(--slate); color: #fff; }
 .stock-bar .sb-find { flex: 1 1 100%; min-width: 140px; padding: 6px 10px; border-radius: 10px; border: 2px solid #E5E2DC; font: inherit; font-size: 14px; }
+@media (max-width: 760px) { .stock-bar { top: 162px; right: 8px; width: min(300px, calc(100vw - 16px)); } }
 .pallet-list .item { padding: 6px 10px; }
 
 /* Stock card: the departments' row, the holiday's tab lit up, bulky and holiday tags, goods out of season. */

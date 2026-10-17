@@ -56,14 +56,16 @@ export function StockTool({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
     return () => { cancelAnimationFrame(raf); for (const n of nodes.values()) n.remove(); };
   }, [runtime]);
   const units = runtime.state?.shop.storage.reduce((a, e) => a + e.qty, 0) ?? 0;
+  // On a touch screen a drag pans the camera: a tap fills one shelf.
+  const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   return (
     <>
       <div ref={host} className="stock-labels" aria-hidden="true" />
       <div className="stock-bar" role="toolbar" aria-label="Stock tool" onPointerDown={(e) => e.stopPropagation()}>
         <div className="sb-head">
           <span className="sb-title">Stock tool <kbd>{keyLabel(snap.settings.keys.stockTool)}</kbd></span>
-          <span className="sb-help">Click a shelf to fill it from the pallet, or drag along a row.</span>
-          <span className="sb-help"><b>{units}</b> units on the pallet</span>
+          <span className="sb-help">{touch ? 'Tap a shelf to fill it from the pallet.' : 'Click a shelf to fill it from the pallet, or drag along a row.'}</span>
+          <span className="sb-help"><b>{units}</b> unit{units === 1 ? '' : 's'} on the pallet</span>
         </div>
         <div className="sb-row">
           <button className="btn small" onClick={() => runtime.supplyAll()} disabled={!units} title="Fill every shelf from the pallet, the emptiest first">Supply all</button>

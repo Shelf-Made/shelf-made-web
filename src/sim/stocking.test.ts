@@ -4,6 +4,16 @@ import { applyCommand } from './index';
 import { FIXTURES, storageCap, STORE_RACK_UNITS } from './layout';
 import { productDef } from './products';
 import { RECYCLE_BACK } from './stocking';
+import { wrongFixture } from './people';
+import type { FixtureType, GameState } from './types';
+
+/** Put down a new (empty) piece wherever it fits, with the cash for it. */
+function place(s: GameState, type: FixtureType) {
+  s.cash = Math.max(s.cash, 5000);
+  const f = s.shop.floor, n = s.shop.fixtures.length;
+  for (let z = f.z0 + 1; z < f.z1 - 1; z++) for (let x = f.x0; x < f.x1 - 1; x++) if (applyCommand(s, { type: 'placeFixture', fixtureType: type, x, z, rot: 0 }).ok) return s.shop.fixtures[n]!;
+  throw new Error(`no room for a ${type}`);
+}
 
 const fill = (f: { type: keyof typeof FIXTURES; slots: { qty: number }[] }) => f.slots.reduce((a, s) => a + s.qty, 0);
 
@@ -27,6 +37,42 @@ describe('the stock tool', () => {
     // Nothing on the pallet: it says so.
     s.shop.storage = [];
     expect(applyCommand(s, { type: 'topUpAll' }).message).toMatch(/pallet is empty/);
+  });
+
+  it('only puts goods where the manager could: no bread in a Chiller, no flour in a vending machine, no eggs in the ice-cream chest', () => {
+    const s = openGame({ seed: 6, plotId: 'main', name: 'T', tutorial: false });
+    const chiller = place(s, 'fridge'), vending = place(s, 'vending'), chest = place(s, 'iceChest');
+    // Dry goods ordered first: the Chiller still gets the milk, and none of the bread.
+    s.shop.storage = ['bread', 'pasta', 'chips', 'rice'].map((productId) => ({ productId, qty: 20, day: 1 })).concat({ productId: 'milk', qty: 24, day: 1 });
+    expect(applyCommand(s, { type: 'topUp', fixtureId: chiller.id }).ok).toBe(true);
+    expect(chiller.slots.some((sl) => sl.productId === 'milk' && sl.qty > 0)).toBe(true);
+    expect(chiller.slots.every((sl) => !sl.productId || sl.productId === 'milk')).toBe(true);
+    s.shop.storage = ['flour', 'rice', 'eggs', 'milk', 'cola', 'chips', 'icecream', 'pizza'].map((productId) => ({ productId, qty: 20, day: 1 }));
+    expect(applyCommand(s, { type: 'topUpAll' }).ok).toBe(true);
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId && sl.qty > 0) expect(wrongFixture(sl.productId, f.type), `${sl.productId} on the ${f.type}`).toBeNull();
+    expect(new Set(vending.slots.flatMap((sl) => sl.productId ?? []))).toEqual(new Set(['cola', 'chips']));
+    expect(new Set(chest.slots.flatMap((sl) => sl.productId ?? []))).toEqual(new Set(['icecream', 'pizza']));
+    // By hand the same: crisps and drinks in the machine, frozen goods and ice cream in the chest.
+    expect(wrongFixture('flour', 'vending')).toBe('Flour does not go in the vending machine');
+    expect(wrongFixture('milk', 'iceChest')).not.toBeNull();
+    expect(wrongFixture('icecream', 'iceChest')).toBeNull();
+    // Bread an older game left in the Chiller is not topped up again.
+    const bread = chiller.slots[0]!; bread.productId = 'bread'; bread.qty = 1;
+    s.shop.storage = [{ productId: 'bread', qty: 20, day: 1 }];
+    expect(applyCommand(s, { type: 'topUp', fixtureId: chiller.id }).ok).toBe(false);
+    expect(bread.qty).toBe(1);
+  });
+
+  it('counts for the first day\'s "stock a shelf" step, and says "1 unit"', () => {
+    const s = openGame({ seed: 5, plotId: 'main', name: 'T', tutorial: true });
+    s.tutorial.completed = s.tutorial.completed.filter((t) => t !== 'stock');
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf' && f.slots.some((sl) => sl.productId === 'bread'))!;
+    const slot = shelf.slots.find((sl) => sl.productId === 'bread')!;
+    for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = FIXTURES[f.type].capacity;
+    slot.qty -= 1;
+    s.shop.storage = [{ productId: 'bread', qty: 5, day: 1 }];
+    expect(applyCommand(s, { type: 'topUpAll' }).message).toBe('1 unit shelved.');
+    expect(s.tutorial.completed).toContain('stock');
   });
 
   it('recycles unwanted stock for half its cost; a storage rack makes room', () => {

@@ -58,6 +58,8 @@ export interface FixtureDef {
   upkeep: number;
   /** Which categories fit (undefined = any non-chilled). */
   accepts?: Category[];
+  /** Of these categories, only the grab-and-go goods fit (crisps and chocolate in the vending machine, ice cream in the chest). */
+  snacksOnly?: Category[];
   /** Which tab of the Build card it is on. */
   category: BuildCategory;
   /** People walk over or under it (a rug, a doorway, a light on the wall): it never blocks a tile. */

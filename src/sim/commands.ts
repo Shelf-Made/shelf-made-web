@@ -400,7 +400,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'topUpAll': {
       if (!state.shop.storage.length) return { ok: false, message: 'The pallet is empty: order some stock first.' };
       const n = topUpAll(state);
-      return n > 0 ? { ok: true, message: `${n} units shelved.` } : { ok: false, message: 'Every shelf is as full as the pallet can make it.' };
+      return n > 0 ? { ok: true, message: `${n} unit${n === 1 ? '' : 's'} shelved.` } : { ok: false, message: 'Every shelf is as full as the pallet can make it.' };
     }
     case 'recycle': return recycle(state, cmd.productId, cmd.shelves) > 0 ? { ok: true } : { ok: false };
     case 'grabThief': {

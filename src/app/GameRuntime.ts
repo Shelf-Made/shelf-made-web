@@ -316,7 +316,7 @@ export class GameRuntime {
     if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
-    return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: refundOf(f, s.day, CONVEYOR_PRICE), ...(f.type === 'pallet' ? { picks: picks() } : {}),
+    return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: refundOf(f, s.day, CONVEYOR_PRICE), ...(f.type === 'pallet' || f.type === 'storeRack' ? { picks: picks() } : {}),
       ...(f.type === 'register' && !f.conveyor ? { upgrade: { label: 'Conveyor belt', price: CONVEYOR_PRICE } } : {}), ...(f.type === 'sign' ? { words: f.text ?? '' } : {}) };
   }
   /** Picked from a pallet's menu: walk over and pick that box up. */
@@ -527,7 +527,7 @@ export class GameRuntime {
     this.lobbyState = null;
     if (this.renderer) { this.renderer.camera.lookY = 0; this.renderer.cutaway = true; }
     this.screen = 'game';
-    this.modalPause = null; this.resetSpeed(); this.card = null;
+    this.modalPause = null; this.resetSpeed(); this.card = null; this.stowStockTool();
     this.forgetSelection();
     this.renderer?.setTown(s.seed, s.shop.plotId);
     this.renderer?.setShop(s);
@@ -537,7 +537,7 @@ export class GameRuntime {
     this.emit();
   }
 
-  toLobby(): void { this.renderer?.follow.setFirstPerson(false); this.screen = 'lobby'; this.state = null; this.card = null; this.modalPause = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
+  toLobby(): void { this.renderer?.follow.setFirstPerson(false); this.screen = 'lobby'; this.state = null; this.card = null; this.stowStockTool(); this.modalPause = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
   /** A different game: nobody is selected or followed. */
   private forgetSelection(): void {
     this.selectedPerson = null; this.followingPerson = false;
@@ -623,7 +623,7 @@ export class GameRuntime {
       this.alpha = Math.min(1, this.acc / TICK);
       this.drainSounds(s);
       if (s.phase !== this.lastPhase) {
-        if (s.phase === 'night') { this.nightLogHidden = false; this.resetSpeed(); void this.save('auto'); analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
+        if (s.phase === 'night') { this.nightLogHidden = false; this.stowStockTool(); this.resetSpeed(); void this.save('auto'); analytics.track('day_end', { day: s.day, cash: Math.round(s.cash) }); }
         this.lastPhase = s.phase;
         this.updateSideOffset();
       }
@@ -872,7 +872,7 @@ export class GameRuntime {
 
   // ---- Build mode
   setOverlay(kind: 'none' | 'heat' | 'exposure' | 'paths' | 'security'): void { this.overlay = kind; this.renderer?.setOverlay(kind); this.emit(); }
-  startPlacing(type: FixtureType): void { if (type !== this.build.placing) this.build.variant = 0; this.build.placing = type; this.build.tool = null; this.build.selectedId = null; this.build.reason = ''; this.renderer?.setTileGhost(null); this.emit(); }
+  startPlacing(type: FixtureType): void { this.stowStockTool(); if (type !== this.build.placing) this.build.variant = 0; this.build.placing = type; this.build.tool = null; this.build.selectedId = null; this.build.reason = ''; this.renderer?.setTileGhost(null); this.emit(); }
   /** Build's top view: straight down on the floor being built (back to the usual tilt when Build closes). */
   topView = false;
   private pitchBefore = 0;
@@ -949,6 +949,7 @@ export class GameRuntime {
   startTool(tool: TileTool): void {
     if ((tool.kind === 'floor' || tool.kind === 'wall') && tool.style === 'paint' && !tool.colour) tool = { ...tool, colour: this.paintColour };
     this.build.tool = tool; this.build.placing = null; this.build.selectedId = null; this.build.reason = '';
+    this.stowStockTool();
     this.renderer?.setGhost(null, this.state!, 0, 0, 0, false);
     this.showGrowHints();
     this.emit();
@@ -966,7 +967,7 @@ export class GameRuntime {
   }
   stopPlacing(): void { this.build.placing = null; this.build.tool = null; this.build.selectedId = null; this.build.hover = null; this.build.reason = ''; this.renderer?.setGhost(null, this.state!, 0, 0, 0, false); this.renderer?.setTileGhost(null); this.renderer?.setWallGhost(null); this.renderer?.setGrowHints([]); this.renderer?.setPanelHints([], 0); }
   rotateGhost(dir: 1 | -1 = 1): void { this.build.rot = ((this.build.rot + dir + 4) % 4) as Rot; this.refreshGhost(); this.audio.play('rotate'); this.emit(); }
-  selectFixture(id: number | null): void { this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
+  selectFixture(id: number | null): void { if (id !== null) this.stowStockTool(); this.build.selectedId = id; this.build.placing = null; this.build.tool = null; this.renderer?.setTileGhost(null); this.emit(); }
   /**
    * Working on the ground (a piece for outside, a lot tool): the pointer is on it, whichever floor is picked. (Floor to
    * add or sell is pointed at on the plane of the boards in view, the tile lit there: the column at it grows or goes.)
@@ -1131,14 +1132,19 @@ export class GameRuntime {
   stockFind = '';
   private stockDragged = new Set<number>();
   setStockTool(on: boolean): void {
-    if (on === this.stockTool || !this.state || !this.inPlay) return;
+    // (Putting it away always works, even on the plot picker.)
+    if (on === this.stockTool || !this.state || (on && !this.inPlay)) return;
     if (on && !this.state.unlocks.build) { this.showToast('The stock tool comes with Build, on day 2.'); return; }
+    if (on && this.state.phase === 'night') { this.showToast('The shop is shut: fill the shelves in the morning.'); return; }
     this.stockTool = on;
-    if (on) { if (this.card && this.card !== 'stock') this.closeCard(); if (this.card === 'stock') this.closeCard(); this.stopPlacing(); this.openFixtureMenu(null); }
+    // (Placing stops first, or closing Build would only put down the piece in hand.)
+    if (on) { this.stopPlacing(); if (this.card) this.closeCard(); this.openFixtureMenu(null); }
     else { this.stockFind = ''; }
     this.audio.play(on ? 'cardOpen' : 'cardClose');
     this.emit();
   }
+  /** Put the stock tool away quietly: the night, another game, or a Build piece in hand. */
+  private stowStockTool(): void { this.stockTool = false; this.stockFind = ''; }
   setStockFilter(f: StockFilter): void { this.stockFilter = f; this.emit(); }
   setStockFind(q: string): void { this.stockFind = q; this.emit(); }
   /** Top up the shelf under the pointer (once per drag). */
@@ -1148,9 +1154,15 @@ export class GameRuntime {
     const hit = r.pick(px, py, s);
     if (hit?.kind !== 'fixture' || !FIXTURES[hit.type].slots || this.stockDragged.has(hit.id)) return hit?.kind === 'fixture';
     this.stockDragged.add(hit.id);
-    const res = this.dispatch({ type: 'topUp', fixtureId: hit.id });
-    if (!res.ok && fresh && res.message) this.showToast(res.message, 1600);
+    this.fillShelf(hit.id, fresh);
     return true;
+  }
+  /** Top one shelf up from the pallet. Only a fresh press says why it could not, never each full shelf a drag passes. */
+  private fillShelf(id: number, report: boolean): void {
+    const s = this.state; if (!s) return;
+    const res = applyCommand(s, { type: 'topUp', fixtureId: id });
+    this.stateVersion++; this.maybeEmit();
+    if (!res.ok && report && res.message) { this.showToast(res.message, 1600); this.audio.play('bad'); }
   }
   supplyAll(): void { const r = this.dispatch({ type: 'topUpAll' }); if (r.ok && r.message) this.showToast(r.message, 2000); }
 
@@ -1414,7 +1426,7 @@ export class GameRuntime {
       const score = d - (this.actionFor(s, t, true).ok ? 0.3 : 0) - (mess ? 0.6 : 0);
       if (score < bestD) { bestD = score; best = t; }
     };
-    for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet' || VERTICAL.has(f.type)) consider({ kind: 'fixture', id: f.id });
+    for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet' || f.type === 'storeRack' || VERTICAL.has(f.type)) consider({ kind: 'fixture', id: f.id });
     consider({ kind: 'delivery', id: 0 });
     for (const l of s.shop.litter) consider({ kind: 'spill', id: l.id });
     for (const l of frontageLitter(s)) consider({ kind: 'mess', id: l.id });
@@ -1446,8 +1458,8 @@ export class GameRuntime {
     const f = s.shop.fixtures.find((x) => x.id === t.id);
     if (!f) return { text: '', ok: false, key: null, run: null };
     const def = FIXTURES[f.type];
-    // An extra pallet: its boxes are the delivery's, picked up and put back the same way.
-    if (f.type === 'pallet') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
+    // An extra pallet (or a storage rack): its boxes are the delivery's, picked up and put back the same way.
+    if (f.type === 'pallet' || f.type === 'storeRack') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
     if (VERTICAL.has(f.type)) {
       // Up or down, from whichever end you are at (walking into it does the same); beside it, round to that end first.
       const up = levelOfPerson(s.shop, owner) === levelOf(f), dir = up ? 'up' : 'down';
@@ -1578,6 +1590,13 @@ export class GameRuntime {
     const a = this.actionFor(s, show, near);
     r.marker.set(rect, a.ok);
     const at = { x: (rect.x0 + rect.x1) / 2, y: show.kind === 'fixture' ? 1.05 : 0.6, z: (rect.z0 + rect.z1) / 2 };
+    // The stock tool out: a click on a shelf across the room fills it from the pallet (and on other furniture does nothing).
+    if (this.stockTool && !near && show.kind === 'fixture') {
+      const def = FIXTURES[s.shop.fixtures.find((x) => x.id === show.id)!.type];
+      if (!def.slots) { r.marker.set(null); return none; }
+      r.marker.set(rect, true);
+      return { info: { key: 'Click', text: `${def.name}: fill from the pallet`, ok: true, at }, run: () => this.fillShelf(show.id, true) };
+    }
     if (this.card === 'build' && show.kind === 'fixture') {
       const f = s.shop.fixtures.find((x) => x.id === show.id)!;
       return { info: { key: near ? useKey : 'Click', text: `Move ${FIXTURES[f.type].name}`, ok: true, at }, run: () => this.clickBuild({ kind: 'fixture', id: f.id, type: f.type, dist: 0 }) };
