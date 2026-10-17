@@ -131,6 +131,8 @@ float grassHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 4375
     this.mesh.frustumCulled = false;
     this.mesh.receiveShadow = true;
     this.mesh.castShadow = false;
+    // (Placed blade by blade in its shader: the ambient occlusion's plain render of the scene leaves it out.)
+    this.mesh.userData.noAO = true;
     // Looking straight down from high above: screen right is +x, screen up is -z.
     this.maskCam.position.set(0, 100, 0);
     this.maskCam.up.set(0, 0, -1);

@@ -260,7 +260,7 @@ export class WorldRenderer {
       this.grass.update(focus.x, focus.z, Math.min(GRASS_RING / 2, 9 + dist * 0.8));
       this.weather.setHeights(this.grass.mask);
     }
-    this.motes.update(this.clock, Math.min(dt, 0.1), focus, this.night, this.renderer.getPixelRatio());
+    this.motes.update(this.clock, Math.min(dt, 0.1), focus, this.night, this.renderer.getPixelRatio(), sf, this.weather.rainLevel);
     this.ambient.close = eyes;
     this.ambient.update(this.clock, Math.min(dt, 0.1), this.activeCamera, this.lighting.skyTop, this.lighting.sky, this.lighting);
     this.renderer.info.reset();
@@ -326,8 +326,8 @@ export class WorldRenderer {
     const cam = this.photoCam;
     cam.fov = fov; cam.near = ph.kind === 'selfie' ? 0.02 : 0.05; cam.updateProjectionMatrix();
     cam.position.copy(eye); cam.lookAt(target); cam.updateMatrixWorld();
-    // The town as the photo sees it: whole walls, no markers or bubbles, the light of that hour.
-    const off = [this.reactions.group, this.marker.group, this.overlays.group].filter((g) => g.visible);
+    // The town as the photo sees it: whole walls, no markers, bubbles or motes, the light of that hour.
+    const off = [this.reactions.group, this.marker.group, this.overlays.group, this.motes.points].filter((g) => g.visible);
     for (const g of off) g.visible = false;
     // The whole building, whatever floor the view has the ones over lifted off from (the manager inside downstairs,
     // the Build card on a lower floor): the frame after puts it back. Down the aisles, the ground floor as it is seen

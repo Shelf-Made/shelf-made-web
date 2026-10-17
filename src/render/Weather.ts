@@ -179,6 +179,8 @@ export class WeatherView {
     this.bounce = new Mesh(bg, bounceMat);
     this.bounce.frustumCulled = false; this.bounce.renderOrder = 2; this.bounce.name = 'rain-bounce';
     this.group.add(this.rain, this.splash, this.bounce);
+    // (Placed drop by drop in their shaders: the ambient occlusion's plain render of the scene leaves it all out.)
+    this.group.userData.noAO = true;
   }
 
   /** Where rain never falls (the shop floor, in world coordinates). */

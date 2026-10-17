@@ -2,8 +2,10 @@
  * Light in the air, on the Limitless preset: by day, specks of dust drifting in the sun; after dark, fireflies
  * blinking over the grass. A few hundred points in a box round the camera's focus, each wandering its own slow
  * loop (worked out in the vertex shader from the time, so nothing is touched per frame but a few uniforms).
+ * Outdoors only (none inside the shop), thinning out towards the box's edge, and gone in the rain.
  */
-import { BufferGeometry, Float32BufferAttribute, Points, ShaderMaterial, AdditiveBlending, Color, Vector3 } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Points, ShaderMaterial, AdditiveBlending, Color, Vector3, Vector4 } from 'three';
+import type { Rect } from '@/sim/layout';
 
 const N = 420;
 /** Half the width of the box the motes fill round the focus. */
@@ -24,10 +26,10 @@ export class Motes {
     g.setAttribute('position', new Float32BufferAttribute(new Float32Array(N * 3), 3));
     g.setAttribute('seed', new Float32BufferAttribute(seed, 4));
     this.mat = new ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uCentre: { value: new Vector3() }, uColour: { value: new Color() }, uAlpha: { value: 0 }, uSize: { value: 1 }, uPixel: { value: 1 }, uTop: { value: 3 } },
+      uniforms: { uTime: { value: 0 }, uCentre: { value: new Vector3() }, uColour: { value: new Color() }, uAlpha: { value: 0 }, uSize: { value: 1 }, uPixel: { value: 1 }, uTop: { value: 3 }, uShop: { value: new Vector4() } },
       vertexShader: `
         attribute vec4 seed;
-        uniform float uTime; uniform vec3 uCentre; uniform float uSize; uniform float uPixel; uniform float uTop;
+        uniform float uTime; uniform vec3 uCentre; uniform float uSize; uniform float uPixel; uniform float uTop; uniform vec4 uShop;
         varying float vA;
         void main() {
           float t = uTime * (0.05 + seed.w * 0.08);
@@ -39,6 +41,10 @@ export class Motes {
           gl_Position = projectionMatrix * mv;
           // Each twinkles to its own beat.
           vA = 0.3 + 0.7 * pow(0.5 + 0.5 * sin(uTime * (1.2 + seed.w * 2.2) + seed.x * 40.0), 3.0);
+          // Thinning out towards the edge of the box (no hard-edged square round the focus), and none in the shop.
+          vec2 rel = abs(p.xz - uCentre.xz);
+          vA *= 1.0 - smoothstep(${(R * 0.7).toFixed(1)}, ${R.toFixed(1)}, max(rel.x, rel.y));
+          if (p.x > uShop.x && p.x < uShop.z && p.z > uShop.y && p.z < uShop.w) vA = 0.0;
           gl_PointSize = min(7.0 * uPixel, uSize * uPixel * (0.6 + seed.w) * 60.0 / max(1.0, -mv.z));
         }`,
       fragmentShader: `
@@ -59,17 +65,18 @@ export class Motes {
     this.points.visible = false;
   }
 
-  /** Each frame: seconds so far, the focus, whether the lights are on (night), the pixel ratio. */
-  update(time: number, dt: number, focus: Vector3, night: boolean, pixel: number): void {
+  /** Each frame: seconds so far, the focus, whether the lights are on (night), the pixel ratio, the shop's floor (in the world), the rain (0..1). */
+  update(time: number, dt: number, focus: Vector3, night: boolean, pixel: number, shop: Rect, rain: number): void {
     if (!this.points.visible) return;
     this.dark += ((night ? 1 : 0) - this.dark) * Math.min(1, dt * 0.5);
     const u = this.mat.uniforms;
     u.uTime!.value = time;
     (u.uCentre!.value as Vector3).copy(focus);
     u.uPixel!.value = pixel;
+    (u.uShop!.value as Vector4).set(shop.x0 - 0.3, shop.z0 - 0.3, shop.x1 + 0.3, shop.z1 + 0.3);
     // Warm dust by day, yellow-green fireflies low over the ground at night (bright enough to bloom).
     (u.uColour!.value as Color).setRGB(1.0 + 0.4 * this.dark, 0.95 + 0.75 * this.dark, 0.8 - 0.35 * this.dark);
-    u.uAlpha!.value = 0.28 + 0.62 * this.dark;
+    u.uAlpha!.value = (0.28 + 0.62 * this.dark) * (1 - Math.min(1, rain * 2));
     u.uSize!.value = 0.55 + 0.75 * this.dark;
     u.uTop!.value = 3 - 1.9 * this.dark;
   }
