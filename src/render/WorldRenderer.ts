@@ -339,6 +339,8 @@ export class WorldRenderer {
     if (lights !== this.night) { this.statics.setNight(lights); this.store.setNight(lights); this.rivals.setNight(lights); }
     this.store.update(state, null);
     this.store.setRoof(ph.kind === 'aisle');
+    // (Not the ceiling seen through the manager's eyes: the aisles get one of their own.)
+    this.store.setCeiling(false);
     if (ph.kind === 'aisle') this.store.setInteriorLight(3.4);
     const panels = ph.kind === 'aisle' ? this.ceilingPanels(state) : null;
     if (panels) this.scene.add(panels);
@@ -352,6 +354,8 @@ export class WorldRenderer {
     this.viewFrustum.setFromProjectionMatrix(this.viewMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     this.people.update(state, this.lastAlpha, 0, target, -1, 0, 30, this.viewFrustum, cam.position);
     this.grass.update(target.x, target.z, 12);
+    // (The sky, clouds and birds as a phone sees them, not as through the manager's eyes.)
+    this.ambient.close = false;
     this.ambient.update(this.clock, 0, cam, this.lighting.skyTop, this.lighting.sky, this.lighting);
     if (fig) this.scene.add(fig);
     let img: ImageData | null;

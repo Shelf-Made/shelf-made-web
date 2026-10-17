@@ -6,6 +6,7 @@ import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile, canPushWall, canPullWall, wallRun } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
 import { CONVEYOR_PRICE, twinTill } from '@/sim/people';
+import { onShift } from '@/sim/staff';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, justBought, VARIANTS } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
@@ -539,7 +540,14 @@ export class GameRuntime {
     this.emit();
   }
 
-  toLobby(): void { if (this.card === 'build') this.leaveBuild(); this.renderer?.follow.setFirstPerson(false); this.screen = 'lobby'; this.state = null; this.card = null; this.stowStockTool(); this.modalPause = null; this.lobbyState = null; this.forgetSelection(); this.emit(); }
+  toLobby(): void {
+    if (this.card === 'build') this.leaveBuild();
+    this.renderer?.follow.setFirstPerson(false); this.screen = 'lobby'; this.state = null; this.card = null; this.stowStockTool(); this.modalPause = null; this.lobbyState = null; this.forgetSelection();
+    // Left mid-jump: nobody in the lobby is left in the air (the people there are drawn by the same view), and no thud next game.
+    this.hopAt = -1; this.landed = true;
+    if (this.renderer) Object.assign(this.renderer.hop, { id: -1, y: 0, stretch: 1 });
+    this.emit();
+  }
   /** A different game: nobody is selected or followed. */
   private forgetSelection(): void {
     this.selectedPerson = null; this.followingPerson = false;
@@ -1148,7 +1156,8 @@ export class GameRuntime {
   turnStep(dir: 1 | -1): void { this.renderer?.follow.rotateStep(dir); this.audio.play('tick'); }
   zoom(factor: number): void {
     const z = this.renderer?.follow.zoom(factor);
-    if (z === 'in' && this.inPlay) this.setFirstPerson(true); else if (z === 'out') this.setFirstPerson(false);
+    // (Scrolling right in while building is only a close look: no first person, and no telling off for it.)
+    if (z === 'in' && this.inPlay && !this.building && this.card !== 'build') this.setFirstPerson(true); else if (z === 'out') this.setFirstPerson(false);
   }
 
   // ---- The stock tool: labels over every shelf, a click (or a drag along a row) fills one from the pallet.
@@ -1203,11 +1212,14 @@ export class GameRuntime {
     if (on) {
       if (!this.inPlay) return;
       // Building needs the view from above; following someone else, it would be their eyes.
-      if (this.card === 'build' || this.building) { this.showToast('Close Build to look through your own eyes.', 1800); return; }
+      // (A piece picked up from its menu is carried without the Build card open.)
+      if (this.card === 'build' || this.building) { this.showToast(this.card === 'build' ? 'Close Build to look through your own eyes.' : 'Put the piece down (or press Esc) to look through your own eyes.', 1800); return; }
       if (this.followingPerson) this.stopFollowQuietly();
       this.focusCamera();
       r.follow.setFirstPerson(true);
-      this.showToast(`First person · drag to look round · ${keyLabel(this.settings.keys.firstPerson)} or scroll out to leave`, 3600);
+      // (A touch screen has no key or wheel: the eye button, or a pinch.)
+      const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+      this.showToast(`First person · drag to look round · ${touch ? 'tap the eye button or pinch out' : `${keyLabel(this.settings.keys.firstPerson)} or scroll out`} to leave`, 3600);
       this.eyesToast = this.toastId;
     } else {
       r.follow.setFirstPerson(false);
@@ -1367,9 +1379,14 @@ export class GameRuntime {
     if (!reg) {
       if (repeat) return;
       this.jump();
-      // (A till back to back with a staffed one has its cashier: they serve both.)
-      if (s.phase === 'open' && s.shop.fixtures.some((f) => f.type === 'register' && (f.serving != null || (f.queue?.length ?? 0) > 0) && f.staffId == null && twinTill(s, f)?.staffId == null))
-        this.showToast('Someone is waiting: stand behind the checkout counter and press Space to scan.', 2400);
+      // Someone behind it, as the sim has it: a cashier on shift there, its own or the one serving the till back to back with
+      // it (after closing time too, the last ones still to pay).
+      const served = (f: (typeof s.shop.fixtures)[number]) => {
+        const twin = twinTill(s, f), back = fixtureBackWorld(s.shop, f);
+        return s.people.some((p) => p.kind === 'staff' && (p.id === f.staffId || (!!twin && p.id === twin.staffId)) && onShift(p, s.time) && Math.hypot(p.x - back.x, p.z - back.z) < 0.8);
+      };
+      if ((s.phase === 'open' || s.phase === 'closing') && s.shop.fixtures.some((f) => f.type === 'register' && (f.serving != null || (f.queue?.length ?? 0) > 0) && !served(f)))
+        this.showToast(`Someone is waiting: stand behind the checkout counter and press ${keyLabel(this.settings.keys.scan)} to scan.`, 2400);
       return;
     }
     const res = applyCommand(s, { type: 'scanHere', registerId: reg.id });
@@ -1438,6 +1455,10 @@ export class GameRuntime {
     // Through their eyes, in front is where you look (they turn to face it only when they walk).
     const eyes = this.renderer?.follow.firstPerson ? this.renderer.follow.yaw : null;
     const fx = eyes !== null ? -Math.sin(eyes) : Math.sin(o.yaw), fz = eyes !== null ? -Math.cos(eyes) : Math.cos(o.yaw);
+    // How far round to the side still counts: about 75° for the body; through the eyes, only what is on screen (the
+    // lens is narrower than that, and narrower still on a phone held upright).
+    const cam = this.renderer?.follow.camera;
+    const cone = eyes !== null && cam ? Math.max(0.26, Math.cos(Math.atan(Math.tan(MathUtils.degToRad(cam.fov / 2)) * cam.aspect))) : 0.26;
     let best: Thing | null = null, bestD = Infinity;
     const consider = (t: Thing) => {
       const r = this.thingRect(s, t);
@@ -1446,7 +1467,7 @@ export class GameRuntime {
       if (d > REACH) return;
       // A spill at your feet counts whichever way you face; anything else has to be in front.
       const mess = t.kind === 'spill' || t.kind === 'mess';
-      if (d > (mess ? 0.6 : 0.35) && (dx * fx + dz * fz) / d < 0.26) return;
+      if (d > (mess ? 0.6 : 0.35) && (dx * fx + dz * fz) / d < cone) return;
       // Things you can actually do something with win over things you can only look at, and a spill
       // in reach wins over the shelf it lies by (a shelf's tile is always nearer than the spill's middle).
       const score = d - (this.actionFor(s, t, true).ok ? 0.3 : 0) - (mess ? 0.6 : 0);

@@ -146,6 +146,9 @@ export class AmbientView {
 
   update(t: number, dt: number, camera: Camera, skyTop: Color, skyBottom: Color, sun?: { sunDir: Vector3; sunVisible: number; sun: { color: Color } }): void {
     this.sky.position.copy(camera.position);
+    // Through the eyes the view ends a street or two away: the sky comes in with it (its size never shows), or it would
+    // be cut away whole, leaving one flat colour with no sun or clouds.
+    this.sky.scale.setScalar(this.close ? 0.25 : 1);
     this.skyMat.uniforms.top!.value.copy(skyTop);
     this.skyMat.uniforms.bottom!.value.copy(skyBottom);
     if (sun) { this.skyMat.uniforms.sunDir!.value.copy(sun.sunDir); this.skyMat.uniforms.sunCol!.value.copy(sun.sun.color).multiplyScalar(sun.sunVisible); }
@@ -153,7 +156,8 @@ export class AmbientView {
     const u = this.skyMat.uniforms;
     u.cloud!.value = this.weather.cloud; u.storm!.value = this.weather.storm; u.flash!.value = this.weather.flash;
     u.drift!.value.set(t * 0.012 * (1 + this.weather.wind * 3), t * 0.007);
-    if (this.clouds) this.clouds.visible = this.weather.cloud < 0.6;
+    // (Not through the eyes: out past where the view ends, they would be flat blobs of haze on the sky.)
+    if (this.clouds) this.clouds.visible = this.weather.cloud < 0.6 && !this.close;
     // Animals far from the camera are too small to see and cost a draw call per part: skip them.
     const cp = camera.position;
     for (const c of this.critters) {

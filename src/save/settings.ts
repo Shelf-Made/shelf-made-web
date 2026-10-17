@@ -23,6 +23,8 @@ export const DEFAULT_KEYS: KeyBindings = { forward: 'KeyW', back: 'KeyS', left: 
 export const DEFAULT_SETTINGS: Settings = { master: 0.8, music: 0.6, sfx: 0.9, quality: 'high', largeUI: false, colorBlind: false, lookSpeed: 1, invertY: false, edgePan: false, keys: { ...DEFAULT_KEYS }, analyticsOptIn: false, managerLook: null };
 
 const KEY = 'shelf-made:settings';
+/** Keys nothing uses by default (nor B, Tab, the arrows and the rest the game keeps for itself), for a new action whose own key is taken. */
+const SPARE_KEYS = ['KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'KeyN', 'KeyM', 'KeyO', 'KeyU', 'KeyI'];
 
 export function loadSettings(): Settings {
   try {
@@ -34,6 +36,13 @@ export function loadSettings(): Settings {
     for (const k of Object.keys(DEFAULT_KEYS) as (keyof KeyBindings)[]) { const v = parsed.keys?.[k]; if (typeof v === 'string') keys[k] = v; }
     // E used to mean Use; it turns the camera now. An old default moves to F.
     if (keys.interact === 'KeyE' && parsed.keys?.turnRight === undefined) keys.interact = 'KeyF';
+    // An action new since these settings were saved (first person, the stock tool) never takes a key already chosen
+    // for something else: it gets a spare one instead (shown in Settings and wherever its key is named).
+    if (parsed.keys) for (const k of Object.keys(DEFAULT_KEYS) as (keyof KeyBindings)[]) {
+      if (typeof parsed.keys[k] === 'string') continue;
+      const taken = (code: string) => (Object.keys(keys) as (keyof KeyBindings)[]).some((o) => o !== k && keys[o] === code);
+      if (taken(keys[k])) keys[k] = SPARE_KEYS.find((c) => !taken(c)) ?? keys[k];
+    }
     const quality: Quality = (['limitless', 'high', 'medium', 'low'] as const).find((q) => q === parsed.quality) ?? DEFAULT_SETTINGS.quality;
     return { ...DEFAULT_SETTINGS, ...parsed, quality, keys };
   } catch { return structuredClone(DEFAULT_SETTINGS); }

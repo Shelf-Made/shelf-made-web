@@ -31,6 +31,26 @@ describe('what is in sight upstairs', () => {
     const rail = toWorld(s.shop, 1.4, -2.9), eye = toWorld(s.shop, 1, 2);
     expect(underFloors(s.shop, { x: eye.x, y: 4, z: eye.z }, rail.x, 1.3, rail.z, 0, 1)).toBe(false);
   });
+  it('through the eyes under a floor, hides what is up on it, but not up the stairwell or a double-height space', () => {
+    const s = openGame({ seed: 94, plotId: 'main', name: 'Upstairs', tutorial: false });
+    s.cash = 50000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removePanel', x: -1.5, z: -1 }).ok).toBe(true);
+    // From eye height on floor `from`, stood over the ground floor's (ex, ez), a point drawn at height y over its (x, z), on floor `on`.
+    const seen = (ex: number, ez: number, from: number, x: number, z: number, y: number, on: number) => { const e = toWorld(s.shop, ex, ez), w = toWorld(s.shop, x, z); return !underFloors(s.shop, { x: e.x, y: from + 0.6, z: e.z }, w.x, y, w.z, on, null); };
+    // On the ground floor: a shelf upstairs is over the ceiling (its underside too); one down here is in sight.
+    expect(seen(-2, -1.5, 0, -2, -3.5, 1.4, 1)).toBe(false);
+    expect(seen(-2, -1.5, 0, -2, -3.5, 1, 1)).toBe(false);
+    expect(seen(-2, -1.5, 0, -2, -3.5, 0.5, 0)).toBe(true);
+    // Up the stairwell, and up through the double-height space.
+    expect(seen(1, -0.8, 0, 1, -4.5, 1.9, 1)).toBe(true);
+    expect(seen(-1, -0.2, 0, -1, -1.8, 1.9, 1)).toBe(true);
+    // Upstairs, what is up there is in sight.
+    expect(seen(-2, -1.5, 1, -2, -3.5, 1.4, 1)).toBe(true);
+    // A spill upstairs: its marker behind the ceiling, not over it.
+    const e = toWorld(s.shop, -2, -1.5), w = toWorld(s.shop, -1.5, zOnLevel(-3.5, 1));
+    expect(spillMark(s.shop, { x: e.x, y: 0.6, z: e.z }, w.x, w.z, null)).toEqual({ hidden: false, below: true });
+  });
   it('says which floor a look down meets first with the whole building drawn: the top boards, else down a gap', () => {
     const s = openGame({ seed: 92, plotId: 'main', name: 'Upstairs', tutorial: false });
     s.cash = 50000;

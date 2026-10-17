@@ -9,7 +9,7 @@ export function SettingsBody({ runtime, snap, inLobby }: { runtime: GameRuntime;
   const slider = (label: string, key: 'master' | 'music' | 'sfx') => (
     <label className="row between" key={key}><span style={{ minWidth: 70 }}>{label}</span><input type="range" min={0} max={1} step={0.05} value={st[key]} onChange={(e) => runtime.updateSettings({ [key]: Number(e.target.value) })} aria-label={`${label} volume`} /></label>
   );
-  const keys: [keyof KeyBindings, string][] = [['forward', 'Walk forward'], ['back', 'Walk back'], ['left', 'Walk left'], ['right', 'Walk right'], ['interact', 'Use / pick up / stock'], ['scan', 'Scan item'], ['rotate', 'Turn fixture'], ['turnLeft', 'Turn camera left'], ['turnRight', 'Turn camera right'], ['focus', 'Camera back to you'], ['firstPerson', 'First person'], ['stockTool', 'Stock tool'], ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'], ['pause', 'Pause'], ['speed1', '1x'], ['speed2', '2x'], ['speed4', '4x']];
+  const keys: [keyof KeyBindings, string][] = [['forward', 'Walk forward'], ['back', 'Walk back'], ['left', 'Walk left'], ['right', 'Walk right'], ['interact', 'Use / pick up / stock'], ['scan', 'Scan item / jump'], ['rotate', 'Turn fixture'], ['turnLeft', 'Turn camera left'], ['turnRight', 'Turn camera right'], ['focus', 'Camera back to you'], ['firstPerson', 'First person'], ['stockTool', 'Stock tool'], ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'], ['pause', 'Pause'], ['speed1', '1x'], ['speed2', '2x'], ['speed4', '4x']];
   return (
     <>
       <h3>Sound</h3>
@@ -25,9 +25,10 @@ export function SettingsBody({ runtime, snap, inLobby }: { runtime: GameRuntime;
       <label className="toggle"><span>Invert tilt when dragging</span><input type="checkbox" checked={st.invertY} onChange={(e) => runtime.updateSettings({ invertY: e.target.checked })} /></label>
       <label className="toggle"><span>Pan at the screen edges when zoomed out</span><input type="checkbox" checked={st.edgePan} onChange={(e) => runtime.updateSettings({ edgePan: e.target.checked })} /></label>
       <h3>Keys</h3>
+      {/* The key pressed to rebind goes no further: it does not also do what it now stands for. */}
       {keys.map(([k, label]) => (
         <div className="keyrow" key={k}><span>{label}</span>
-          <button className="key" onClick={() => setRebinding(k)} onKeyDown={(e) => { if (rebinding === k) { e.preventDefault(); runtime.updateSettings({ keys: { ...st.keys, [k]: e.code } }); setRebinding(null); } }} aria-label={`${label} key, currently ${keyLabel(st.keys[k])}`}>{rebinding === k ? 'press a key' : keyLabel(st.keys[k])}</button>
+          <button className="key" onClick={() => setRebinding(k)} onKeyDown={(e) => { if (rebinding === k) { e.preventDefault(); e.stopPropagation(); runtime.updateSettings({ keys: { ...st.keys, [k]: e.code } }); setRebinding(null); } }} aria-label={`${label} key, currently ${keyLabel(st.keys[k])}`}>{rebinding === k ? 'press a key' : keyLabel(st.keys[k])}</button>
         </div>
       ))}
       <button className="btn small ghost" onClick={() => runtime.updateSettings({ keys: { ...DEFAULT_KEYS } })}>Reset keys</button>

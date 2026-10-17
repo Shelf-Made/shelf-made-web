@@ -36,6 +36,8 @@ export class FollowCamera {
   eye = 0.6;
   /** Scrolling in past the closest the camera comes: how far, so a nudge of the trackpad does not drop you into first person. */
   private pushIn = 0;
+  /** In first person, how far scrolled (or pinched) out so far: a slow trackpad or a gentle pinch comes in many small steps. */
+  private pushOut = 0;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(30, aspect, 0.3, 260);
@@ -82,7 +84,12 @@ export class FollowCamera {
    * scrolling on past the nearest the camera comes asks for first person ('in').
    */
   zoom(factor: number): 'in' | 'out' | null {
-    if (this.firstPerson) return factor > 1.01 ? 'out' : null;
+    if (this.firstPerson) {
+      // Out adds up over the steps until it is clearly meant (any step back in starts it again).
+      this.pushOut = factor < 1 ? 0 : this.pushOut + Math.log(factor);
+      if (this.pushOut > 0.05) { this.pushOut = 0; return 'out'; }
+      return null;
+    }
     if (factor < 1 && this.goal.distance <= FollowCamera.MIN + 1e-6) {
       this.pushIn += Math.log(1 / factor);
       if (this.pushIn > 0.3) { this.pushIn = 0; return 'in'; }
@@ -160,7 +167,7 @@ export class FollowCamera {
   /** Into the manager's eyes (facing the way the camera did), or back out to the camera behind them at its nearest. */
   setFirstPerson(on: boolean): void {
     if (on === this.firstPerson) return;
-    this.firstPerson = on; this.pushIn = 0;
+    this.firstPerson = on; this.pushIn = 0; this.pushOut = 0;
     const c = this.camera;
     if (on) {
       this.following = true; this.fpDown = deg(6);
