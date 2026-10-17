@@ -465,7 +465,8 @@ test.describe('screenshots', () => {
     await hooks(page, 'freezeStrike', true);
     await hooks(page, 'strike', -40, 44);
     await settle(page, 600);
-    expect((await hooks<{ flash: number }>(page, 'weather')).flash).toBeGreaterThan(0.2);
+    // Lit once a frame has drawn since the strike (rain frames can be slow under software GL).
+    await expect.poll(async () => (await hooks<{ flash: number }>(page, 'weather')).flash).toBeGreaterThan(0.2);
     await page.screenshot({ path: out('46-lightning') });
     await hooks(page, 'freezeStrike', false);
     // Close up in the rain: puddles holding the sky, rings where the drops land, splashes bouncing.
