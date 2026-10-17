@@ -384,15 +384,15 @@ function beam(pal: AssetLibrary['palette'], hex: string, w: number, x: number, y
   return g;
 }
 
-/** The part of a light that glows: the lamp's shade or bulb, the neon's tubes (tile space, like the piece). */
-export function glowGeometry(type: FixtureType, pal: AssetLibrary['palette']): BufferGeometry | null {
+/** The part of a light that glows: the lamp's shade or bulb, the neon's tubes (tile space, like the piece), for the look it has. */
+export function glowGeometry(type: FixtureType, pal: AssetLibrary['palette'], variant?: number): BufferGeometry | null {
   switch (type) {
     // Lit, the whole shade glows (seen from above, a bulb under it would not show).
     case 'floorLamp': return cylinder(pal, '#FFFFFF', 0.094, 0.126, 0, 0.497, 0, 14, 0.069);
     case 'wallLight': return box(pal, '#FFFFFF', 0.3, 0.13, 0.2, 0, 0.615, WALL_FACE + 0.06);
     case 'pendant': return box(pal, '#FFFFFF', 0.165, 0.3, 0.165, 0, 0.635, 0);
-    // Either look's lantern (the modern one's flat light sits inside the same box).
-    case 'lampPost': return box(pal, '#FFFFFF', 0.15, 0.15, 0.15, 0, 1.445, 0);
+    // The classic look's lantern; the modern one's flat light under its head.
+    case 'lampPost': return modelOf(type, variant, '') === 'gen:lampPostModern' ? box(pal, '#FFFFFF', 0.17, 0.03, 0.17, 0, 1.565, 0) : box(pal, '#FFFFFF', 0.15, 0.15, 0.15, 0, 1.445, 0);
     case 'neon': {
       // A heart and "OPEN" are too fine for the tubes at this size: a bright frame and a zigzag.
       const t = 0.024, z = WALL_FACE + 0.03, y0 = 0.4, y1 = 0.64, x0 = -0.24, x1 = 0.24;

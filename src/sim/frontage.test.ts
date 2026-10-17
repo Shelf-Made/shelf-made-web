@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, tick, TICK, resetGridCache, type GameState } from './index';
 import { canPlace } from './build';
 import { lotAppeal } from './lot';
-import { LOT_FRONT, PLOT_RECT, FRONT_WALK_Z, toLocal } from './layout';
+import { LOT_FRONT, PLOT_RECT, FRONT_WALK_Z, toLocal, lotLayout, paintedBays } from './layout';
 import { expectedByType } from './customers';
 import { placeOrder } from './economy';
 import { spawnCustomer } from './people';
-import { SIGN_TIERS, SLOGAN_MAX, LOADING_BAY_PRICE, BAY_ETA, CHARGE_FEE, BUS_PULL, signPrice, isElectric, chargersInUse, cleanSignText, SIGN_TEXT_MAX } from './frontage';
-import { supplier } from './economy';
+import { SIGN_TIERS, SLOGAN_MAX, LOADING_BAY_PRICE, BAY_ETA, CHARGE_FEE, BUS_PULL, signPrice, isElectric, chargersInUse, chargerReachesBay, cleanSignText, SIGN_TEXT_MAX } from './frontage';
+import { supplier, orderEta } from './economy';
 import type { Rot, FixtureType } from './types';
 
 function shop(seed = 7): GameState {
@@ -93,6 +93,8 @@ describe('the loading bay', () => {
     if (typeof fast === 'string' || typeof slow === 'string') throw new Error('no order');
     expect(fast.eta).toBeCloseTo(supplier('local').etaSeconds * BAY_ETA, 5);
     expect(slow.eta).toBe(supplier('local').etaSeconds);
+    // The Stock card promises the time the truck really takes.
+    expect(orderEta(s, 'local')).toBe(fast.eta);
     expect(LOADING_BAY_PRICE).toBeGreaterThan(0);
   });
 });
@@ -119,6 +121,21 @@ describe('car chargers', () => {
     expect(isElectric(car)).toBe(true);
     expect(chargersInUse(s).has(charger.id)).toBe(true);
     expect(s.today.charging).toBeGreaterThanOrEqual(CHARGE_FEE);
+  });
+
+  it('keep a bay in reach: the last one by a charger cannot be painted out until the charger goes', () => {
+    const s = shop(11);
+    const at = spot(s, 'evCharger');
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'evCharger', x: at.x, z: at.z, rot: 0 }).ok).toBe(true);
+    const charger = s.shop.fixtures[s.shop.fixtures.length - 1]!;
+    const refused: string[] = [];
+    for (const b of paintedBays(s.shop).bays) { const r = applyCommand(s, { type: 'eraseBay', slot: b.id }); if (!r.ok) refused.push(r.message!); }
+    expect(refused).toEqual(['A car charger would have no bay in reach: move or sell it first']);
+    expect(s.shop.bays.length).toBe(1);
+    expect(chargerReachesBay(s.shop, at.x, at.z)).toBe(true);
+    // Sold, it no longer holds the bay.
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: charger.id }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'eraseBay', slot: paintedBays(s.shop).bays[0]!.id }).ok).toBe(true);
   });
 });
 
@@ -162,13 +179,36 @@ describe('your own bus stop', () => {
       for (const p of s.people) {
         if (p.kind !== 'customer') continue;
         const l = toLocal(s.shop, p.x, p.z);
-        if (p.state === 'walking' && Math.abs(l.z - FRONT_WALK_Z) < 0.05 && Math.abs(l.x - (at.x + 1)) < 0.7 && s.tick - (p.arrivedTick ?? 0) < 2) riders.add(p.id);
+        if ((p.state === 'walking' || p.state === 'toDoor') && Math.abs(l.z - FRONT_WALK_Z) < 0.05 && Math.abs(l.x - (at.x + 1)) < 0.7 && s.tick - (p.arrivedTick ?? 0) < 2) riders.add(p.id);
         if (riders.has(p.id) && (p.state === 'entering' || p.state === 'shopping' || p.state === 'browsing' || p.state === 'queued' || p.state === 'paying')) inside.add(p.id);
       }
     }
     expect(riders.size).toBeGreaterThan(2);
     expect(inside.size).toBeGreaterThan(riders.size * 0.5);
     expect(s.stuckRescues).toBe(0);
+  });
+
+  it('riders off a stop between the door and the driveway walk straight in, not out past the driveway and back', () => {
+    const s = shop(23);
+    const at = spot(s, 'busStop', 0, (x) => x >= 1 && x <= 3);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'busStop', x: at.x, z: at.z, rot: 0 }).ok).toBe(true);
+    applyCommand(s, { type: 'openShop' });
+    s.phase = 'open'; s.time = 20;
+    // The furthest east each rider gets on the way to the door.
+    const east = new Map<number, number>();
+    for (let i = 0; i < 30; i++) {
+      const p = spawnCustomer(s, true);
+      if (!p || p.bike) continue;
+      const l = toLocal(s.shop, p.x, p.z);
+      if (Math.abs(l.z - FRONT_WALK_Z) < 0.05 && Math.abs(l.x - (at.x + 1)) < 0.7) east.set(p.id, l.x);
+    }
+    expect(east.size).toBeGreaterThan(5);
+    for (let i = 0; i < 40 / TICK; i++) {
+      tick(s);
+      for (const p of s.people) if (east.has(p.id) && (p.state === 'walking' || p.state === 'toDoor')) east.set(p.id, Math.max(east.get(p.id)!, toLocal(s.shop, p.x, p.z).x));
+    }
+    // (They used to walk east to the end of the frontage, over the driveway, and back.)
+    for (const x of east.values()) expect(x).toBeLessThan(lotLayout(s.shop).driveway.x0);
   });
 });
 

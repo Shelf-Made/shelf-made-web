@@ -173,7 +173,7 @@ export class StoreView {
     for (const [type, mesh] of this.glows) mesh.visible = type === 'neon' || this.night;
     if (this.lampPools) this.lampPools.visible = this.night;
   }
-  private readonly glows = new Map<FixtureType, InstancedMesh>();
+  private readonly glows = new Map<string, InstancedMesh>();
   private lampPools: InstancedMesh | null = null;
   private wallCut: { full: InstancedMesh; cut: InstancedMesh }[] = [];
   private readonly neonMat = new MeshBasicMaterial({ color: new Color(2.6, 0.9, 1.8) });
@@ -567,7 +567,8 @@ export class StoreView {
     // A loading bay: hatching where the truck stands, and a dock with rubber bumpers by the back door.
     if (shop.loadingBay) {
       const ts = lotLayout(shop).truckStop, bay: BufferGeometry[] = [];
-      const len = 2.8, wid = 1.25, wallOut = backZ - WALL_T;
+      // Against the back door's own wall (a shop grown back a tile elsewhere has its back edge deeper).
+      const len = 2.8, wid = 1.25, wallOut = shop.backDoor.z - WALL_T;
       for (const s of [-1, 1]) bay.push(box(pal, '#FFC844', len, 0.012, 0.07, ts.x, 0.018, ts.z + s * wid / 2));
       for (let i = 0; i < 8; i++) bay.push(box(pal, i % 2 ? '#38383D' : '#FFC844', 0.16, 0.012, wid - 0.1, ts.x + len / 2 - 0.12 - i * 0.16, 0.018, ts.z));
       const dx = shop.backDoor.x;
@@ -960,21 +961,24 @@ export class StoreView {
     const pal = this.assets.palette;
     const lit = shown.filter((f) => glowGeometry(f.type, pal) !== null);
     this.lampCount = lit.filter((f) => LAMPS.has(f.type)).length;
-    for (const type of new Set(lit.map((f) => f.type))) {
-      const list = lit.filter((f) => f.type === type);
-      let geo = this.painted.get(`glow:${type}`);
-      if (!geo) { geo = glowGeometry(type, pal)!; this.painted.set(`glow:${type}`, geo); }
+    // One lot for each look (the two lamp posts light up in different places).
+    const glowOf = (f: Fixture) => modelOf(f.type, f.variant, f.type);
+    for (const key of new Set(lit.map(glowOf))) {
+      const list = lit.filter((f) => glowOf(f) === key), { type, variant } = list[0]!;
+      let geo = this.painted.get(`glow:${key}`);
+      if (!geo) { geo = glowGeometry(type, pal, variant)!; this.painted.set(`glow:${key}`, geo); }
       const gm = new InstancedMesh(geo, type === 'neon' ? this.neonMat : LAMP_GLOW, list.length);
       gm.frustumCulled = false;
       list.forEach((f, i) => gm.setMatrixAt(i, this.fixtureMatrix(shop, f, m, 0, true)));
       this.root.add(gm);
-      this.glows.set(type, gm);
+      this.glows.set(key, gm);
     }
     const lamps = lit.filter((f) => LAMPS.has(f.type) || f.type === 'lampPost');
     if (lamps.length) {
       this.lampPools = new InstancedMesh(spillGeometry(0.95, 0.95, 0, 0.02, 0, 0.5), SPILL, lamps.length);
       // On the floor: a hanging light under a double-height ceiling hangs a storey up, its pool does not.
-      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, f.type === 'pendant' && doubleHeight(shop, f.x, f.z) ? -STOREY : 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); if (f.type === 'lampPost') m.multiply(this.tmpM.makeScale(2.2, 1, 2.2)); this.lampPools!.setMatrixAt(i, m); });
+      // A lamp post's wider pool lies over the paving and the sidewalk round it (they stand higher than the floor).
+      lamps.forEach((f, i) => { this.fixtureMatrix(shop, f, m, f.type === 'pendant' && doubleHeight(shop, f.x, f.z) ? -STOREY : 0, true); m.multiply(this.tmpM.makeTranslation(0, 0, f.type === 'wallLight' ? -0.15 : 0)); if (f.type === 'lampPost') m.multiply(this.tmpM.makeScale(2.2, 1, 2.2).setPosition(0, 0.035, 0)); this.lampPools!.setMatrixAt(i, m); });
       this.lampPools.renderOrder = 1;
       this.root.add(this.lampPools);
     }

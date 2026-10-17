@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { PRODUCTS, CATEGORY_NAMES, GROCERY_CATEGORIES, DEPARTMENTS, HOLIDAYS, YEAR_DAYS, productDef, holidayOn, holidayName, inSeason, type Category } from '@/sim/products';
-import { SUPPLIERS, unitCost, deliveryStatus, INSTANT_MUL } from '@/sim/economy';
+import { SUPPLIERS, unitCost, deliveryStatus, orderEta, INSTANT_MUL } from '@/sim/economy';
 import { RECYCLE_BACK } from '@/sim/stocking';
 import { keyLabel } from '@/save/settings';
 import { FIXTURES, storageCap, storageUsed } from '@/sim/layout';
@@ -42,8 +42,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const visible = PRODUCTS.filter((p) => cat === 'all' ? (onShelf.has(p.id) || inStore(p.id) > 0 || (qty[p.id] ?? 0) > 0 || (p.demand >= 1.2 && !p.extra)) : p.category === cat);
   const soon = holidayOn(s.day, 2);
   const units = lines.reduce((a, l) => a + l.qty, 0);
-  // In setup the trucks come at once (the clock stands still until you open).
-  const etaOf = (sid: string) => s.phase === 'setup' ? Math.min(SUPPLIERS.find((x) => x.id === sid)!.etaSeconds, 20) : SUPPLIERS.find((x) => x.id === sid)!.etaSeconds;
+  // As the order will come: at once in setup (the clock stands still until you open), sooner with a loading bay.
+  const etaOf = (sid: string) => orderEta(s, sid);
 
   // A holiday's goods still on the shelves once it is over: they can go for recycling from here.
   const leftovers = PRODUCTS.filter((p) => p.season && !inSeason(p, s.day) && (onShelf.get(p.id)?.qty ?? 0) > 0);
@@ -180,8 +180,9 @@ const SUPPLIER_LOOK: Record<string, { tagline: string; badge: string }> = {
 /** Game seconds are game minutes: "40 min", "1½ hours", "3 hours". */
 function arrival(secs: number): string {
   if (secs < 60) return `${Math.round(secs)} min`;
-  const h = secs / 60, whole = Math.floor(h), half = h - whole >= 0.25 && h - whole < 0.75;
-  return `${whole}${half ? '½' : ''} hour${h > 1.2 ? 's' : ''}`;
+  // To the nearest half hour.
+  const h = Math.round(secs / 30) / 2, whole = Math.floor(h);
+  return `${whole}${h > whole ? '½' : ''} hour${h > 1 ? 's' : ''}`;
 }
 
 /** The conditions a manager can place a saved order on. */

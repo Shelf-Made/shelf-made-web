@@ -204,9 +204,10 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
     }
     // On foot: off the bus at rush hour, otherwise along one of the streets, far enough out that nobody pops into view.
     let from = streetStart(state, 'customers', false, !!stand);
-    // Your own bus stop: some get off right outside (more of them at rush hour).
-    if (!stand) from = offTheBus(state, busRush(state.time)) ?? from;
-    const entry = frontageEntry(state, from);
+    // Your own bus stop: some get off right outside (more of them at rush hour), and go straight up to the door.
+    const off = stand ? null : offTheBus(state, busRush(state.time));
+    if (off) from = off;
+    const entry = off ?? frontageEntry(state, from);
     const r = route(from, entry, withRng(state, 'customers', (rr) => rr.chance(0.5)));
     p.x = from.x; p.z = from.z;
     p.path = r.path; p.xings = r.xings; p.pathIdx = 0;

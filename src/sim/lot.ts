@@ -48,13 +48,16 @@ export function canPlaceOutside(state: GameState, type: FixtureType, x: number, 
 
 /**
  * The first piece on the lot that a new shape of shop would put under the building or on its paths
- * and bays (the shop grown or shrunk a tile, a bay painted), as a reason; null when nothing is in the way.
+ * and bays (the shop grown or shrunk a tile, a bay painted or painted out), or leave a car charger with
+ * no bay in reach, as a reason; null when nothing is in the way.
  */
 export function lotClash(state: GameState, shape: Shop): string | null {
   const reserved = lotReserved(shape);
   for (const f of lotPieces(state.shop)) {
     const r = footprintOf(f.type, f.x, f.z, f.rot);
     if (onBuilding(shape, r) || reserved.some((q) => overlaps(q, r))) return `The ${name(f.type)} outside is in the way`;
+    // A charger with no bay in reach is never used, but still costs its upkeep.
+    if (f.type === 'evCharger' && chargerReachesBay(state.shop, f.x, f.z) && !chargerReachesBay(shape, f.x, f.z)) return 'A car charger would have no bay in reach: move or sell it first';
   }
   return null;
 }
@@ -162,6 +165,8 @@ export function canEraseBay(state: GameState, slotId: number): LotCheck {
   const i = paintedBays(shop).bays.findIndex((b) => b.id === slotId);
   if (i < 0) return { ok: false, reason: 'Point at a painted bay', price };
   if (shop.bays[i]?.carId !== null && shop.bays[i]?.carId !== undefined) return { ok: false, reason: 'A car has that bay', price };
+  const clash = lotClash(state, { ...shop, bayPlan: planOf(shop).filter((id) => id !== slotId) });
+  if (clash) return { ok: false, reason: clash, price };
   return { ok: true, reason: 'Paint out this bay', price };
 }
 

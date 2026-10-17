@@ -30,6 +30,13 @@ export const SUPPLIERS: Supplier[] = [
 
 export function supplier(id: string): Supplier { return SUPPLIERS.find((s) => s.id === id) ?? SUPPLIERS[0]!; }
 
+/** How long a supplier's truck takes to come (the Stock card shows the same). */
+export function orderEta(state: GameState, supplierId: string): number {
+  const sup = supplier(supplierId);
+  // Quick while the shop is still being fitted out, so the first five minutes keep moving; sooner with a loading bay.
+  return (state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds) * (state.shop.loadingBay ? BAY_ETA : 1);
+}
+
 export function unitCost(productId: string, supplierId: string, state?: GameState): number {
   const def = productDef(productId);
   const market = state ? state.market.priceMul[def.category] ?? 1 : 1;
@@ -63,8 +70,7 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold
-  // While the shop is still being fitted out the truck is quick, so the first five minutes keep moving.
-  const eta = (state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds) * (state.shop.loadingBay ? BAY_ETA : 1);
+  const eta = orderEta(state, sup.id);
   const order: Order = { id: state.nextId++, supplierId: sup.id, lines: clean, total, placedDay: state.day, placedTime: state.time, eta, state: 'pending' };
   state.orders.push(order);
   cue(state, 'order');
