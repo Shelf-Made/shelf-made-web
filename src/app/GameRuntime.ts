@@ -19,6 +19,7 @@ import { MathUtils } from 'three';
 import { WorldRenderer } from '@/render/WorldRenderer';
 import { FollowCamera } from '@/render/FollowCamera';
 import type { StoreHit } from '@/render/StoreView';
+import { statureOf } from '@/render/figure';
 import { keyLabel } from '@/save/settings';
 import { AudioEngine, type Cue } from '@/audio/AudioEngine';
 import { defaultBackend, type StorageBackend } from '@/save/storage';
@@ -1361,7 +1362,7 @@ export class GameRuntime {
       hop.id = -1; hop.y = 0; hop.stretch = 1; this.hopAt = -1; return;
     }
     hop.id = o.id;
-    hop.y = 4 * HOP_HEIGHT * o.look.height * t * (1 - t);
+    hop.y = 4 * HOP_HEIGHT * statureOf(o.look) * t * (1 - t);
     hop.stretch = t < 0.82 ? 1 + 0.08 * Math.sin(Math.PI * t / 0.82) : 1 - 0.12 * Math.sin(Math.PI * (t - 0.82) / 0.18);
   }
 

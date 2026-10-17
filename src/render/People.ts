@@ -4,7 +4,7 @@ import { BlobShadows } from './blobs';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AssetLibrary } from './assets';
-import type { GameState, Person, Anim as SimAnim, CustomerType, Look } from '@/sim/types';
+import type { GameState, Person, Anim as SimAnim, CustomerType, Look, FixtureType } from '@/sim/types';
 import { box, merge, paint } from './geometry';
 import { rectToWorld, STOREY } from '@/sim/layout';
 import { staffLevel } from '@/sim/staff';
@@ -13,6 +13,7 @@ import { bagsGeometry, basketGeometry, BAG_HEIGHT, rideBikeGeometry } from './pr
 import { shoppingBags, storeScheme, shopScheme } from '@/sim/schemes';
 import { paintStrips, stripOf } from './recolor';
 import { poseOf, type Pose } from './levels';
+import { statureOf } from './figure';
 
 /**
  * Where each character keeps its skin and its hair in the colour map (row:strip), measured from the
@@ -74,6 +75,15 @@ export const BIKE_COLOURS = ['#E8573F', '#4F8FE0', '#3FA87A', '#FFC044', '#38383
 const RIDE_SEAT = 0.17;
 /** How high a mobility scooter's seat sits them. */
 const MOBILITY_SEAT = 0.1;
+/** How high the seats are that shoppers rest on (the 'sit' pose sits on the floor): the bench and the sofa, the café's chairs. */
+const SEAT_TOP: Partial<Record<FixtureType, number>> = { bench: 0.24, sofa: 0.24, cafe: 0.26 };
+/** Sat down for a rest: how far up their seat puts them (0 when they are not on one). */
+function seatRaise(state: GameState, p: Person): number {
+  const rest = p.rest;
+  if (p.anim !== 'sit' || p.state !== 'resting' || !rest || rest.kind === 'desk') return 0;
+  const f = state.shop.fixtures.find((x) => x.id === rest.fixtureId);
+  return f ? SEAT_TOP[f.type] ?? 0 : 0;
+}
 /** A mobility scooter: a low red body on four small wheels, a seat, a basket and a tiller (in the rider's frame). */
 function mobilityScooterGeometry(pal: AssetLibrary['palette']): BufferGeometry {
   const parts = [box(pal, '#C8423A', 0.3, 0.08, 0.62, 0, 0.04, 0.02), box(pal, '#38383D', 0.26, 0.05, 0.22, 0, 0.12, -0.08), box(pal, '#38383D', 0.26, 0.2, 0.05, 0, 0.17, -0.2),
@@ -206,7 +216,7 @@ export class PeopleView {
     const b = this.pawnBody!, h = this.pawnHead!;
     if (this.pawnN >= b.instanceMatrix.count) return;
     const d = this.pd;
-    d.position.set(x, y + (moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0), z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.5 * p.look.height); d.updateMatrix();
+    d.position.set(x, y + (moving ? Math.abs(Math.sin(this.frame * 0.4 + p.id)) * 0.04 : 0), z); d.rotation.set(0, p.yaw, 0); d.scale.setScalar(1.5 * statureOf(p.look)); d.updateMatrix();
     b.setMatrixAt(this.pawnN, d.matrix); h.setMatrixAt(this.pawnN, d.matrix);
     b.setColorAt(this.pawnN, this.tint.set(SHIRTS[(p.look.model * 3 + p.look.variant) % SHIRTS.length]!));
     h.setColorAt(this.pawnN, this.tint.set(SKINS[(p.look.model + p.look.variant * 2) % SKINS.length]!));
@@ -342,7 +352,7 @@ export class PeopleView {
       if (m.isSkinnedMesh) { m.geometry = this.variantGeometry(model, look.variant, m.geometry, m.name, styleOf(p), null); m.material = this.assets.plainMaterial; m.frustumCulled = false; m.castShadow = true; }
       else if ((o as Mesh).isMesh) (o as Mesh).material = this.assets.plainMaterial;
     });
-    root.scale.setScalar(look.height);
+    root.scale.setScalar(statureOf(look));
     const clip = asset.clips.find((c) => c.name === CLIP_FOR[pose]) ?? asset.clips.find((c) => c.name === 'idle');
     if (clip) { const mx = new AnimationMixer(root); mx.clipAction(clip).play(); mx.update(0.45); }
     if (pose !== 'carry') { const pg = this.propFor(p); if (pg) root.add(pg); }
@@ -374,8 +384,7 @@ export class PeopleView {
       const merged = this.mergedGeometry(`${model}|${p.look.variant}|${uniformed ? shopScheme(state).primary : ''}|${styleOf(p)}|${customKey(customOf(p, shirt))}`, skinned);
       if (merged) { first.geometry = merged; for (const m of skinned.slice(1)) m.removeFromParent(); }
     }
-    const scale = p.look.height;
-    root.scale.setScalar(scale);
+    root.scale.setScalar(statureOf(p.look));
     const mixer = new AnimationMixer(root);
     const actions: Partial<Record<Anim, AnimationAction>> = {};
     for (const [anim, clipName] of Object.entries(CLIP_FOR) as [Anim, string][]) {
@@ -636,7 +645,7 @@ export class PeopleView {
       const model = PEOPLE_MODELS[look.model]!, asset = this.assets.character(model);
       const root = skeletonClone(asset.scene) as Group;
       root.traverse((o) => { const m = o as SkinnedMesh; if (m.isSkinnedMesh) { m.geometry = this.variantGeometry(model, look.variant, m.geometry, m.name, '', null); m.material = this.assets.plainMaterial; m.frustumCulled = false; m.castShadow = false; } });
-      root.scale.setScalar(look.height);
+      root.scale.setScalar(statureOf(look));
       const mixer = new AnimationMixer(root);
       const clip = (n: string) => asset.clips.find((x) => x.name === n);
       const walk = clip('walk') ? mixer.clipAction(clip('walk')!) : null, idle = clip('idle') ? mixer.clipAction(clip('idle')!) : null;
@@ -772,21 +781,23 @@ export class PeopleView {
       // Riding: sat up on the saddle, the bike under them.
       const riding = !!p.riding && p.kind === 'customer';
       const hop = p.id === this.hop.id ? this.hop : null;
-      inst.root.position.set(x, y + (riding ? RIDE_SEAT : 0) + (hop?.y ?? 0), z);
+      // Resting: up on the bench, the sofa or the café chair (off their mobility scooter meanwhile).
+      const seated = riding ? 0 : seatRaise(state, p);
+      inst.root.position.set(x, y + (riding ? RIDE_SEAT : 0) + seated + (hop?.y ?? 0), z);
       inst.root.rotation.y = p.yaw;
       // Stretched in the air, squashed landing (a toy's jump); everyone else as they are.
-      { const h = p.look.height, k = hop?.stretch ?? 1, w = h / Math.sqrt(k); inst.root.scale.set(w, h * k, w); }
+      { const h = statureOf(p.look), k = hop?.stretch ?? 1, w = h / Math.sqrt(k); inst.root.scale.set(w, h * k, w); }
       if (riding && !inst.bike) { inst.bike = this.bikeMesh(p.id); inst.root.add(inst.bike); }
-      if (inst.bike) { inst.bike.visible = riding; inst.bike.scale.setScalar(1 / p.look.height); inst.bike.position.set(0, -RIDE_SEAT / p.look.height, 0); }
+      if (inst.bike) { inst.bike.visible = riding; inst.bike.scale.setScalar(1 / statureOf(p.look)); inst.bike.position.set(0, -RIDE_SEAT / statureOf(p.look), 0); }
       // A guard from level 3 stands on a scooter, a hand's height up.
       const scoot = p.kind === 'staff' && p.role === 'guard' && staffLevel(p) >= 3 && !p.onBreak;
       if (scoot && !inst.scooter) { inst.scooter = new Mesh(this.scooterGeo ??= scooterGeometry(this.assets.palette), this.assets.plainMaterial); inst.root.add(inst.scooter); }
-      if (inst.scooter) { inst.scooter.visible = scoot; inst.scooter.scale.setScalar(1 / p.look.height); inst.scooter.position.set(0, -SCOOTER_DECK / p.look.height, 0); if (scoot) inst.root.position.y += SCOOTER_DECK; }
+      if (inst.scooter) { inst.scooter.visible = scoot; inst.scooter.scale.setScalar(1 / statureOf(p.look)); inst.scooter.position.set(0, -SCOOTER_DECK / statureOf(p.look), 0); if (scoot) inst.root.position.y += SCOOTER_DECK; }
       const d = Math.hypot(x - focus.x, z - focus.z);
       if (d > far || d < nearHide) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; }
       if (view) { this.sphere.center.set(x, y + 0.5, z); if (!view.intersectsSphere(this.sphere)) { inst.root.visible = false; if (inst.dog) inst.dog.visible = false; continue; } }
-      if (!y) this.blobs.add(x, z, 0.62 * p.look.height * (1 - Math.min(0.5, (hop?.y ?? 0) * 1.4)));
-      if (hl && p.ctype === hl && (p.kind === 'customer' || p.rivalId)) this.mark(x, y + 0.95 * p.look.height + 0.16, z, TYPE_COLOURS[hl], eye);
+      if (!y) this.blobs.add(x, z, 0.62 * statureOf(p.look) * (1 - Math.min(0.5, (hop?.y ?? 0) * 1.4)));
+      if (hl && p.ctype === hl && (p.kind === 'customer' || p.rivalId)) this.mark(x, y + 0.95 * statureOf(p.look) + 0.16, z, TYPE_COLOURS[hl], eye);
       if (eye && Math.hypot(x - eye.x, eye.y - y, z - eye.z) > PeopleView.FAR) {
         inst.root.visible = false; if (inst.dog) inst.dog.visible = false;
         this.pawn(state, p, x, z, Math.hypot(p.x - p.px, p.z - p.pz) > 1e-4, y);
@@ -803,7 +814,7 @@ export class PeopleView {
       // A driver with a trolley pushes it round until they have paid (no basket in hand then); not from a mobility scooter seat (a basket, as on foot).
       const pushing = !!p.trolley && !inst.mobility && p.kind === 'customer' && !p.paid && (p.state === 'shopping' || p.state === 'browsing' || p.state === 'toQueue' || p.state === 'queued' || p.state === 'paying' || p.state === 'resting');
       if (pushing && !inst.cart) { inst.cart = new Mesh(this.assets.geometry('market/shopping-cart'), this.assets.plainMaterial); inst.root.add(inst.cart); }
-      if (inst.cart) { inst.cart.visible = pushing; inst.cart.scale.setScalar(0.8 / p.look.height); inst.cart.position.set(0, 0, 0.42 / p.look.height); }
+      if (inst.cart) { inst.cart.visible = pushing; inst.cart.scale.setScalar(0.8 / statureOf(p.look)); inst.cart.position.set(0, -seated / statureOf(p.look), 0.42 / statureOf(p.look)); }
       const bags = bagged ?? (picked > 0 && !pushing ? { store: 'basket', n: Math.min(3, picked) } : null);
       const bk = bags ? `${bags.store}:${bags.n}` : '';
       if (bk !== inst.bagKey) {
@@ -822,8 +833,9 @@ export class PeopleView {
       let rate = Math.max(0.6, p.speed / 1.6);
       let anim: Anim;
       // On a mobility scooter: sat on it, a little way up, whatever they are doing.
-      if (inst.mobility) { inst.mobility.scale.setScalar(1 / p.look.height); inst.mobility.position.set(0, -MOBILITY_SEAT / p.look.height, 0); inst.root.position.y += MOBILITY_SEAT; }
-      if (riding || inst.mobility) anim = 'sit';
+      const scooting = !!inst.mobility && !seated;
+      if (inst.mobility) { inst.mobility.visible = scooting; inst.mobility.scale.setScalar(1 / statureOf(p.look)); inst.mobility.position.set(0, -MOBILITY_SEAT / statureOf(p.look), 0); if (scooting) inst.root.position.y += MOBILITY_SEAT; }
+      if (riding || inst.mobility || seated) anim = 'sit';
       else if (moving) anim = carryBox || (p.anim === 'carry' && !bags) ? (inst.actions.carryWalk ? 'carryWalk' : 'carry') : 'walk';
       else if (carryBox) anim = 'carry';
       else if (p.anim === 'browse' || p.anim === 'pay') ({ anim, rate } = this.hands(state, p, inst));

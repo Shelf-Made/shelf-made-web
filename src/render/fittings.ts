@@ -97,7 +97,9 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     return merge(parts);
   };
   switch (id) {
-    case 'gen:cafe': return merge([m('furniture/side-table', 0, 0, 0, 0, 1.15), m('furniture/chair', -0.34, 0, 0, Math.PI / 2), m('furniture/chair', 0.34, 0, 0, -Math.PI / 2), m('food/cup-coffee', -0.08, 0.354, 0.02, 0, 0.6), m('food/cup-coffee', 0.1, 0.354, -0.03, 1, 0.6)]);
+    // A round café table on one leg (room for knees under it), a chair either side facing in where shoppers sit, two coffees.
+    case 'gen:cafe': return merge([cylinder(pal, '#38383D', 0.15, 0.02, 0, 0, 0, 16), cylinder(pal, '#38383D', 0.03, 0.4, 0, 0.02, 0, 8), cylinder(pal, BENCH_WOOD, 0.27, 0.035, 0, 0.42, 0, 24),
+      m('furniture/chair', -0.34, 0, 0, Math.PI / 2, 1.75, 1.45, 1.75), m('furniture/chair', 0.34, 0, 0, -Math.PI / 2, 1.75, 1.45, 1.75), m('food/cup-coffee', -0.11, 0.455, 0.06, 0, 0.9), m('food/cup-coffee', 0.11, 0.455, -0.07, 1, 0.9)]);
     case 'gen:desk': return merge([m('furniture/desk', 0, 0, 0.05, 0, 1.3), m('furniture/computer-screen', 0.12, 0.4, -0.05, Math.PI + 0.3, 1.1), box(pal, sc.primary, 0.5, 0.12, 0.02, 0, 0.18, 0.26), box(pal, '#FFFFFF', 0.2, 0.03, 0.022, 0, 0.225, 0.262)]);
     case 'gen:trolleys': return merge([0, 1, 2].map((i) => m('market/shopping-cart', 0, 0, 0.18 - i * 0.13)).concat([box(pal, sc.primary, 0.05, 0.4, 0.05, -0.22, 0, -0.2), box(pal, sc.primary, 0.05, 0.4, 0.05, 0.22, 0, -0.2), box(pal, sc.primary, 0.5, 0.05, 0.05, 0, 0.38, -0.2)]));
     case 'gen:screen': return merge([m('furniture/cabinet-television', 0, 0, -0.05, 0, 1.1), m('furniture/television-modern', 0, 0.272, -0.05, 0, 1.2), box(pal, sc.primary, 0.56, 0.06, 0.012, 0, 0.3, 0.012)]);

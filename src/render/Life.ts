@@ -3,6 +3,7 @@ import type { GameState } from '@/sim/types';
 import type { TownLitterKind } from '@/sim/life';
 import type { PaletteMap } from './palette';
 import { box, cylinder, merge } from './geometry';
+import { statureOf } from './figure';
 
 const MAX = 64, PUFFS = 48;
 
@@ -83,7 +84,7 @@ export class LifeView {
     let k = 0;
     for (const p of state.people) {
       if (!p.smoking || p.state !== 'idle' || k + 3 > PUFFS) continue;
-      const hx = p.x + Math.sin(p.yaw + 0.9) * 0.2, hz = p.z + Math.cos(p.yaw + 0.9) * 0.2, top = 0.62 * p.look.height;
+      const hx = p.x + Math.sin(p.yaw + 0.9) * 0.2, hz = p.z + Math.cos(p.yaw + 0.9) * 0.2, top = 0.62 * statureOf(p.look);
       for (let j = 0; j < 3; j++) {
         const u = ((this.t * 0.35 + j / 3 + p.id * 0.17) % 1);
         pos.setXYZ(k, hx + Math.sin(this.t * 0.7 + j + p.id) * 0.08 * u, top + u * 0.55, hz + Math.cos(this.t * 0.5 + j) * 0.08 * u);

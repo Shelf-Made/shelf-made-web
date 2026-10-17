@@ -10,6 +10,7 @@ import { ReactionsView } from './Reactions';
 import { StaticWorld } from './StaticWorld';
 import { StoreView, STORE_MODELS, type StoreHit } from './StoreView';
 import { PeopleView, PEOPLE_MODELS } from './People';
+import { statureOf, FIGURE } from './figure';
 import { CarsView } from './Cars';
 import { Lighting } from './Lighting';
 import { RivalsView, RIVAL_MODELS } from './RivalsView';
@@ -182,7 +183,7 @@ export class WorldRenderer {
     const eyes = fp && this.follow.firstPerson && !!owner && tracked === owner;
     if (fp && tracked && pose) {
       // At the height of the floor they are on, or of the one the Build card builds on.
-      if (eyes) this.follow.eye = EYE * tracked.look.height + (this.people.hop.id === tracked.id ? this.people.hop.y : 0);
+      if (eyes) this.follow.eye = EYE * statureOf(tracked.look) + (this.people.hop.id === tracked.id ? this.people.hop.y : 0);
       this.follow.follow(pose.x, pose.z, this.buildLevel !== null ? this.buildLevel * STOREY : pose.y);
       this.follow.update(dt);
       focus = this.tmpFocus.set(this.follow.target.x, 0, this.follow.target.z);
@@ -304,7 +305,7 @@ export class WorldRenderer {
       eye = at(sx, 0.5 + rand() * 0.06, f.z1 - 0.5); target = at(sx * 0.4 + (rand() - 0.5) * 1.4, 0.3, f.z0 + 0.8); fov = 60;
     } else {
       // A selfie on the pavement outside the door, the shop behind them, holding up what they bought.
-      const h = who?.look.height ?? 1, sx = (rand() - 0.5) * 1.6, pz = 1.2 + rand() * 0.4;
+      const h = who ? statureOf(who.look) : FIGURE, sx = (rand() - 0.5) * 1.6, pz = 1.2 + rand() * 0.4;
       const pos = at(sx, 0, pz);
       eye = at(sx + (rand() - 0.5) * 0.2, 0.6 * h, pz + 1.0 + rand() * 0.15); target = at(sx, 0.42 * h, pz - 1.2); fov = 56;
       if (who) {
@@ -422,7 +423,7 @@ export class WorldRenderer {
       if ((this.viewLevel !== null && pose.level > this.viewLevel) || underFloors(state.shop, cam.position, pose.x, pose.y + 0.5, pose.z, pose.level, this.viewLevel)) continue;
       foot.set(pose.x, pose.y, pose.z).project(cam);
       if (foot.z < -1 || foot.z > 1) continue;
-      head.set(pose.x, pose.y + 0.95 * p.look.height, pose.z).project(cam);
+      head.set(pose.x, pose.y + 0.95 * statureOf(p.look), pose.z).project(cam);
       const fx = (foot.x + 1) / 2 * r.width, fy = (1 - foot.y) / 2 * r.height, hy = (1 - head.y) / 2 * r.height;
       const tall = Math.max(36, fy - hy), half = Math.max(16, tall * 0.28);
       if (Math.abs(x - fx) > half || y < fy - tall - 6 || y > fy + 8) continue;
@@ -439,7 +440,7 @@ export class WorldRenderer {
     // On a floor lifted off, or under the boards of the floor in view: not drawn (see People), as a click finds them.
     if (this.viewLevel !== null && pose.level > this.viewLevel) return null;
     if (!under && underFloors(state.shop, this.activeCamera.position, pose.x, pose.y + 0.5, pose.z, pose.level, this.viewLevel)) return null;
-    return { x: pose.x, y: p.state === 'driving' ? 1.2 : pose.y + 0.95 * p.look.height + 0.15, z: pose.z };
+    return { x: pose.x, y: p.state === 'driving' ? 1.2 : pose.y + 0.95 * statureOf(p.look) + 0.15, z: pose.z };
   }
 
   /** The outline round the selected person (null clears it). */

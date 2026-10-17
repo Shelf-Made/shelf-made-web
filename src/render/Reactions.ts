@@ -2,6 +2,7 @@ import { Group, Sprite, SpriteMaterial, CanvasTexture, SRGBColorSpace, type Vect
 import type { GameState, ReactionKind } from '@/sim/types';
 import { TICK } from '@/sim/layout';
 import { poseOf, underFloors } from './levels';
+import { statureOf } from './figure';
 
 /** How long a bubble stays up, and how many at once. */
 const SHOW = 2.8, MAX = 4;
@@ -43,7 +44,7 @@ export class ReactionsView {
       // Pop in with a little overshoot, hold, then shrink away.
       const k = age < 0.25 ? (age / 0.25) * 1.15 : age < 0.4 ? 1.15 - (age - 0.25) : age > SHOW - 0.35 ? Math.max(0, (SHOW - age) / 0.35) : 1;
       s.material = this.material(r.kind);
-      s.position.set(x, pose.y + 0.78 * p.look.height + 0.22 + Math.min(age, 0.4) * 0.12, z);
+      s.position.set(x, pose.y + 0.78 * statureOf(p.look) + 0.22 + Math.min(age, 0.4) * 0.12, z);
       s.scale.set(0.42 * k, 0.42 * k, 1);
       s.visible = k > 0.01;
     });
