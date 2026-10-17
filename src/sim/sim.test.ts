@@ -96,9 +96,11 @@ describe('simulation', () => {
 
   it('starts as a bare shell and only opens once there is a counter and stock', () => {
     const s = newGame({ seed: 8, plotId: 'main', name: 'Bare' });
-    // Nothing inside; outside, the car park's bays.
-    expect(s.shop.fixtures.filter((f) => !FIXTURES[f.type].outdoor).length).toBe(0);
-    expect(s.shop.fixtures.every((f) => f.type === 'parkingBay')).toBe(true);
+    // Nothing inside but its walls and doors (every edge of the floor, the front all glass); outside, the car park's bays.
+    expect(s.shop.fixtures.filter((f) => !FIXTURES[f.type].outdoor && !FIXTURES[f.type].edge).length).toBe(0);
+    expect(s.shop.fixtures.every((f) => f.type === 'parkingBay' || FIXTURES[f.type].edge)).toBe(true);
+    expect(s.shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => f.type).sort()).toEqual(['backDoor', 'frontDoor', ...Array(4).fill('wallWindow'), ...Array(16).fill('wall')].sort());
+    expect(s.shop.fixtures.filter((f) => FIXTURES[f.type].edge).every((f) => f.free)).toBe(true);
     expect(s.phase).toBe('setup');
     expect(applyCommand(s, { type: 'openShop' }).ok).toBe(false);
     for (let i = 0; i < 2000; i++) tick(s);

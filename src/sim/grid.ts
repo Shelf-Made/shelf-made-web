@@ -1,10 +1,11 @@
 /**
  * Walkability grid for the player's plot, in store-relative coordinates at 0.5-unit cells.
- * Walls block the edge between two cells (they lie on tile boundaries), fixtures and
- * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
+ * Walls round the building block the band of cells just outside the floor; walls across it block the
+ * edges between the cells either side of their line. Fixtures and parked cars block cells. Cells carry
+ * a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, LOT_FRONT, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ } from './layout';
+import { lotLayout, LOT_FRONT, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ, FACING, edgeOf, edgeSide, edgePieceAt, SOLID_EDGE, type EdgeAt } from './layout';
 
 export const CELL = 0.5;
 
@@ -45,6 +46,27 @@ function fillRect(g: Grid, x0: number, z0: number, x1: number, z1: number, cost:
   }
 }
 
+const DIAGONALS = [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const;
+/** The turn a piece on an edge has when that edge is (nx, nz) from its tile (it faces the other way, into the tile). */
+export const behindRot = (nx: number, nz: number): number => FACING.findIndex((d) => d.x === -nx && d.z === -nz);
+
+/** Is there a wall (nothing to walk through) on the edge of tile (x, z) toward its neighbour (dx, dz)? */
+export function walledBetween(shop: Shop, x: number, z: number, dx: number, dz: number): boolean {
+  const w = edgePieceAt(shop.fixtures, x, z, behindRot(Math.sign(dx), Math.sign(dz)));
+  return !!w && SOLID_EDGE.has(w.type);
+}
+
+/** A wall across the shop: nobody steps over its line between the cells either side of it. */
+function wallOff(g: Grid, shop: Shop, e: EdgeAt): void {
+  for (const k of [-0.25, 0.25]) {
+    const along = e.t + k;
+    const a = e.axis === 'x' ? toWorld(shop, along, e.line - 0.25) : toWorld(shop, e.line - 0.25, along);
+    const b = e.axis === 'x' ? toWorld(shop, along, e.line + 0.25) : toWorld(shop, e.line + 0.25, along);
+    const [ax, az] = cellOf(g, a), [bx, bz] = cellOf(g, b);
+    if (inBounds(g, ax, az) && inBounds(g, bx, bz)) g.edges.add(edgeKey(cellIndex(g, ax, az), cellIndex(g, bx, bz)));
+  }
+}
+
 export function fixtureFootprint(f: Fixture): { x0: number; z0: number; x1: number; z1: number } {
   return footprintOf(f.type, f.x, f.z, f.rot);
 }
@@ -77,6 +99,8 @@ export function fixtureStandWorld(shop: Shop, f: Fixture, from?: Vec2, grid: Gri
   let best: Vec2 | null = null, bestD = Infinity;
   tiles.forEach((t, i) => {
     if (!isFloor(shop, t.x - 0.5, t.z - 0.5)) return;
+    // Never through a wall from its tile.
+    if ((t.x !== cx || t.z !== cz) && walledBetween(shop, f.x, f.z, t.x - cx, t.z - cz)) return;
     const w = toWorld(shop, t.x, t.z);
     const [gx, gz] = cellOf(grid, w);
     if (!inBounds(grid, gx, gz) || !reach[cellIndex(grid, gx, gz)]) return;
@@ -184,21 +208,36 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   if (shop.lotBaked) { for (const f of shop.fixtures) if (f.type === 'parkingBay') R(footprintOf(f.type, f.x, f.z, f.rot), 1.3); }
   else for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
   // Shop floor, tile by tile (`storeroom` only exists in old saves).
-  const f = shop.floor, s = shop.storeroom;
+  const s = shop.storeroom;
   const tiles = floorTileList(shop);
   for (const t of tiles) R({ x0: t.x, z0: t.z, x1: t.x + 1, z1: t.z + 1 }, 1, true);
   if (s.z1 > s.z0) R(s, 1, true);
-  // Walls: WALL_T thick just outside every edge of the floor (and round its corners), with door gaps.
+  // Walls are pieces on the edges between tiles. Round the floor they stand in a WALL_T band just outside it; where
+  // none does (or a door, a doorway or a gate stands) the band is a threshold anyone walks over. Across the shop a
+  // wall stands on the line itself: the cells either side of it are walled off from each other.
   const T = WALL_T;
-  for (const t of tiles) {
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-      if ((!dx && !dz) || isFloor(shop, t.x + dx, t.z + dz)) continue;
-      R({ x0: dx < 0 ? t.x - T : dx > 0 ? t.x + 1 : t.x, z0: dz < 0 ? t.z - T : dz > 0 ? t.z + 1 : t.z, x1: dx < 0 ? t.x : dx > 0 ? t.x + 1 + T : t.x + 1, z1: dz < 0 ? t.z : dz > 0 ? t.z + 1 + T : t.z + 1 }, 0);
-    }
+  const band = (x: number, z: number, nx: number, nz: number) => nx
+    ? { x0: nx < 0 ? x - T : x + 1, z0: z, x1: nx < 0 ? x : x + 1 + T, z1: z + 1 }
+    : { x0: x, z0: nz < 0 ? z - T : z + 1, x1: x + 1, z1: nz < 0 ? z : z + 1 + T };
+  const corner = (x: number, z: number, dx: number, dz: number) => ({ x0: dx < 0 ? x - T : x + 1, z0: dz < 0 ? z - T : z + 1, x1: dx < 0 ? x : x + 1 + T, z1: dz < 0 ? z : z + 1 + T });
+  // (Outside each corner of the floor, the square both bands meet in.)
+  const corners = tiles.flatMap((t) => DIAGONALS.filter(([dx, dz]) => !isFloor(shop, t.x + dx, t.z) && !isFloor(shop, t.x, t.z + dz)).map(([dx, dz]) => ({ t, dx, dz })));
+  for (const t of tiles) for (const d of FACING) if (!isFloor(shop, t.x + d.x, t.z + d.z)) R(band(t.x, t.z, d.x, d.z), 1);
+  for (const c of corners) R(corner(c.t.x, c.t.z, c.dx, c.dz), 1);
+  const solid: { x0: number; z0: number; x1: number; z1: number }[] = [];
+  for (const p of shop.fixtures) {
+    if (!FIXTURES[p.type].edge) continue;
+    const side = edgeSide(shop, p), e = edgeOf(p);
+    if (side === 'inner') { if (SOLID_EDGE.has(p.type)) wallOff(g, shop, e); continue; }
+    // Upstairs is nothing but its floors: what stands round them walls nothing more off.
+    if (side !== 'outer' || levelOf(p) > 0) continue;
+    if (p.type === 'backDoor') R(band(p.x, p.z, e.nx, e.nz), backDoorShut ? 0 : 1.1);
+    else if (SOLID_EDGE.has(p.type)) solid.push(band(p.x, p.z, e.nx, e.nz));
   }
-  // The door openings are paved and walkable.
-  R({ x0: shop.door.x - 0.5, z0: f.z1, x1: shop.door.x + 0.5, z1: f.z1 + T }, 1);
-  R({ x0: shop.backDoor.x - 0.5, z0: shop.backDoor.z - T, x1: shop.backDoor.x + 0.5, z1: shop.backDoor.z }, backDoorShut ? 0 : 1.1);
+  for (const r of solid) R(r, 0);
+  // A corner post stands outside a corner wherever a wall comes to it.
+  const walled = (x: number, z: number, nx: number, nz: number) => { const w = edgePieceAt(shop.fixtures, x, z, behindRot(nx, nz)); return !!w && SOLID_EDGE.has(w.type); };
+  for (const c of corners) if (walled(c.t.x, c.t.z, c.dx, 0) || walled(c.t.x, c.t.z, 0, c.dz)) R(corner(c.t.x, c.t.z, c.dx, c.dz), 0);
   // Upstairs: each open floor, with the building's walls round it, its openings and double-height spaces closed off.
   for (let lv = 1; lv <= st.top; lv++) for (const t of levelTileList(shop, lv)) R({ x0: t.x, z0: t.z, x1: t.x + 1, z1: t.z + 1 }, 1, true);
   // Delivered boxes stand here.
@@ -207,7 +246,7 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   // Fixtures: a shallow one (a chiller, a produce stand) only blocks the back of its tile, so people can
   // walk right up to it and between two that face each other.
   for (const fx of shop.fixtures) {
-    if (FIXTURES[fx.type].walkable) continue;
+    if (FIXTURES[fx.type].walkable || FIXTURES[fx.type].edge) continue;
     R(blockedRect(fx), 0);
   }
   if (st.top) addPortals(shop, g);

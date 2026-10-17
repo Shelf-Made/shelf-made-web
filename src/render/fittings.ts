@@ -24,7 +24,7 @@ export const FITTING_MODELS = ['furniture/bench-cushion', 'furniture/side-table'
 export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   sofa: 'gen:sofa', cafe: 'gen:cafe', desk: 'gen:desk', bin: 'gen:bin', trolleys: 'gen:trolleys', speaker: 'gen:speaker', plant: 'gen:plant',
   screen: 'gen:screen', bookcase: 'gen:bookcase', flowers: 'gen:flowers', rug: 'gen:rug', doormat: 'gen:doormat',
-  wall: 'gen:wall', wallWindow: 'gen:wallWindow', doorway: 'gen:doorway', railing: 'gen:railing', gate: 'market/fence-door',
+  wall: 'gen:wall', wallWindow: 'gen:wallWindow', doorway: 'gen:doorway', railing: 'gen:railing', gate: 'market/fence-door', frontDoor: 'gen:doorway', backDoor: 'gen:doorway',
   floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim', pallet: 'gen:pallet',
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
@@ -46,6 +46,8 @@ export const VARIANT_MODEL: Partial<Record<FixtureType, string[]>> = {
 export function modelOf(type: FixtureType, variant: number | undefined, base: string): string { return (variant && VARIANT_MODEL[type]?.[variant]) || base; }
 
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
+/** How much thinner a wall across the shop is drawn than one round it (the shell's, in the band past the floor). */
+export const INNER_WALL_DEPTH = 0.38;
 export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim', 'gen:tallWall']);
 /** Pieces that vanish (rather than being cut down) with the walls: a window's frame has nothing left to frame. */
 export const GONE_WITH_WALLS: ReadonlySet<string> = new Set(['gen:windowTrim']);
@@ -88,7 +90,7 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
   const pal = assets.palette;
   const m = (model: string, x = 0, y = 0, z = 0, yaw = 0, s = 1, sy = s, sz = s) => place(assets.geometry(model).clone(), x, y, z, yaw, s, sy, sz);
   // Walls inside the shop wear the outside's paint: white with the stripe in the shop's colour.
-  const wall = (model: string) => place(paintStrips(recolor(assets.geometry(model), WALL_COLOURS), pal, { '2:1': sc.primary }), 0, 0, 0, 0, 1, 1, 0.38);
+  const wall = (model: string) => place(paintStrips(recolor(assets.geometry(model), WALL_COLOURS), pal, { '2:1': sc.primary }), 0, 0, 0, 0, 1, 1, INNER_WALL_DEPTH);
   // A low timber edge round dark soil, planted in rows of these flowers.
   const flowerBed = (kinds: string[]) => {
     const parts: BufferGeometry[] = [box(pal, '#6B4A35', 0.84, 0.05, 0.84, 0, 0, 0)];

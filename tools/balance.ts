@@ -80,7 +80,8 @@ function freeTiles(s: GameState): { x: number; z: number }[] {
   const f = s.shop.floor;
   const out: { x: number; z: number }[] = [];
   for (let z = f.z0; z < f.z1 - 1; z++) for (let x = f.x0; x < f.x1; x++) {
-    if (s.shop.fixtures.some((fx) => fx.x === x && fx.z === z)) continue;
+    // (A wall stands on an edge of its tile, not on it.)
+    if (s.shop.fixtures.some((fx) => fx.x === x && fx.z === z && !FIXTURES[fx.type].edge)) continue;
     // Keep the door column and the row in front of the register clear.
     if (Math.abs(x + 0.5) < 1 && z >= f.z1 - 2) continue;
     if (z === f.z1 - 1) continue;

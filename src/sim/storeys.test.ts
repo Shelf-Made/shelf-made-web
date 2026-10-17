@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType, type Fixture } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey, refundOf, liftWorld } from './layout';
+import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey, refundOf, liftWorld, FIXTURES } from './layout';
 import { fixtureFacingWorld, fixtureStandWorld, fixtureFront, lineClear, isBlocked, cellOf, cellIndex, reachableCells } from './grid';
-import { canPlace, canSellTile, floorCost, grownCeilings, styleAt } from './build';
+import { canPlace, canSellTile, floorCost, grownCeilings, styleAt, openEdges } from './build';
 import { spawnCustomer, setPath, doorInside, addSpill } from './people';
 import { levelOfPerson, canAddPanel, canRemovePanel, ensureCeilings, PANEL_PRICE } from './storeys';
 import { looksOf } from './reviews';
@@ -47,8 +47,14 @@ describe('building up', () => {
     // Finishes go on upstairs too: a tile of boards, a stretch of brick; the floor up there is not sold as tiles.
     expect(applyCommand(s, { type: 'paintFloor', x: -0.5, z: zOnLevel(-1, 1), style: 'wood' }).ok).toBe(true);
     expect(s.shop.tileStyles?.[`-0.5,${zOnLevel(-1, 1)}`]).toBe('wood');
+    // Upstairs comes open all round (no wall goes up of itself): walled at a wall's price each, a stretch then finished.
+    const open = openEdges(s.shop).filter((g) => g.z < -12), cash = s.cash;
+    expect(open.length).toBeGreaterThan(15);
+    expect(openEdges(s.shop).filter((g) => g.z > -12)).toEqual([]);
+    expect(applyCommand(s, { type: 'wallUp' }).ok).toBe(true);
+    expect(cash - s.cash).toBe(open.length * FIXTURES.wall.price);
     const up = wallSegments(s.shop).filter((w) => w.axis === 'x' ? w.line < -12 : w.t < -12);
-    expect(up.length).toBe(22);
+    expect(up.length).toBe(open.length);
     expect(applyCommand(s, { type: 'paintWall', key: up[0]!.key, style: 'brick' }).ok).toBe(true);
     expect(canSellTile(s, -0.5, zOnLevel(-1, 1)).ok).toBe(false);
   });
@@ -118,7 +124,7 @@ describe('building up', () => {
     // A storey of room over it: the building stands taller there.
     expect(storeysOf(s.shop).inside[1]!.has('-1.5,-1')).toBe(true);
     expect(place(s, 'tallWall', -1.5, -1, 0).ok).toBe(true);
-    expect(canAddPanel(s, -1.5, -1).reason).toBe('Something comes up through there');
+    expect(canAddPanel(s, -1.5, -1).reason).toBe('A tall wall reaches up through there');
     // Upstairs, once open, has no floor there.
     expect(place(s, 'stairs', STAIRS.x, STAIRS.z, 0).ok).toBe(true);
     expect(storeysOf(s.shop).floors[1]!.has('-1.5,-1')).toBe(false);
@@ -192,9 +198,10 @@ describe('building up: nothing cut off, nothing for free', () => {
     // A tile the floor above hangs from (the panels round it down): the shelf up there would be cut off.
     corridor(s);
     expect(canSellTile(s, -1.5, -4).reason).toBe('Would cut off the shelf upstairs');
-    // One nothing hangs from is fine (not (1.5, -1): the only way round behind the counter, past the stairs).
+    // One nothing hangs from is fine; so is (1.5, -1), the only way round behind the counter past the stairs: sold, it
+    // leaves the shop open there (no wall goes up), and the way round goes out and back in over it.
     expect(canSellTile(s, 1.5, -5).ok).toBe(true);
-    expect(canSellTile(s, 1.5, -1).reason).toBe('Would block the way behind the counter');
+    expect(canSellTile(s, 1.5, -1).ok).toBe(true);
   });
 
   it('judges each panel by itself, not by the last one pointed at', () => {
@@ -488,11 +495,11 @@ describe('building up: nobody caught halfway, nothing left behind', () => {
     // A spare flight by the side wall, its foot on (3.5, -4): walls round that would leave it got on only at the top.
     expect(place(s, 'stairs', 3.5, -5, 0).ok).toBe(true);
     const spare = s.shop.fixtures[s.shop.fixtures.length - 1]!.id;
-    expect(place(s, 'wall', 2.5, -4, 0).ok).toBe(true);
-    expect(canPlace(s, 'wall', 3.5, -3, 0).reason).toBe('Would block the way up');
+    expect(place(s, 'wall', 3.5, -4, 1).ok).toBe(true);
+    expect(canPlace(s, 'wall', 3.5, -4, 2).reason).toBe('Would block the way up');
     // Without it, the walls go up; a flight or a lift with its foot in there would go up from nowhere.
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: spare }).ok).toBe(true);
-    expect(place(s, 'wall', 3.5, -3, 0).ok).toBe(true);
+    expect(place(s, 'wall', 3.5, -4, 2).ok).toBe(true);
     expect(canPlace(s, 'stairs', 3.5, -5, 0).reason).toBe('Nobody could get on it from inside');
     expect(canPlace(s, 'elevator', 3.5, -5, 0).reason).toBe('Nobody could get on it from inside');
   });

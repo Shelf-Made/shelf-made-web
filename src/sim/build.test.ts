@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, tick, TICK, FIXTURES, buildGrid, findPath, type GameState } from './index';
-import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt, wallStyleAt, canSellTile } from './build';
+import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt, wallStyleAt, canSellTile, openEdges } from './build';
 import { makeCandidate } from './staff';
-import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, FLOORS, wallSegments, BAY_PRICE, MAX_FLOOR, PLOT_RECT, WALL_T, onBuilding, footprintOf } from './layout';
+import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, FLOORS, wallSegments, BAY_PRICE, MAX_FLOOR, PLOT_RECT, WALL_T, onBuilding, footprintOf, edgeSide } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint, spawnCustomer } from './people';
 import { openGame } from './testUtil';
@@ -24,7 +24,8 @@ describe('building: walls, doors, lights, floors and windows', () => {
   it('sorts every piece onto a Build tab', () => {
     const tabs = new Set(Object.values(FIXTURES).map((d) => d.category));
     expect([...tabs].sort()).toEqual(['checkout', 'decor', 'furniture', 'lights', 'outside', 'security', 'shelves', 'storeys', 'walls']);
-    for (const d of Object.values(FIXTURES)) { expect(d.price).toBeGreaterThan(0); if (d.onWall) expect(d.walkable).toBe(true); }
+    // (The doors come with the shop: never bought.)
+    for (const d of Object.values(FIXTURES)) { if (!d.fixed) expect(d.price).toBeGreaterThan(0); if (d.onWall) expect(d.walkable).toBe(true); if (d.edge) expect(d.category).toBe('walls'); }
   });
 
   it('lets people walk over rugs and through doorways, and a doormat go right inside the door', () => {
@@ -32,13 +33,16 @@ describe('building: walls, doors, lights, floors and windows', () => {
     const f = s.shop.floor, doorX = s.shop.door.x - 0.5;
     expect(canPlace(s, 'shelf', doorX, f.z1 - 1, 0).reason).toBe('Keep the front door clear');
     expect(place(s, 'doormat', doorX, f.z1 - 1).ok).toBe(true);
-    // A wall right across the shop would cut off the back door: the last piece is refused...
+    // A wall right across the shop (on the back edge of a row of tiles) would cut off the back door: the last piece is refused...
     const z = -3;
     const xs = [f.x0, f.x0 + 1, f.x0 + 2, f.x0 + 3, f.x0 + 4];
     for (const x of xs.slice(0, 4)) expect(place(s, 'wall', x, z).ok, `wall at ${x}`).toBe(true);
     expect(canPlace(s, 'wall', xs[4]!, z, 0).ok).toBe(false);
     // ...but a doorway closes the line and the way through stays open.
     expect(place(s, 'doorway', xs[4]!, z).ok).toBe(true);
+    // One to an edge, from either side of it; R turns one round its tile to another edge.
+    expect(canPlace(s, 'wall', f.x0, z - 1, 2).reason).toMatch(/wall is there/);
+    expect(canPlace(s, 'wall', f.x0 + 1, z, 1).ok).toBe(true);
     const grid = buildGrid(s.shop, -1);
     expect(findPath(grid, doorInside(s), storeroomPoint(s))).toBeTruthy();
     // Rugs never get in the way either.
@@ -46,15 +50,25 @@ describe('building: walls, doors, lights, floors and windows', () => {
     expect(findPath(buildGrid(s.shop, -2), doorInside(s), toWorld(s.shop, f.x0 + 1.5, -1.5))).toBeTruthy();
   });
 
-  it('hangs wall lights and neon on an outer wall, facing in', () => {
+  it('hangs wall lights and neon on a wall, facing in, and that wall stays while they hang on it', () => {
     const s = shop();
     const f = s.shop.floor;
-    // On the left wall, facing into the shop (+x): its back is outside the floor.
+    // On the left wall, facing into the shop (+x): the wall on the edge behind it.
     expect(canPlace(s, 'wallLight', f.x0, -3, 1).ok).toBe(true);
     expect(canPlace(s, 'wallLight', f.x0, -3, 3).reason).toMatch(/Hang it on a wall/);
     expect(canPlace(s, 'neon', f.x0 + 2, -3, 0).reason).toMatch(/Hang it on a wall/);
     expect(canPlace(s, 'neon', f.x1 - 1, -4, 3).ok).toBe(true);
     expect(place(s, 'pendant', f.x0 + 2, -3).ok).toBe(true);
+    // A wall across the shop takes one too, either side; never the front's glass, nor a door.
+    expect(place(s, 'wall', f.x0 + 2, -4, 0).ok).toBe(true);
+    expect(canPlace(s, 'wallLight', f.x0 + 2, -4, 0).ok).toBe(true);
+    expect(place(s, 'neon', f.x0 + 2, -5, 2).ok).toBe(true);
+    expect(canPlace(s, 'wallLight', f.x0, f.z1 - 1, 2).reason).toMatch(/not a window/);
+    expect(canPlace(s, 'wallLight', s.shop.door.x - 0.5, f.z1 - 1, 2).reason).toBe('Not over a door');
+    // The wall it hangs on stays where it is till it is down.
+    const wall = s.shop.fixtures.find((x) => x.type === 'wall' && x.x === f.x0 + 2 && x.z === -4)!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: wall.id }).message).toBe('Take down what hangs on it first.');
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: wall.id, x: f.x0 + 2, z: -4, rot: 1 }).message).toBe('Take down what hangs on it first');
   });
 
   it('lays a new floor and puts windows in, once each, for money, and the shop looks better for it', () => {
@@ -67,8 +81,13 @@ describe('building: walls, doors, lights, floors and windows', () => {
     expect(s.shop.floorStyle).toBe('wood');
     expect(applyCommand(s, { type: 'setFloor', style: 'wood' }).ok).toBe(false);
     const f = s.shop.floor;
-    for (let z = f.z0; z < f.z1; z++) expect(place(s, 'window', f.x0, z, 1).ok).toBe(true);
-    expect(s.cash).toBeCloseTo(cash - cost - FIXTURES.window.price * (f.z1 - f.z0));
+    // The left wall, every one of it a wall with a window now (the walls the shop came with come down for nothing).
+    for (let z = f.z0; z < f.z1; z++) {
+      const w = s.shop.fixtures.find((x) => x.type === 'wall' && x.x === f.x0 && x.z === z && x.rot === 1)!;
+      expect(applyCommand(s, { type: 'removeFixture', fixtureId: w.id }).ok).toBe(true);
+      expect(place(s, 'wallWindow', f.x0, z, 1).ok).toBe(true);
+    }
+    expect(s.cash).toBeCloseTo(cash - cost - FIXTURES.wallWindow.price * (f.z1 - f.z0));
     expect(looksOf(s).extras).toBeGreaterThan(before.extras + 0.2);
     // Too poor: refused, nothing taken.
     s.cash = 5;
@@ -76,28 +95,50 @@ describe('building: walls, doors, lights, floors and windows', () => {
     expect(s.cash).toBe(5);
   });
 
-  it('puts windows in one at a time: in a side or back wall, never the front, and a shelf may stand in front of one', () => {
+  it('puts windows in a wall at a time: one to an edge, a shelf may stand in front of one, and the doors stay doors', () => {
     const s = shop();
     const f = s.shop.floor;
-    // Its back to the left wall, facing in.
-    expect(place(s, 'window', f.x0, -4, 1).ok).toBe(true);
-    // Facing the wrong way, in the middle of the floor, or against the glazed front: no.
-    expect(canPlace(s, 'window', f.x0, -3, 3).reason).toMatch(/wall/);
-    expect(canPlace(s, 'window', -0.5, -3, 0).ok).toBe(false);
-    expect(canPlace(s, 'window', f.x0, f.z1 - 1, 2).reason).toMatch(/front/);
-    // The same window twice, or a wall light on it: no. A shelf in front of it: yes; the next tile along: yes.
-    expect(canPlace(s, 'window', f.x0, -4, 1).ok).toBe(false);
-    expect(canPlace(s, 'wallLight', f.x0, -4, 1).ok).toBe(false);
+    const left = (z: number) => s.shop.fixtures.find((x) => FIXTURES[x.type].edge && x.x === f.x0 && x.z === z && x.rot === 1)!;
+    // A wall stands there: take it down first (it came with the shop: nothing back for it).
+    expect(canPlace(s, 'wallWindow', f.x0, -4, 1).reason).toMatch(/wall is there/);
+    const cash = s.cash;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: left(-4).id }).ok).toBe(true);
+    expect(s.cash).toBe(cash);
+    expect(place(s, 'wallWindow', f.x0, -4, 1).ok).toBe(true);
+    // A light never hangs on it; a shelf stands in front of it; the next tile along keeps its wall.
+    expect(canPlace(s, 'wallLight', f.x0, -4, 1).reason).toMatch(/not a window/);
     expect(place(s, 'shelf', f.x0, -4, 1).ok).toBe(true);
-    expect(place(s, 'window', f.x0, -5, 1).ok).toBe(true);
-    // In the back wall, over the delivery pallet, but never over the back door.
-    expect(place(s, 'window', f.x0, f.z0, 0).ok).toBe(true);
-    expect(canPlace(s, 'window', s.shop.backDoor.x - 0.5, f.z0, 0).reason).toMatch(/door/);
-    // Built bigger, the windows go out with their walls.
+    expect(left(-5).type).toBe('wall');
+    // The front door and the back door: moved, never sold or turned.
+    const front = s.shop.fixtures.find((x) => x.type === 'frontDoor')!, back = s.shop.fixtures.find((x) => x.type === 'backDoor')!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: front.id }).message).toMatch(/needs its front door/);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: back.id, x: back.x, z: back.z, rot: 1 }).ok).toBe(false);
+    expect(canPlace(s, 'frontDoor', f.x0, f.z1 - 1, 2).ok).toBe(false);
+    // Built bigger in one go, the extension comes walled; the window stays where it stood.
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).ok).toBe(true);
-    const wins = s.shop.fixtures.filter((x) => x.type === 'window');
-    expect(wins.filter((x) => x.rot === 1).every((x) => x.x === s.shop.floor.x0)).toBe(true);
-    expect(wins.filter((x) => x.rot === 0).every((x) => x.z === s.shop.floor.z0)).toBe(true);
+    expect(s.shop.fixtures.some((x) => x.type === 'wallWindow' && x.x === f.x0 && x.z === -4 && x.rot === 1)).toBe(true);
+    expect(openEdges(s.shop)).toEqual([]);
+  });
+
+  it('moves the front door along the front wall, and the back door to another wall at the back', () => {
+    const s = shop();
+    const f = s.shop.floor, front = s.shop.fixtures.find((x) => x.type === 'frontDoor')!, back = s.shop.fixtures.find((x) => x.type === 'backDoor')!;
+    // Where a front window is: swap them round (the window moved off first).
+    const win = s.shop.fixtures.find((x) => x.type === 'wallWindow' && x.x === f.x0 && x.rot === 2)!;
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: front.id, x: f.x0, z: f.z1 - 1, rot: 2 }).message).toMatch(/is there|wall is there/i);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: win.id }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: front.id, x: f.x0, z: f.z1 - 1, rot: 2 }).ok).toBe(true);
+    expect(s.shop.door.x).toBe(f.x0 + 0.5);
+    // Shoppers come in there.
+    expect(findPath(buildGrid(s.shop, 99), doorInside(s), toWorld(s.shop, f.x0 + 0.5, f.z1 + 1))).not.toBeNull();
+    // Never out of the front wall, nor facing in.
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: front.id, x: f.x0, z: -3, rot: 1 }).message).toMatch(/front wall/);
+    // The back door: in the back wall at another tile (a wall there taken down first).
+    const at = s.shop.fixtures.find((x) => x.type === 'wall' && x.rot === 0 && x.z === f.z0 && x.x === f.x1 - 1)!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: at.id }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: back.id, x: f.x1 - 1, z: f.z0, rot: 0 }).ok).toBe(true);
+    expect(s.shop.backDoor).toEqual({ x: f.x1 - 0.5, z: f.z0 });
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: back.id, x: f.x1 - 1, z: -3, rot: 3 }).message).toMatch(/at the back/);
   });
 
   it('turns an old save\'s whole walls of windows into a window on each tile', () => {
@@ -174,7 +215,7 @@ describe('pallets', () => {
 });
 
 describe('growing the shop a tile at a time', () => {
-  it('buys a tile next to the floor, and walls move out round it', () => {
+  it('buys a tile next to the floor: no wall goes up round it, and the one it was built against stays', () => {
     const s = shop();
     const f0 = { ...s.shop.floor };
     const cash = s.cash, price = tilePrice(s.shop);
@@ -183,7 +224,7 @@ describe('growing the shop a tile at a time', () => {
     expect(canBuyTile(s, f0.x0, f0.z1).reason).toMatch(/front wall/i);
     expect(canBuyTile(s, f0.x0, -3).reason).toMatch(/floor already/i);
     // One tile out to the east: the floor's rectangle grows and the rest of that column is a gap. The car park's
-    // bays its new walls stand on are sold back (the tarmac is built over).
+    // bays the building now stands on are sold back (the tarmac is built over).
     const bays = s.shop.bays.length;
     expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
     expect(bays - s.shop.bays.length).toBe(2);
@@ -193,7 +234,13 @@ describe('growing the shop a tile at a time', () => {
     expect(isFloor(s.shop, f0.x1, -4)).toBe(false);
     expect(s.shop.floor.x1).toBe(f0.x1 + 1);
     expect(floorTileCount(s.shop)).toBe((f0.x1 - f0.x0) * (f0.z1 - f0.z0) + 1);
-    // Something can go on it; the gap beside it is not floor.
+    // Open to the outside on three sides (no wall went up), walled off from the shop by the wall it was built against.
+    expect(openEdges(s.shop).filter((g) => g.x === f0.x1 && g.z === -3).length).toBe(3);
+    const old = s.shop.fixtures.find((x) => x.type === 'wall' && x.x === f0.x1 - 1 && x.z === -3 && x.rot === 3)!;
+    expect(edgeSide(s.shop, old)).toBe('inner');
+    // A shelf on it facing the shop is used from inside only with that wall down; the gap beside it is not floor.
+    expect(canPlace(s, 'shelf', f0.x1, -3, 3).reason).toBe('Nobody could reach it from inside');
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: old.id }).ok).toBe(true);
     expect(canPlace(s, 'shelf', f0.x1, -3, 3).ok).toBe(true);
     expect(canPlace(s, 'shelf', f0.x1, -4, 3).reason).toMatch(/inside the shop/);
     // Filling a gap: it is floor now and the gap list shrinks.
@@ -201,59 +248,76 @@ describe('growing the shop a tile at a time', () => {
     expect(isFloor(s.shop, f0.x1, -4)).toBe(true);
   });
 
-  it('nobody walks through the new walls, and the rest of the lot stays where it was', () => {
+  it('nobody walks through the wall a tile was built against, and the rest of the lot stays where it was', () => {
     const s = shop();
     const kept = s.shop.bays.filter((b) => b.z > -1.6).map((b) => ({ x: b.x, z: b.z }));
     const tiles = Object.keys(s.shop.lotTiles!).length;
     const f0 = { ...s.shop.floor };
     expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
     for (const b of kept) expect(s.shop.bays.some((q) => q.x === b.x && q.z === b.z)).toBe(true);
-    // Only what the new walls stand on is gone (two tiles of the bays' row, and the tarmac a tile out of it).
+    // Only what the building now stands on is gone (two tiles of the bays' row, and the tarmac a tile out of it).
     expect(Object.keys(s.shop.lotTiles!).length).toBeLessThan(tiles);
     expect(Object.keys(s.shop.lotTiles!).length).toBeGreaterThanOrEqual(tiles - 4);
     const g = buildGrid(s.shop, 99);
-    // From the new tile, out through its north side (a gap, walled off) is blocked; through the door is fine.
+    // From the new tile into the shop beside it: out over its open side and round through the door, never through the wall.
     const inTile = toWorld(s.shop, f0.x1 + 0.5, -2.5);
-    const path = findPath(g, inTile, toWorld(s.shop, f0.x1 + 0.5, -4.5));
-    // The path exists (out of the door and round) but is long: never straight through the wall.
-    expect(path).not.toBeNull();
-    let len = 0, at = inTile;
-    for (const q of path!) { len += Math.hypot(q.x - at.x, q.z - at.z); at = q; }
-    expect(len).toBeGreaterThan(5);
+    const len = (to: { x: number; z: number }) => { const path = findPath(g, inTile, to); expect(path).not.toBeNull(); let n = 0, at = inTile; for (const q of path!) { n += Math.hypot(q.x - at.x, q.z - at.z); at = q; } return n; };
+    expect(len(toWorld(s.shop, f0.x1 - 0.5, -2.5))).toBeGreaterThan(5);
+    // Out over the open side: straight there.
+    expect(len(toWorld(s.shop, f0.x1 + 0.5, -4.5))).toBeLessThan(2.5);
   });
 
-  // The walls go up round a tile bought: nobody may be standing where they go, nor be boxed in by them. The manager
-  // was walled in by one (no key moved them, every click was "You can't get there"); expandShop put a driver in one.
-  it('never puts a wall up round the manager, or anyone, out by a tile bought', () => {
+  // Nobody may be standing where a wall goes up, nor be boxed in by it. The manager was walled in by one (no key
+  // moved them, every click was "You can't get there"); expandShop put a driver in one.
+  it('never puts a wall up across the manager, or anyone', () => {
     const s = openGame({ seed: 4, plotId: 'main', name: 'Walled', tutorial: false });
     s.cash = 20000;
     const o = s.people.find((p) => p.kind === 'owner')!, side = toWorld(s.shop, 3.75, -2.5);
     s.people = [o];
     o.x = o.px = side.x; o.z = o.pz = side.z; o.path = []; o.pathIdx = 0; o.state = 'idle';
-    expect(canBuyTile(s, 2.5, -3).reason).toBe('You are standing there');
+    // A tile bought puts up no wall: out there is fine; the extension's walls would go up through them.
+    expect(canBuyTile(s, 2.5, -3).ok).toBe(true);
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).message).toBe('You are standing there');
+    // Stood on a line a wall would go up on, inside.
+    const line = toWorld(s.shop, 0, -3.05);
+    o.x = o.px = line.x; o.z = o.pz = line.z;
+    expect(canPlace(s, 'wall', -0.5, -3, 0).reason).toBe('You are standing there');
+    expect(canPlace(s, 'wall', -0.5, -3, 1).ok).toBe(true);
     // Someone else walking up the side.
     const out = toWorld(s.shop, 0, 1);
     o.x = o.px = out.x; o.z = o.pz = out.z;
     const p = spawnCustomer(s, true)!;
     p.x = p.px = side.x; p.z = p.pz = side.z; p.xings = undefined; p.state = 'toDoor'; p.path = [toWorld(s.shop, 3.75, 1)]; p.pathIdx = 0;
-    expect(canBuyTile(s, 2.5, -3).reason).toBe('Someone is standing there');
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).message).toBe('Someone is standing there');
-    // Nobody there: fine.
-    s.people = [o];
-    expect(canBuyTile(s, 2.5, -3).ok).toBe(true);
   });
 
-  it('a window on a wall that moves goes out with it; the back door moves back with the back wall', () => {
+  it('a wall pushed out takes its window and its lights with it, the back door with the back wall, and the ends close', () => {
     const s = shop();
     const f0 = { ...s.shop.floor };
-    expect(place(s, 'window', f0.x1 - 1, -3, 3).ok).toBe(true);
-    expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
-    const w = s.shop.fixtures.find((x) => x.type === 'window')!;
-    expect(w.x).toBe(f0.x1);
+    const right = (z: number) => s.shop.fixtures.find((x) => FIXTURES[x.type].edge && x.x === f0.x1 - 1 && x.z === z && x.rot === 3)!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: right(-3).id }).ok).toBe(true);
+    expect(place(s, 'wallWindow', f0.x1 - 1, -3, 3).ok).toBe(true);
+    expect(place(s, 'wallLight', f0.x1 - 1, -4, 3).ok).toBe(true);
+    const seg = wallSegments(s.shop).find((w) => w.dir === 'right' && w.t === -2.5)!;
+    expect(applyCommand(s, { type: 'pushWall', key: seg.key }).ok).toBe(true);
+    // The whole right wall a tile out, the window and the light with it; walled all round still.
+    expect(s.shop.floor.x1).toBe(f0.x1 + 1);
+    expect(s.shop.fixtures.find((x) => x.type === 'wallWindow' && x.rot === 3)!.x).toBe(f0.x1);
+    expect(s.shop.fixtures.find((x) => x.type === 'wallLight')!.x).toBe(f0.x1);
+    expect(openEdges(s.shop)).toEqual([]);
+    // Pushed back: the back door with it.
     const bd = { ...s.shop.backDoor };
-    expect(applyCommand(s, { type: 'buyTile', x: bd.x - 0.5, z: bd.z - 1 }).ok).toBe(true);
-    expect(s.shop.backDoor.z).toBe(bd.z - 1);
+    const back = wallSegments(s.shop).find((w) => w.dir === 'back' && Math.abs(w.t - bd.x) < 0.01)!;
+    expect(applyCommand(s, { type: 'pushWall', key: back.key }).ok).toBe(true);
+    expect(s.shop.backDoor).toEqual({ x: bd.x, z: bd.z - 1 });
+    expect(openEdges(s.shop)).toEqual([]);
+    // A tile bought on its own behind it: the back door is in the way.
+    expect(canBuyTile(s, bd.x - 0.5, bd.z - 2).reason).toMatch(/back door opens out here/);
+    // Pulled in again: back where it was, the floor behind it sold.
+    const back2 = wallSegments(s.shop).find((w) => w.dir === 'back' && Math.abs(w.t - bd.x) < 0.01)!;
+    expect(applyCommand(s, { type: 'pullWall', key: back2.key }).ok).toBe(true);
+    expect(s.shop.backDoor).toEqual(bd);
+    expect(openEdges(s.shop)).toEqual([]);
   });
 
   it('lays a finish on one tile at a time', () => {
@@ -356,8 +420,11 @@ describe('nothing on the ground floor cut off either', () => {
     expect(place(s, 'register', 1.5, -3, 2).ok).toBe(true);
     expect(canSellTile(s, 1.5, -4).reason).toBe('Would cut off the checkout counter');
     expect(canSellTile(s, 1.5, -2).reason).toBe('Would block the way behind the counter');
-    for (const t of ['shelf', 'wall', 'plant'] as const) expect(canPlace(s, t, 1.5, -4, 0).reason, t).toBe('Would cut off the checkout counter');
+    for (const t of ['shelf', 'plant'] as const) expect(canPlace(s, t, 1.5, -4, 0).reason, t).toBe('Would cut off the checkout counter');
     expect(canPlace(s, 'shelf', 1.5, -2, 0).reason).toBe('Would block the way behind the counter');
+    // A wall across its front, or across its back: the same.
+    expect(canPlace(s, 'wall', 1.5, -3, 0).reason).toBe('Would cut off the checkout counter');
+    expect(canPlace(s, 'wall', 1.5, -3, 2).reason).toBe('Would block the way behind the counter');
     // A tile with neither on it: fine.
     expect(canSellTile(s, 1.5, -5).ok).toBe(true);
   });
@@ -374,47 +441,51 @@ describe('nothing on the ground floor cut off either', () => {
     expect(applyCommand(s, { type: 'sellTile', x: 1.5, z: -6 }).message).toBeUndefined();
   });
 
-  it('never sells a tile that cuts the back door or the pallet off from inside (nor boxes the manager in), as building would not', () => {
+  it('never cuts the back door or the pallet off from inside, nor boxes the manager in; a tile sold opens the shop instead', () => {
     const s = shop();
-    // A wall across the shop but for one tile, the way through to the back half.
+    // A wall across the shop but for one tile, the way through to the back half: nothing may stand on that tile.
     for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(place(s, 'wall', x, -4).ok, `wall at ${x}`).toBe(true);
     expect(canPlace(s, 'plant', 1.5, -4, 0).reason).toBe('Would cut the shop in two');
-    expect(canSellTile(s, 1.5, -4).reason).toBe('Would cut the shop in two');
-    // The manager in a nook only that tile opens onto (the back door shut on that side).
+    expect(canPlace(s, 'wall', 1.5, -4, 0).reason).toBe('Would cut the shop in two');
+    // Sold, it takes its wall round the shop with it and leaves the shop open there: no way is shut (out and round).
+    expect(canSellTile(s, 1.5, -4).reason).toBe('Sell this tile, and the wall on it');
+    // The manager in a nook: walled in on the last side, never.
     const o = s.people.find((p) => p.kind === 'owner')!, nook = toWorld(s.shop, 2, -4.5);
-    for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(applyCommand(s, { type: 'removeFixture', fixtureId: s.shop.fixtures.find((f) => f.type === 'wall' && f.x === x)!.id }).ok).toBe(true);
-    for (const [x, z] of [[0.5, -5], [1.5, -6]] as const) expect(place(s, 'wall', x, z).ok, `wall at ${x}, ${z}`).toBe(true);
+    for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(applyCommand(s, { type: 'removeFixture', fixtureId: s.shop.fixtures.find((f) => f.type === 'wall' && f.x === x && f.z === -4)!.id }).ok).toBe(true);
     o.x = o.px = nook.x; o.z = o.pz = nook.z;
-    expect(canSellTile(s, 1.5, -4).reason).toBe('Would box you in');
+    expect(place(s, 'wall', 1.5, -5, 0).ok).toBe(true);
+    expect(place(s, 'wall', 1.5, -5, 1).ok).toBe(true);
+    expect(canPlace(s, 'wall', 1.5, -5, 2).reason).toBe('Would box you in');
   });
 
-  it("never sells the back door's tile when the back door, coming forward, would open onto something", () => {
-    for (const type of ['plant', 'shelf', 'wall'] as const) {
-      const s = shop(5), bd = { ...s.shop.backDoor };
-      expect(place(s, type, bd.x - 0.5, bd.z + 1, 0).ok, type).toBe(true);
-      expect(canSellTile(s, bd.x - 0.5, bd.z).reason, type).toBe('Keep the back door clear');
-      expect(applyCommand(s, { type: 'sellTile', x: bd.x - 0.5, z: bd.z }).ok, type).toBe(false);
-      expect(s.shop.backDoor, type).toEqual(bd);
-    }
-    // Nothing there: it sells, and the back door comes forward.
-    const s = shop(5), bd = { ...s.shop.backDoor };
+  it("never sells the back door's tile, nor moves the back door onto something", () => {
+    const s = shop(5), bd = { ...s.shop.backDoor }, door = s.shop.fixtures.find((f) => f.type === 'backDoor')!;
+    expect(canSellTile(s, bd.x - 0.5, bd.z).reason).toBe('The back door opens onto it: move the back door first');
+    // A tile along: a wall taken down there, and a plant on the tile in front of it.
+    const along = s.shop.fixtures.find((f) => f.type === 'wall' && f.rot === 0 && f.z === bd.z && f.x === bd.x + 0.5)!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: along.id }).ok).toBe(true);
+    expect(place(s, 'plant', bd.x + 0.5, bd.z, 0).ok).toBe(true);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: door.id, x: bd.x + 0.5, z: bd.z, rot: 0 }).message).toBe('Keep the back door clear: something stands inside it');
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: s.shop.fixtures.find((f) => f.type === 'plant')!.id }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: door.id, x: bd.x + 0.5, z: bd.z, rot: 0 }).ok).toBe(true);
+    expect(s.shop.backDoor).toEqual({ x: bd.x + 1, z: bd.z });
+    // Moved off it, the old tile sells (its wall, and the gap the door left, go with it: open there now).
     expect(applyCommand(s, { type: 'sellTile', x: bd.x - 0.5, z: bd.z }).message).toBeUndefined();
-    expect(s.shop.backDoor).toEqual({ x: bd.x, z: bd.z + 1 });
   });
 
   it('builds on in a shop an older save left with the back half cut off from inside', () => {
     const s = shop();
     for (const x of [-2.5, -1.5, -0.5, 0.5]) expect(place(s, 'wall', x, -4).ok, `wall at ${x}`).toBe(true);
-    // As selling a tile let it be: the one way through sold.
-    s.shop.gaps = [...s.shop.gaps ?? [], '1.5,-4'];
+    // As an older build let it be: the one way through walled too.
+    s.shop.fixtures.push({ id: s.nextId++, type: 'wall', x: 1.5, z: -4, rot: 0, slots: [] });
     s.shop.layoutVersion++;
     expect(findPath(buildGrid(s.shop, -1, true), doorInside(s), storeroomPoint(s))).toBeNull();
     expect(place(s, 'plant', -2.5, -1, 0).message).toBeUndefined();
     // Nothing more shut for it: the manager in the corner by the front wall is not walled in.
     const o = s.people.find((p) => p.kind === 'owner')!, corner = toWorld(s.shop, 2, -0.5);
     o.x = o.px = corner.x; o.z = o.pz = corner.z;
-    expect(place(s, 'wall', 1.5, -2).ok).toBe(true);
-    expect(canPlace(s, 'wall', 0.5, -1, 0).reason).toBe('Would box you in');
+    expect(place(s, 'wall', 1.5, -1).ok).toBe(true);
+    expect(canPlace(s, 'wall', 1.5, -1, 1).reason).toBe('Would box you in');
   });
 });
 
@@ -477,8 +548,9 @@ describe('building across someone downstairs', () => {
   it('never walls a shopper in downstairs, as upstairs', () => {
     const { s, p } = one(77, -2, -0.5);
     p.state = 'browsing'; p.timer = 5;
-    expect(place(s, 'wall', -2.5, -2, 0).ok).toBe(true);
-    expect(canPlace(s, 'wall', -1.5, -1, 0).reason).toBe('Would shut someone in');
+    // Their tile in the front corner: walled on its back edge, then on its last open side.
+    expect(place(s, 'wall', -2.5, -1, 0).ok).toBe(true);
+    expect(canPlace(s, 'wall', -2.5, -1, 3).reason).toBe('Would shut someone in');
   });
 });
 

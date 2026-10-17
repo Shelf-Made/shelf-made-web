@@ -8,7 +8,7 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
 import { DEFAULT_PAINT } from '@/sim/layout';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
 import { FRONT_ROW } from '@/sim/drive';
@@ -30,7 +30,9 @@ const DEPT_COLOURS: Partial<Record<string, string>> = {
   bakery: '#D9A066', frozen: '#4F8FE0', pets: '#C8423A', toys: '#FFC044', clothing: '#9B6FE0', electronics: '#38383D', home: '#3FA87A',
   books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
 };
-const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
+/** Walls drawn with the shell where they stand round the building (out in the band past the floor's edge); across the shop they are drawn as pieces, and a railing or a gate always is. */
+const SHELL_WALLS: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'doorway', 'frontDoor', 'backDoor']);
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['frontDoor', 'backDoor', 'sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
   'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger', 'parkingBay']);
 
 /** Drops of spray over each fountain. */
@@ -47,7 +49,7 @@ import { FIXTURE_MODEL, SLOT_BOXES, productGeometry, productModelIds, WALL_COLOU
 import { schemeById, type Scheme } from '@/sim/schemes';
 import type { FloorStyle, WallStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
-import { fittingGeometry, fittingGlass, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf } from './fittings';
+import { fittingGeometry, fittingGlass, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf, INNER_WALL_DEPTH } from './fittings';
 import { BlobShadows } from './blobs';
 import { cornerProps, pylonSpot, cornerGarden, playerCorner } from './dressing';
 import { tuftMesh } from './StaticWorld';
@@ -184,6 +186,11 @@ export class StoreView {
   private readonly glows = new Map<string, InstancedMesh>();
   private lampPools: InstancedMesh | null = null;
   private wallCut: { full: InstancedMesh; cut: InstancedMesh }[] = [];
+  /**
+   * The walls round the building (drawn with the shell), each as the box it stands in: clicked to pick it up. Cut down
+   * to a ledge (its side faces the camera), only the ledge is there to click: the floor beyond is clicked over it.
+   */
+  private wallBoxes: { id: number; level: number; box: Box3; low: Box3; side?: Side }[] = [];
   private readonly neonMat = new MeshBasicMaterial({ color: new Color(2.6, 0.9, 1.8) });
   /** The shop's neon sign tubes. */
   private readonly signNeon = new MeshBasicMaterial({ color: new Color(2.4, 0.75, 1.7) });
@@ -313,9 +320,7 @@ export class StoreView {
       else floorParts.push(...faces);
     }
     if (photoParts.length && shop.floorImage) { const pm = new Mesh(merge(photoParts), this.photoMat(shop.floorImage)); pm.receiveShadow = true; this.shell.add(pm); }
-    // Door thresholds: steel strips across each opening.
-    floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.door.x, -0.008, oz + f.z1 + WALL_T / 2));
-    floorParts.push(box(pal, '#9AA0A8', 1.2, 0.02, WALL_T, ox + shop.backDoor.x, -0.008, oz + shop.backDoor.z - WALL_T / 2));
+    // (Door thresholds are laid with the walls, below: wherever a wall is not.)
     // Delivery zone: yellow-and-charcoal hazard border and a pallet.
     const d = shop.delivery;
     const dw = d.x1 - d.x0, dd = d.z1 - d.z0;
@@ -397,10 +402,12 @@ export class StoreView {
     const opening = pane ?? recessOf(windowG);
     const posters: BufferGeometry[] = [];
     const litPanes: BufferGeometry[] = [];
-    // Walls follow the floor's outline, a piece on every outside edge of a floor tile, gathered by the way
-    // they face (so the cut-away drops the ones toward the camera). Each end of a run either turns a corner
-    // of the room (the paint stops short of it), carries on, or meets a wall coming the other way round a
-    // notch in the floor (the paint runs on to meet it; the piece along x stops short, the other covers the corner).
+    // Walls are pieces. One round the building (floor its side, no building behind it) is drawn here as the shop's walls
+    // always were, out in the band just past the floor's edge, gathered by the way they face (so the cut-away drops
+    // the ones toward the camera); one across the shop is drawn with the other pieces, on its line. Each end of a wall
+    // either turns a corner of the room (the paint stops short of it), carries on, meets a wall coming the other way
+    // round a notch in the floor (the paint runs on to meet it; the piece along x stops short, the other covers the
+    // corner), or stops with no wall beyond it.
     type Dir = { name: 'front' | 'back' | 'left' | 'right'; nx: number; nz: number; axis: 'x' | 'z'; yaw: number };
     const DIRS: Dir[] = [
       { name: 'front', nx: 0, nz: 1, axis: 'x', yaw: 0 }, { name: 'back', nx: 0, nz: -1, axis: 'x', yaw: Math.PI },
@@ -415,40 +422,41 @@ export class StoreView {
     for (const g of this.levelGroups) g?.removeFromParent();
     this.levelGroups = [];
     for (let L = 1; L < MAX_LEVELS; L++) { const g = new Group(); g.name = `floor-${L}`; this.levelGroups[L] = g; this.shell.add(g); }
+    const outer = shop.fixtures.filter((p) => SHELL_WALLS.has(p.type) && edgeSide(shop, p) === 'outer');
+    this.wallBoxes = [];
     let front: Side | null = null;
     for (let L = 0; L < MAX_LEVELS; L++) {
       const inside = st.inside[L];
       if (!inside?.size) continue;
       const y0 = L * STOREY;
       const parent: Group = L === 0 ? this.shell : (st.built[L] ? this.levelGroups[L] : this.levelGroups[L - 1]) ?? this.shell;
-      const tilesL = L === 0 ? tiles : [...inside].map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z }; });
       const atL = L === 0 ? at : (x: number, z: number) => inside.has(tileKey(x, z));
-      // Windows: the whole front line is glass; elsewhere wherever a Window was put in (keyed by the wall it is in).
-      const wins = new Set(shop.fixtures.filter((fx) => fx.type === 'window' && levelOf(fx) === L).map((fx) => {
-        // Its wall is behind it: facing +z (rot 0) it is in the back wall, and so on round.
-        const r = fx.rot & 3, dir = r === 0 ? DIRS[1]! : r === 1 ? DIRS[2]! : r === 2 ? DIRS[0]! : DIRS[3]!;
-        const gz = groundZ(fx.z);
-        const line = dir.axis === 'x' ? (dir.nz > 0 ? gz + 1 : gz) : (dir.nx > 0 ? fx.x + 1 : fx.x);
-        return `${dir.name}@${line}@${dir.axis === 'x' ? fx.x + 0.5 : gz + 0.5}`;
-      }));
+      // The walls on this floor, by the ground tile each faces into and the way it faces out.
+      const mine = outer.filter((p) => levelOf(p) === L);
+      const wallAt = new Map(mine.map((p) => [`${p.x},${groundZ(p.z)},${edgeOf(p).dir}`, p]));
+      const dirName = (dx: number, dz: number) => DIRS.find((d) => d.nx === dx && d.nz === dz)!.name;
+      // Over a double-height space the wall reaches up a storey more (the floor above has no tile there to stand one on).
+      const up = st.inside[L + 1], upFloor = st.floors[L + 1];
       for (const dir of DIRS) {
         const full: BufferGeometry[] = [], ledge: BufferGeometry[] = [], glass: BufferGeometry[] = [], paintFull: BufferGeometry[] = [], paintLedge: BufferGeometry[] = [];
+        const boxes: { id: number; level: number; box: Box3; low: Box3 }[] = [];
         const ax = dir.axis === 'x' ? 1 : 0, az = dir.axis === 'z' ? 1 : 0;
-        for (const tile of tilesL) {
-          if (atL(tile.x + dir.nx, tile.z + dir.nz)) continue;
+        for (const p of mine) {
+          if (edgeOf(p).dir !== dir.name) continue;
+          const tile = { x: p.x, z: groundZ(p.z) };
           const line = dir.axis === 'x' ? (dir.nz > 0 ? tile.z + 1 : tile.z) : (dir.nx > 0 ? tile.x + 1 : tile.x);
           const t = dir.axis === 'x' ? tile.x + 0.5 : tile.z + 0.5;
           const outward = dir.axis === 'x' ? dir.nz : dir.nx;
-          const isFront = dir.name === 'front' && line === f.z1;
-          const isDoor = L === 0 && ((isFront && Math.abs(t - shop.door.x) < 0.01) || (dir.name === 'back' && line === shop.backDoor.z && Math.abs(t - shop.backDoor.x) < 0.01));
-          const nearDoor = L === 0 && isFront && Math.abs(t - shop.door.x) <= 0.6;
-          const isWindow = !isDoor && !nearDoor && (isFront || wins.has(`${dir.name}@${line}@${t}`));
+          const isFront = L === 0 && dir.name === 'front' && line === f.z1;
+          const isDoor = p.type === 'frontDoor' || p.type === 'backDoor' || p.type === 'doorway';
+          const isWindow = p.type === 'wallWindow';
           const src = isDoor ? doorG : isWindow ? windowG : wallG;
           // How each end of this piece meets its neighbours along the wall.
           const ends = [-1, 1].map((e) => {
             const nx = tile.x + ax * e, nz = tile.z + az * e;
             if (!atL(nx, nz)) return 'corner' as const;
-            return atL(nx + dir.nx, nz + dir.nz) ? 'notch' as const : 'run' as const;
+            if (!atL(nx + dir.nx, nz + dir.nz)) return 'run' as const;
+            return wallAt.has(`${nx + dir.nx},${nz + dir.nz},${dirName(-ax * e, -az * e)}`) ? 'notch' as const : 'open' as const;
           });
           // Along x, a piece that meets a notch's wall gives way to it by half a tile at that end.
           const cutLo = dir.axis === 'x' && ends[0] === 'notch', cutHi = dir.axis === 'x' && ends[1] === 'notch';
@@ -457,7 +465,11 @@ export class StoreView {
           const pz = dir.axis === 'x' ? oz + line + outward * WALL_T / 2 : oz + mid;
           // A shortened piece is the plain wall (a window or door never sits by a notch's end).
           const piece = len < 1 ? wallG : src;
+          // A tall wall stands two storeys; any wall under a double-height space reaches up into it.
+          const k = tileKey(tile.x, tile.z), beyond = tileKey(tile.x + dir.nx, tile.z + dir.nz);
+          const storeys = p.type === 'tallWall' || (!!up?.has(k) && !upFloor?.has(k) && !up.has(beyond)) ? 2 : 1;
           full.push(place(piece.clone(), px, y0, pz, dir.yaw, len, 1, 1));
+          for (let s = 1; s < storeys; s++) full.push(place(wallG.clone(), px, y0 + s * STOREY, pz, dir.yaw, len, 1, 1));
           // Cut down, a window is a plain wall: the opening starts below the ledge, and squashing its frame
           // and pane onto the cut left a jumble of colours fighting on the sill.
           ledge.push(place(isDoor ? src.clone() : cutDown(isWindow ? wallG : piece, LEDGE), px, y0, pz, dir.yaw, len, 1, 1));
@@ -465,17 +477,24 @@ export class StoreView {
           // Offers in every other front window, on the outside of the glass; the front windows glow at night.
           if (L === 0 && isFront && isWindow && pane && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + WALL_T / 2 + pane.z1 + 0.006));
           if (isFront && isWindow && pane) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, y0 + pane.y0 + 0.01, line + 0.08));
+          // Where it is clicked to pick it up (a box over the band it stands in).
+          const bx = dir.axis === 'x' ? { x0: t - 0.5, x1: t + 0.5 } : { x0: Math.min(line, line + outward * WALL_T), x1: Math.max(line, line + outward * WALL_T) };
+          const bz = dir.axis === 'z' ? { z0: t - 0.5, z1: t + 0.5 } : { z0: Math.min(line, line + outward * WALL_T), z1: Math.max(line, line + outward * WALL_T) };
+          // (A door stands full height either way.)
+          const lo = new Vector3(ox + bx.x0, y0, oz + bz.z0);
+          boxes.push({ id: p.id, level: L, box: new Box3(lo, new Vector3(ox + bx.x1, y0 + storeys * STOREY, oz + bz.z1)), low: new Box3(lo.clone(), new Vector3(ox + bx.x1, y0 + (isDoor ? STOREY : LEDGE), oz + bz.z1)) });
           if (!isDoor) {
             const a = t - 0.5 + (ends[0] === 'corner' ? 0.12 : ends[0] === 'notch' ? -0.062 : 0);
             const b = t + 0.5 - (ends[1] === 'corner' ? 0.12 : ends[1] === 'notch' ? -0.062 : 0);
             const hole = isWindow && opening ? { a: t + opening.x0, b: t + opening.x1, y0: opening.y0, y1: opening.y1 } : null;
-            const key = L === 0 ? wallKey(dir.name, line, t) : dir.axis === 'x' ? wallKey(dir.name, zOnLevel(line, L), t) : wallKey(dir.name, line, zOnLevel(t, L));
-            const finish = shop.wallStyles?.[key] ?? shop.wallStyle ?? 'bands';
-            const lift = (g: BufferGeometry) => (y0 ? g.translate(0, y0, 0) : g);
+            const finish = p.finish ?? shop.wallStyle ?? 'bands';
             // Painted any colour: into meshes of their own, coloured vertex by vertex.
-            const colour = finish === 'paint' ? shop.wallColors?.[key] ?? DEFAULT_PAINT : null;
-            (colour ? paintFull : full).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole, finish).map(lift), colour));
-            (colour ? paintLedge : ledge).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null, finish).map(lift), colour));
+            const colour = finish === 'paint' ? p.paint ?? DEFAULT_PAINT : null;
+            for (let s = 0; s < storeys; s++) {
+              const lift = (g: BufferGeometry) => (y0 + s * STOREY ? g.translate(0, y0 + s * STOREY, 0) : g);
+              (colour ? paintFull : full).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, s ? null : hole, finish).map(lift), colour));
+              if (!s) (colour ? paintLedge : ledge).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null, finish).map(lift), colour));
+            }
           }
         }
         if (!full.length) continue;
@@ -483,24 +502,48 @@ export class StoreView {
         const ledgeMesh = new Mesh(merge(ledge), this.assets.material);
         for (const m of [fullMesh, ledgeMesh]) { m.castShadow = true; m.receiveShadow = true; parent.add(m); }
         const side: Side = { full: fullMesh, ledge: ledgeMesh, nx: dir.nx, nz: dir.nz, extraFull: [], extraLedge: [] };
+        for (const b of boxes) this.wallBoxes.push({ ...b, side });
         if (paintFull.length) { const pm = new Mesh(mergeTinted(paintFull), this.paintMat()); pm.receiveShadow = true; parent.add(pm); side.extraFull.push(pm); }
         if (paintLedge.length) { const pm = new Mesh(mergeTinted(paintLedge), this.paintMat()); pm.receiveShadow = true; pm.visible = false; parent.add(pm); side.extraLedge!.push(pm); }
         if (glass.length) { const gm = new Mesh(merge(glass), this.assets.glass); parent.add(gm); side.extraFull.push(gm); }
         this.sides.push(side);
         if (dir.name === 'front' && L === 0) front = side;
       }
-      // Corner posts: a half-width wall piece closing the square outside each outer corner of the floor.
+      // Corner posts: a half-width wall piece closing the square outside each outer corner of the floor a wall comes to.
       const corner = place(wallG.clone(), 0, 0, 0, 0, 0.5, 1, 1);
       const posts: BufferGeometry[] = [];
       const seen = new Set<string>();
-      for (const tile of tilesL) for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      for (const tile of mine.map((p) => ({ x: p.x, z: groundZ(p.z) }))) for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
         if (atL(tile.x + dx, tile.z) || atL(tile.x, tile.z + dz)) continue;
+        if (!wallAt.has(`${tile.x},${tile.z},${dirName(dx, 0)}`) && !wallAt.has(`${tile.x},${tile.z},${dirName(0, dz)}`)) continue;
         const cx = tile.x + 0.5 + dx * 0.75, cz = tile.z + 0.5 + dz * 0.75, k = `${cx},${cz}`;
         if (seen.has(k)) continue;
         seen.add(k);
         posts.push(place(corner.clone(), ox + cx, y0, oz + cz));
       }
       if (posts.length) { const postMesh = new Mesh(merge(posts), this.assets.material); postMesh.castShadow = true; parent.add(postMesh); }
+      // Where no wall stands round the ground floor (or a door, a doorway, a railing or a gate does), the band is a
+      // threshold: concrete, or the steel strip across a door.
+      if (L === 0) {
+        const strip: BufferGeometry[] = [];
+        const bandOf = (x: number, z: number, nx: number, nz: number) => nx
+          ? { x0: nx < 0 ? x - WALL_T : x + 1, z0: z, x1: nx < 0 ? x : x + 1 + WALL_T, z1: z + 1 }
+          : { x0: x, z0: nz < 0 ? z - WALL_T : z + 1, x1: x + 1, z1: nz < 0 ? z : z + 1 + WALL_T };
+        for (const tile of tiles) for (const d of DIRS) {
+          if (at(tile.x + d.nx, tile.z + d.nz)) continue;
+          const w = wallAt.get(`${tile.x},${tile.z},${d.name}`), r = bandOf(tile.x, tile.z, d.nx, d.nz);
+          if (w && w.type !== 'frontDoor' && w.type !== 'backDoor' && w.type !== 'doorway') continue;
+          if (w) strip.push(box(pal, '#9AA0A8', r.x1 - r.x0 + (d.axis === 'x' ? 0.2 : 0), 0.02, r.z1 - r.z0 + (d.axis === 'z' ? 0.2 : 0), ox + (r.x0 + r.x1) / 2, -0.008, oz + (r.z0 + r.z1) / 2));
+          else strip.push(box(pal, '#CFCBC2', r.x1 - r.x0, 0.04, r.z1 - r.z0, ox + (r.x0 + r.x1) / 2, -0.012, oz + (r.z0 + r.z1) / 2));
+        }
+        // (And the square outside a corner no wall comes to.)
+        for (const tile of tiles) for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+          if (at(tile.x + dx, tile.z) || at(tile.x, tile.z + dz)) continue;
+          if (wallAt.has(`${tile.x},${tile.z},${dirName(dx, 0)}`) || wallAt.has(`${tile.x},${tile.z},${dirName(0, dz)}`)) continue;
+          strip.push(box(pal, '#CFCBC2', WALL_T, 0.04, WALL_T, ox + tile.x + 0.5 + dx * 0.75, -0.012, oz + tile.z + 0.5 + dz * 0.75));
+        }
+        if (strip.length) { const sm = new Mesh(merge(strip), this.assets.ground); sm.receiveShadow = true; this.shell.add(sm); }
+      }
       if (L > 0 && st.built[L]) this.upperFloor(shop, L, st, parent);
     }
     if (posters.length && front) { const pm = new Mesh(merge(posters), this.assets.material); this.shell.add(pm); front.extraFull.push(pm); }
@@ -509,8 +552,9 @@ export class StoreView {
     // ---- Front: striped awning over the windows, the name on a fascia, and a pylon by the road. They span
     // the run of front wall either side of the door.
     let rx0 = shop.door.x - 0.5, rx1 = shop.door.x + 0.5;
-    while (at(rx0 - 1, f.z1 - 1)) rx0--;
-    while (at(rx1, f.z1 - 1)) rx1++;
+    const fronted = (x: number) => outer.some((p) => p.x === x && p.z === f.z1 - 1 && p.rot === 2);
+    while (fronted(rx0 - 1)) rx0--;
+    while (fronted(rx1)) rx1++;
     const fr = { x0: rx0, x1: rx1 };
     const width = fr.x1 - fr.x0;
     const fz = oz + f.z1 + WALL_T + 0.02;
@@ -938,7 +982,8 @@ export class StoreView {
     this.glows.clear();
     if (this.lampPools) { this.root.remove(this.lampPools); this.lampPools.dispose(); this.lampPools = null; }
     const byModel = new Map<string, Fixture[]>();
-    const shown = shop.fixtures.filter((f) => this.shown(f));
+    // (A wall round the building is the shell's; one with no floor its side, nobody's.)
+    const shown = shop.fixtures.filter((f) => this.shown(f) && !(FIXTURES[f.type].edge && (edgeSide(shop, f) === 'none' || (SHELL_WALLS.has(f.type) && edgeSide(shop, f) === 'outer'))));
     for (const f of shown) { const id = f.type === 'fridge' ? 'chiller' : f.type === 'sign' && f.text ? 'gen:signText' : modelOf(f.type, f.variant, FIXTURE_MODEL[f.type]); const arr = byModel.get(id) ?? []; arr.push(f); byModel.set(id, arr); }
     const m = new Matrix4();
     for (const [model, list] of byModel) {
@@ -977,7 +1022,7 @@ export class StoreView {
     }
     this.fixtureBlobs ??= new BlobShadows(this.root, 64, 0.32, 0.02);
     this.fixtureBlobs.begin();
-    for (const f of shown) { if (FIXTURES[f.type].walkable || levelOf(f) > 0) continue; const along = f.rot % 2 === 0; this.fixtureBlobs.add(f.x + 0.5, f.z + 0.5, along ? 1.15 : 0.95, along ? 0.95 : 1.15); }
+    for (const f of shown) { if (FIXTURES[f.type].walkable || FIXTURES[f.type].edge || levelOf(f) > 0) continue; const along = f.rot % 2 === 0; this.fixtureBlobs.add(f.x + 0.5, f.z + 0.5, along ? 1.15 : 0.95, along ? 0.95 : 1.15); }
     this.fixtureBlobs.end();
     // Lights: the glowing part of each lamp and neon, and a warm pool on the floor under each lamp.
     const pal = this.assets.palette;
@@ -1253,6 +1298,12 @@ export class StoreView {
     const r = footprintOf(type, x, z, rot), L = levelOfZ(z + 0.5);
     this.ghost.position.set((r.x0 + r.x1) / 2 + Math.sin(yaw) * dz, L * STOREY + 0.02, zOnLevel((r.z0 + r.z1) / 2, -L) + Math.cos(yaw) * dz);
     this.ghost.rotation.set(0, yaw, 0);
+    this.ghost.scale.set(1, 1, 1);
+    // A wall going round the building stands out in the band past the floor's edge, as thick as the rest of them.
+    if (FIXTURES[type].edge && SHELL_WALLS.has(type) && isFloor(shop, x, z)) {
+      const e = edgeOf({ x, z, rot });
+      if (!insideOn(shop, L, e.bx, groundZ(e.bz))) { this.ghost.position.x += e.nx * WALL_T / 2; this.ghost.position.z += e.nz * WALL_T / 2; this.ghost.scale.set(1, 1, 1 / INNER_WALL_DEPTH); }
+    }
   }
 
   debugFixtures(): unknown { return [...this.fixtureMeshes.entries()].map(([k, v]) => ({ model: k, count: v.mesh.count, ids: v.ids })); }
@@ -1262,17 +1313,30 @@ export class StoreView {
    * Only what is in sight: nothing under the floor in view (or one between), but down a stairwell or into a double-height space.
    */
   pick(ray: Raycaster, shop: Shop, level = 0): StoreHit | null {
-    const meshes = [...this.fixtureMeshes.values()].filter((e) => e.ids.length).map((e) => e.mesh);
+    // A wall across the shop cut down to a ledge is clicked as the ledge it is (the floor beyond, over it); a piece
+    // hung on it, gone with it, is not there to click.
+    const cutOf = new Map(this.wallCut.map((w) => [w.full, w.cut]));
+    const meshes = [...this.fixtureMeshes.values()].filter((e) => e.ids.length).map((e) => { const c = cutOf.get(e.mesh); return c?.visible ? c : e.mesh; })
+      .filter((m) => m.geometry.getAttribute('position'));
     // Hidden or not by the floor the thing stands on (the delivery's on the ground), not by how high the ray met it.
     const eye = ray.ray.origin, hidden = (p: Vector3, on: number) => underFloors(shop, eye, p.x, p.y, p.z, on, this.viewLevel);
     const fixtureOf = (h: { object: unknown; instanceId?: number }) => { const ids = (h.object as InstancedMesh).userData.fixtureIds as number[]; return shop.fixtures.find((x) => x.id === ids[h.instanceId ?? 0]); };
     const hits = ray.intersectObjects(meshes, false).filter((h) => { const f = fixtureOf(h); return f && !hidden(h.point, levelOf(f)); });
     const boxHit = ray.ray.intersectBox(this.deliveryBox, new Vector3());
     const boxDist = boxHit && !hidden(boxHit, 0) ? boxHit.distanceTo(eye) : Infinity;
-    if (hits.length && hits[0]!.distance < boxDist) {
+    // The walls round the building: the nearest box the ray goes into (in the shell's frame).
+    const local = ray.ray.clone().applyMatrix4(new Matrix4().copy(this.root.matrixWorld).invert()), q = new Vector3();
+    let wall: { id: number; dist: number } | null = null;
+    for (const w of this.wallBoxes) {
+      if (!local.intersectBox(w.side?.ledge.visible ? w.low : w.box, q)) continue;
+      const p = q.clone().applyMatrix4(this.root.matrixWorld), d = p.distanceTo(eye);
+      if (!hidden(p, w.level) && (!wall || d < wall.dist)) wall = { id: w.id, dist: d };
+    }
+    if (hits.length && hits[0]!.distance < boxDist && (!wall || hits[0]!.distance < wall.dist)) {
       const h = hits[0]!, f = fixtureOf(h)!;
       return { kind: 'fixture', id: f.id, type: f.type, dist: h.distance };
     }
+    if (wall && wall.dist < boxDist) { const f = shop.fixtures.find((x) => x.id === wall!.id); if (f) return { kind: 'fixture', id: f.id, type: f.type, dist: wall.dist }; }
     if (boxDist < Infinity && shop.storage.length) return { kind: 'delivery', dist: boxDist };
     const t = (level * STOREY - ray.ray.origin.y) / ray.ray.direction.y;
     if (t > 0) { const p = new Vector3().copy(ray.ray.origin).addScaledVector(ray.ray.direction, t); const q = sinkWorld(shop, p.x, p.z, level); return { kind: 'floor', x: q.x, z: q.z, dist: t }; }
@@ -1297,7 +1361,7 @@ function wayInRuns(shop: Shop): [number, number][] {
   return runs;
 }
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${JSON.stringify(shop.wallColors ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.loadingBay ? 'bay' : ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => `${f.type}:${f.x},${f.z},${f.rot},${f.finish ?? ''},${f.paint ?? ''}`).join(';')}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.loadingBay ? 'bay' : ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
 function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean; cross?: boolean; veins?: string } {

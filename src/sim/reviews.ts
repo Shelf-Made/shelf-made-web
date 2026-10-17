@@ -14,7 +14,8 @@ import type { GameState, Person, Look, CustomerType } from './types';
 import { withRng } from './state';
 import type { Rng } from './rng';
 import { productDef } from './products';
-import { FIXTURES, FLOORS, WALLS, DAY_SECONDS, TICK, shopTileList, tileKey, wallSegments, shopArea, highCeilings } from './layout';
+import { FIXTURES, FLOORS, WALLS, DAY_SECONDS, TICK, shopTileList, tileKey, wallSegments, shopArea, highCeilings, edgeOf, levelOf } from './layout';
+import { FINISHED, finishOf } from './build';
 import { priceIndex } from './customers';
 import { effectivePrice } from './marketing';
 import { formatMoney } from './money';
@@ -96,7 +97,8 @@ export interface Looks {
 /** The shop's looks, as shoppers see them. */
 export function looksOf(state: GameState): Looks {
   const shop = state.shop;
-  const count = (t: string) => shop.fixtures.filter((f) => f.type === t).length;
+  // (A wall the shop came with is no decor: the front's glass, say.)
+  const count = (t: string) => shop.fixtures.filter((f) => f.type === t && !f.free).length;
   let decor = 0;
   for (const [type, def] of Object.entries(FIXTURES)) if (def.looks) decor += Math.min(count(type), def.looksCap ?? 1) * def.looks;
   decor = clamp(decor, 0, 1);
@@ -105,7 +107,8 @@ export function looksOf(state: GameState): Looks {
   for (const f of shop.fixtures) for (const s of f.slots) { slots++; if (s.productId) full += Math.min(1, s.qty / Math.max(1, FIXTURES[f.type].capacity)); }
   const shelves = slots ? clamp((full / slots) * 1.15, 0, 1) : 0;
   const area = shopArea(shop);
-  const used = shop.fixtures.reduce((a, f) => a + (FIXTURES[f.type].outdoor ? 0 : FIXTURES[f.type].w * FIXTURES[f.type].d), 0) / Math.max(1, area);
+  // (A wall stands on an edge: it covers no floor.)
+  const used = shop.fixtures.reduce((a, f) => a + (FIXTURES[f.type].outdoor || FIXTURES[f.type].edge ? 0 : FIXTURES[f.type].w * FIXTURES[f.type].d), 0) / Math.max(1, area);
   // Best between about a fifth and a half of the floor: bare below, crammed above.
   const space = used < 0.2 ? clamp(used / 0.2, 0, 1) : used > 0.5 ? clamp(1 - (used - 0.5) / 0.25, 0, 1) : 1;
   const mess = (state.life?.litter ?? []).filter((l) => onFrontage(state, l)).length;
@@ -116,11 +119,11 @@ export function looksOf(state: GameState): Looks {
   // The floor, tile by tile on every open floor: what each finish adds, averaged over the shop.
   const tiles = shopTileList(shop);
   const floor = tiles.reduce((a, t) => a + (FLOORS.find((x) => x.id === (shop.tileStyles?.[tileKey(t.x, t.z)] ?? shop.floorStyle ?? 'lino'))?.looks ?? 0), 0) / Math.max(1, tiles.length);
-  // The walls, stretch by stretch, as the floor.
-  const segs = wallSegments(shop);
-  const wallLooks = segs.reduce((a, w) => a + (WALLS.find((x) => x.id === (shop.wallStyles?.[w.key] ?? shop.wallStyle ?? 'bands'))?.looks ?? 0), 0) / Math.max(1, segs.length);
-  // Windows: daylight on more of the shop (a few each make a difference; past a dozen, not much).
-  const windows = Math.min(count('window'), 15) * 0.016;
+  // The walls round the shop, one by one, as the floor.
+  const walls = wallSegments(shop).map((w) => shop.fixtures.find((f) => f.id === w.id)!).filter((f) => FINISHED.has(f.type));
+  const wallLooks = walls.reduce((a, f) => a + (WALLS.find((x) => x.id === finishOf(shop, f))?.looks ?? 0), 0) / Math.max(1, walls.length);
+  // Windows in the side and back walls: daylight on more of the shop (a few each make a difference; past a dozen, not much).
+  const windows = Math.min(walls.filter((f) => f.type === 'wallWindow' && !(levelOf(f) === 0 && edgeOf(f).line === shop.floor.z1 && edgeOf(f).dir === 'front')).length, 15) * 0.016;
   // A double-height space or two (panels taken down): light and air.
   const lofty = Math.min(highCeilings(shop), 6) * 0.02;
   const extras = clamp(SIGN_TIERS[signTier(shop)]!.looks + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.bays.length >= 8 ? 0.15 : 0) + 0.25 * curb + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + lofty + 0.1, 0, 1);

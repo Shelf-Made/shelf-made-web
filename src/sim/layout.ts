@@ -6,7 +6,7 @@
  * the same thing on every corner and only the frame (origin + flip) changes.
  */
 import { sizeOf } from './products';
-import type { Plot, Vec2, FixtureDef, FixtureType, CornerId, FloorStyle, WallStyle, LotSurface } from './types';
+import type { Plot, Vec2, Fixture, FixtureDef, FixtureType, CornerId, FloorStyle, WallStyle, LotSurface } from './types';
 
 export const TICK = 0.05;
 /** 12 game hours of 60 real seconds each. */
@@ -271,6 +271,8 @@ export const SURFACES: { id: LotSurface; name: string; perTile: number; curb: nu
  * stairs) runs back from its tile, away from the way it faces, so its front is always the tile at (x, z).
  */
 export function footprintOf(type: FixtureType, x: number, z: number, rot: number): Rect {
+  // A wall or a door stands on the line behind its tile: it covers no floor.
+  if (FIXTURES[type].edge) { const e = edgeOf({ x, z, rot }); return e.axis === 'x' ? { x0: e.t - 0.5, z0: e.line, x1: e.t + 0.5, z1: e.line } : { x0: e.line, z0: e.t - 0.5, x1: e.line, z1: e.t + 0.5 }; }
   const { w, d } = FIXTURES[type];
   const back = d - 1;
   switch (rot & 3) {
@@ -362,8 +364,11 @@ const SEG_DIRS = [
   { dir: 'front' as const, nx: 0, nz: 1, axis: 'x' as const }, { dir: 'back' as const, nx: 0, nz: -1, axis: 'x' as const },
   { dir: 'left' as const, nx: -1, nz: 0, axis: 'z' as const }, { dir: 'right' as const, nx: 1, nz: 0, axis: 'z' as const },
 ];
-/** Every stretch of outer wall round the floor, and round the building on each floor above (in that floor's region). */
-export function wallSegments(shop: FloorShape): WallSeg[] {
+/**
+ * Every edge of the floor with no floor beyond it, and of the building on each floor above (in that floor's region):
+ * where the walls stood before they were pieces (old saves are walled so on loading: wallsToPieces).
+ */
+export function outlineSegments(shop: FloorShape): WallSeg[] {
   const out: WallSeg[] = [];
   for (const t of floorTileList(shop)) for (const d of SEG_DIRS) {
     if (isFloor(shop, t.x + d.nx, t.z + d.nz)) continue;
@@ -381,6 +386,66 @@ export function wallSegments(shop: FloorShape): WallSeg[] {
       const mid = d.axis === 'x' ? x + 0.5 : zOnLevel(z + 0.5, L);
       out.push({ ...d, line, t: mid, key: wallKey(d.dir, line, mid) });
     }
+  }
+  return out;
+}
+
+/** Which way each turn faces (into its tile): a piece on an edge, or on a wall, has the edge behind it. */
+export const FACING: readonly Vec2[] = [{ x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 }];
+/**
+ * The edge a wall or a door stands on: the line behind its tile (running along `axis`, at `line`, its middle at `t`,
+ * as WallSeg), the tile on the far side of it (`bx`, `bz`), and which way that is from its own (`dir`, `nx`, `nz`).
+ * `key` names the edge whichever side it is seen from.
+ */
+export interface EdgeAt { axis: 'x' | 'z'; line: number; t: number; key: string; bx: number; bz: number; dir: WallSeg['dir']; nx: number; nz: number }
+export function edgeOf(f: { x: number; z: number; rot: number }): EdgeAt {
+  const fc = FACING[f.rot & 3]!, nx = -fc.x, nz = -fc.z;
+  const axis = fc.z ? 'x' as const : 'z' as const;
+  const line = axis === 'x' ? (nz < 0 ? f.z : f.z + 1) : (nx < 0 ? f.x : f.x + 1);
+  const t = axis === 'x' ? f.x + 0.5 : f.z + 0.5;
+  const dir = nz > 0 ? 'front' as const : nz < 0 ? 'back' as const : nx < 0 ? 'left' as const : 'right' as const;
+  return { axis, line, t, key: `${axis}@${line}@${t}`, bx: f.x + nx, bz: f.z + nz, dir, nx, nz };
+}
+/** Does it stand on an edge (a wall, a door), not on a tile? */
+export const onEdge = (type: FixtureType): boolean => !!FIXTURES[type].edge;
+/** Walls nobody walks through: the doors, a doorway and a gate are ways through. */
+export const SOLID_EDGE: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'railing']);
+/** What a light, a camera or a wall shelf can hang on: a wall, plain or tall. */
+export const HANGS_ON: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'tallWall']);
+type Pieces = readonly { id?: number; type: FixtureType; x: number; z: number; rot: number }[];
+const edgeIndexes = new WeakMap<Pieces, { sig: string; map: Map<string, Pieces[number]> }>();
+/** The walls and doors on their edges (keyed by EdgeAt.key). */
+export function edgeIndex<T extends Pieces[number]>(fixtures: readonly T[]): Map<string, T> {
+  let sig = '';
+  for (const f of fixtures) if (FIXTURES[f.type].edge) sig += `${f.type}${f.x},${f.z},${f.rot};`;
+  const hit = edgeIndexes.get(fixtures);
+  if (hit && hit.sig === sig) return hit.map as Map<string, T>;
+  const map = new Map<string, T>();
+  for (const f of fixtures) if (FIXTURES[f.type].edge) map.set(edgeOf(f).key, f);
+  edgeIndexes.set(fixtures, { sig, map });
+  return map;
+}
+/** The wall or door on this edge of a tile (`rot` picks the edge as a piece facing that way would stand on it). */
+export function edgePieceAt<T extends Pieces[number]>(fixtures: readonly T[], x: number, z: number, rot: number): T | undefined {
+  return edgeIndex(fixtures).get(edgeOf({ x, z, rot }).key);
+}
+/**
+ * Where a wall or door stands: `outer` round the building (floor on its side, no building behind it: a wall half a
+ * tile thick out there, as the shop's walls have always been), `inner` across it (the building both sides: a thin
+ * wall on the line), or `none` (no floor its side: after the floor it stood on went, until it is put right).
+ */
+export function edgeSide(shop: FloorShape, f: { x: number; z: number; rot: number }): 'outer' | 'inner' | 'none' {
+  if (!isFloor(shop, f.x, f.z)) return 'none';
+  const e = edgeOf(f), L = levelOfZ(f.z + 0.5);
+  return insideOn(shop, L, e.bx, groundZ(e.bz)) ? 'inner' : 'outer';
+}
+/** The walls round the building, floor by floor, as stretches (the piece standing on each). */
+export function wallSegments(shop: FloorShape & { fixtures: readonly Fixture[] }): (WallSeg & { id: number; type: FixtureType })[] {
+  const out: (WallSeg & { id: number; type: FixtureType })[] = [];
+  for (const f of shop.fixtures) {
+    if (!FIXTURES[f.type].edge || edgeSide(shop, f) !== 'outer') continue;
+    const e = edgeOf(f);
+    out.push({ dir: e.dir, nx: e.nx, nz: e.nz, axis: e.axis, line: e.line, t: e.t, key: wallKey(e.dir, e.line, e.t), id: f.id, type: f.type });
   }
   return out;
 }
@@ -594,16 +659,19 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   sign: { type: 'sign', name: 'Aisle sign', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', looks: 0.1, looksCap: 3 },
   rug: { type: 'rug', name: 'Rug', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', walkable: true, looks: 0.08, looksCap: 3 },
   doormat: { type: 'doormat', name: 'Doormat', price: 12, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'decor', walkable: true, looks: 0.06, looksCap: 1 },
-  // Walls and doors inside the shop.
-  wall: { type: 'wall', name: 'Wall', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
-  wallWindow: { type: 'wallWindow', name: 'Wall with window', price: 70, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', looks: 0.04, looksCap: 4 },
-  /** A window put into the outside wall behind its tile (shelves can still stand in front of it). */
-  window: { type: 'window', name: 'Window', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, onWall: true },
-  doorway: { type: 'doorway', name: 'Doorway', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
-  railing: { type: 'railing', name: 'Railing', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
-  gate: { type: 'gate', name: 'Gate', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true },
+  // Walls and doors: each stands on an edge of its tile (the one behind it), round the shop or across it.
+  wall: { type: 'wall', name: 'Wall', price: 40, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true },
+  wallWindow: { type: 'wallWindow', name: 'Wall with window', price: 70, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true, looks: 0.04, looksCap: 4 },
+  /** Old saves only: a window put into the outside wall behind its tile (a Wall with window now: see wallsToPieces). */
+  window: { type: 'window', name: 'Window', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, onWall: true, unlisted: true },
+  doorway: { type: 'doorway', name: 'Doorway', price: 55, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true },
+  railing: { type: 'railing', name: 'Railing', price: 25, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true },
+  gate: { type: 'gate', name: 'Gate', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true },
   /** Twice as tall as a wall: for a double-height space, where the ceiling panel above has been sold. */
-  tallWall: { type: 'tallWall', name: 'Tall wall', price: 75, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls' },
+  tallWall: { type: 'tallWall', name: 'Tall wall', price: 75, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true },
+  /** The shop's own doors: the way in at the front (it slides along the front wall), and the back door for deliveries and staff. */
+  frontDoor: { type: 'frontDoor', name: 'Front door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, fixed: true, unlisted: true },
+  backDoor: { type: 'backDoor', name: 'Back door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, fixed: true, unlisted: true },
   // Lights.
   floorLamp: { type: 'floorLamp', name: 'Floor lamp', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', looks: 0.07, looksCap: 4 },
   wallLight: { type: 'wallLight', name: 'Wall light', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.06, looksCap: 4 },
@@ -668,11 +736,14 @@ const BODY: Partial<Record<FixtureType, { w: number; d: number; centred?: boolea
   screen: { w: 0.7, d: 0.23 }, bookcase: { w: 0.44, d: 0.29 }, flowers: { w: 0.48, d: 0.21 }, bench: { w: 0.83, d: 0.39 }, sofa: { w: 0.83, d: 0.39 },
   sign: { w: 0.72, d: 0.72, centred: true }, plant: { w: 0.3, d: 0.3, centred: true }, basketStack: { w: 0.36, d: 0.36, centred: true },
   cafe: { w: 0.9, d: 0.5, centred: true }, bin: { w: 0.24, d: 0.24, centred: true }, speaker: { w: 0.2, d: 0.2, centred: true }, floorLamp: { w: 0.2, d: 0.2, centred: true },
-  wall: { w: 1, d: 0.22, centred: true }, wallWindow: { w: 1, d: 0.22, centred: true }, railing: { w: 1, d: 0.16, centred: true },
 };
+/** How thick a wall across the shop is, on its line (one round the building stands out in the WALL_T band behind it). */
+export const INNER_WALL = 0.22;
 /** The floor a piece's body covers, in tile coordinates (null: nothing to bump into, or no measure: the grid has it). */
 export function solidRect(f: { type: FixtureType; x: number; z: number; rot: number }): Rect | null {
   if (FIXTURES[f.type].walkable) return null;
+  // A wall: its line, as thick as one across the shop (round the building the grid has the band behind it).
+  if (FIXTURES[f.type].edge) { const e = edgeOf(f), h = INNER_WALL / 2; return e.axis === 'x' ? { x0: e.t - 0.5, z0: e.line - h, x1: e.t + 0.5, z1: e.line + h } : { x0: e.line - h, z0: e.t - 0.5, x1: e.line + h, z1: e.t + 0.5 }; }
   const b = BODY[f.type];
   if (!b) return null;
   const along = (f.rot & 1) === 0; // its width runs along x
@@ -735,8 +806,9 @@ export const CHANGED_MIND = 15;
 export function justBought(f: { bought?: number; boughtAt?: number }, now: { day: number; time: number }): boolean {
   return f.bought === now.day && now.time - (f.boughtAt ?? 0) <= CHANGED_MIND;
 }
-/** What a piece fetches back when sold: all it cost just after it was bought, 60% once it has traded. */
-export function refundOf(f: { type: FixtureType; bought?: number; boughtAt?: number; conveyor?: boolean; conveyorBought?: number; conveyorBoughtAt?: number }, now: { day: number; time: number }, conveyorPrice = 0): number {
+/** What a piece fetches back when sold: all it cost just after it was bought, 60% once it has traded (nothing for a wall the shop came with). */
+export function refundOf(f: { type: FixtureType; bought?: number; boughtAt?: number; conveyor?: boolean; conveyorBought?: number; conveyorBoughtAt?: number; free?: boolean }, now: { day: number; time: number }, conveyorPrice = 0): number {
+  if (f.free) return 0;
   const full = FIXTURES[f.type].price + (f.conveyor ? conveyorPrice : 0);
   if (justBought(f, now)) return full;
   // (A belt just fitted to an older till: all of the belt back, 60% of the till.)

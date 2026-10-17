@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { applyCommand, type GameState } from './index';
 import { openGame } from './testUtil';
 import { storeysOf, zOnLevel, tileKey, highCeilings, tilePrice, tilePriceAt, floorTileCount, levelTileList, RESALE } from './layout';
-import { canBuyTile, canSellTile, canPaintFloor, floorCost, styleAt } from './build';
+import { canBuyTile, canSellTile, canPaintFloor, floorCost, styleAt, openEdges } from './build';
 import { PANEL_PRICE } from './storeys';
 
 function shop(seed: number): GameState {
@@ -13,13 +13,14 @@ function shop(seed: number): GameState {
 const place = (s: GameState, fixtureType: 'stairs' | 'wallLight' | 'elevator', x: number, z: number, rot: 0 | 1 | 2 | 3 = 0) => applyCommand(s, { type: 'placeFixture', fixtureType, x, z, rot });
 
 describe('upstairs as the shop grows', () => {
-  it('grows every open floor with a tile bought, and the lights on its walls move out with them', () => {
+  it('grows every open floor with a tile bought; the walls, and the lights on them, stay where they stand', () => {
     const s = shop(81);
     // Three floors: stairs on the ground floor, and on the first.
     expect(place(s, 'stairs', 0.5, -2, 0).ok).toBe(true);
     expect(place(s, 'stairs', -0.5, zOnLevel(-2, 1), 0).ok).toBe(true);
     expect(storeysOf(s.shop).top).toBe(2);
-    // A wall light on the left wall of every floor.
+    // The floors up there come open all round: walled, then a wall light on the left wall of every floor.
+    expect(applyCommand(s, { type: 'wallUp' }).ok).toBe(true);
     for (const L of [0, 1, 2]) expect(place(s, 'wallLight', -2.5, zOnLevel(-2, L), 1).ok, `floor ${L}`).toBe(true);
     // Its panels over the two floors up there are paid for, at the panel price, as any panel is.
     const check = canBuyTile(s, -3.5, -2), cash = s.cash;
@@ -31,10 +32,10 @@ describe('upstairs as the shop grows', () => {
     const st = storeysOf(s.shop);
     for (const L of [0, 1, 2]) expect(st.floors[L]!.has(tileKey(-3.5, -2)), `floor ${L}`).toBe(true);
     expect(s.shop.ceilings!.slice(0, 3).every((row) => row.includes(tileKey(-3.5, -2)))).toBe(true);
-    // Each light went out with its wall.
-    expect(s.shop.fixtures.filter((f) => f.type === 'wallLight').map((f) => f.x)).toEqual([-3.5, -3.5, -3.5]);
-    // Sold back (the lights moved off it first), it pays 60% of all of it: never more than it cost.
-    for (const f of s.shop.fixtures.filter((q) => q.type === 'wallLight')) expect(applyCommand(s, { type: 'removeFixture', fixtureId: f.id }).ok).toBe(true);
+    // Each light stays on its wall, which stands where it did (across the shop now); the new tile is open beyond it, on every floor.
+    expect(s.shop.fixtures.filter((f) => f.type === 'wallLight').map((f) => f.x)).toEqual([-2.5, -2.5, -2.5]);
+    expect(openEdges(s.shop).filter((g) => g.x === -3.5).length).toBe(9);
+    // Sold back, it pays 60% of all of it: never more than it cost.
     const sale = canSellTile(s, -3.5, -2);
     expect(sale.price).toBe(-Math.round(RESALE * (check.price - 2 * PANEL_PRICE)) - 2 * Math.round(RESALE * PANEL_PRICE));
     expect(-sale.price).toBeLessThan(check.price);
@@ -101,7 +102,15 @@ describe('finishes upstairs', () => {
 
   it('will not grow the shop with its delivery pallet where someone gets on a lift', () => {
     const s = shop(84);
-    // Floor round to the back-left corner of the market hall, and a lift there stepped into from that corner.
+    // The back door out of the way (a wall taken down for it along the back), floor round to the back-left corner of the
+    // market hall, and a lift there stepped into from that corner.
+    const bd = s.shop.fixtures.find((f) => f.type === 'backDoor')!;
+    const moved = [0.5, 1.5].some((x) => {
+      const spot = s.shop.fixtures.find((f) => f.type === 'wall' && f.rot === 0 && f.x === x && f.z === -6)!;
+      if (!applyCommand(s, { type: 'removeFixture', fixtureId: spot.id }).ok) return false;
+      return applyCommand(s, { type: 'moveFixture', fixtureId: bd.id, x, z: -6, rot: 0 }).ok;
+    });
+    expect(moved).toBe(true);
     for (const [x, z] of [[-0.5, -7], [-1.5, -7], [-2.5, -7], [-3.5, -7], [-3.5, -8], [-2.5, -8]] as const) expect(applyCommand(s, { type: 'buyTile', x, z }).ok, `${x},${z}`).toBe(true);
     expect(place(s, 'elevator', -2.5, -8, 3).ok).toBe(true);
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).message).toBe('The delivery pallet would go where you get on the lift: move it first.');

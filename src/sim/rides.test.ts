@@ -691,7 +691,8 @@ describe('a click nobody can walk to', () => {
     const id = (t: FixtureType) => s.shop.fixtures.find((f) => f.type === t)!.id;
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: id('fridge') }).ok).toBe(true);
     expect(applyCommand(s, { type: 'moveFixture', fixtureId: id('register'), x: 1.5, z: -2, rot: 0 }).ok).toBe(true);
-    for (const [x, z] of [[1.5, -6], [0.5, -5], [1.5, -4]] as const) expect(place(s, 'wall', x, z).ok, `wall at ${x}, ${z}`).toBe(true);
+    // The tile (1.5, -5) walled on its three sides off the right wall: a spot nobody gets into.
+    for (const rot of [0, 1, 2] as const) expect(place(s, 'wall', 1.5, -5, rot).ok, `wall on side ${rot}`).toBe(true);
     return s;
   }
   const out = (s: GameState) => findPath(gridFor(s), owner(s), doorOutside(s));

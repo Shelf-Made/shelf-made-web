@@ -18,9 +18,10 @@ describe('paint, pictures, looks and refunds', () => {
     expect(applyCommand(s, { type: 'paintFloor', x: t.x, z: t.z, style: 'marble' }).ok).toBe(true);
     expect(s.shop.tileColors?.[tileKey(t.x, t.z)]).toBeUndefined();
     // A wall too.
-    const w = wallSegments(s.shop)[0]!;
+    const w = wallSegments(s.shop).find((x) => x.type === 'wall')!;
     expect(applyCommand(s, { type: 'paintWall', key: w.key, style: 'paint', colour: '#FF00AA' }).ok).toBe(true);
-    expect(s.shop.wallColors?.[w.key]).toBe('#FF00AA');
+    // (On the wall itself: it goes where the wall goes.)
+    expect(s.shop.fixtures.find((f) => f.id === w.id)!.paint).toBe('#FF00AA');
   });
 
   it('lays your own picture once you have chosen one (a small one)', () => {

@@ -44,12 +44,13 @@ export function layoutQuality(state: GameState): number {
   const shop = state.shop;
   // Every open floor counts: shelves upstairs have the room up there.
   const tiles = shopArea(shop);
-  const fixtures = shop.fixtures.filter((f) => f.type !== 'register' && f.type !== 'kiosk' && !FIXTURES[f.type].walkable && !FIXTURES[f.type].outdoor);
+  // (Walls are no fixtures to shop at: round the shop or across it, they stand on edges.)
+  const fixtures = shop.fixtures.filter((f) => f.type !== 'register' && f.type !== 'kiosk' && !FIXTURES[f.type].walkable && !FIXTURES[f.type].outdoor && !FIXTURES[f.type].edge);
   const density = fixtures.length / Math.max(1, tiles);
   const densityScore = density < 0.15 ? density / 0.15 * 0.6 : density <= 0.45 ? 0.6 + (density - 0.15) / 0.3 * 0.4 : Math.max(0.2, 1 - (density - 0.45) * 2);
   const endcaps = Math.min(2, fixtures.filter((f) => f.type === 'endcap' || f.type === 'rack').length) * 0.08;
   const signs = Math.min(2, fixtures.filter((f) => f.type === 'sign').length) * 0.06;
-  const decor = Math.min(3, shop.fixtures.filter((f) => f.type !== 'sign' && (FIXTURES[f.type].looks ?? 0) > 0).length) * 0.03;
+  const decor = Math.min(3, shop.fixtures.filter((f) => f.type !== 'sign' && !f.free && (FIXTURES[f.type].looks ?? 0) > 0).length) * 0.03;
   // A lot that looks cared for (flowers, trees, paving) draws people in off the street.
   return clamp01(densityScore * 0.75 + endcaps + signs + decor + 0.06 * lotAppeal(shop));
 }

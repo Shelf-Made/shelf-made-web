@@ -566,7 +566,15 @@ test.describe('screenshots', () => {
     ];
     for (const [fixtureType, x, z, rot] of put) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType, x, z, rot });
     await hooks(page, 'dispatch', { type: 'setFloor', style: 'wood' });
-    for (const z of [-7, -5, -4, -3, -2, -1]) await hooks(page, 'dispatch', { type: 'placeFixture', fixtureType: 'window', x: -3.5, z, rot: 1 });
+    // Windows down the left wall: each wall there swapped for a wall with a window.
+    await page.evaluate(() => {
+      const h = (window as unknown as { __shelf: { state: () => { shop: { fixtures: { id: number; type: string; x: number; z: number; rot: number }[] } }; dispatch: (c: unknown) => unknown } }).__shelf;
+      for (const z of [-7, -5, -4, -3, -2, -1]) {
+        const w = h.state().shop.fixtures.find((f) => f.type === 'wall' && f.x === -3.5 && f.z === z && f.rot === 1);
+        if (w) h.dispatch({ type: 'removeFixture', fixtureId: w.id });
+        h.dispatch({ type: 'placeFixture', fixtureType: 'wallWindow', x: -3.5, z, rot: 1 });
+      }
+    });
     await follow(page, 0, -3.5, 10, 0, 2000);
     await page.keyboard.press('KeyB');
     await page.locator('.card.t-build').getByRole('tab', { name: 'Furniture' }).click();

@@ -23,6 +23,8 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
   | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'
+  /** The shop's own doors: in at the front, deliveries and staff at the back (one of each, moved but never bought or sold). */
+  | 'frontDoor' | 'backDoor'
   | 'floorLamp' | 'wallLight' | 'pendant' | 'neon'
   /** Security: a camera on the wall, a dome on the ceiling, a smart dome, and tag gates by the door. */
   | 'camera' | 'dome' | 'smartCam' | 'tagGate'
@@ -66,8 +68,17 @@ export interface FixtureDef {
   category: BuildCategory;
   /** People walk over or under it (a rug, a doorway, a light on the wall): it never blocks a tile. */
   walkable?: boolean;
-  /** Hangs on a wall: its back must be against the shop's outer wall. */
+  /** Hangs on a wall: there must be a wall on the edge of its tile behind it. */
   onWall?: boolean;
+  /**
+   * Stands on the line between two tiles (a wall, a door): on the edge of its tile behind it (as `onWall`, facing
+   * into its tile), never on the tile itself, so a shelf can stand in front of it. One to an edge.
+   */
+  edge?: boolean;
+  /** One the shop comes with and always has (its doors): it moves, but is never bought, sold or turned. */
+  fixed?: boolean;
+  /** Not on the Build card: the doors, and the old Window (a Wall with window now). */
+  unlisted?: boolean;
   /** Hangs from the ceiling: it shares its tile with whatever stands on the floor under it. */
   overhead?: boolean;
   /** Chilled, but takes goods that need no fridge too (fruit and veg on the chilled stand, crisps in the vending machine). */
@@ -119,6 +130,11 @@ export interface Fixture {
   bikes?: (number | null)[];
   /** Aisle sign only: your own words on it. */
   text?: string;
+  /** A wall the shop came with (or put up for nothing when a wall was pushed out): nothing back for it, and no looks. */
+  free?: boolean;
+  /** A wall: the finish on its inside face where it differs from the shop's `wallStyle`, and its colour when painted. */
+  finish?: WallStyle;
+  paint?: string;
 }
 
 export type CustomerType = 'bargain' | 'convenience' | 'loyalist' | 'impulse';
@@ -421,12 +437,13 @@ export interface Shop {
   scheme: string;
   /** The floor's finish (older saves: the checker lino). */
   floorStyle?: FloorStyle;
-  /** The inside finish of the outer walls, stretch by stretch where it differs from `wallStyle` (keys from wallKey). Old saves had painted bands, said nowhere: written down on loading (bandsWrittenDown). */
+  /** The inside finish of walls that have none of their own (a wall's `finish`). Old saves had painted bands, said nowhere: written down on loading (bandsWrittenDown). */
   wallStyle?: WallStyle;
+  /** Old saves only (walls drawn round the floor): each stretch's finish and colour, by wallKey, handed to its wall piece on loading (wallsToPieces). */
   wallStyles?: Record<string, WallStyle>;
-  /** Stretches of wall painted any colour you like: their colour, by stretch. */
   wallColors?: Record<string, string>;
-  /** Windows bought for the side and back walls. */
+  /** The walls are pieces (Fixture with an `edge` type), put up, moved and sold like any other. Older saves drew them round the floor: turned into pieces on loading. */
+  walled?: boolean;
   /** Old saves only: whole walls of windows, turned into Window pieces on load. */
   windows?: Partial<Record<WindowSide, boolean>>;
   /**

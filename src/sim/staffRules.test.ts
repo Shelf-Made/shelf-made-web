@@ -192,8 +192,11 @@ describe('security', () => {
     const taken = (x: number, z: number) => s.shop.fixtures.some((f) => f.x === x && f.z === z);
     const lamp = placeAnywhere(s, 'pendant', taken);
     expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'dome', x: lamp.x, z: lamp.z, rot: 0 }).message).toBe('Something is already there');
+    const kiosk = placeAnywhere(s, 'kiosk', taken);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'smartCam', x: kiosk.x, z: kiosk.z, rot: 0 }).ok).toBe(false);
+    // A wall stands on an edge of its tile, not in the middle: a camera goes up over that tile.
     const wall = placeAnywhere(s, 'wall', taken);
-    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'smartCam', x: wall.x, z: wall.z, rot: 0 }).ok).toBe(false);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'smartCam', x: wall.x, z: wall.z, rot: 0 }).ok).toBe(true);
     // And the other way round: nothing tall goes up under a dome.
     const dome = placeAnywhere(s, 'dome', taken);
     expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'pendant', x: dome.x, z: dome.z, rot: 0 }).ok).toBe(false);

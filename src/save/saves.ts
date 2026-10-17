@@ -7,7 +7,7 @@ import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
 import { inferGoals } from '@/sim/goals';
 import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
-import { windowsFromSides, stepOnInside, bandsWrittenDown } from '@/sim/build';
+import { windowsFromSides, stepOnInside, bandsWrittenDown, wallsToPieces } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
 import { letOwnerOut, letOthersOut, leaveShutTills } from '@/sim/people';
 import { repathAfterBuild } from '@/sim/storeys';
@@ -117,6 +117,8 @@ export function migrate(file: SaveFile): SaveFile {
   windowsFromSides(st);
   // Painted bands on every wall, said nowhere: written down stretch by stretch, and new walls come plain.
   bandsWrittenDown(st);
+  // Walls drawn round the floor become pieces, each with its finish; one stood in the middle of a tile goes onto an edge of it.
+  wallsToPieces(st);
   // Bays were painted a row at a time: the same bays, in the same order, as a plan to paint one at a time from.
   if (!st.shop.bayPlan) {
     st.shop.bayPlan = paintedBays(st.shop).bays.map((b) => b.id);

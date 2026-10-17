@@ -1,5 +1,6 @@
 import { skyFor } from './weather';
 import { bakeLot } from './drive';
+import { wallsToPieces } from './build';
 import type { GameState, Difficulty, Shop, Fixture, Person, DayStats, Slot } from './types';
 import { DEFAULT_SCHEME, schemeById } from './schemes';
 import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeFrame, lotLayout, deliveryZone, toWorld, yawToWorld, STREET_BAYS, floorTileList, tileKey } from './layout';
@@ -30,10 +31,10 @@ export function makeFixture(id: number, type: Fixture['type'], x: number, z: num
   return f;
 }
 
-/** A bare shell: concrete floor, four walls, a front door and a back door. The player fits it out. */
 /** The bays a new lot comes with: the first row, front to back. */
 const STARTER_BAYS = [0, 1, 2, 3];
 
+/** A bare shell: concrete floor, a front door and a back door (the walls go up as pieces: wallsToPieces). The player fits it out. */
 export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_SCHEME): Shop {
   const plot = PLOTS.find((p) => p.id === plotId) ?? PLOTS[0]!;
   const fr = storeFrame(plot.id);
@@ -87,6 +88,8 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
     market: makeMarket(), bills: [], loans: [], brokeDays: 0, rescueOffered: false, gameOver: false,
     staffPool: [], rules: { ...DEFAULT_RULES }, marketing: makeMarketing(), franchises: [], goals: makeGoals(), tomorrow: null, sky: skyFor(null, opts.seed, 1),
   };
+  // Its walls and doors, every one a piece (the front all glass): move, turn and sell them as you like.
+  wallsToPieces(state);
   state.people.push(makeOwner(state.nextId++, shop, rng));
   refreshPool(state);
   // The lot, laid as tiles: the paths, lanes, yard and four bays a shop starts with, every bit of it yours to change.

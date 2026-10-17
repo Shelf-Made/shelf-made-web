@@ -36,8 +36,8 @@ export class InputController {
       if (e.pointerType === 'touch') { this.touchDown(e); return; }
       c.setPointerCapture(e.pointerId);
       if (e.button === 2) { this.rightDrag = { x: e.clientX, y: e.clientY, moved: 0 }; return; }
-      // A tile tool out (a floor finish, paint, tiles to buy or sell, paving): a press lays the first tile, a drag the rest along the way.
-      if (e.button === 0) this.leftDown = { x: e.clientX, y: e.clientY, moved: false, lx: e.clientX, ly: e.clientY, stock: this.rt.stockTool && this.rt.stockAt(e.clientX, e.clientY, true), tool: !!this.rt.build.tool && this.rt.toolDrag(e.clientX, e.clientY, 'start') };
+      // A tile tool out (a floor finish, paint, tiles to buy or sell, paving), or walls going up: a press does the first tile, a drag the rest along the way.
+      if (e.button === 0) this.leftDown = { x: e.clientX, y: e.clientY, moved: false, lx: e.clientX, ly: e.clientY, stock: this.rt.stockTool && this.rt.stockAt(e.clientX, e.clientY, true), tool: this.rt.dragBuilds && this.rt.toolDrag(e.clientX, e.clientY, 'start') };
     });
     on(c, 'pointermove', (e: PointerEvent) => {
       if (e.pointerType === 'touch') { this.touchMove(e); return; }

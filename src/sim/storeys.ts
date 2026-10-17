@@ -4,8 +4,8 @@
  * are open, their shapes, how upstairs is walked) live with the rest of the floor in layout.ts.
  */
 import type { GameState, FixtureType, FloorStyle, Person, Rot, Vec2, Waypoint, Shop } from './types';
-import { FIXTURES, FLOORS, MAX_LEVELS, inUpperX, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
-import { buildGrid, fixtureStandWorld, fixtureFront, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
+import { FIXTURES, FLOORS, MAX_LEVELS, inUpperX, TICK, VERTICAL, FLOOR_NAMES, footprintOf, edgeOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
+import { buildGrid, fixtureStandWorld, fixtureFront, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, walledBetween, type Grid, type Portal } from './grid';
 import { followPath } from './movement';
 import { dynamicBlockers, setPath, MANAGER_ROOM } from './people';
 import { gridFor } from './state';
@@ -121,10 +121,13 @@ export function reachOf(state: GameState, shop: Shop, grid: Grid = buildGrid(sho
     if (out.rides.has(f.id)) out.floors.add(L + 1);
     // (A way up downstairs is in `rides`; a plant or a wall down there may be shut in.)
     // (A wall shelf is walked up to though nothing bumps into it: it holds stock.)
-    if ((FIXTURES[f.type].walkable && !FIXTURES[f.type].slots) || (!L && (VERTICAL.has(f.type) || (!till && !FIXTURES[f.type].slots)))) continue;
-    const front = fixtureFront(f);
-    if (VERTICAL.has(f.type) ? out.rides.has(f.id) : till ? clear(front) : !!fixtureStandWorld(shop, f, undefined, grid)) out.pieces.add(f.id);
-    if (f.type === 'register' && clear({ x: 2 * f.x + 1 - front.x, z: 2 * f.z + 1 - front.z })) out.behind.add(f.id);
+    // (A wall or a door stands on an edge: nobody goes up to it.)
+    if (FIXTURES[f.type].edge || (FIXTURES[f.type].walkable && !FIXTURES[f.type].slots) || (!L && (VERTICAL.has(f.type) || (!till && !FIXTURES[f.type].slots)))) continue;
+    const front = fixtureFront(f), back = { x: 2 * f.x + 1 - front.x, z: 2 * f.z + 1 - front.z };
+    // (A till is queued at, and served from, its own side of any wall.)
+    const open = (t: Vec2) => clear(t) && !walledBetween(shop, f.x, f.z, t.x - f.x - 0.5, t.z - f.z - 0.5);
+    if (VERTICAL.has(f.type) ? out.rides.has(f.id) : till ? open(front) : !!fixtureStandWorld(shop, f, undefined, grid)) out.pieces.add(f.id);
+    if (f.type === 'register' && open(back)) out.behind.add(f.id);
   }
   for (const p of state.people) {
     if (p.kind === 'walker') continue;
@@ -169,7 +172,9 @@ export function canAddPanel(state: GameState, x: number, z: number): PlaceCheck 
   const k = tileKey(x, gz);
   if (!st.floors[level]!.has(k) && !st.holes[level]!.has(k)) return { ok: false, reason: 'Point at the floor', price };
   if (panelsOver(shop, level).has(k)) return { ok: false, reason: 'There is a panel up there already', price };
-  if (onLevel(shop, level).some((f) => (VERTICAL.has(f.type) || f.type === 'tallWall') && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: 'Something comes up through there', price };
+  if (onLevel(shop, level).some((f) => VERTICAL.has(f.type) && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: 'Something comes up through there', price };
+  // (A tall wall on an edge of it, either side, reaches up there.)
+  if (onLevel(shop, level).some((f) => f.type === 'tallWall' && ((f.x === x && f.z === z) || (edgeOf(f).bx === x && edgeOf(f).bz === z)))) return { ok: false, reason: 'A tall wall reaches up through there', price };
   if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   return { ok: true, reason: 'Ceiling panel (the floor above)', price };
 }
@@ -180,6 +185,7 @@ export function canRemovePanel(state: GameState, x: number, z: number): PlaceChe
   const k = tileKey(x, gz);
   if (!panelsOver(shop, level).has(k)) return { ok: false, reason: 'No panel over this tile', price };
   if (standsOn(shop, level + 1, x, gz)) return { ok: false, reason: 'Move or sell what stands on it upstairs first', price };
+  if (onLevel(shop, level + 1).some((f) => FIXTURES[f.type].edge && f.x === x && groundZ(f.z) === gz)) return { ok: false, reason: 'Move or sell the walls on it upstairs first', price };
   if (onLevel(shop, level).some((f) => VERTICAL.has(f.type) && (() => { const t = rideEnds(f).top; return t.x - 0.5 === x && groundZ(t.z - 0.5) === gz; })())) return { ok: false, reason: 'The stairs come up onto it', price };
   if (state.people.some((p) => { const l = toLocalOf(shop, p); return levelOfPerson(shop, p) === level + 1 && l.x > x && l.x < x + 1 && groundZ(l.z) > gz && groundZ(l.z) < gz + 1; })) return { ok: false, reason: 'Someone is standing on it', price };
   // Everything upstairs still within reach without it.

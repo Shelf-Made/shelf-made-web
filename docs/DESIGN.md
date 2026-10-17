@@ -43,7 +43,8 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 - **RNG**: `mulberry32` seeded from the game seed; one stream per subsystem (customers,
   traffic, events, staff) so adding a system does not reshuffle another.
 - **Pathfinding**: grid A* at 0.5-unit cells over the whole lot, then string-pulled.
-  Fixtures mark cells blocked; people reserve queue slots; a stuck watchdog teleports a
+  Fixtures mark cells blocked, a wall round the shop the band of cells behind it, a wall across
+  the shop the edges between the cells either side of its line; people reserve queue slots; a stuck watchdog teleports a
   person to the nearest free cell after 8 s and logs it (the balance harness asserts zero).
 - **Entities**: `people` (customers, staff, pedestrians), `cars`, `fixtures`, `stock`.
 - **Weather** (`weather.ts`): each day has a sky kind (clear, heat, fair, cloudy, showers, grey,
@@ -89,10 +90,10 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   with Kenney's own clips, head and body merged into one draw; nobody casts a shadow-map shadow
   (a soft instanced blob under every person and car instead), and from far off people become
   instanced stand-ins.
-- The shop: a concrete slab, Kenney walls standing outside the floor rectangle, the name in
-  Fredoka letters on a fascia and a pylon. With the manager inside, the roof comes off and the walls
-  between the camera and the manager drop to stubs; from outside and zoomed out the shop wears its
-  roof. A rival's building that hides the manager drops to stubs the same way.
+- The shop: a concrete slab, Kenney walls (each one a piece: see Walls below) standing just outside
+  the floor's edge, the name in Fredoka letters on a fascia and a pylon. With the manager inside, the
+  roof comes off and the walls between the camera and the manager drop to stubs; from outside and
+  zoomed out the shop wears its roof. A rival's building that hides the manager drops to stubs the same way.
 - Stock is Kenney Food Kit and Mini Market models, scaled uniformly to fit each slot box measured
   from the fixture, front rows first, so nothing clips into shelves or neighbours. The same models
   are rendered once at load into small pictures for the Stock and Prices cards (and the characters
@@ -187,8 +188,29 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   Outside / Shop, each a grid of pictures (rendered at load from the pieces' own models) with name
   and price; the tooltip says what a piece is for. Undo, redo and the view overlays sit in one row
   above, and once a floor above is open, a floor picker (Ground, 1st...) chooses which one you build
-  on. Floors and Shop are lists (a swatch per floor finish; sizes, the car park, windows per wall,
-  the sign, corners).
+  on. Floors and Shop are lists (a swatch per floor finish; sizes, the car park, the sign, corners).
+- **Walls** (Walls tab): every wall is a piece, as Retail Tycoon 2 has them: a Wall, a Wall with
+  window, a Doorway, a Railing, a Gate or a Tall wall stands on an edge of its tile (the edge behind
+  it as it faces: R turns it round the tile), one to an edge, never on the tile, so a shelf stands in
+  front of one. Round the floor it stands in the band just outside the edge, as thick as the shop's
+  walls have always been; across the floor it is a thin wall on the line between two tiles, and
+  nobody steps over its line. A new shop comes walled all round (the front all glass, a front door
+  and a back door), each wall one it came with: taken down for nothing back, and no looks for it.
+  The doors are pieces too: the front door slides along the front wall, the back door goes in any
+  wall at the back; they move, but are never sold or turned. Buying or selling floor never puts a
+  wall up or moves one: a tile sold takes the walls on its edges with nothing beyond them (and a wall
+  across the shop on its edge turns to face the floor it still stands by), a tile bought comes open,
+  the wall it was built against left across the shop. Where the floor meets the outside with no
+  wall, the band is a concrete threshold anyone walks over: shoppers, and shoplifters, come and go
+  there as by a door. The Walls tab counts the open edges and walls them all at once (a wall each,
+  glass along the front) on request; pushing a whole wall out a row (the floor beyond it bought) or
+  pulling it in (the row behind it sold) moves the wall and what hangs on it, and closes the ends.
+  Lights, cameras and wall shelves hang on a plain or tall wall, either side of it; a wall with
+  something hung on it stays put. Nothing is ever used through a wall: a shelf from its own side, a
+  till queued at and served from its own side. A wall's finish (plain, bands, tiles...) is its own
+  and goes where it goes. Older saves' walls, drawn round the floor, become pieces on loading, each
+  with the finish its stretch had; a Window becomes a Wall with window, and a wall that stood in the
+  middle of a tile goes onto an edge of it.
 - **The lot** (Outside tab): all tiles, on a grid of its own that sits flush with the outside of the
   walls (whole x, half z), from the plot's edges to the frontage sidewalk. Each tile is grass or laid
   with concrete, tarmac, gravel, sidewalk slabs or brick, and any of it, the paths, car park and yard a
@@ -261,7 +283,8 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Patience | 90–180 s per customer, type-dependent | lines visibly back up |
 | Day-1 fit-out | counter $180, two shelves (4 slots × 8), a chiller $200 (4 × 6), first order ≈ $120 | balance harness pays for it |
 | Fixture prices | shelf $85, produce stand $60, end cap $70, chiller $200, tall fridge $300, counter $180, kiosk $650 | each ≤ 5 days of a guided player's income |
-| Shop sizes | 5×6 (start), then a tile (or a wall's row) at a time, as far as 19 × 11 tiles on the plot; the balance bots still buy 7×7 and 9×8 in one go | |
+| Shop sizes | 5×6 (start), then a tile (or a wall's row) at a time, as far as 19 × 11 tiles on the plot; the balance bots still buy 7×7 and 9×8 in one go (walled as the shop came) | |
+| Walls | Wall $40, with window $70, doorway $55, railing $25, gate $35, tall wall $75; the 22 a new shop comes with are free, and fetch nothing | |
 | The lot | concrete $3, gravel $4, tarmac $6, slabs $8, brick $12 a tile; a parking bay $60 plus tarmac where there is none; the starting lot has four bays and room down the side for eight | |
 | Town | one crossroads: Main Road on z = 2.5, Elm Street on x = 0, a 20.6 × 14.15 lot on each corner (fits the largest shop with the doubled lot), south corners turned half round; nothing beyond the corners | tests assert lots never overlap or touch a road, and only roads run on past the town |
 | Traffic | spawns and leaves at ±90 down both roads, in the haze; a 36 s light with an all-walk phase; keeps a 2-unit gap, drives the lot's tarmac to a bay and backs out of it (yours: on whatever tarmac you lay), pulls in and out of three Elm Street bays 3.4 apart; a parked car whose driver has gone drives off | tests: no overlaps at rush hour, nobody runs a red, turned-away cars never stuck |

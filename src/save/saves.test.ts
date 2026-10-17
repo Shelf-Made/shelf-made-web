@@ -2,10 +2,10 @@ import { openGame } from '@/sim/testUtil';
 import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
-import { tick, SAVE_VERSION, TICK, gridFor, findPath, applyCommand, type GameState, type Person } from '@/sim/index';
-import { toWorld, toLocal, zOnLevel, rideEnds, isFloor, wallSegments, lotLayout, yawToWorld, onBuilding, lotKey } from '@/sim/layout';
+import { tick, SAVE_VERSION, TICK, gridFor, findPath, applyCommand, newGame, type GameState, type Person } from '@/sim/index';
+import { toWorld, toLocal, zOnLevel, rideEnds, isFloor, wallSegments, lotLayout, yawToWorld, onBuilding, lotKey, edgePieceAt, edgeOf, FIXTURES } from '@/sim/layout';
 import { onLotGrid, bayCentre } from '@/sim/drive';
-import { wallStyleAt } from '@/sim/build';
+import { wallStyleAt, openEdges } from '@/sim/build';
 import { looksOf } from '@/sim/reviews';
 import { ensureCeilings, levelOfPerson } from '@/sim/storeys';
 import { cellOf, cellIndex, inBounds, isBlocked, reachableCells } from '@/sim/grid';
@@ -277,9 +277,10 @@ describe('saves', () => {
     s.people = [o];
     for (const f of s.shop.fixtures) { f.queue = f.queue && []; f.serving = null; }
     for (const role of ['stocker', 'cleaner'] as const) { const k = makeCandidate(s, role); s.staffPool.push(k); expect(applyCommand(s, { type: 'hire', candidateId: k.id }).ok).toBe(true); }
-    for (const [x, z] of [[-1.5, -4], [-0.5, -4], [-0.5, -5]] as const) s.shop.fixtures.push({ id: s.nextId++, type: 'wall', x, z, rot: 0, slots: [] });
-    s.shop.layoutVersion++;
+    // Walls on every edge of a shelf's tile (as no rule now lets them be put).
     const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    for (const rot of [0, 1, 2, 3] as const) if (!edgePieceAt(s.shop.fixtures, shelf.x, shelf.z, rot)) s.shop.fixtures.push({ id: s.nextId++, type: 'wall', x: shelf.x, z: shelf.z, rot, slots: [] });
+    s.shop.layoutVersion++;
     shelf.slots[0]!.qty = 0;
     s.shop.storage = [{ productId: shelf.slots[0]!.productId!, qty: 20, day: s.day }];
     s.phase = 'open';
@@ -295,24 +296,32 @@ describe('saves', () => {
     expect(applyCommand(t, { type: 'carry', fixtureId: shelf.id }).message).toBe("You can't get there.");
   });
 
-  it("keeps an older save's painted walls, and walls it gains come plain, never paint to sell back", () => {
+  it("keeps an older save's painted walls, as pieces, and walls it gains come plain, never paint to sell back", () => {
     const s = openGame({ seed: 6, plotId: 'main', name: 'Bands', tutorial: false });
-    // Saved before wall finishes went on a stretch at a time: painted bands all round, said nowhere.
+    // Saved before wall finishes went on a stretch at a time (painted bands all round, said nowhere), and before the
+    // walls were pieces (drawn round the floor).
     delete s.shop.wallStyle; delete s.shop.ceilings;
     const looks = looksOf(s).score;
-    const t = parse(serialize(s)).state, was = wallSegments(t.shop).map((w) => w.key);
-    expect(was.every((k) => wallStyleAt(t.shop, k) === 'bands')).toBe(true);
+    delete s.shop.walled;
+    s.shop.fixtures = s.shop.fixtures.filter((f) => !FIXTURES[f.type].edge);
+    const t = parse(serialize(s)).state, was = wallSegments(t.shop);
+    // Every edge of the floor walled again, each wall with its bands, the doors where they were.
+    expect(was.length).toBe(22);
+    expect(was.filter((w) => w.type === 'wall' || w.type === 'wallWindow').every((w) => wallStyleAt(t.shop, w.key) === 'bands')).toBe(true);
+    expect(t.shop.fixtures.filter((f) => f.type === 'frontDoor' || f.type === 'backDoor').map((f) => f.type).sort()).toEqual(['backDoor', 'frontDoor']);
     expect(looksOf(t).score).toBeCloseTo(looks, 6);
     const o = t.people.find((p) => p.kind === 'owner')!, by = toWorld(t.shop, t.shop.door.x, t.shop.floor.z1 + 0.8);
     o.x = o.px = by.x; o.z = o.pz = by.z;
-    // A panel down makes walls round the space above; painting them plain and the panel back up pays nothing.
+    // A wall taken down and put back up is a new one: plain, and painting it plain pays nothing back.
     t.cash = 1000;
-    expect(applyCommand(t, { type: 'removePanel', x: -1.5, z: -3 }).ok).toBe(true);
-    const fresh = wallSegments(t.shop).filter((w) => !was.includes(w.key));
-    expect(fresh.length).toBeGreaterThan(0);
-    for (const w of fresh) { expect(wallStyleAt(t.shop, w.key)).toBe('plain'); applyCommand(t, { type: 'paintWall', key: w.key, style: 'plain' }); }
-    expect(applyCommand(t, { type: 'addPanel', x: -1.5, z: -3 }).ok).toBe(true);
-    expect(t.cash).toBeLessThan(1000);
+    const left = t.shop.fixtures.find((f) => f.type === 'wall' && f.rot === 1 && f.x === t.shop.floor.x0)!, at = { x: left.x, z: left.z };
+    expect(applyCommand(t, { type: 'removeFixture', fixtureId: left.id }).ok).toBe(true);
+    expect(t.cash).toBe(1000);
+    expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'wall', ...at, rot: 1 }).ok).toBe(true);
+    const fresh = wallSegments(t.shop).find((w) => w.id === t.shop.fixtures[t.shop.fixtures.length - 1]!.id)!;
+    expect(wallStyleAt(t.shop, fresh.key)).toBe('plain');
+    expect(applyCommand(t, { type: 'paintWall', key: fresh.key, style: 'plain' }).ok).toBe(false);
+    expect(t.cash).toBe(1000 - FIXTURES.wall.price);
   });
 
   it('lays an older lot out as tiles: its paths and lanes to dig up, each bay a Parking bay, every parked car still in its own', () => {
@@ -363,5 +372,29 @@ describe('saves', () => {
     expect(worst).toBeGreaterThan(0.75);
     expect(parkedLater).toBeGreaterThan(0);
     for (const id of before.keys()) expect(loaded.cars.some((c) => c.id === id && c.state === 'parked')).toBe(false);
+  });
+});
+
+describe('walls as pieces, from an older save', () => {
+  it('an older save: its drawn walls become pieces with their finishes, a Window a wall with a window, a wall in a tile goes onto its edge', () => {
+    const s = newGame({ seed: 3, plotId: 'main', name: 'Walls' });
+    // As it was saved before walls were pieces: none, a stretch of brick, a Window in the left wall, a wall across a tile.
+    s.shop.fixtures = s.shop.fixtures.filter((f) => !FIXTURES[f.type].edge);
+    delete s.shop.walled;
+    const f = s.shop.floor;
+    s.shop.wallStyles = { [`left@${f.x0}@-3.5`]: 'brick' };
+    s.shop.fixtures.push({ id: s.nextId++, type: 'window', x: f.x0, z: -5, rot: 1, slots: [] }, { id: s.nextId++, type: 'wall', x: 0.5, z: -3, rot: 0, slots: [] });
+    const t = parse(serialize(s)).state;
+    expect(t.shop.walled).toBe(true);
+    expect(openEdges(t.shop)).toEqual([]);
+    expect(wallStyleAt(t.shop, `left@${f.x0}@-3.5`)).toBe('brick');
+    expect(edgePieceAt(t.shop.fixtures, f.x0, -5, 1)!.type).toBe('wallWindow');
+    expect(t.shop.fixtures.some((x) => x.type === 'window')).toBe(false);
+    const across = t.shop.fixtures.find((x) => x.type === 'wall' && !x.free)!;
+    expect(edgeOf(across)).toMatchObject({ axis: 'x', line: -3, t: 1 });
+    expect(wallSegments(t.shop).length).toBe(22);
+    // Loaded again, nothing more changes.
+    const u = parse(serialize(t)).state;
+    expect(u.shop.fixtures.length).toBe(t.shop.fixtures.length);
   });
 });

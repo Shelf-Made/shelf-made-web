@@ -315,6 +315,30 @@ test('click a piece of furniture with empty hands to move it, turn it or sell it
   expect((await state(page)).cash).toBeGreaterThan(cash);
 });
 
+test('walls are pieces: one clicked opens its menu, a door only moves, and the floor inside a wall cut down is clicked over it', async ({ page }) => {
+  await ready(page);
+  await hooks(page, 'newGame', 7, 'main', 'Walls', { tutorial: false });
+  await hooks(page, 'setSpeed', 0);
+  // The camera out front looking in (the front cut down to a ledge, the door clear of the toolbar), nothing before the manager.
+  await hooks(page, 'fp', 0.5, -1.5, 0);
+  await settle(page, 600);
+  // The left wall, standing full height: one the shop came with, so it comes down for nothing.
+  await pointAt(page, -2.75, -2.5, 1.5);
+  await expect.poll(() => aimText(page)).toBe('Wall: Move, Turn or Take down');
+  await clickAt(page, -2.75, -2.5, 1.5);
+  const menu = page.getByRole('menu', { name: 'Wall' });
+  await expect(menu.getByRole('menuitem')).toHaveText(['Move', 'Turn', 'Take down']);
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  // The front door moves along the front, and that is all.
+  const door = (await hooks<{ shop: { door: { x: number } } }>(page, 'state')).shop.door;
+  await pointAt(page, door.x, 0.25, 1.0);
+  await expect.poll(() => aimText(page)).toBe('Front door: Move');
+  // Just inside the front windows (drawn as a ledge from here): the floor is what the pointer is on, not the wall.
+  await pointAt(page, -1.5, -0.6);
+  expect(await aimText(page)).not.toMatch(/wall/i);
+});
+
 test("the day's log: closes and comes back, gives way to a card, says when Staff opens, and is kept in Stats", async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 8, 'main', 'Logbook', { tutorial: false });
@@ -418,12 +442,20 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   await clickAt(page, 0.0, -1.5);
   await expect.poll(async () => (await hooks<{ shop: { tileStyles?: Record<string, string> } }>(page, 'state')).shop.tileStyles?.['-0.5,-2']).toBe('wood');
   await page.keyboard.press('Escape');
+  // Walls: a window in the left wall. The wall there is picked up and sold (it came with the shop: nothing back), and a
+  // wall with a window put up in its place, turned with R onto that edge of the tile.
   await build.getByRole('tab', { name: 'Walls' }).click();
-  await build.getByRole('button', { name: /^Window/ }).dispatchEvent('click');
+  await expect(build.locator('.build-grid .build-tile b')).toHaveText(['Wall', 'Wall with window', 'Doorway', 'Railing', 'Gate', 'Tall wall']);
+  const left = (await state(page)).shop.fixtures.find((f) => f.type === 'wall' && f.x === -2.5 && f.z === -3 && f.rot === 1)!;
+  await page.evaluate((id) => (window as unknown as { __shelf: { runtime: { selectFixture: (id: number) => void } } }).__shelf.runtime.selectFixture(id), left.id);
+  await build.getByRole('button', { name: 'Sell' }).click();
+  await expect.poll(async () => (await state(page)).shop.fixtures.some((f) => f.id === left.id)).toBe(false);
+  await build.getByRole('button', { name: /^Wall with window/ }).dispatchEvent('click');
   await pointAt(page, -2.0, -2.5);
-  await expect.poll(() => aimText(page)).toMatch(/^Place Window/);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Wall with window/);
+  await page.keyboard.press('KeyR');
   await clickAt(page, -2.0, -2.5);
-  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'window').map((f) => `${f.x},${f.z},${f.rot}`)).toEqual(['-2.5,-3,1']);
+  await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'wallWindow' && f.rot === 1).map((f) => `${f.x},${f.z},${f.rot}`)).toEqual(['-2.5,-3,1']);
 });
 
 test('building up: stairs open the first floor, a shelf goes up there, and a ceiling panel comes down', async ({ page }) => {
@@ -562,8 +594,7 @@ test('upstairs as it looks: nothing picked through the floor, the stairs ridden 
   await clickAt(page, 3.5, 2.0);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'flowerBed').map((f) => `${f.x},${f.z}`)).toEqual(['3,1.5']);
   await page.keyboard.press('Escape');
-  // Selling tiles from the first floor sells the column under the boards pointed at (not the corner right of the
-  // door: past the stairs, the only way round behind the counter), its edge tiles too, and the tile lit is that one.
+  // Selling tiles from the first floor sells the column under the boards pointed at, its edge tiles too, and the tile lit is that one.
   await build.getByRole('tab', { name: 'Shop' }).click();
   await build.getByRole('button', { name: 'Sell tiles' }).click();
   const hover = () => page.evaluate(() => (window as unknown as { __shelf: { runtime: { build: { hover: { x: number; z: number } | null } } } }).__shelf.runtime.build.hover);
@@ -1017,8 +1048,11 @@ test('a window put in breaks no shader', async ({ page }) => {
   await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
   await hooks(page, 'quickSetup', false);
   await hooks(page, 'setSpeed', 0);
-  // A window in the side wall, seen from inside (the walls between cut down, the window's trim with them): every program compiles.
-  expect((await hooks<{ ok: boolean; message?: string }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'window', x: -2.5, z: -3, rot: 1 })).message).toBeUndefined();
+  // A window in the side wall (the wall there swapped for a wall with a window), seen from inside (the walls between cut
+  // down, the window's frame with them): every program compiles.
+  const wall = (await state(page)).shop.fixtures.find((f) => f.type === 'wall' && f.x === -2.5 && f.z === -3 && f.rot === 1)!;
+  expect((await hooks<{ ok: boolean; message?: string }>(page, 'dispatch', { type: 'removeFixture', fixtureId: wall.id })).message).toBeUndefined();
+  expect((await hooks<{ ok: boolean; message?: string }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'wallWindow', x: -2.5, z: -3, rot: 1 })).message).toBeUndefined();
   for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) { await hooks(page, 'fp', -0.5, -2.5, yaw); await drawFrames(page, 3); }
   expect(errors).toEqual([]);
 });

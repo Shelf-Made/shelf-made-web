@@ -128,8 +128,8 @@ describe('furniture earns its place', () => {
     // What they want at either end of the market hall, a bench between.
     const ends: [number, string][] = [[-4.5, 'rice'], [3.5, 'flour'], [-4.5, 'sugar'], [3.5, 'coffee']];
     for (const [x, id] of ends) {
-      if (!s.shop.fixtures.some((f) => f.x === x && f.z === -5)) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x, z: -5, rot: x < 0 ? 1 : 3 }).ok).toBe(true);
-      const sl = s.shop.fixtures.find((f) => f.x === x && f.z === -5)!.slots.find((q) => !q.productId)!;
+      if (!s.shop.fixtures.some((f) => f.type === 'shelf' && f.x === x && f.z === -5)) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x, z: -5, rot: x < 0 ? 1 : 3 }).ok).toBe(true);
+      const sl = s.shop.fixtures.find((f) => f.type === 'shelf' && f.x === x && f.z === -5)!.slots.find((q) => !q.productId)!;
       sl.productId = id; sl.qty = 8;
     }
     expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'bench', x: -0.5, z: -5, rot: 0 }).ok).toBe(true);
@@ -162,8 +162,8 @@ describe('furniture earns its place', () => {
   it('nobody asks at a help desk walled in where nobody can get to it', () => {
     const s = shop(41);
     s.cash = 50000;
-    // In the front-left corner, walls on its two open sides.
-    for (const [type, x, z, rot] of [['desk', -2.5, -1, 1], ['wall', -1.5, -1, 0], ['wall', -2.5, -2, 0]] as const) expect(applyCommand(s, { type: 'placeFixture', fixtureType: type, x, z, rot }).ok, type).toBe(true);
+    // In the front-left corner, walls on its two open sides (the edges of its tile toward the shop).
+    for (const [type, x, z, rot] of [['desk', -2.5, -1, 1], ['wall', -2.5, -1, 3], ['wall', -2.5, -1, 0]] as const) expect(applyCommand(s, { type: 'placeFixture', fixtureType: type, x, z, rot }).ok, `${type} ${rot}`).toBe(true);
     const shelved = new Set(s.shop.fixtures.flatMap((f) => f.slots.map((sl) => sl.productId)));
     const extra = PRODUCTS.find((p) => !shelved.has(p.id) && !p.chilled)!.id;
     s.shop.storage.push({ productId: extra, qty: 20, day: s.day });

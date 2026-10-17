@@ -69,9 +69,12 @@ export function FixtureMenu({ runtime, menu }: { runtime: GameRuntime; menu: Non
           </button>
         )}
         <button type="button" role="menuitem" className="fm-btn" onClick={act('move')}>{MOVE}<span>Move</span></button>
-        <button type="button" role="menuitem" className="fm-btn" onClick={act('turn')}>{TURN}<span>Turn</span></button>
+        {!menu.door && <button type="button" role="menuitem" className="fm-btn" onClick={act('turn')}>{TURN}<span>Turn</span></button>}
         {menu.upgrade && <button type="button" role="menuitem" className="fm-btn upgrade" aria-label={`${menu.upgrade.label} for ${dollars(menu.upgrade.price)}`} onClick={act('upgrade')}>{BELT}<span>{menu.upgrade.label} {dollars(menu.upgrade.price)}</span></button>}
-        <button type="button" role="menuitem" className="fm-btn" aria-label={`Sell for ${dollars(menu.refund ?? 0)}`} onClick={act('sell')}>{SELL}<span>Sell {dollars(menu.refund ?? 0)}</span></button>
+        {/* (A wall the shop came with comes down for nothing; a door stays a door.) */}
+        {!menu.door && (menu.free
+          ? <button type="button" role="menuitem" className="fm-btn" aria-label="Take it down (it came with the shop: nothing back)" onClick={act('sell')}>{SELL}<span>Take down</span></button>
+          : <button type="button" role="menuitem" className="fm-btn" aria-label={`Sell for ${dollars(menu.refund ?? 0)}`} onClick={act('sell')}>{SELL}<span>Sell {dollars(menu.refund ?? 0)}</span></button>)}
       </div>}
     </div>
   );

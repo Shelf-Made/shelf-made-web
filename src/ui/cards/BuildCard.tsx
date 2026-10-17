@@ -3,7 +3,7 @@ import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { FIXTURES, VARIANTS, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, storeysOf, panelsOver } from '@/sim/layout';
 import { PANEL_PRICE } from '@/sim/storeys';
 import { bayReachable, truckStop } from '@/sim/drive';
-import { tileCost, grownCeilings } from '@/sim/build';
+import { tileCost, grownCeilings, openEdges, wallUpPrice } from '@/sim/build';
 import type { BuildCategory, FixtureType } from '@/sim/types';
 import { schemeById } from '@/sim/schemes';
 import { money } from '../useRuntime';
@@ -26,14 +26,15 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   bench: 'A seat by the door', sofa: 'A comfier seat', cafe: 'A table and two chairs', desk: 'Questions answered here', basketStack: 'Baskets by the door',
   trolleys: 'Trolleys for big shops', bin: 'Keeps the floor cleaner', speaker: 'Music in the aisles', screen: 'Shows your offers', bookcase: 'Magazines and papers',
   plant: 'Shoppers like plants', flowers: 'Pots of herbs and flowers', sign: 'Shoppers find things faster', rug: 'Walk on it', doormat: 'Just inside the door',
-  window: 'In a side or back wall, one tile at a time', wall: 'Divide the floor', wallWindow: 'A wall you can see through', doorway: 'A wall you can walk through', railing: 'A low divider', gate: 'A railing you can walk through',
-  floorLamp: 'Warm light after dark', wallLight: 'On an outside wall', pendant: 'Hangs over the aisle', neon: 'On an outside wall, always lit',
+  wall: 'On an edge of a tile: round the shop, or across it. R turns it to another side', wallWindow: 'A wall you can see through: daylight in a side or back wall',
+  doorway: 'A wall you can walk through', railing: 'A low divider on an edge of a tile', gate: 'A railing you can walk through',
+  floorLamp: 'Warm light after dark', wallLight: 'Hangs on a wall', pendant: 'Hangs over the aisle', neon: 'Hangs on a wall, always lit',
   flowerBed: 'Brightens the frontage', planter: 'A tub of greenery', tree: 'Shade and green round the car park', parkBench: 'Somewhere to sit outside',
   parkingBay: 'A place for one car, laid anywhere with its tarmac: the open end needs tarmac from the road',
   bikeRack: `Shoppers ride in and lock up (${RACK_STANDS} bikes); brings in a few more`, billboard: `Your own board: no rent, seen from Main Road (up to ${LOT_MAX.billboard})`,
   stairs: 'Opens the floor above: shoppers climb up to what is on its shelves', escalator: 'Carries shoppers up without the climb: more of them go up',
   elevator: 'A lift to the floor above: one tile, doors on both floors',
-  iceChest: 'Frozen goods and ice cream: 4 big wells', coolProduce: 'All the fruit and veg, the chilled ones too: 3 big slots', wallShelf: 'Two small boards on an outside wall',
+  iceChest: 'Frozen goods and ice cream: 4 big wells', coolProduce: 'All the fruit and veg, the chilled ones too: 3 big slots', wallShelf: 'Two small boards on a wall',
   glassCase: 'Beauty, gadgets, clothes and toys behind glass', displayTable: 'Two tiles of table for toys, gadgets, home and books', bakeryCase: 'Donuts, croissants, muffins, pies and baguettes under glass',
   clothesRail: 'Clothes on a rail, folded ones underneath', queueRail: 'Belt posts: the queue beside them keeps a straight, calmer line', vending: 'Drinks and snacks: shoppers pay at the machine, no till needed',
   camera: 'On a wall, watching the floor in front of it: fewer shoplifters, and one more of your staff gives chase when one runs past it',
@@ -149,7 +150,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   // (Opened again on the Security tab, as it was left: the cameras' view comes back on with it.)
   useEffect(() => { if (tab === 'security' && b.overlay === 'none') runtime.setOverlay('security'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const thumbs = runtime.renderer?.fixtureThumbs ?? {};
-  const items = (Object.keys(FIXTURES) as FixtureType[]).filter((t) => FIXTURES[t].category === tab);
+  const items = (Object.keys(FIXTURES) as FixtureType[]).filter((t) => FIXTURES[t].category === tab && !FIXTURES[t].unlisted);
   const floor = s.shop.floorStyle ?? 'lino';
   const top = storeysOf(s.shop).top;
   return (
@@ -158,9 +159,14 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         <div className="item" style={{ background: b.valid ? '#e9f7f0' : '#fde3dd' }}>
           <div>
             <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'push' ? 'Pushing a wall out' : b.tool.kind === 'pull' ? 'Pulling a wall in' : b.tool.kind === 'panel' ? 'Putting up ceiling panels' : b.tool.kind === 'unpanel' ? 'Taking down ceiling panels' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
-            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'push' || b.tool.kind === 'pull' ? 'Point at an outer wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
+            <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'push' || b.tool.kind === 'pull' ? 'Point at a wall round the shop' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
             {/* (Not on a touch screen, where one finger dragging moves the view: it is a tap a tile there.) */}
             {b.tool.kind !== 'push' && b.tool.kind !== 'pull' && !runtime.eyedropper && !coarse && <div className="sub muted">Drag along a row to do a line of them at once</div>}
+            {/* (Floor comes and goes without walls: where that leaves the shop open, said while it happens.) */}
+            {(b.tool.kind === 'grow' || b.tool.kind === 'sell') && (() => {
+              const n = openEdges(s.shop).length;
+              return n ? <div className="sub need">Open to the outside on {n === 1 ? '1 edge' : `${n} edges`}: shoppers can walk in there. Walls tab to close it up</div> : null;
+            })()}
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
         </div>
@@ -245,8 +251,22 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       )}
       {tab === 'walls' && (
         <>
-          <h3>Move a wall</h3>
-          <p className="muted">Point at an outer wall: push it out a row to make the shop bigger, or pull it in to sell that row of floor back. Inside walls you put up sell from their own menu.</p>
+          <p className="muted">Every wall is a piece: it stands on an edge of a tile, round the shop or across it. Point at a tile and press R to turn it to another side; drag along a row to put up a line. Click one to move, turn or sell it. The doors move too.</p>
+          {(() => {
+            // Where the floor meets the outside with no wall: shoppers (and shoplifters) can walk in and out there.
+            const open = openEdges(s.shop).length, cost = wallUpPrice(s.shop);
+            return open > 0 ? (
+              <div className="item swatched open-edges">
+                <div style={{ flex: 1 }}>
+                  <div className="name">{open === 1 ? '1 edge open to the outside' : `${open} edges open to the outside`}</div>
+                  <div className="sub">Shoppers, and shoplifters, can walk in and out there. Put walls up, or wall every gap at once ({money(cost)}, glass along the front).</div>
+                </div>
+                <button className="btn small" disabled={s.cash < cost} onClick={() => runtime.wallUpGaps()}>Wall up the gaps</button>
+              </div>
+            ) : null;
+          })()}
+          <h3>Move a whole wall</h3>
+          <p className="muted">Point at a wall round the shop: push it out a row (the floor beyond it bought, the walls either side stretched to meet it), or pull it in (the row behind it sold back).</p>
           <div className="row wall-move">
             <button className={`btn small${b.tool?.kind === 'push' ? ' ghost' : ''}`} onClick={() => (b.tool?.kind === 'push' ? runtime.stopPlacing() : runtime.startTool({ kind: 'push' }))}>{b.tool?.kind === 'push' ? 'Done' : 'Push a wall out'}</button>
             <button className={`btn small ghost`} onClick={() => (b.tool?.kind === 'pull' ? runtime.stopPlacing() : runtime.startTool({ kind: 'pull' }))}>{b.tool?.kind === 'pull' ? 'Done' : 'Pull a wall in'}</button>
@@ -332,7 +352,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
       {tab === 'shop' && (
         <>
           <h3>Make the shop bigger</h3>
-          <p className="muted">Push a wall out a whole row at a time, or add floor a tile at a time, up to {MAX_FLOOR.x1 - MAX_FLOOR.x0} × {MAX_FLOOR.z1 - MAX_FLOOR.z0} tiles on this plot. Then build up: stairs open a floor above (Upstairs tab).</p>
+          <p className="muted">Push a wall out a whole row at a time (it moves out with the floor), or add or sell floor a tile at a time, up to {MAX_FLOOR.x1 - MAX_FLOOR.x0} × {MAX_FLOOR.z1 - MAX_FLOOR.z0} tiles on this plot. Tiles come and go without walls: put them up where you want them (Walls tab). Then build up: stairs open a floor above (Upstairs tab).</p>
           {(() => {
             const n = floorTileCount(s.shop), max = (MAX_FLOOR.x1 - MAX_FLOOR.x0) * (MAX_FLOOR.z1 - MAX_FLOOR.z0), price = tileCost(s.shop), up = grownCeilings(s.shop).length, on = b.tool?.kind === 'grow';
             return (

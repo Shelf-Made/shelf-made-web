@@ -2,7 +2,7 @@
 import { Rng, hashString } from './rng';
 import type { GameState, Popup, Vec2, ReactionKind, Complaints } from './types';
 import { buildGrid, type Grid } from './grid';
-import { VERTICAL } from './layout';
+import { VERTICAL, FIXTURES } from './layout';
 
 export function withRng<T>(state: GameState, stream: string, fn: (r: Rng) => T): T {
   const r = new Rng(state.rng[stream] ?? ((state.seed ^ hashString(stream)) >>> 0));
@@ -53,8 +53,8 @@ let wallCache: { key: string; version: number; grid: Grid } | null = null;
 export function wallGridFor(state: GameState): Grid {
   const shop = state.shop;
   const key = `${state.seed}:${shop.plotId}`;
-  // The stairs stay: they open the floors above, and their footprints are walked round.
-  if (!wallCache || wallCache.key !== key || wallCache.version !== shop.layoutVersion) wallCache = { key, version: shop.layoutVersion, grid: buildGrid({ ...shop, fixtures: shop.fixtures.filter((f) => VERTICAL.has(f.type)) }, shop.layoutVersion) };
+  // The walls and doors stay (they are pieces), and the stairs: they open the floors above, and their footprints are walked round.
+  if (!wallCache || wallCache.key !== key || wallCache.version !== shop.layoutVersion) wallCache = { key, version: shop.layoutVersion, grid: buildGrid({ ...shop, fixtures: shop.fixtures.filter((f) => VERTICAL.has(f.type) || FIXTURES[f.type].edge) }, shop.layoutVersion) };
   return wallCache.grid;
 }
 
