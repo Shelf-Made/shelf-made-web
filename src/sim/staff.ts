@@ -5,8 +5,8 @@
 import type { GameState, Person, StaffRole, Candidate, ManagerRules, Look } from './types';
 import { withRng, popup, cue } from './state';
 import { doorOutside } from './people';
-import { FIXTURES } from './layout';
-import { productDef } from './products';
+import { FIXTURES, storageCap, storageUsed } from './layout';
+import { productDef, inSeason, sizeOf } from './products';
 import { placeOrder } from './economy';
 import { formatMoney, dollars } from './money';
 
@@ -209,13 +209,17 @@ export function cashierMistake(state: GameState, cashier: Person, total: number)
 export function autoOrder(state: GameState, rules: ManagerRules, spendCap: number): void {
   const onHand = new Map<string, number>();
   const capacity = new Map<string, number>();
-  for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId) {
+  // A holiday's goods only in their time: a slot still holding them afterwards waits for the next one.
+  for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId && inSeason(productDef(s.productId), state.day)) {
     onHand.set(s.productId, (onHand.get(s.productId) ?? 0) + s.qty);
     capacity.set(s.productId, (capacity.get(s.productId) ?? 0) + FIXTURES[f.type].capacity);
   }
   for (const e of state.shop.storage) onHand.set(e.productId, (onHand.get(e.productId) ?? 0) + e.qty);
   const lines: { productId: string; qty: number }[] = [];
   let spend = 0;
+  // The pallet's room: an order too big for it is refused whole, so a line that will not fit (a stack of
+  // Christmas trees, say) waits for another day and the rest still comes.
+  let room = storageCap(state.shop) - storageUsed(state.shop);
   for (const [pid, cap] of capacity) {
     const have = onHand.get(pid) ?? 0;
     const point = cap * rules.reorderPoint;
@@ -223,6 +227,8 @@ export function autoOrder(state: GameState, rules: ManagerRules, spendCap: numbe
       const qty = Math.max(6, Math.ceil(cap * (rules.stockTarget ?? 1.5) - have));
       const cost = qty * productDef(pid).cost;
       if (spend + cost > spendCap) continue;
+      if (qty * sizeOf(pid) > room) continue;
+      room -= qty * sizeOf(pid);
       spend += cost; lines.push({ productId: pid, qty });
     }
   }

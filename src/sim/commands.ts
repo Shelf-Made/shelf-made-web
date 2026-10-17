@@ -106,7 +106,7 @@ export type Command =
   | { type: 'topUpAll' }
   | { type: 'upgradeTill'; fixtureId: number }
   | { type: 'setFloorImage'; dataUrl: string }
-  | { type: 'recycle'; productId: string }
+  | { type: 'recycle'; productId: string; shelves?: boolean }
   | { type: 'setRules'; rules: Partial<GameState['rules']> }
   | { type: 'ackBadge'; card: string }
   | { type: 'clean'; litterId: number }
@@ -402,7 +402,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const n = topUpAll(state);
       return n > 0 ? { ok: true, message: `${n} units shelved.` } : { ok: false, message: 'Every shelf is as full as the pallet can make it.' };
     }
-    case 'recycle': return recycle(state, cmd.productId) > 0 ? { ok: true } : { ok: false };
+    case 'recycle': return recycle(state, cmd.productId, cmd.shelves) > 0 ? { ok: true } : { ok: false };
     case 'grabThief': {
       // A hand on a shoplifter on the run, within reach of the manager.
       const t = state.people.find((x) => x.id === cmd.personId && x.state === 'fleeing' && !x.busted);

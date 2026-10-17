@@ -56,11 +56,20 @@ export function topUpAll(state: GameState): number {
   return moved;
 }
 
-/** Recycle every unit of a product on the pallet, for half what it cost. Returns what it paid. */
-export function recycle(state: GameState, productId: string): number {
-  const qty = state.shop.storage.filter((e) => e.productId === productId).reduce((a, e) => a + e.qty, 0);
+/**
+ * Recycle every unit of a product on the pallet, for half what it cost (`shelves`: every unit on the
+ * shelves instead, a holiday's leftovers once it is over, and its slots come free for something else).
+ * Returns what it paid.
+ */
+export function recycle(state: GameState, productId: string, shelves = false): number {
+  let qty = 0;
+  if (shelves) {
+    for (const f of state.shop.fixtures) for (const s of f.slots) if (s.productId === productId) { qty += s.qty; s.productId = null; s.qty = 0; }
+  } else {
+    qty = state.shop.storage.filter((e) => e.productId === productId).reduce((a, e) => a + e.qty, 0);
+    state.shop.storage = state.shop.storage.filter((e) => e.productId !== productId);
+  }
   if (!qty) return 0;
-  state.shop.storage = state.shop.storage.filter((e) => e.productId !== productId);
   const back = Math.round(qty * productDef(productId).cost * RECYCLE_BACK * 100) / 100;
   state.cash = Math.round((state.cash + back) * 100) / 100;
   state.today.other = Math.round((state.today.other - back) * 100) / 100;

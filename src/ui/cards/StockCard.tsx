@@ -43,6 +43,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   // In setup the trucks come at once (the clock stands still until you open).
   const etaOf = (sid: string) => s.phase === 'setup' ? Math.min(SUPPLIERS.find((x) => x.id === sid)!.etaSeconds, 20) : SUPPLIERS.find((x) => x.id === sid)!.etaSeconds;
 
+  // A holiday's goods still on the shelves once it is over: they can go for recycling from here.
+  const leftovers = PRODUCTS.filter((p) => p.season && !inSeason(p, s.day) && (onShelf.get(p.id)?.qty ?? 0) > 0);
   return (
     <div className="stock-layout">
       <section className="stock-goods">
@@ -131,6 +133,23 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               );
             })}
           </div>
+        )}
+        {leftovers.length > 0 && (
+          <>
+            <h3>Holiday leftovers on the shelves</h3>
+            <div className="list pallet-list">
+              {leftovers.map((p) => {
+                const n = onShelf.get(p.id)!.qty;
+                const back = Math.round(n * p.cost * RECYCLE_BACK * 100) / 100;
+                return (
+                  <div className="item" key={p.id}>
+                    <div><div className="name">{p.name}</div><div className="sub">{n} left from {holidayName(p.season!)}</div></div>
+                    <button className="btn small ghost" title={`Take all ${n} off the shelves for recycling, so the space is free for something else`} onClick={() => runtime.dispatch({ type: 'recycle', productId: p.id, shelves: true })}>Recycle +{money(back)}</button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
         {pending.length > 0 && (
           <div className="list">

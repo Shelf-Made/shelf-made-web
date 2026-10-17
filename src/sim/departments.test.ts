@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
 import { applyCommand } from './index';
 import { listWeight } from './customers';
-import { PRODUCTS, CORE_PRODUCTS, holidayOn, inSeason, productDef, sizeOf, HOLIDAYS, YEAR_DAYS } from './products';
-import { storageUsed } from './layout';
+import { PRODUCTS, CORE_PRODUCTS, holidayOn, inSeason, productDef, sizeOf, HOLIDAYS, YEAR_DAYS, HOLIDAY_DAYS } from './products';
+import { storageUsed, storageCap } from './layout';
 import { holidayNotices } from './economy';
+import { autoOrder, DEFAULT_RULES } from './staff';
+import { managerSavedOrders } from './savedOrders';
+import { RECYCLE_BACK } from './stocking';
 
 describe('departments and the holidays', () => {
   it('shoppers only want goods beyond the first range once you sell them', () => {
@@ -46,6 +49,74 @@ describe('departments and the holidays', () => {
     expect(sizeOf('pumpkin')).toBeGreaterThan(1);
   });
 
+  it('a holiday product left in a shelf slot never stops the manager reordering everything else', () => {
+    const s = openGame({ seed: 9, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 5000; s.shop.storage = [];
+    const h = HOLIDAYS.find((x) => x.id === 'halloween')!;
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    for (const sl of shelf.slots) sl.qty = 0;
+    // Sold out of candy buckets at Halloween: the slot still holds them the day after.
+    shelf.slots[0]!.productId = 'candybucket';
+    s.day = h.start + HOLIDAY_DAYS;
+    const before = s.orders.length;
+    autoOrder(s, DEFAULT_RULES, 1000);
+    expect(s.orders.length).toBe(before + 1);
+    const got = s.orders[s.orders.length - 1]!.lines.map((l) => l.productId);
+    expect(got.length).toBeGreaterThan(0);
+    expect(got).not.toContain('candybucket');
+    // Two days before the next Halloween the slot is reordered too.
+    for (const o of s.orders) o.state = 'delivered';
+    s.day = h.start + YEAR_DAYS - 2;
+    autoOrder(s, DEFAULT_RULES, 1000);
+    expect(s.orders[s.orders.length - 1]!.lines.map((l) => l.productId)).toContain('candybucket');
+    // A reorder too big for the pallet (Christmas trees take five units each) still brings what fits.
+    for (const o of s.orders) o.state = 'delivered';
+    for (const f of s.shop.fixtures) for (const sl of f.slots) sl.qty = 0;
+    shelf.slots[0]!.productId = 'xmastree'; shelf.slots[1]!.productId = 'xmastree';
+    s.day = HOLIDAYS.find((x) => x.id === 'christmas')!.start;
+    const n = s.orders.length;
+    autoOrder(s, DEFAULT_RULES, 5000);
+    expect(s.orders.length).toBe(n + 1);
+    expect(s.orders[n]!.lines.reduce((a, l) => a + l.qty * sizeOf(l.productId), 0)).toBeLessThanOrEqual(storageCap(s.shop));
+  });
+
+  it('out of season, a holiday line is left off an order and the rest goes; a saved order too', () => {
+    const s = openGame({ seed: 10, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 5000; s.shop.storage = [];
+    const h = HOLIDAYS.find((x) => x.id === 'valentine')!;
+    // Saved on Valentine's, placed by the manager every morning.
+    s.day = h.start;
+    expect(applyCommand(s, { type: 'saveOrder', name: 'Daily', supplierId: 'local', lines: [{ productId: 'bread', qty: 12 }, { productId: 'roses', qty: 6 }] }).ok).toBe(true);
+    const o = s.savedOrders![0]!;
+    expect(applyCommand(s, { type: 'editSavedOrder', id: o.id, patch: { when: { kind: 'daily' }, minCash: 0 } }).ok).toBe(true);
+    s.day = h.start + HOLIDAY_DAYS + 1;
+    s.notices = [];
+    expect(applyCommand(s, { type: 'placeOrder', supplierId: 'local', lines: [{ productId: 'milk', qty: 6 }, { productId: 'roses', qty: 6 }] }).ok).toBe(true);
+    expect(s.orders[s.orders.length - 1]!.lines.map((l) => l.productId)).toEqual(['milk']);
+    expect(s.notices.map((n) => n.text)).toContain("Roses left off the order: only sold around Valentine's.");
+    const m = s.staffPool.find((c) => c.role === 'manager') ?? (s.staffPool[0]!.role = 'manager', s.staffPool[0]!);
+    expect(applyCommand(s, { type: 'hire', candidateId: m.id }).ok).toBe(true);
+    managerSavedOrders(s, true);
+    const placed = s.orders.filter((x) => x.savedId === o.id);
+    expect(placed.map((x) => x.lines.map((l) => l.productId))).toEqual([['bread']]);
+    expect(o.lastDay).toBe(s.day);
+  });
+
+  it("a holiday's leftovers on the shelves can go for recycling, freeing their slots", () => {
+    const s = openGame({ seed: 11, plotId: 'main', name: 'T', tutorial: false });
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!;
+    shelf.slots[0] = { productId: 'crackers', qty: 5 };
+    shelf.slots[1] = { productId: 'crackers', qty: 0 };
+    s.shop.storage = [{ productId: 'crackers', qty: 4, day: 1 }];
+    const cash = s.cash;
+    expect(applyCommand(s, { type: 'recycle', productId: 'crackers', shelves: true }).ok).toBe(true);
+    expect(s.cash - cash).toBeCloseTo(5 * productDef('crackers').cost * RECYCLE_BACK, 2);
+    expect(shelf.slots.slice(0, 2)).toEqual([{ productId: null, qty: 0 }, { productId: null, qty: 0 }]);
+    // What is on the pallet stays for the pallet's own Recycle button.
+    expect(s.shop.storage).toEqual([{ productId: 'crackers', qty: 4, day: 1 }]);
+    expect(applyCommand(s, { type: 'recycle', productId: 'crackers', shelves: true }).ok).toBe(false);
+  });
+
   it('says when a holiday is coming, when it starts, and when it is over', () => {
     const s = openGame({ seed: 4, plotId: 'main', name: 'T', tutorial: false });
     const h = HOLIDAYS.find((x) => x.id === 'christmas')!;
@@ -53,7 +124,7 @@ describe('departments and the holidays', () => {
     expect(say(h.start - 2)).toMatch(/Christmas in two days/);
     expect(say(h.start)).toMatch(/Christmas starts today/);
     expect(say(h.start + 1)).toBe('');
-    expect(say(h.start + 5)).toMatch(/Christmas is over/);
+    expect(say(h.start + 5)).toMatch(/Christmas is over.*on the shelves or the pallet/);
   });
 });
 

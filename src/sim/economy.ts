@@ -41,12 +41,13 @@ export const INSTANT_MUL = 1.25;
 
 export function placeOrder(state: GameState, supplierId: string, lines: { productId: string; qty: number }[], instant = false): Order | string {
   const sup = supplier(supplierId);
-  const offSeason = lines.find((l) => l.qty > 0 && !inSeason(productDef(l.productId), state.day));
-  if (offSeason) { const d = productDef(offSeason.productId); return `${d.name} is only sold around ${holidayName(d.season!)}.`; }
-  const shortLines = lines.filter((l) => l.qty > 0 && inShortage(state, l.productId));
-  const clean = lines.filter((l) => l.qty > 0 && !inShortage(state, l.productId)).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: Math.round(unitCost(l.productId, sup.id, state) * (instant ? INSTANT_MUL : 1) * 100) / 100 }));
-  if (clean.length === 0) return shortLines.length ? `${productDef(shortLines[0]!.productId).name} is in shortage: no supplier has it this week.` : 'Nothing to order.';
-  for (const l of shortLines) state.notices.push({ day: state.day, text: `${productDef(l.productId).name} left off the order: in shortage this week.`, kind: 'event' });
+  // A holiday's goods out of their time are left off like a shortage, so one line never stops the rest
+  // (a saved order made at Easter, say, still brings its bread afterwards).
+  const offSeason = lines.filter((l) => l.qty > 0 && !inSeason(productDef(l.productId), state.day));
+  const shortLines = lines.filter((l) => l.qty > 0 && !offSeason.includes(l) && inShortage(state, l.productId));
+  const clean = lines.filter((l) => l.qty > 0 && !offSeason.includes(l) && !inShortage(state, l.productId)).map((l) => ({ productId: l.productId, qty: Math.floor(l.qty), unitCost: Math.round(unitCost(l.productId, sup.id, state) * (instant ? INSTANT_MUL : 1) * 100) / 100 }));
+  const holiday = (pid: string) => holidayName(productDef(pid).season!);
+  if (clean.length === 0) return offSeason.length ? `${productDef(offSeason[0]!.productId).name} is only sold around ${holiday(offSeason[0]!.productId)}.` : shortLines.length ? `${productDef(shortLines[0]!.productId).name} is in shortage: no supplier has it this week.` : 'Nothing to order.';
   const total = Math.round(clean.reduce((a, l) => a + l.qty * l.unitCost, 0) * 100) / 100;
   if (total < sup.minOrder) return `${sup.name} needs a ${dollars(sup.minOrder)} minimum.`;
   const onTerms = sup.terms > 0;
@@ -56,6 +57,9 @@ export function placeOrder(state: GameState, supplierId: string, lines: { produc
   const inStorage = storageUsed(state.shop);
   const cap = storageCap(state.shop);
   if (inStorage + units > cap) return `The pallets only have room for ${Math.max(0, cap - inStorage)} more units${clean.some((l) => sizeOf(l.productId) > 1) ? ' (bulky goods take more room)' : ''}.`;
+  // What was left off, said once the order really goes (not again at each try of one that cannot).
+  for (const l of offSeason) state.notices.push({ day: state.day, text: `${productDef(l.productId).name} left off the order: only sold around ${holiday(l.productId)}.`, kind: 'event' });
+  for (const l of shortLines) state.notices.push({ day: state.day, text: `${productDef(l.productId).name} left off the order: in shortage this week.`, kind: 'event' });
   if (onTerms) addBill(state, `${sup.name} invoice`, total, sup.terms);
   else state.cash -= total;
   state.today.cogs += 0; // stock is an asset; cost is recognised when sold
@@ -176,7 +180,7 @@ export function holidayNotices(state: GameState): void {
   const goods = (h: Holiday) => PRODUCTS.filter((p) => p.season === h).map((p) => p.name.toLowerCase()).join(', ');
   if (soon && !today && holidayOn(d - 1, 2) !== soon) state.notices.push({ day: d, text: `${holidayName(soon)} in two days: order its goods now (Stock → Holidays: ${goods(soon)}).`, kind: 'event' });
   if (today && was !== today) state.notices.push({ day: d, text: `${holidayName(today)} starts today! Its goods sell fast for ${HOLIDAY_DAYS} days.`, kind: 'event' });
-  if (was && !today) state.notices.push({ day: d, text: `${holidayName(was)} is over: nobody wants its goods now (recycle what is left in the Stock card).`, kind: 'event' });
+  if (was && !today) state.notices.push({ day: d, text: `${holidayName(was)} is over: nobody comes in for its goods now. Recycle what is left, on the shelves or the pallet, in the Stock card.`, kind: 'event' });
 }
 
 export function openTomorrow(state: GameState): void {
