@@ -73,14 +73,22 @@ export function setPath(state: GameState, p: Person, to: Vec2, dyn?: Set<number>
 export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
   const front = fixtureFrontWorld(state.shop, reg);
   const f = fixtureFacingWorld(state.shop, reg.rot);
-  // Queue barriers along the line out from the till: it runs straight on beside them instead of bending.
+  const g = gridFor(state), reach = reachableCells(state.shop, g), spacing = 0.7;
+  // Indoors all the way from a to b: never through a wall, nor out of the shop (looked at every quarter metre: no wall is thinner).
+  const indoors = (a: Vec2, b: Vec2) => {
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.25));
+    for (let i = 0; i <= n; i++) { const [cx, cz] = cellOf(g, { x: a.x + ((b.x - a.x) * i) / n, z: a.z + ((b.z - a.z) * i) / n }); if (!inBounds(g, cx, cz) || !g.inside[cellIndex(g, cx, cz)]) return false; }
+    return true;
+  };
+  const inLine = (k: number): Vec2 => ({ x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing });
+  // Queue barriers along the line out from the till: it runs straight on beside them instead of bending (as far as the floor goes).
   const railed = state.shop.fixtures.some((q) => q.type === 'queueRail' && (() => { const c = fixtureCentre(state.shop, q), dx = c.x - front.x, dz = c.z - front.z, along = dx * f.x + dz * f.z; return along > -0.2 && along < 4.5 && Math.abs(dx * f.z - dz * f.x) < 1.3; })());
-  const straight = railed ? 6 : 3;
-  const spacing = 0.7;
+  let straight = 3;
+  while (railed && straight < 6 && indoors(inLine(straight - 1), inLine(straight))) straight++;
   const want = (k: number): Vec2 => {
-    if (k < straight) return { x: front.x + f.x * k * spacing, z: front.z + f.z * k * spacing };
+    if (k < straight) return inLine(k);
     // Bend toward the shop's centre so the line never runs into a wall.
-    const base = { x: front.x + f.x * (straight - 1) * spacing, z: front.z + f.z * (straight - 1) * spacing };
+    const base = inLine(straight - 1);
     const { x: cx, z: cz } = toWorld(state.shop, (state.shop.floor.x0 + state.shop.floor.x1) / 2, zOnLevel((state.shop.floor.z0 + state.shop.floor.z1) / 2, levelOf(reg)));
     let side = { x: -f.z, z: f.x };
     if ((cx - base.x) * side.x + (cz - base.z) * side.z < 0) side = { x: f.z, z: -f.x };
@@ -88,8 +96,9 @@ export function queueSlot(state: GameState, reg: Fixture, k: number): Vec2 {
     return { x: base.x + side.x * j * spacing, z: base.z + side.z * j * spacing };
   };
   // (The front is the front: a till an older save left cut off is shut, see tillOpen.)
-  const g = gridFor(state), reach = reachableCells(state.shop, g), spots: Vec2[] = [nearestWalkable(g, front, undefined, 4)];
-  const ok = (q: Vec2, cx: number, cz: number) => !isBlocked(g, cx, cz) && !!reach[cellIndex(g, cx, cz)] && spots.every((o) => Math.hypot(o.x - q.x, o.z - q.z) > 0.6);
+  const spots: Vec2[] = [nearestWalkable(g, front, undefined, 4)];
+  // (And indoors from the spot before it: a line never queues out of the shop, nor on the far side of a wall.)
+  const ok = (q: Vec2, cx: number, cz: number) => !isBlocked(g, cx, cz) && !!reach[cellIndex(g, cx, cz)] && spots.every((o) => Math.hypot(o.x - q.x, o.z - q.z) > 0.6) && indoors(spots[spots.length - 1]!, q);
   for (let i = 1; i <= k; i++) {
     const p = want(i), [px, pz] = cellOf(g, p);
     let at: Vec2 | null = ok(p, px, pz) ? p : null;
@@ -393,7 +402,7 @@ export function returnToShelves(state: GameState, p: Person): void {
   p.basket = [];
 }
 
-function completeSale(state: GameState, p: Person, reg: Fixture): void {
+function completeSale(state: GameState, p: Person, reg: Fixture, by?: Person): void {
   let total = 0, cogs = 0, units = 0;
   for (const b of p.basket ?? []) { total += b.price * b.qty; cogs += productDef(b.productId).cost * b.qty; units += b.qty; }
   // Off the magazine shelf and the flower table, and a coffee to sit down with at the café table.
@@ -403,7 +412,8 @@ function completeSale(state: GameState, p: Person, reg: Fixture): void {
   const coffee = !!cafe && withRng(state, 'furniture', (r) => r.chance(0.3));
   if (coffee) { total += 2.5; cogs += 0.8; }
   total = Math.round(total * 100) / 100;
-  const cashier = state.people.find((x) => x.id === reg.staffId && x.kind === 'staff');
+  // (The cashier who rang them up: from the till back to back with this one, it may not be this till's own.)
+  const cashier = by ?? state.people.find((x) => x.id === reg.staffId && x.kind === 'staff');
   if (cashier) total = Math.max(0, total - cashierMistake(state, cashier, total));
   p.servedBy = reg.type === 'kiosk' ? 'kiosk' : cashier ? 'staff' : 'owner';
   if (cashier) p.servedSkill = cashier.skill;
@@ -463,15 +473,23 @@ export function twinTill(state: GameState, reg: Fixture): Fixture | undefined {
   return state.shop.fixtures.find((o) => o !== reg && o.type === 'register' && dist(fixtureBackWorld(state.shop, o), b) < 0.3);
 }
 
-export function scanItem(state: GameState, reg: Fixture): boolean {
+/** Who scans at this till: its own cashier standing behind it, or else the cashier of the one back to back with it. */
+function cashierAt(state: GameState, reg: Fixture): Person | undefined {
+  const back = fixtureBackWorld(state.shop, reg);
+  const at = (id: number | null | undefined) => (id == null ? undefined : state.people.find((s) => s.id === id && s.kind === 'staff' && onShift(s, state.time) && dist(s, back) < 0.8));
+  return at(reg.staffId) ?? at(twinTill(state, reg)?.staffId);
+}
+
+/** `by`: the cashier scanning (none: you, at the counter). */
+export function scanItem(state: GameState, reg: Fixture, by?: Person): boolean {
   if (!reg.serving) return false;
   const p = state.people.find((x) => x.id === reg.serving);
   if (!p || p.state !== 'paying') return false;
   const units = (p.basket ?? []).reduce((a, b) => a + b.qty, 0);
-  // With a conveyor belt the goods come along ready: two at a press.
-  reg.scanned = Math.min(units, (reg.scanned ?? 0) + (reg.conveyor && reg.type === 'register' ? 2 : 1));
+  // With a conveyor belt the goods come along ready: two at your press (a cashier just keeps a quicker pace, CONVEYOR_SPEED).
+  reg.scanned = Math.min(units, (reg.scanned ?? 0) + (reg.conveyor && reg.type === 'register' && !by ? 2 : 1));
   cue(state, 'beep');
-  if (reg.scanned >= units) completeSale(state, p, reg);
+  if (reg.scanned >= units) completeSale(state, p, reg, by);
   return true;
 }
 
@@ -669,11 +687,13 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       // A cashier scans automatically; at a kiosk the shopper does it (slowly, with the odd hiccup); otherwise the player clicks.
       // A cashier at this till, or at one back to back with it (they stand between the two and serve both).
       const twin = twinTill(state, reg);
-      const cashier = state.people.find((s) => (s.id === reg.staffId || (twin && s.id === twin.staffId)) && s.kind === 'staff' && onShift(s, state.time) && dist(s, fixtureBackWorld(state.shop, reg)) < 0.8);
+      const cashier = cashierAt(state, reg);
       if (cashier) {
-        p.timer += dt;
+        // One pair of hands for both: with someone paying at the other till too, each goes at half the pace.
+        const other = twin && cashierAt(state, twin) === cashier ? state.people.find((o) => o.id === twin.serving) : undefined;
+        p.timer += other?.state === 'paying' && other.timer >= 0 ? dt / 2 : dt;
         const rate = 0.55 / (0.6 + (cashier.skill ?? 0.5)) / levelBoost(cashier) / (reg.conveyor ? CONVEYOR_SPEED : 1);
-        if (p.timer >= rate) { p.timer = 0; scanItem(state, reg); gainXp(state, cashier, 1); }
+        if (p.timer >= rate) { p.timer = 0; scanItem(state, reg, cashier); gainXp(state, cashier, 1); }
       } else if (reg.type === 'kiosk') {
         p.timer += dt;
         const rate = p.ctype === 'convenience' ? 1.1 : 1.6;
@@ -992,10 +1012,13 @@ export function ownerWalkTo(state: GameState, to: Vec2): boolean {
   return true;
 }
 
-/** A cashier's till has nobody at it or waiting. */
+/** A cashier's till has nobody at it or waiting (nor the one back to back with it, theirs to serve too when it has no cashier of its own). */
 export function tillIdle(state: GameState, p: Person): boolean {
   const reg = state.shop.fixtures.find((f) => f.staffId === p.id);
-  return !reg || (!reg.serving && !(reg.queue?.length));
+  if (!reg) return true;
+  const twin = twinTill(state, reg);
+  const tills = twin && !state.people.some((s) => s.id === twin.staffId && s.kind === 'staff' && onShift(s, state.time)) ? [reg, twin] : [reg];
+  return tills.every((f) => !f.serving && !(f.queue?.length));
 }
 
 /**
@@ -1161,7 +1184,10 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
       else if (dist(p, home) > 0.35) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }
       else {
         p.anim = p.carrying ? 'carry' : 'idle';
-        const reg = state.shop.fixtures.find((f) => f.staffId === p.id) ?? (p.kind === 'owner' ? state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && ownerAt(state, f)) : undefined);
+        // Facing their till: standing between two (back to back, say), the one with someone paying, else someone waiting.
+        const mine = state.shop.fixtures.find((f) => f.staffId === p.id), twin = mine && twinTill(state, mine);
+        const tills = mine ? (twin && cashierAt(state, twin) === p ? [mine, twin] : [mine]) : p.kind === 'owner' ? state.shop.fixtures.filter((f) => (f.type === 'register' || f.type === 'kiosk') && ownerAt(state, f)) : [];
+        const reg = tills.find((f) => f.serving) ?? tills.find((f) => f.queue?.length) ?? tills[0];
         if (reg && p.state === 'idle' && (p.kind !== 'owner' || !p.moveDir)) { const fc = fixtureCentre(state.shop, reg); p.yaw = turnToward(p.yaw, Math.atan2(fc.x - p.x, fc.z - p.z), 8 * dt); }
       }
       break;

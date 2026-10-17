@@ -392,7 +392,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (f.conveyor) return { ok: false, message: 'It has a conveyor belt already.' };
       if (state.cash < CONVEYOR_PRICE) return { ok: false, message: `A conveyor belt costs ${dollars(CONVEYOR_PRICE)}.` };
       state.cash -= CONVEYOR_PRICE;
-      f.conveyor = true; state.shop.layoutVersion = (state.shop.layoutVersion ?? 0) + 1;
+      f.conveyor = true; f.conveyorBought = state.day; state.shop.layoutVersion = (state.shop.layoutVersion ?? 0) + 1;
       popup(state, fixtureCentre(state.shop, f), 'Conveyor belt fitted!', 'info', 1.2);
       cue(state, 'build');
       return { ok: true };

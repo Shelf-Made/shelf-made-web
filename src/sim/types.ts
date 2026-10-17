@@ -102,6 +102,8 @@ export interface Fixture {
   staffId?: number | null;
   /** Register only: upgraded with a conveyor belt (goods come along to be scanned: quicker through). */
   conveyor?: boolean;
+  /** Register only: the day its conveyor belt was fitted (the till sold that same day, all the belt cost comes back). */
+  conveyorBought?: number;
   /** The day it was bought (sold the same day, it fetches all it cost back: you changed your mind). */
   bought?: number;
   /** Which look of the piece (a kind of tree, a colour of rug), for pieces that come in more than one. */

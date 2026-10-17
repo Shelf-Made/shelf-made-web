@@ -5,7 +5,7 @@ import { rating, type ReviewPhoto } from '@/sim/reviews';
 import { inspectPerson, type InspectInfo } from '@/sim/inspect';
 import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSellTile, canPushWall, canPullWall, wallRun } from '@/sim/build';
 import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
-import { CONVEYOR_PRICE } from '@/sim/people';
+import { CONVEYOR_PRICE, twinTill } from '@/sim/people';
 import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, VARIANTS } from '@/sim/layout';
 import { canPave, canPaintBay, canEraseBay, nearestSlot } from '@/sim/lot';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
@@ -341,7 +341,7 @@ export class GameRuntime {
     if (!s || !f || !this.fixtureInSight(f.id)) { this.emit(); return; }
     this.audio.start();
     if (action === 'use') this.walkAndUse({ kind: 'fixture', id: f.id });
-    else if (action === 'upgrade') { const r = this.dispatch({ type: 'upgradeTill', fixtureId: f.id }); if (r.ok) this.showToast('Conveyor belt fitted: people get through quicker.', 2000); }
+    else if (action === 'upgrade') { this.snapshotForUndo(); const r = this.dispatch({ type: 'upgradeTill', fixtureId: f.id }); if (r.ok) this.showToast('Conveyor belt fitted: people get through quicker.', 2000); else this.undoStack.pop(); }
     else if (action === 'sell') {
       // Sold where it stands, for part of what it cost (all of it the day it was bought; its stock goes back on the pallet).
       this.snapshotForUndo();
@@ -1089,9 +1089,9 @@ export class GameRuntime {
     if (this.build.selectedId === null) return;
     this.snapshotForUndo();
     const f = this.state?.shop.fixtures.find((x) => x.id === this.build.selectedId);
-    const back = f && this.state ? refundOf(f, this.state.day, CONVEYOR_PRICE) : 0, same = !!f && f.bought === this.state?.day;
+    const back = f && this.state ? refundOf(f, this.state.day, CONVEYOR_PRICE) : 0, same = !!f && f.bought === this.state?.day, belt = !!f?.conveyor && f.conveyorBought === this.state?.day;
     const res = this.dispatch({ type: 'removeFixture', fixtureId: this.build.selectedId });
-    if (!res.ok) this.undoStack.pop(); else this.showToast(same ? `Sold for ${dollars(back)}: bought today, so all of it back.` : `Sold for ${dollars(back)} (60% of the price).`);
+    if (!res.ok) this.undoStack.pop(); else this.showToast(same ? `Sold for ${dollars(back)}: bought today, so all of it back.` : `Sold for ${dollars(back)} (60% of the price${belt ? ', and all of the belt fitted today' : ''}).`);
     this.selectFixture(null);
     this.renderer?.setGhost(null, this.state!, 0, 0, 0, false);
   }
@@ -1342,7 +1342,8 @@ export class GameRuntime {
     if (!reg) {
       if (repeat) return;
       this.jump();
-      if (s.phase === 'open' && s.shop.fixtures.some((f) => f.type === 'register' && (f.serving != null || (f.queue?.length ?? 0) > 0) && f.staffId == null))
+      // (A till back to back with a staffed one has its cashier: they serve both.)
+      if (s.phase === 'open' && s.shop.fixtures.some((f) => f.type === 'register' && (f.serving != null || (f.queue?.length ?? 0) > 0) && f.staffId == null && twinTill(s, f)?.staffId == null))
         this.showToast('Someone is waiting: stand behind the checkout counter and press Space to scan.', 2400);
       return;
     }

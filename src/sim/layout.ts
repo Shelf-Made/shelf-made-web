@@ -710,9 +710,11 @@ export const VARIANTS: Partial<Record<FixtureType, string[]>> = {
   statue: ['The founder', 'Modern art'], lampPost: ['Classic', 'Modern'], balloons: ['Shop colours', 'Rainbow'], hedge: ['Box hedge', 'In flower'],
 };
 /** What a piece fetches back when sold: all it cost the day it was bought, 60% after. */
-export function refundOf(f: { type: FixtureType; bought?: number; conveyor?: boolean }, day: number, conveyorPrice = 0): number {
+export function refundOf(f: { type: FixtureType; bought?: number; conveyor?: boolean; conveyorBought?: number }, day: number, conveyorPrice = 0): number {
   const full = FIXTURES[f.type].price + (f.conveyor ? conveyorPrice : 0);
-  return f.bought === day ? full : Math.round(full * 0.6);
+  if (f.bought === day) return full;
+  // (A belt fitted today to an older till: all of the belt back, 60% of the till.)
+  return f.conveyor && f.conveyorBought === day ? Math.round(FIXTURES[f.type].price * 0.6) + conveyorPrice : Math.round(full * 0.6);
 }
 /** The paint finish's colour before you choose one. */
 export const DEFAULT_PAINT = '#7FB6E8';
