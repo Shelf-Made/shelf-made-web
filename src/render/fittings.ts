@@ -3,7 +3,7 @@ import type { AssetLibrary } from './assets';
 import type { FixtureType } from '@/sim/types';
 import type { Scheme } from '@/sim/schemes';
 import { box, cylinder, sphere, merge, place, paint } from './geometry';
-import { recolor, paintStrips } from './recolor';
+import { recolor, paintStrips, repaint } from './recolor';
 import { WALL_COLOURS } from './storeArt';
 
 /**
@@ -51,6 +51,8 @@ export const GONE_WITH_WALLS: ReadonlySet<string> = new Set(['gen:windowTrim']);
 
 /** Tiles' floor finish sits 0.0125 up: flat things lie on top of it. */
 const ON_FLOOR = 0.014;
+/** The furniture kit's colours the other looks repaint: the rug's (its middle and its edge) and the bench's wood. */
+export const RUG_RED = '#F9A39E', RUG_RED_EDGE = '#CD9491', BENCH_WOOD = '#F3CCA8';
 /** The inside face of the shop's outer wall, from the centre of a tile against it. */
 const WALL_FACE = -0.44;
 
@@ -218,11 +220,12 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
     case 'gen:treeAutumn': return merge([m('nature/tree-oak-fall', 0, 0, 0, 0.4, 1.05), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
     case 'gen:plantFern': return merge([m('nature/pot-large', 0, 0, 0, 0, 0.9), m('nature/plant-bushdetailed', 0, 0.2, 0, 0.3, 0.5)]);
     case 'gen:plantBush': return merge([m('nature/pot-small', 0, 0, 0, 0, 1.1), m('nature/plant-flattall', 0, 0.12, 0, 0.8, 0.6)]);
-    case 'gen:rugBlue': return recolor(m('furniture/rug-rectangle', 0, ON_FLOOR, 0, 0, 0.74, 1, 0.74), (from) => (from.row === 2 ? { row: 2, strip: 5 } : null));
-    case 'gen:rugGreen': return recolor(m('furniture/rug-rectangle', 0, ON_FLOOR, 0, 0, 0.74, 1, 0.74), (from) => (from.row === 2 ? { row: 2, strip: 3 } : null));
+    // (The furniture kit is baked into the palette, not Kenney's strips: its colours are swapped cell for cell.)
+    case 'gen:rugBlue': return repaint(m('furniture/rug-rectangle', 0, ON_FLOOR, 0, 0, 0.74, 1, 0.74), pal, { [RUG_RED]: '#4F8FE0', [RUG_RED_EDGE]: '#285795' });
+    case 'gen:rugGreen': return repaint(m('furniture/rug-rectangle', 0, ON_FLOOR, 0, 0, 0.74, 1, 0.74), pal, { [RUG_RED]: '#7CC26B', [RUG_RED_EDGE]: '#3C8F4E' });
     case 'gen:flowerBedPurple': return flowerBed(['nature/flower-purplea', 'nature/flower-purplea', 'nature/flower-redb']);
     case 'gen:flowerBedYellow': return flowerBed(['nature/flower-yellowa', 'nature/flower-yellowb', 'nature/flower-yellowa']);
-    case 'gen:parkBenchPainted': return recolor(m('furniture/bench', 0, 0, 0, 0, 2.6, 1.35, 2.4), (from) => (from.row === 3 ? { row: 2, strip: 1 } : null));
+    case 'gen:parkBenchPainted': return repaint(m('furniture/bench', 0, 0, 0, 0, 2.6, 1.35, 2.4), pal, { [BENCH_WOOD]: '#3FA87A' });
     // An aisle sign with your own words on it: a wider board (the words go on both faces in the store view).
     case 'gen:signText': return merge([box(pal, '#38383D', 0.05, 0.62, 0.05, 0, 0, 0), box(pal, sc.primary, 0.76, 0.27, 0.05, 0, 0.595, 0), box(pal, sc.dark, 0.78, 0.025, 0.06, 0, 0.865, 0)]);
     case 'gen:signShop': return merge([box(pal, '#38383D', 0.05, 0.62, 0.05, 0, 0, 0), box(pal, sc.primary, 0.62, 0.22, 0.05, 0, 0.6, 0), box(pal, '#FFFFFF', 0.5, 0.04, 0.052, 0, 0.69, 0)]);

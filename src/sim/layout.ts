@@ -709,12 +709,23 @@ export const VARIANTS: Partial<Record<FixtureType, string[]>> = {
   flowerBed: ['Red and yellow', 'Purple', 'All yellow'], parkBench: ['Wooden', 'Painted'], sign: ['Classic', 'Shop colour'],
   statue: ['The founder', 'Modern art'], lampPost: ['Classic', 'Modern'], balloons: ['Shop colours', 'Rainbow'], hedge: ['Box hedge', 'In flower'],
 };
-/** What a piece fetches back when sold: all it cost the day it was bought, 60% after. */
-export function refundOf(f: { type: FixtureType; bought?: number; conveyor?: boolean; conveyorBought?: number }, day: number, conveyorPrice = 0): number {
+/** How long the shop can trade with a piece (seconds of its clock: a quarter of an hour) and still sell it back for all it cost. */
+export const CHANGED_MIND = 15;
+/**
+ * Just bought: the same day, and the shop's clock has hardly moved since. The clock stands still while the doors are
+ * shut, so a piece put in at night (or before opening) counts until the doors open; one put in while open, for a few
+ * minutes. Sold then, you changed your mind, not used it for a day. (One from an older save, with no time kept, counts
+ * from the morning.)
+ */
+export function justBought(f: { bought?: number; boughtAt?: number }, now: { day: number; time: number }): boolean {
+  return f.bought === now.day && now.time - (f.boughtAt ?? 0) <= CHANGED_MIND;
+}
+/** What a piece fetches back when sold: all it cost just after it was bought, 60% once it has traded. */
+export function refundOf(f: { type: FixtureType; bought?: number; boughtAt?: number; conveyor?: boolean; conveyorBought?: number; conveyorBoughtAt?: number }, now: { day: number; time: number }, conveyorPrice = 0): number {
   const full = FIXTURES[f.type].price + (f.conveyor ? conveyorPrice : 0);
-  if (f.bought === day) return full;
-  // (A belt fitted today to an older till: all of the belt back, 60% of the till.)
-  return f.conveyor && f.conveyorBought === day ? Math.round(FIXTURES[f.type].price * 0.6) + conveyorPrice : Math.round(full * 0.6);
+  if (justBought(f, now)) return full;
+  // (A belt just fitted to an older till: all of the belt back, 60% of the till.)
+  return f.conveyor && justBought({ bought: f.conveyorBought, boughtAt: f.conveyorBoughtAt }, now) ? Math.round(FIXTURES[f.type].price * 0.6) + conveyorPrice : Math.round(full * 0.6);
 }
 /** The paint finish's colour before you choose one. */
 export const DEFAULT_PAINT = '#7FB6E8';

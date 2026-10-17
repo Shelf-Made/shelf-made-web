@@ -281,7 +281,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!check.ok) return { ok: false, message: check.reason };
       // The price, and a ceiling over a floor it opens.
       state.cash -= check.price;
-      const fx = { id: state.nextId++, type: cmd.fixtureType, x: cmd.x, z: cmd.z, rot: cmd.rot, slots: Array.from({ length: def.slots }, () => ({ productId: null, qty: 0 })), bought: state.day } as GameState['shop']['fixtures'][number];
+      const fx = { id: state.nextId++, type: cmd.fixtureType, x: cmd.x, z: cmd.z, rot: cmd.rot, slots: Array.from({ length: def.slots }, () => ({ productId: null, qty: 0 })), bought: state.day, boughtAt: state.time } as GameState['shop']['fixtures'][number];
       if (cmd.variant && VARIANTS[cmd.fixtureType] && cmd.variant < VARIANTS[cmd.fixtureType]!.length) fx.variant = cmd.variant;
       if (fx.type === 'register' || fx.type === 'kiosk') { fx.queue = []; fx.serving = null; fx.scanned = 0; fx.staffId = null; }
       if (fx.type === 'bikeRack') fx.bikes = Array.from({ length: RACK_STANDS }, () => null);
@@ -304,7 +304,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (f.bikes?.some((b) => b !== null)) return { ok: false, message: 'Bikes are locked to it: wait till they ride off.' };
       { const why = canTakeAway(state, f.id) ?? removalShuts(state, f.id); if (why) return { ok: false, message: `${why}.` }; }
       if (f.type === 'pallet' || f.type === 'storeRack') { const units = storageUsed(state.shop); if (units > storageCap(state.shop) - (f.type === 'pallet' ? PALLET_UNITS : STORE_RACK_UNITS)) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
-      const refund = refundOf(f, state.day, CONVEYOR_PRICE);
+      const refund = refundOf(f, state, CONVEYOR_PRICE);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });
       state.shop.fixtures.splice(i, 1);
       state.shop.layoutVersion++;
@@ -392,7 +392,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (f.conveyor) return { ok: false, message: 'It has a conveyor belt already.' };
       if (state.cash < CONVEYOR_PRICE) return { ok: false, message: `A conveyor belt costs ${dollars(CONVEYOR_PRICE)}.` };
       state.cash -= CONVEYOR_PRICE;
-      f.conveyor = true; f.conveyorBought = state.day; state.shop.layoutVersion = (state.shop.layoutVersion ?? 0) + 1;
+      f.conveyor = true; f.conveyorBought = state.day; f.conveyorBoughtAt = state.time; state.shop.layoutVersion = (state.shop.layoutVersion ?? 0) + 1;
       popup(state, fixtureCentre(state.shop, f), 'Conveyor belt fitted!', 'info', 1.2);
       cue(state, 'build');
       return { ok: true };

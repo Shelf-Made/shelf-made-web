@@ -87,6 +87,27 @@ export function paintStrips(geo: BufferGeometry, pal: PaletteMap, map: Record<st
   return out;
 }
 
+/**
+ * Repaint a model baked into the palette (the furniture kit has no strips) one colour for another ("#from" → "#to"):
+ * every vertex on the old colour's cell moves to the new one's. Colours not baked in fall back to the nearest.
+ */
+export function repaint(geo: BufferGeometry, pal: PaletteMap, map: Record<string, string>): BufferGeometry {
+  const out = geo.clone();
+  const uv = out.getAttribute('uv');
+  if (!uv) return out;
+  const moves = Object.entries(map).map(([from, to]) => [pal.uv(from), pal.uv(to)] as const);
+  // Within half a cell of a colour's centre is on that colour.
+  const du = 0.5 / pal.data.cells / pal.data.cols, dv = 0.5 / pal.data.cells / pal.data.rows;
+  const dst = new Float32Array(uv.count * 2);
+  for (let i = 0; i < uv.count; i++) {
+    const u = uv.getX(i), v = uv.getY(i);
+    const to = moves.find(([f]) => Math.abs(u - f[0]) < du && Math.abs(v - f[1]) < dv)?.[1];
+    dst[i * 2] = to ? to[0] : u; dst[i * 2 + 1] = to ? to[1] : v;
+  }
+  out.setAttribute('uv', new Float32BufferAttribute(dst, 2));
+  return out;
+}
+
 /** The strips a geometry uses, by triangle count (to find a product's main colour). */
 export function stripCounts(geo: BufferGeometry): Map<string, number> {
   const uv = geo.getAttribute('uv');

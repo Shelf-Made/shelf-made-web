@@ -6,7 +6,7 @@ import { queueDrain } from './furniture';
 import { isFree } from './shoplifting';
 import { makeCandidate } from './staff';
 import { fixtureBackWorld, fixtureFrontWorld, fixtureFacingWorld, fixtureCentre, fixtureFront, cellOf, cellIndex } from './grid';
-import { toWorld, refundOf, FIXTURES } from './layout';
+import { toWorld, refundOf, FIXTURES, CHANGED_MIND } from './layout';
 import type { Fixture, Person, Vec2 } from './types';
 
 function shopper(s: GameState, items: number): Person {
@@ -133,17 +133,18 @@ describe('the tills', () => {
     expect(Math.min(...both)).toBeGreaterThan(alone! * 1.6);
   });
 
-  it('a belt fitted today to an older till: sold today, all the belt comes back', () => {
+  it('a belt just fitted to an older till: sold straight away, all the belt comes back', () => {
     const s = openGame({ seed: 40, plotId: 'main', name: 'T', tutorial: false });
     const reg = s.shop.fixtures.find((f) => f.type === 'register')!, price = FIXTURES.register.price;
     s.day = 5; reg.bought = 1; s.cash = 5000;
     expect(applyCommand(s, { type: 'upgradeTill', fixtureId: reg.id }).ok).toBe(true);
-    expect(refundOf(reg, s.day, CONVEYOR_PRICE)).toBe(Math.round(price * 0.6) + CONVEYOR_PRICE);
-    // The next day, 60% of the lot, as for anything else.
-    expect(refundOf(reg, s.day + 1, CONVEYOR_PRICE)).toBe(Math.round((price + CONVEYOR_PRICE) * 0.6));
+    expect(refundOf(reg, s, CONVEYOR_PRICE)).toBe(Math.round(price * 0.6) + CONVEYOR_PRICE);
+    // Once the shop has traded with it a while (or the next day), 60% of the lot, as for anything else.
+    expect(refundOf(reg, { day: s.day, time: s.time + CHANGED_MIND + 1 }, CONVEYOR_PRICE)).toBe(Math.round((price + CONVEYOR_PRICE) * 0.6));
+    expect(refundOf(reg, { day: s.day + 1, time: 0 }, CONVEYOR_PRICE)).toBe(Math.round((price + CONVEYOR_PRICE) * 0.6));
     // An older save's belt, with no day on it: as before.
     delete reg.conveyorBought;
-    expect(refundOf(reg, s.day, CONVEYOR_PRICE)).toBe(Math.round((price + CONVEYOR_PRICE) * 0.6));
+    expect(refundOf(reg, s, CONVEYOR_PRICE)).toBe(Math.round((price + CONVEYOR_PRICE) * 0.6));
   });
 
   it('queue barriers keep the line straight and calmer', () => {

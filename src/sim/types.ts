@@ -102,10 +102,13 @@ export interface Fixture {
   staffId?: number | null;
   /** Register only: upgraded with a conveyor belt (goods come along to be scanned: quicker through). */
   conveyor?: boolean;
-  /** Register only: the day its conveyor belt was fitted (the till sold that same day, all the belt cost comes back). */
+  /** Register only: when its conveyor belt was fitted (the day, and the time on the shop's clock): sold just after, all the belt cost comes back. */
   conveyorBought?: number;
-  /** The day it was bought (sold the same day, it fetches all it cost back: you changed your mind). */
+  conveyorBoughtAt?: number;
+  /** The day it was bought (sold just after, it fetches all it cost back: you changed your mind). */
   bought?: number;
+  /** The shop's clock when it was bought (with `bought`: how long it has traded since). */
+  boughtAt?: number;
   /** Which look of the piece (a kind of tree, a colour of rug), for pieces that come in more than one. */
   variant?: number;
   /** Bike rack only: who has a bike in each stand (a person id), or null. */

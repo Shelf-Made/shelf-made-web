@@ -10,6 +10,7 @@ import { StoresSection } from './StoresSection';
 import { forSale, CORNER_PRICE } from '@/sim/rivals';
 import { managerCandidates } from '@/sim/franchise';
 import { FURNITURE_USE } from '@/sim/furniture';
+import { looksOf } from '@/sim/reviews';
 import { SIGN_TIERS, SLOGAN_MAX, LOADING_BAY_PRICE, CHARGE_FEE, BUS_PULL, BAY_ETA, signTier, signPrice } from '@/sim/frontage';
 
 type Tab = BuildCategory | 'floors' | 'shop';
@@ -82,10 +83,12 @@ function PhotoPicker({ runtime, has }: { runtime: GameRuntime; has: boolean }) {
 /** What placing one more of a piece adds to how the shop looks (or its frontage), while it still counts. */
 function looksGain(s: NonNullable<GameRuntime['state']>, t: FixtureType): string | null {
   const def = FIXTURES[t], have = s.shop.fixtures.filter((f) => f.type === t).length;
-  if (def.looks && have < (def.looksCap ?? Infinity)) return `+${Math.round(def.looks * 100)}% looks (${have + 1} of ${def.looksCap} count)`;
-  if (def.curb && have < (def.looksCap ?? Infinity)) return `+${Math.round(def.curb * 100)}% kerb appeal (${have + 1} of ${def.looksCap} count)`;
-  if ((def.looks || def.curb) && have >= (def.looksCap ?? Infinity)) return 'Enough of these for looks already: more add nothing';
-  return null;
+  if (!def.looks && !def.curb) return null;
+  if (have >= (def.looksCap ?? 1)) return 'Enough of these for looks already: more add nothing';
+  // Decor and kerb appeal top out at 100%: once there, more of anything adds nothing.
+  const l = looksOf(s), gain = def.looks ? Math.min(def.looks, 1 - l.decor) : Math.min(def.curb!, 1 - l.curb);
+  if (gain < 0.005) return def.looks ? 'Decor is full already: more add nothing' : 'Kerb appeal is full already: more add nothing';
+  return `+${Math.round(gain * 100)}% ${def.looks ? 'looks' : 'kerb appeal'} (${have + 1} of ${def.looksCap ?? 1} count)`;
 }
 
 /** What a piece is for: what the furniture does, or the note above. */
@@ -115,10 +118,10 @@ function wallSwatch(id: string, sc: { primary: string; light: string }): string 
   }
 }
 
-/** The swatch for a floor finish: two tiles of its colours. */
-function floorSwatch(id: string, light: string): string {
-  const c: Record<string, [string, string]> = { lino: ['#FFF3DC', '#F3DEC0'], concrete: ['#C4C0B8', '#BBB6AD'], checker: ['#FFFFFF', '#38383D'], colour: ['#FFFFFF', light], stone: ['#F4F7FA', '#E4E6EA'], wood: ['#D9A066', '#B8824C'],
-    parquet: ['#C8925A', '#A87B45'], carpet: ['#5A6E8C', '#53668A'], terracotta: ['#C8693A', '#BF6235'], marble: ['#F4F7FA', '#E9DCC4'] };
+/** The swatch for a floor finish: two tiles of its colours (carpet is laid in the shop's dark shade). */
+function floorSwatch(id: string, sc: { dark: string; light: string }): string {
+  const c: Record<string, [string, string]> = { lino: ['#FFF3DC', '#F3DEC0'], concrete: ['#C4C0B8', '#BBB6AD'], checker: ['#FFFFFF', '#38383D'], colour: ['#FFFFFF', sc.light], stone: ['#F4F7FA', '#E4E6EA'], wood: ['#D9A066', '#B8824C'],
+    parquet: ['#C8925A', '#A87B45'], carpet: [sc.dark, sc.dark], terracotta: ['#C8693A', '#BF6235'], marble: ['#F4F7FA', '#E9DCC4'] };
   if (id === 'paint') return 'conic-gradient(#E8573F, #FFC044, #3FA87A, #4F8FE0, #9B6FE0, #E8573F)';
   if (id === 'photo') return 'linear-gradient(135deg, #A9D8F5 0 40%, #7CC26B 40% 60%, #3FA87A 60%)';
   const [a, b] = c[id] ?? ['#ddd', '#ccc'];
@@ -130,6 +133,8 @@ function floorSwatch(id: string, light: string): string {
 export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
   const s = runtime.state!;
   const b = snap.build;
+  const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+  const gain = b.placing ? looksGain(s, b.placing) : null;
   const selected = b.selectedId !== null ? s.shop.fixtures.find((f) => f.id === b.selectedId) : null;
   const [tab, setTabState] = useState<Tab>(() => (runtime.buildTab as Tab | null) ?? (b.placing ? FIXTURES[b.placing].category : s.shop.fixtures.some((f) => f.type === 'register') ? 'shelves' : 'checkout'));
   // The Security tab shows what the cameras see while you place them (and stops when you leave it).
@@ -151,7 +156,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           <div>
             <div className="name">{b.tool.kind === 'pave' ? (b.tool.surface ? `Laying ${SURFACES.find((x) => x.id === (b.tool as { surface: string }).surface)?.name.toLowerCase()}` : 'Back to grass') : b.tool.kind === 'bay' ? 'Painting bays' : b.tool.kind === 'unbay' ? 'Painting out bays' : b.tool.kind === 'grow' ? 'Adding floor' : b.tool.kind === 'sell' ? 'Selling floor' : b.tool.kind === 'push' ? 'Pushing a wall out' : b.tool.kind === 'pull' ? 'Pulling a wall in' : b.tool.kind === 'panel' ? 'Putting up ceiling panels' : b.tool.kind === 'unpanel' ? 'Taking down ceiling panels' : b.tool.kind === 'wall' ? `Walls: ${WALLS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}` : `Laying ${FLOORS.find((x) => x.id === (b.tool as { style: string }).style)?.name.toLowerCase()}`}</div>
             <div className="sub">{b.reason || (b.tool.kind === 'grow' ? 'Click a marked tile next to the shop' : b.tool.kind === 'wall' ? 'Click a stretch of wall' : b.tool.kind === 'push' || b.tool.kind === 'pull' ? 'Point at an outer wall' : b.tool.kind === 'pave' ? 'Click a tile of the lot' : b.tool.kind === 'bay' || b.tool.kind === 'unbay' ? 'Click a bay beside the shop' : 'Click a tile of floor')}{b.price > 0 ? ` · ${money(b.price)}` : b.price < 0 ? ` · ${money(-b.price)} back` : ''}</div>
-            {b.tool.kind !== 'push' && b.tool.kind !== 'pull' && <div className="sub muted">Drag along a row to do a line of them at once</div>}
+            {/* (Not on a touch screen, where one finger dragging moves the view: it is a tap a tile there.) */}
+            {b.tool.kind !== 'push' && b.tool.kind !== 'pull' && !runtime.eyedropper && !coarse && <div className="sub muted">Drag along a row to do a line of them at once</div>}
           </div>
           <div className="row"><button className="btn small ghost" onClick={() => runtime.stopPlacing()}>Done</button></div>
         </div>
@@ -161,7 +167,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <div className="name">{b.placing ? FIXTURES[b.placing].name : `Moving ${FIXTURES[selected!.type].name}`}</div>
             {noteFor(b.placing ?? selected!.type) && <div className="sub">{noteFor(b.placing ?? selected!.type)}</div>}
             <div className="sub">{b.reason || (FIXTURES[b.placing ?? selected!.type].outdoor ? 'Point at the grass outside' : 'Point at a floor tile')}{b.price ? ` · ${money(b.price)}` : ''} · R turns</div>
-            {b.placing && looksGain(s, b.placing) && <div className="sub gain">{looksGain(s, b.placing)}</div>}
+            {gain && <div className="sub gain">{gain}</div>}
             {b.placing && VARIANTS[b.placing] && (
               <div className="row variant-pick" role="group" aria-label="Which look">
                 <button className="btn small ghost" onClick={() => runtime.cycleVariant(-1)} aria-label="Previous look" title="[ or ,">‹</button>
@@ -264,7 +270,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             const on = b.tool?.kind === 'floor' && b.tool.style === fl.id;
             return (
               <div className="item" key={fl.id}>
-                <span className="swatch big" style={{ background: floorSwatch(fl.id, schemeById(s.shop.scheme).light) }} aria-hidden="true" />
+                <span className="swatch big" style={{ background: floorSwatch(fl.id, schemeById(s.shop.scheme)) }} aria-hidden="true" />
                 <div style={{ flex: 1 }}><div className="name">{fl.name}</div><div className="sub">{fl.perTile ? `${money(fl.perTile)} a tile` : 'Comes with the shop · puts back a finish'}{fl.id === floor && !s.shop.tileStyles ? ' · down now' : ''}</div></div>
                 {fl.id === 'paint' && <PaintPicker runtime={runtime} kind="floor" />}
                 {fl.id === 'photo' && <PhotoPicker runtime={runtime} has={!!s.shop.floorImage} />}

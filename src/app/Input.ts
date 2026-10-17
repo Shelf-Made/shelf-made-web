@@ -71,7 +71,7 @@ export class InputController {
       if (!down || down.moved || down.stock || !this.rt.inPlay) return;
       this.rt.clickAt(e.clientX, e.clientY);
     });
-    on(c, 'pointercancel', (e: PointerEvent) => { if (e.pointerType === 'touch') this.touchUp(e, true); this.rightDrag = null; this.leftDown = null; });
+    on(c, 'pointercancel', (e: PointerEvent) => { if (e.pointerType === 'touch') this.touchUp(e, true); else if (this.leftDown?.tool) this.rt.toolDrag(e.clientX, e.clientY, 'end'); this.rightDrag = null; this.leftDown = null; });
     on(c, 'contextmenu', (e: Event) => e.preventDefault());
     on(c, 'wheel', (e: WheelEvent) => { e.preventDefault(); if (this.rt.inPlay) this.rt.wheelZoom(e.deltaY, e.deltaMode); }, { passive: false });
     on(window, 'keydown', (e: KeyboardEvent) => {
