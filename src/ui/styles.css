@@ -698,6 +698,11 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .build-tile span { font-size: 0.8em; font-weight: 700; color: var(--green-dark); }
 .build-tile span small { color: #8a8f99; font-weight: 600; margin-left: 2px; }
 .swatch.big { width: 38px; height: 38px; border-radius: 8px; flex: none; margin-right: 10px; border: 2px solid rgba(0,0,0,0.12); }
+/* A row led by a big swatch: the swatch, the words (taking the room, wrapping), then its buttons, all on one line. */
+.item.swatched { display: flex; align-items: center; gap: 8px; }
+.item.swatched > .swatch.big { margin-right: 2px; }
+.item.swatched > div { flex: 1; min-width: 0; }
+.item.swatched > .row, .item.swatched > button { flex: none; }
 
 /* Saved orders: a name to save the order under, and each saved order's condition. */
 .save-order input[type='text'] { flex: 1; min-width: 0; margin-right: 8px; padding: 6px 8px; border: 2px solid var(--line, #e2dccf); border-radius: 10px; font: inherit; }
@@ -771,6 +776,7 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 
 /* Build: the looks a piece adds, the variant arrows, the top view switch. */
 .item .sub.gain { color: #2E8560; font-weight: 700; }
+.item .sub.need { color: #C2410C; font-weight: 700; }
 .variant-pick { gap: 6px; margin-top: 6px; align-items: center; }
 .variant-pick .v-name { min-width: 110px; text-align: center; font-weight: 700; font-size: 13px; }
 .variant-pick .btn { min-width: 30px; font-size: 18px; line-height: 1; }

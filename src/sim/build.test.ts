@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, tick, TICK, FIXTURES, buildGrid, findPath, type GameState } from './index';
 import { canPlace, floorCost, windowsFromSides, canBuyTile, styleAt, wallStyleAt, canSellTile } from './build';
 import { makeCandidate } from './staff';
-import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, lotLayout, FLOORS, wallSegments } from './layout';
+import { toWorld, storageCap, PALLET_UNITS, tilePrice, isFloor, floorTileCount, FLOORS, wallSegments, BAY_PRICE, MAX_FLOOR, PLOT_RECT, WALL_T, onBuilding, footprintOf } from './layout';
 import { looksOf } from './reviews';
 import { doorInside, storeroomPoint, spawnCustomer } from './people';
 import { openGame } from './testUtil';
@@ -182,9 +182,13 @@ describe('growing the shop a tile at a time', () => {
     expect(canBuyTile(s, f0.x1 + 1, -3).reason).toMatch(/next to/i);
     expect(canBuyTile(s, f0.x0, f0.z1).reason).toMatch(/front wall/i);
     expect(canBuyTile(s, f0.x0, -3).reason).toMatch(/floor already/i);
-    // One tile out to the east: the floor's rectangle grows and the rest of that column is a gap.
+    // One tile out to the east: the floor's rectangle grows and the rest of that column is a gap. The car park's
+    // bays its new walls stand on are sold back (the tarmac is built over).
+    const bays = s.shop.bays.length;
     expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
-    expect(s.cash).toBeCloseTo(cash - price);
+    expect(bays - s.shop.bays.length).toBe(2);
+    expect(s.cash).toBeCloseTo(cash - price + 2 * Math.round(BAY_PRICE * 0.6));
+    expect(s.notices.some((n) => n.text.startsWith('The shop grew over 2 parking bays'))).toBe(true);
     expect(isFloor(s.shop, f0.x1, -3)).toBe(true);
     expect(isFloor(s.shop, f0.x1, -4)).toBe(false);
     expect(s.shop.floor.x1).toBe(f0.x1 + 1);
@@ -197,12 +201,16 @@ describe('growing the shop a tile at a time', () => {
     expect(isFloor(s.shop, f0.x1, -4)).toBe(true);
   });
 
-  it('nobody walks through the new walls, and the parking moves out with the east wall', () => {
+  it('nobody walks through the new walls, and the rest of the lot stays where it was', () => {
     const s = shop();
-    const bay0 = lotLayout(s.shop).bays[0]!.x;
+    const kept = s.shop.bays.filter((b) => b.z > -1.6).map((b) => ({ x: b.x, z: b.z }));
+    const tiles = Object.keys(s.shop.lotTiles!).length;
     const f0 = { ...s.shop.floor };
     expect(applyCommand(s, { type: 'buyTile', x: f0.x1, z: -3 }).ok).toBe(true);
-    expect(lotLayout(s.shop).bays[0]!.x).toBe(bay0 + 1);
+    for (const b of kept) expect(s.shop.bays.some((q) => q.x === b.x && q.z === b.z)).toBe(true);
+    // Only what the new walls stand on is gone (two tiles of the bays' row, and the tarmac a tile out of it).
+    expect(Object.keys(s.shop.lotTiles!).length).toBeLessThan(tiles);
+    expect(Object.keys(s.shop.lotTiles!).length).toBeGreaterThanOrEqual(tiles - 4);
     const g = buildGrid(s.shop, 99);
     // From the new tile, out through its north side (a gap, walled off) is blocked; through the door is fine.
     const inTile = toWorld(s.shop, f0.x1 + 0.5, -2.5);
@@ -471,5 +479,43 @@ describe('building across someone downstairs', () => {
     p.state = 'browsing'; p.timer = 5;
     expect(place(s, 'wall', -2.5, -2, 0).ok).toBe(true);
     expect(canPlace(s, 'wall', -1.5, -1, 0).reason).toBe('Would shut someone in');
+  });
+});
+
+describe('growing out over the lot', () => {
+  it('grows over the paving, the car park and the yard, right to the edges of the plot', () => {
+    const s = shop();
+    s.cash = 1e6;
+    // East along one row, over the bays and the aisle, to the plot's edge.
+    const z = -3;
+    let x = s.shop.floor.x1;
+    for (; x < MAX_FLOOR.x1; x++) expect(applyCommand(s, { type: 'buyTile', x, z }).ok, `east ${x}`).toBe(true);
+    expect(canBuyTile(s, x, z).reason).toBe('The plot ends here');
+    expect(s.shop.floor.x1 + WALL_T).toBeLessThanOrEqual(PLOT_RECT.x1);
+    // Back, through the yard, to the plot's back edge.
+    let bz = s.shop.floor.z0 - 1;
+    for (; bz >= MAX_FLOOR.z0; bz--) expect(applyCommand(s, { type: 'buyTile', x: 0.5, z: bz }).ok, `back ${bz}`).toBe(true);
+    expect(canBuyTile(s, 0.5, bz).reason).toBe('The plot ends here');
+    expect(s.shop.floor.z0 - WALL_T).toBeGreaterThanOrEqual(PLOT_RECT.z0);
+    // Nothing laid is left under the building, and the bays it grew over were sold back.
+    for (const k of Object.keys(s.shop.lotTiles!)) {
+      const [tx, tz] = k.split(',').map(Number) as [number, number];
+      expect(onBuilding(s.shop, { x0: tx, z0: tz, x1: tx + 1, z1: tz + 1 }), k).toBe(false);
+    }
+    for (const f of s.shop.fixtures.filter((q) => q.type === 'parkingBay')) expect(onBuilding(s.shop, footprintOf(f.type, f.x, f.z, f.rot))).toBe(false);
+    expect(s.shop.bays.length).toBe(s.shop.fixtures.filter((q) => q.type === 'parkingBay').length);
+  });
+
+  it('never walls up across a car driving on the lot', () => {
+    const s = shop();
+    const x = s.shop.floor.x1, z = -1;
+    expect(canBuyTile(s, x, z).ok).toBe(true);
+    // A car on its way across where the new tile's walls would stand.
+    const from = toWorld(s.shop, x + 3.5, z + 0.5), to = toWorld(s.shop, x + 0.5, z + 0.5);
+    s.cars.push({ id: 99999, model: 0, x: from.x, z: from.z, yaw: 0, px: from.x, pz: from.z, pyaw: 0, path: [from, to], pathIdx: 1, speed: 2, state: 'leaving', bay: null, ownerId: null, timer: 0 });
+    expect(canBuyTile(s, x, z).reason).toBe('A car is driving through there: wait a moment');
+    // Gone by: the tile can be bought.
+    s.cars = [];
+    expect(canBuyTile(s, x, z).ok).toBe(true);
   });
 });

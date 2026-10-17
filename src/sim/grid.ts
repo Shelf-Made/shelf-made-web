@@ -4,7 +4,7 @@
  * parked cars block cells. Cells carry a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ } from './layout';
+import { lotLayout, LOT_FRONT, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ } from './layout';
 
 export const CELL = 0.5;
 
@@ -170,16 +170,19 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
     for (let cz = 0; cz < h; cz++) g.rowLevel[cz] = levelOfZ(toLocal(shop, x0, z0 + (cz + 0.5) * CELL).z);
     g.levelRows = (shop.flip ? -LEVEL_DZ : LEVEL_DZ) / CELL;
   }
-  // Paving.
-  R(L.apron, 1);
-  R({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.5 }, 1);
-  R(L.aisle, 1.2); R(L.driveway, 1.2); R(L.serviceLane, 1.2); R(L.backYard, 1.2);
-  // Surfaces laid on the lot: people take to paving over the grass.
-  for (const [k, sf] of Object.entries(shop.lotTiles ?? {})) { const [x, z] = k.split(',').map(Number) as [number, number]; R({ x0: x, z0: z, x1: x + 1, z1: z + 1 }, SURFACES.find((q) => q.id === sf)?.walk ?? 1); }
+  // Paving (an older lot not laid as tiles: its paths and lanes as they were).
+  if (!shop.lotBaked) {
+    R(L.apron, 1);
+    R({ x0: L.walkwayX - 0.5, z0: L.apron.z1, x1: L.walkwayX + 0.5, z1: 3.5 }, 1);
+    R(L.aisle, 1.2); R(L.driveway, 1.2); R(L.serviceLane, 1.2); R(L.backYard, 1.2);
+  }
+  // Surfaces laid on the lot: people take to paving over the grass (a front-row tile right up to the sidewalk).
+  for (const [k, sf] of Object.entries(shop.lotTiles ?? {})) { const [x, z] = k.split(',').map(Number) as [number, number]; R({ x0: x, z0: z, x1: x + 1, z1: z + 1 + (z + 1 > LOT_FRONT - 0.2 ? 0.1 : 0) }, SURFACES.find((q) => q.id === sf)?.walk ?? 1); }
   // Sidewalk strip along the whole plot.
   R({ x0: PLOT_RECT.x0, z0: 2.6, x1: PLOT_RECT.x1, z1: 3.5 }, 1);
   // Parking bays are walkable when empty (cars block them later).
-  for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
+  if (shop.lotBaked) { for (const f of shop.fixtures) if (f.type === 'parkingBay') R(footprintOf(f.type, f.x, f.z, f.rot), 1.3); }
+  else for (const b of L.bays) R({ x0: b.x - 0.85, z0: b.z - 0.5, x1: b.x + 0.85, z1: b.z + 0.5 }, 1.3);
   // Shop floor, tile by tile (`storeroom` only exists in old saves).
   const f = shop.floor, s = shop.storeroom;
   const tiles = floorTileList(shop);

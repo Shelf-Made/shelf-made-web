@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, tick, TICK, resetGridCache, type GameState } from './index';
 import { canPlace } from './build';
 import { lotAppeal } from './lot';
-import { LOT_FRONT, PLOT_RECT, FRONT_WALK_Z, toLocal, lotLayout, paintedBays } from './layout';
+import { LOT_FRONT, PLOT_RECT, FRONT_WALK_Z, toLocal, lotLayout } from './layout';
 import { expectedByType } from './customers';
 import { placeOrder } from './economy';
 import { spawnCustomer } from './people';
@@ -129,13 +129,16 @@ describe('car chargers', () => {
     expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'evCharger', x: at.x, z: at.z, rot: 0 }).ok).toBe(true);
     const charger = s.shop.fixtures[s.shop.fixtures.length - 1]!;
     const refused: string[] = [];
-    for (const b of paintedBays(s.shop).bays) { const r = applyCommand(s, { type: 'eraseBay', slot: b.id }); if (!r.ok) refused.push(r.message!); }
-    expect(refused).toEqual(['A car charger would have no bay in reach: move or sell it first']);
+    for (const b of s.shop.fixtures.filter((f) => f.type === 'parkingBay')) { const r = applyCommand(s, { type: 'removeFixture', fixtureId: b.id }); if (!r.ok) refused.push(r.message!); }
+    expect(refused).toEqual(['A car charger would have no bay in reach: move or sell it first.']);
     expect(s.shop.bays.length).toBe(1);
     expect(chargerReachesBay(s.shop, at.x, at.z)).toBe(true);
+    // Nor moved out of its reach.
+    const last = s.shop.fixtures.find((f) => f.type === 'parkingBay')!;
+    expect(canPlace(s, 'parkingBay', last.x, last.z - 8, last.rot, last.id).reason).toBe('A car charger would have no bay in reach: move or sell it first');
     // Sold, it no longer holds the bay.
     expect(applyCommand(s, { type: 'removeFixture', fixtureId: charger.id }).ok).toBe(true);
-    expect(applyCommand(s, { type: 'eraseBay', slot: paintedBays(s.shop).bays[0]!.id }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: last.id }).ok).toBe(true);
   });
 });
 

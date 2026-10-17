@@ -29,6 +29,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
   fountain: 'gen:fountain', statue: 'gen:statue', lampPost: 'gen:lampPost', bollard: 'gen:bollard', balloons: 'gen:balloons', hedge: 'gen:hedge', evCharger: 'gen:evCharger', busStop: 'gen:busStop',
+  parkingBay: 'gen:parkingBay',
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
   camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
   iceChest: 'gen:iceChest', coolProduce: 'gen:coolProduce', wallShelf: 'gen:wallShelf', glassCase: 'gen:glassCase', displayTable: 'gen:displayTable',
@@ -131,6 +132,13 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       for (let i = 0; i < 3; i++) { const x = (i - 1) * 0.28; parts.push(box(pal, '#9AA0A8', 0.025, 0.24, 0.025, x, 0, -0.22), box(pal, '#9AA0A8', 0.025, 0.24, 0.025, x, 0, 0.02), box(pal, '#9AA0A8', 0.025, 0.025, 0.27, x, 0.23, -0.1)); }
       return merge(parts);
     }
+    // A parking bay (two tiles long, its open end toward +z): white lines down both sides and across the back, a
+    // wheel stop, and its own patch of tarmac under them (the lot's tile is there too; this shows on the Build card).
+    case 'gen:parkingBay': return merge([
+      box(pal, '#6E717C', 0.98, 0.002, 1.98, 0, 0.019, 0),
+      box(pal, '#F2F2F2', 0.05, 0.004, 1.94, -0.465, 0.02, -0.01), box(pal, '#F2F2F2', 0.05, 0.004, 1.94, 0.465, 0.02, -0.01), box(pal, '#F2F2F2', 0.98, 0.004, 0.05, 0, 0.02, -0.955),
+      box(pal, '#B9BCC4', 0.5, 0.06, 0.1, 0, 0.02, -0.78),
+    ]);
     // ---- More for the lot.
     case 'gen:fountain': {
       // Two tiers of stone over a round pool (the spray and its sparkle are drawn live). The pool's rim is a ring, its

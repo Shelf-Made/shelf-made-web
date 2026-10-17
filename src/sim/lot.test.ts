@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, tick, TICK, resetGridCache, type GameState } from './index';
 import { openGame } from './testUtil';
 import { canPlace, canBuyTile } from './build';
-import { canPave, canPaintBay, lotAppeal, standPoint } from './lot';
-import { lotLayout, lotReserved, overlaps, toWorld, footprintOf, BAY_PRICE, LOT_FRONT } from './layout';
+import { canPave, canPaintBay, lotAppeal, standPoint, surfaceAt } from './lot';
+import { lotLayout, lotReserved, overlaps, toWorld, footprintOf, onBuilding, BAY_PRICE, LOT_FRONT, WALL_T } from './layout';
+import { onLotGrid, bayReachable } from './drive';
 import { gridFor } from './state';
 import { cellOf, isBlocked } from './grid';
 import { findPath } from './pathfinding';
@@ -19,21 +20,24 @@ function shop(seed = 5): GameState {
 const place = (s: GameState, fixtureType: Parameters<typeof canPlace>[1], x: number, z: number, rot: 0 | 1 | 2 | 3 = 0) => applyCommand(s, { type: 'placeFixture', fixtureType, x, z, rot });
 /** A free lawn tile out east of the car park (on the lot's grid: whole x, half z). */
 const LAWN = { x: 10, z: -4.5 };
+/** The aisle's tile beside the bays (the first tile of tarmac past them). */
+const AISLE = (s: GameState) => s.shop.floor.x1 + WALL_T + 2;
 
 describe('building on the lot', () => {
-  it('puts trees, flowers and benches on the grass, never on the shop, a lane or a bay', () => {
+  it('puts trees, flowers and benches on the grass, never on the shop or the tarmac', () => {
     const s = shop();
     expect(place(s, 'tree', LAWN.x, LAWN.z).ok).toBe(true);
     expect(place(s, 'flowerBed', LAWN.x, LAWN.z + 1).ok).toBe(true);
     expect(canPlace(s, 'parkBench', LAWN.x, LAWN.z + 1, 0).reason).toBe('Something is already there');
-    // Off the lot's grid, on the shop, on the aisle, on a painted bay, past the sidewalk.
+    // Off the lot's grid, on the shop, on the aisle, past the sidewalk.
     expect(canPlace(s, 'tree', LAWN.x + 0.5, LAWN.z, 0).ok).toBe(false);
     expect(canPlace(s, 'tree', 0, -3.5, 0).reason).toBe('Out on the lot, not on the shop');
-    const L = lotLayout(s.shop);
-    const aisleX = Math.floor(L.aisle.x0) + 1;
-    expect(canPlace(s, 'tree', aisleX, -3.5, 0).reason).toBe('Keep the paths, lanes and bays clear');
+    expect(canPlace(s, 'tree', AISLE(s), -3.5, 0).reason).toBe('Not on the tarmac: cars drive there');
     expect(canPlace(s, 'tree', 3, Math.ceil(LOT_FRONT - 0.5) + 0.5 - 1 + 1, 0).reason).toBe('Keep it on your lot');
-    // Every piece placed keeps clear of everything the shop needs.
+    // Dig the tarmac up and the tree can go there.
+    expect(applyCommand(s, { type: 'pave', x: AISLE(s) + 1, z: -9.5 + 1, surface: null }).ok).toBe(true);
+    expect(canPlace(s, 'tree', AISLE(s) + 1, -8.5, 0).ok).toBe(true);
+    // Every piece placed keeps clear of the pylon sign.
     for (const f of s.shop.fixtures.filter((x) => x.type === 'tree' || x.type === 'flowerBed')) {
       expect(lotReserved(s.shop).some((q) => overlaps(q, footprintOf(f.type, f.x, f.z, f.rot)))).toBe(false);
     }
@@ -47,7 +51,7 @@ describe('building on the lot', () => {
     expect(looksOf(s).curb).toBeGreaterThan(0.1);
   });
 
-  it('lays surfaces a tile at a time, people prefer them to grass, and takes them up for part of the price', () => {
+  it('lays surfaces a tile at a time, digs up what the lot came with, people prefer paving to grass', () => {
     const s = shop();
     const before = s.cash;
     expect(applyCommand(s, { type: 'pave', x: LAWN.x, z: LAWN.z, surface: 'brick' }).ok).toBe(true);
@@ -57,10 +61,19 @@ describe('building on the lot', () => {
     expect(canPave(s, LAWN.x, LAWN.z, 'paving').price).toBe(8 - 7);
     expect(applyCommand(s, { type: 'pave', x: LAWN.x, z: LAWN.z, surface: null }).ok).toBe(true);
     expect(s.cash).toBe(before - 12 + 7);
-    // Not on the shop or the aisle (paved already).
+    // Not on the shop; the aisle is tarmac already, and can be dug up like anything else.
     expect(canPave(s, 0, -3.5, 'asphalt').ok).toBe(false);
-    const L = lotLayout(s.shop);
-    expect(canPave(s, Math.floor(L.aisle.x0) + 1, -3.5, 'asphalt').reason).toBe('Paved already');
+    expect(canPave(s, AISLE(s), -3.5, 'asphalt').reason).toBe('Laid already');
+    expect(canPave(s, AISLE(s), -3.5, null).ok).toBe(true);
+    // The concrete in front of the shop and the path to the door come up too (and go down again as anything).
+    const front = { x: s.shop.door.x + 2, z: 0.5 };
+    expect(surfaceAt(s.shop, front.x, front.z)).toBe('concrete');
+    expect(applyCommand(s, { type: 'pave', ...front, surface: null }).ok).toBe(true);
+    expect(surfaceAt(s.shop, front.x, front.z)).toBe(null);
+    expect(applyCommand(s, { type: 'pave', ...front, surface: 'brick' }).ok).toBe(true);
+    // Only the pylon sign's patch stays as it is.
+    const p = s.shop.pylon!;
+    expect(canPave(s, Math.floor(p.x), Math.floor(p.z - 0.5) + 0.5, 'brick').reason).toBe('The pylon sign stands there');
     // A paved tile is cheaper to walk than grass.
     applyCommand(s, { type: 'pave', x: LAWN.x, z: LAWN.z, surface: 'paving' });
     const g = gridFor(s);
@@ -69,32 +82,75 @@ describe('building on the lot', () => {
     expect(at(LAWN.x + 0.5, LAWN.z + 1.5)).toBeGreaterThan(2);
   });
 
-  it('paints parking bays one at a time, up to as many as the car park takes, and paints them out again', () => {
-    const s = shop();
-    const L = lotLayout(s.shop);
-    expect(s.shop.bays.length).toBe(4);
-    expect(L.slots.length).toBe(8);
-    const free = L.slots.filter((sl) => !s.shop.bayPlan!.includes(sl.id));
-    const cash = s.cash;
-    expect(applyCommand(s, { type: 'paintBay', slot: free[0]!.id }).ok).toBe(true);
-    expect(s.cash).toBe(cash - BAY_PRICE);
-    expect(s.shop.bays.length).toBe(5);
-    expect(s.shop.lotRows).toBe(2);
-    for (const sl of free.slice(1)) expect(applyCommand(s, { type: 'paintBay', slot: sl.id }).ok).toBe(true);
-    expect(s.shop.bays.length).toBe(8);
-    expect(canPaintBay(s, free[0]!.id).reason).toBe('Painted already');
-    // A tree where a bay could go: that bay cannot be painted until it moves.
-    const t = shop();
-    const slot = lotLayout(t.shop).slots.find((sl) => sl.row === 1)!;
-    expect(place(t, 'tree', Math.floor(slot.x), slot.z - 0.5 + 0.0 - ((slot.z - 0.5) % 1 === 0 ? 0 : 0)).ok || place(t, 'tree', Math.floor(slot.x), Math.floor(slot.z - 0.5) + 0.5).ok).toBe(true);
-    expect(canPaintBay(t, slot.id).ok).toBe(false);
-    // Painted out: part of the price back.
-    const c2 = s.cash;
-    expect(applyCommand(s, { type: 'eraseBay', slot: free[0]!.id }).ok).toBe(true);
-    expect(s.cash).toBe(c2 + Math.round(BAY_PRICE * 0.6));
-    expect(s.shop.bays.length).toBe(7);
+  it('every tile of the lot sits on one grid, flush with the walls, and nothing laid is under the shop', () => {
+    for (const plotId of ['main', 'elm', 'bus']) {
+      const s = openGame({ seed: 3, plotId, name: 'Grid' });
+      for (const k of Object.keys(s.shop.lotTiles ?? {})) {
+        const [x, z] = k.split(',').map(Number) as [number, number];
+        expect(onLotGrid(x, z), `${plotId} ${k}`).toBe(true);
+        expect(onBuilding(s.shop, { x0: x, z0: z, x1: x + 1, z1: z + 1 }), `${plotId} ${k}`).toBe(false);
+      }
+      // The walls' outside faces are on the grid's lines: the tile beside a wall touches it, with no gap.
+      const f = s.shop.floor;
+      for (const edge of [f.x0 - WALL_T, f.x1 + WALL_T]) expect(Math.abs(edge - Math.round(edge))).toBeLessThan(1e-9);
+      expect(Math.abs(f.z1 + WALL_T - 0.5 - Math.round(f.z1 + WALL_T - 0.5))).toBeLessThan(1e-9);
+    }
   });
 
+  it('puts a parking bay anywhere, with its tarmac, and cars use it once tarmac runs to it from the road', () => {
+    const s = shop();
+    expect(s.shop.bays.length).toBe(4);
+    const cash = s.cash;
+    // Out on the grass east of the car park, a tile clear of the aisle: it comes with two tiles of tarmac.
+    const x = AISLE(s) + 3, z = -4.5;
+    expect(canPlace(s, 'parkingBay', x, z, 3).price).toBe(BAY_PRICE + 2 * 6);
+    expect(place(s, 'parkingBay', x, z, 3).ok).toBe(true);
+    expect(s.cash).toBe(cash - BAY_PRICE - 12);
+    expect(s.shop.bays.length).toBe(5);
+    const bay = s.shop.fixtures.find((f) => f.type === 'parkingBay' && f.x === x && f.z === z)!;
+    expect(surfaceAt(s.shop, x, z)).toBe('asphalt');
+    expect(surfaceAt(s.shop, x + 1, z)).toBe('asphalt');
+    // Nothing joins it to the road yet: no car can get there.
+    expect(bayReachable(s.shop, bay)).toBe(false);
+    // One tile of tarmac from the aisle to its open end.
+    expect(applyCommand(s, { type: 'pave', x: x - 1, z, surface: 'asphalt' }).ok).toBe(true);
+    expect(bayReachable(s.shop, bay)).toBe(true);
+    // Not on another piece, not over the tarmac a bay stands on, and the tarmac under a bay stays while it does.
+    expect(canPlace(s, 'parkingBay', x, z, 1).ok).toBe(false);
+    expect(canPave(s, x, z, null).reason).toBe('A parking bay is on it: move or sell the bay first');
+    // Sold straight back (a change of mind): all of it, and the tarmac it brought comes up again.
+    let c2 = s.cash;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: bay.id }).ok).toBe(true);
+    expect(s.cash).toBe(c2 + BAY_PRICE + 12);
+    expect(s.shop.bays.length).toBe(4);
+    expect(surfaceAt(s.shop, x, z)).toBe(null);
+    expect(surfaceAt(s.shop, x - 1, z)).toBe('asphalt');
+    // Sold once it has been used: part of the bay's price back, and its tarmac stays (it is the lot's now).
+    expect(place(s, 'parkingBay', x, z, 3).ok).toBe(true);
+    const again = s.shop.fixtures.find((f) => f.type === 'parkingBay' && f.x === x && f.z === z)!;
+    again.bought = s.day - 1;
+    c2 = s.cash;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: again.id }).ok).toBe(true);
+    expect(s.cash).toBe(c2 + Math.round(BAY_PRICE * 0.6));
+    expect(surfaceAt(s.shop, x, z)).toBe('asphalt');
+    // The car park's own places (as the balance bots paint them) still work.
+    expect(applyCommand(s, { type: 'paintBay', slot: 8 }).ok).toBe(true);
+    expect(s.shop.bays.length).toBe(5);
+    expect(canPaintBay(s, 8).reason).toBe('Painted already');
+    expect(applyCommand(s, { type: 'eraseBay', slot: 8 }).ok).toBe(true);
+    expect(s.shop.bays.length).toBe(4);
+  });
+
+  it('never strands a car: a bay with a car in it stays, and the tarmac under a car stays', () => {
+    const s = openGame({ seed: 11, plotId: 'main', name: 'Busy', tutorial: false });
+    for (let i = 0; i < 300 / TICK && !s.cars.some((c) => c.state === 'parked' && c.lot === undefined); i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
+    const car = s.cars.find((c) => c.state === 'parked' && c.lot === undefined)!;
+    expect(car).toBeTruthy();
+    const fid = s.shop.bays[car.bay!]!.fid!;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: fid }).ok).toBe(false);
+    const f = s.shop.fixtures.find((x) => x.id === fid)!;
+    expect(canPlace(s, 'parkingBay', f.x, f.z - 6, f.rot, f.id).ok).toBe(false);
+  });
   it('will not grow the shop under a tree out on the lot', () => {
     const s = shop();
     // Right by the west wall, where the service lane would move to if the shop grew a tile west.

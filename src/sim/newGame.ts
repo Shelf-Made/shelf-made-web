@@ -1,4 +1,5 @@
 import { skyFor } from './weather';
+import { bakeLot } from './drive';
 import type { GameState, Difficulty, Shop, Fixture, Person, DayStats, Slot } from './types';
 import { DEFAULT_SCHEME, schemeById } from './schemes';
 import { PLOTS, STARTER, DIFFICULTY, FIXTURES, storeFrame, lotLayout, deliveryZone, toWorld, yawToWorld, STREET_BAYS, floorTileList, tileKey } from './layout';
@@ -88,5 +89,7 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
   };
   state.people.push(makeOwner(state.nextId++, shop, rng));
   refreshPool(state);
+  // The lot, laid as tiles: the paths, lanes, yard and four bays a shop starts with, every bit of it yours to change.
+  bakeLot(state, () => state.nextId++);
   return state;
 }

@@ -4,7 +4,7 @@
  * are open, their shapes, how upstairs is walked) live with the rest of the floor in layout.ts.
  */
 import type { GameState, FixtureType, FloorStyle, Person, Rot, Vec2, Waypoint, Shop } from './types';
-import { FIXTURES, FLOORS, MAX_LEVELS, MAX_FLOOR, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
+import { FIXTURES, FLOORS, MAX_LEVELS, inUpperX, TICK, VERTICAL, FLOOR_NAMES, footprintOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
 import { buildGrid, fixtureStandWorld, fixtureFront, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, type Grid, type Portal } from './grid';
 import { followPath } from './movement';
 import { dynamicBlockers, setPath, MANAGER_ROOM } from './people';
@@ -263,7 +263,7 @@ export function canTakeAway(state: GameState, id: number): string | null {
 /** Which floor a person is on (anyone out in the town is on the ground). */
 export function levelOfPerson(shop: Shop, p: Vec2): number {
   const l = toLocalOf(shop, p);
-  return l.x > MAX_FLOOR.x0 - 1 && l.x < MAX_FLOOR.x1 + 1 ? levelOfZ(l.z) : 0;
+  return inUpperX(l.x) ? levelOfZ(l.z) : 0;
 }
 
 // ---- Walking with the keys: push into the stairs (up at the foot, down at the top) or a lift's door to ride.

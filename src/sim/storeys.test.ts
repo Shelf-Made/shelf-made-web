@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyCommand, tick, TICK, type GameState, type FixtureType, type Fixture } from './index';
 import { openGame } from './testUtil';
-import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey, refundOf } from './layout';
+import { storeysOf, zOnLevel, toWorld, toLocal, MAX_LEVELS, levelTileList, wallSegments, levelOf, FLOORS, RESALE, floorTileCount, tilePriceAt, VERTICAL, MAX_FLOOR, rideEnds, panelsOver, tileKey, refundOf, liftWorld } from './layout';
 import { fixtureFacingWorld, fixtureStandWorld, fixtureFront, lineClear, isBlocked, cellOf, cellIndex, reachableCells } from './grid';
 import { canPlace, canSellTile, floorCost, grownCeilings, styleAt } from './build';
 import { spawnCustomer, setPath, doorInside, addSpill } from './people';
@@ -677,6 +677,23 @@ describe('building up: a counter keeps its queue and its back, and what is cut o
       expect(lost, who).toBe('');
       expect(queued, who).toBe(false);
       expect(s.today.served, who).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('the floors above, and the town behind the plot', () => {
+  // A shop can grow to the plot's edges, and each floor above is walked in a region past the plot's back. The side
+  // street's sidewalk runs past there too: someone on it was taken for someone upstairs and drawn up on the shop.
+  it('never takes anyone out in the town (or a car) for someone upstairs', () => {
+    for (const plotId of ['main', 'elm', 'bus']) {
+      const s = openGame({ seed: 1, plotId, name: 'Town' });
+      let lifted = 0;
+      for (let i = 0; i < 120 / TICK; i++) {
+        tick(s);
+        for (const p of s.people) if ((p.kind === 'walker' || p.kind === 'customer') && (liftWorld(s.shop, p.x, p.z).level > 0 || levelOfPerson(s.shop, p) > 0)) lifted++;
+        for (const c of s.cars) if (liftWorld(s.shop, c.x, c.z).level > 0) lifted++;
+      }
+      expect(lifted, plotId).toBe(0);
     }
   });
 });

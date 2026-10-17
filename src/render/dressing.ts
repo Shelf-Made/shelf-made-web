@@ -4,8 +4,8 @@
  * prop ever stands on a path, the paving or a parking bay: props only go on the lawn between them.
  * A bigger shop gets more of them; opening days get bunting (drawn by the views).
  */
-import { lotLayout, WALL_T, PLOT_RECT, pylonSpot as simPylonSpot, type Rect } from '@/sim/layout';
-import type { Vec2 } from '@/sim/types';
+import { lotLayout, WALL_T, PLOT_RECT, FIXTURES, footprintOf, pylonSpot as simPylonSpot, type Rect } from '@/sim/layout';
+import type { Vec2, Shop } from '@/sim/types';
 import { MAIN_N, TREE_MIX, BUSH_MIX } from './town';
 
 export interface Prop { model: string; x: number; z: number; yaw: number; scale?: number; r: number }
@@ -14,19 +14,20 @@ export interface Prop { model: string; x: number; z: number; yaw: number; scale?
 const NORTH_Z = -1.6;
 
 /** A corner's shape: its floor, lot and door; the player's also its painted bays and what the player built on the lot (props and the garden keep off it). */
-export interface CornerShape { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; door: Vec2; extra?: Rect[] }
+export interface CornerShape { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; door: Vec2; extra?: Rect[]; /** The lot laid as tiles (the player's): what is laid and built is all in `extra`, the old paths' places are lawn. */ tiles?: boolean; pylon?: { x: number; z: number; w: number } }
 
 /**
  * Where the pylon sign stands, shop-relative: on the lawn by the sidewalk, between the service lane
  * (where the delivery truck turns in) and the walkway to the door, never on either. `w` is the board's width.
  */
-export function pylonSpot(shape: Pick<CornerShape, 'floor' | 'storeroom' | 'lotRows' | 'bayPlan'>): { x: number; z: number; w: number } { return simPylonSpot(shape); }
+export function pylonSpot(shape: Pick<CornerShape, 'floor' | 'storeroom' | 'lotRows' | 'bayPlan' | 'pylon'>): { x: number; z: number; w: number } { return simPylonSpot(shape); }
 
 /** Everything a prop must keep off, shop-relative: the building, every paved path and the bays (each grown by a margin when tested). */
 export function pavedRects(shape: CornerShape): Rect[] {
   const L = lotLayout({ floor: shape.floor, storeroom: shape.storeroom, lotRows: shape.lotRows, bayPlan: shape.bayPlan });
   const f = shape.floor, backZ = Math.min(f.z0, shape.storeroom.z0);
   const py = pylonSpot(shape);
+  if (shape.tiles) return [{ x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T }, { x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 }, ...(shape.extra ?? [])];
   return [
     // The driveway and the service lane are paved right out to the kerb, across the lawn and the sidewalk.
     { x0: f.x0 - WALL_T, z0: backZ - WALL_T, x1: f.x1 + WALL_T, z1: f.z1 + WALL_T }, L.apron, L.aisle, { ...L.driveway, z1: SIDEWALK_IN + 1 }, { ...L.serviceLane, z1: SIDEWALK_IN + 1 }, L.backYard,
@@ -35,6 +36,15 @@ export function pavedRects(shape: CornerShape): Rect[] {
     ...L.bays.map((b) => ({ x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 })),
     ...(shape.extra ?? []),
   ];
+}
+
+/** Your own corner as the dressing sees it: everything built or laid out on the lot (its pieces, every laid tile) to keep off. */
+export function playerCorner(shop: Shop): CornerShape {
+  const extra: Rect[] = [
+    ...shop.fixtures.filter((f) => FIXTURES[f.type].outdoor).map((f) => footprintOf(f.type, f.x, f.z, f.rot)),
+    ...Object.keys(shop.lotTiles ?? {}).map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x0: x, z0: z, x1: x + 1, z1: z + 1 }; }),
+  ];
+  return { ...shop, extra, tiles: !!shop.lotBaked };
 }
 
 /** The frontage sidewalk's inner edge, shop-relative: the lawn stops there. */
@@ -54,7 +64,8 @@ export function cornerProps(shape: CornerShape, tier: number, opts: { trolleys?:
     && !paved.some((q) => x > q.x0 - r && x < q.x1 + r && z > q.z0 - r && z < q.z1 + r)
     && !out.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + r + 0.1);
   const put = (model: string, ax: number, az: number, r: number, yaw = 0, scale?: number) => {
-    for (let ring = 0; ring <= 14; ring++) {
+    // (Out to a few tiles off: on your own lot, laid as you like, the lawn by its anchor may be paved.)
+    for (let ring = 0; ring <= 26; ring++) {
       const steps = Math.max(1, ring * 6);
       for (let k = 0; k < steps; k++) {
         const a = (k / steps) * Math.PI * 2, d = ring * 0.25;

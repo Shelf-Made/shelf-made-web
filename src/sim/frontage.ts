@@ -11,6 +11,7 @@ import { LOT_FRONT, FRONT_WALK_Z, toWorld, toLocal, bayRect, lotLayout } from '.
 import { popup, cue, withRng } from './state';
 import { dollars, formatMoney } from './money';
 import { idHash } from './visitors';
+import { bayCentre } from './drive';
 
 /** The signs, from the one the shop came with up. `pull` is how many more of the passing shoppers notice the shop. */
 export const SIGN_TIERS: { id: SignStyle; name: string; price: number; pull: number; looks: number; blurb: string }[] = [
@@ -135,6 +136,7 @@ export function tickChargers(state: GameState): void {
 
 /** Is there a bay a charger here would reach? (A charger off on its own is never used.) */
 export function chargerReachesBay(shop: Shop, x: number, z: number): boolean {
+  if (shop.lotBaked) return shop.fixtures.some((f) => f.type === 'parkingBay' && (() => { const c = bayCentre(f); return Math.hypot(c.x - (x + 0.5), c.z - (z + 0.5)) < CHARGE_REACH; })());
   return lotLayout(shop).bays.some((b) => { const r = bayRect(b); return Math.hypot((r.x0 + r.x1) / 2 - (x + 0.5), (r.z0 + r.z1) / 2 - (z + 0.5)) < CHARGE_REACH; });
 }
 

@@ -1,4 +1,5 @@
 import type { GameState, Franchise } from '@/sim/types';
+import { bakeLot } from '@/sim/drive';
 import { storeFrame, lotLayout, paintedBays, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES } from '@/sim/layout';
 
 import { makeRivals, RIVAL_ECON } from '@/sim/rivals';
@@ -125,6 +126,9 @@ export function migrate(file: SaveFile): SaveFile {
   for (const p of st.people ?? []) if (p.kind === 'staff' && p.look.model >= 12) p.look = staffLook(p.id, { model: p.id % 12, variant: p.look.variant, height: p.look.height });
   // Stairs put facing out through a wall (the first build of floors let that by) are turned to step on from inside.
   stepOnInside(st);
+  // The lot laid as tiles: its paths, lanes and yard tiles to dig up or lay again, its bays Parking bays to move.
+  st.cars ??= [];
+  bakeLot(st, () => st.nextId++);
   // The manager walled in, or out past the walking grid (a click refused once still walked them there): back inside.
   // Anyone else left where the door does not reach, too; anyone in the line of a till nobody can get to chooses
   // again; a way planned before something was built across it (nothing planned again then) goes round it; and a

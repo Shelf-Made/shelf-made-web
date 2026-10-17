@@ -189,6 +189,19 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
   above, and once a floor above is open, a floor picker (Ground, 1st...) chooses which one you build
   on. Floors and Shop are lists (a swatch per floor finish; sizes, the car park, windows per wall,
   the sign, corners).
+- **The lot** (Outside tab): all tiles, on a grid of its own that sits flush with the outside of the
+  walls (whole x, half z), from the plot's edges to the frontage sidewalk. Each tile is grass or laid
+  with concrete, tarmac, gravel, sidewalk slabs or brick, and any of it, the paths, car park and yard a
+  shop starts with included, can be dug up (part of its price back) or laid again; only the pylon sign's
+  patch stays. Parking bays are pieces (1 × 2, open at one end) put anywhere, each bringing its own
+  tarmac. Cars drive on tarmac only: in off the road wherever front-row tarmac meets the sidewalk (a
+  dropped kerb and zebra are drawn there), along the tarmac keeping right and saving turns, nose in to
+  a bay's open end, and out again backing round an arc; the delivery truck drives to the tarmac by the
+  back door, or with no way there unloads at the kerb (the news says how to fix it). Cars take turns in
+  a lane a tile wide, and one kept waiting on the road gives up and drives on. Selling back a bay
+  just put down takes its tarmac up too. The shop grows over the lot to the plot's edges (19 × 11
+  tiles): what it is built over is dug up, a bay under it sold back; never over a parked car, nor
+  across a car driving there.
 - **Building up** (Upstairs tab): every tile comes with a ceiling panel, which is also the floor of
   the storey above. Stairs, an escalator (faster up: shoppers take it gladly) or a lift on a floor
   open the one above it, which gets its own ceiling (at the panel price, unless panels went up there
@@ -248,9 +261,10 @@ desktop/    Electron wrapper (file saves, optional Steam layer).
 | Patience | 90–180 s per customer, type-dependent | lines visibly back up |
 | Day-1 fit-out | counter $180, two shelves (4 slots × 8), a chiller $200 (4 × 6), first order ≈ $120 | balance harness pays for it |
 | Fixture prices | shelf $85, produce stand $60, end cap $70, chiller $200, tall fridge $300, counter $180, kiosk $650 | each ≤ 5 days of a guided player's income |
-| Shop sizes | 5×6 (start), 7×7 for $900, 9×8 for $2 400; lot doubles for $500 | |
+| Shop sizes | 5×6 (start), then a tile (or a wall's row) at a time, as far as 19 × 11 tiles on the plot; the balance bots still buy 7×7 and 9×8 in one go | |
+| The lot | concrete $3, gravel $4, tarmac $6, slabs $8, brick $12 a tile; a parking bay $60 plus tarmac where there is none; the starting lot has four bays and room down the side for eight | |
 | Town | one crossroads: Main Road on z = 2.5, Elm Street on x = 0, a 20.6 × 14.15 lot on each corner (fits the largest shop with the doubled lot), south corners turned half round; nothing beyond the corners | tests assert lots never overlap or touch a road, and only roads run on past the town |
-| Traffic | spawns and leaves at ±90 down both roads, in the haze; a 36 s light with an all-walk phase; keeps a 2-unit gap, backs out of lot bays, pulls in and out of three Elm Street bays 3.4 apart; a parked car whose driver has gone drives off | tests: no overlaps at rush hour, nobody runs a red, turned-away cars never stuck |
+| Traffic | spawns and leaves at ±90 down both roads, in the haze; a 36 s light with an all-walk phase; keeps a 2-unit gap, drives the lot's tarmac to a bay and backs out of it (yours: on whatever tarmac you lay), pulls in and out of three Elm Street bays 3.4 apart; a parked car whose driver has gone drives off | tests: no overlaps at rush hour, nobody runs a red, turned-away cars never stuck |
 | Staff | cashier ≈ $48/day, stocker $42, cleaner $36, orderer $52, manager $90, +12% payroll tax | |
 | Loans | $600 at 1.2%/day over 10 days, $1 800 at 1.0% over 15, $5 000 at 0.9% over 20 | one rescue offered when broke |
 | Rivals | Cheapo opens day 3 (prices −14%), Fresh & Fine day 6 (+22%), MegaMart day 10 (expands) | sales every 4–8 days |

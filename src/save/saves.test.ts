@@ -3,7 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { MemoryBackend } from './storage';
 import { saveGame, loadGame, listSlots, parse, serialize } from './saves';
 import { tick, SAVE_VERSION, TICK, gridFor, findPath, applyCommand, type GameState, type Person } from '@/sim/index';
-import { toWorld, toLocal, zOnLevel, rideEnds, isFloor, wallSegments } from '@/sim/layout';
+import { toWorld, toLocal, zOnLevel, rideEnds, isFloor, wallSegments, lotLayout, yawToWorld, onBuilding, lotKey } from '@/sim/layout';
+import { onLotGrid, bayCentre } from '@/sim/drive';
 import { wallStyleAt } from '@/sim/build';
 import { looksOf } from '@/sim/reviews';
 import { ensureCeilings, levelOfPerson } from '@/sim/storeys';
@@ -312,5 +313,55 @@ describe('saves', () => {
     for (const w of fresh) { expect(wallStyleAt(t.shop, w.key)).toBe('plain'); applyCommand(t, { type: 'paintWall', key: w.key, style: 'plain' }); }
     expect(applyCommand(t, { type: 'addPanel', x: -1.5, z: -3 }).ok).toBe(true);
     expect(t.cash).toBeLessThan(1000);
+  });
+
+  it('lays an older lot out as tiles: its paths and lanes to dig up, each bay a Parking bay, every parked car still in its own', () => {
+    const s = openGame({ seed: 23, plotId: 'main', name: 'Old Lot', tutorial: false });
+    // As an older save had it: bays painted from a plan (two rows), only the tiles laid by hand, nothing laid as tiles.
+    s.shop.fixtures = s.shop.fixtures.filter((f) => f.type !== 'parkingBay');
+    s.shop.lotBaked = undefined; s.shop.pylon = undefined;
+    s.shop.lotTiles = { '10,-4.5': 'brick' };
+    s.shop.bayPlan = [0, 1, 2, 3, 8, 9]; s.shop.lotRows = 2;
+    s.shop.bays = lotLayout(s.shop).bays.map((b) => ({ ...toWorld(s.shop, b.x, b.z), yaw: yawToWorld(s.shop, b.yaw), carId: null }));
+    s.cars = [];
+    for (let i = 0; i < 400 / TICK && s.cars.filter((c) => c.state === 'parked' && c.lot === undefined).length < 3; i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
+    const parked = s.cars.filter((c) => c.state === 'parked' && c.lot === undefined);
+    expect(parked.length).toBeGreaterThanOrEqual(2);
+    const before = new Map(parked.map((c) => [c.id, toLocal(s.shop, s.shop.bays[c.bay!]!.x, s.shop.bays[c.bay!]!.z)]));
+    const loaded = parse(serialize(s)).state;
+    const shop = loaded.shop;
+    expect(shop.lotBaked).toBe(true);
+    // Every bay a piece, in the order they were (so each car keeps its number), each where its bay was.
+    const pieces = shop.fixtures.filter((f) => f.type === 'parkingBay');
+    expect(pieces.length).toBe(6);
+    expect(shop.bays.length).toBe(6);
+    for (const b of shop.bays) expect(pieces.some((f) => f.id === b.fid)).toBe(true);
+    for (const c of loaded.cars.filter((x) => x.state === 'parked' && x.lot === undefined)) {
+      const b = shop.bays[c.bay!]!, f = pieces.find((q) => q.id === b.fid)!, at = bayCentre(f), was = before.get(c.id)!;
+      expect(b.carId).toBe(c.id);
+      // (Snapped onto the lot's grid: the old bays were a little more than a tile apart.)
+      expect(Math.hypot(at.x - was.x, at.z - was.z), `car ${c.id}`).toBeLessThan(1);
+      const l = toLocal(shop, c.x, c.z);
+      expect(Math.hypot(l.x - at.x, l.z - at.z)).toBeLessThan(1e-6);
+    }
+    // The hand-laid brick stays; the lanes and yard are tiles now, on the lot's grid, none under the building.
+    expect(shop.lotTiles![lotKey(10, -4.5)]).toBe('brick');
+    expect(Object.values(shop.lotTiles!).filter((v) => v === 'asphalt').length).toBeGreaterThan(40);
+    for (const k of Object.keys(shop.lotTiles!)) {
+      const [x, z] = k.split(',').map(Number) as [number, number];
+      expect(onLotGrid(x, z)).toBe(true);
+      expect(onBuilding(shop, { x0: x, z0: z, x1: x + 1, z1: z + 1 })).toBe(false);
+    }
+    // And it plays on: the parked cars drive off, new ones park, nobody inside anybody.
+    let worst = Infinity, parkedLater = 0;
+    for (let i = 0; i < 300 / TICK; i++) {
+      tick(loaded); if (i % 6 === 0) applyCommand(loaded, { type: 'scan' });
+      const moving = loaded.cars.filter((c) => c.state !== 'parked' && c.state !== 'unloading');
+      for (let a = 0; a < moving.length; a++) for (let b = a + 1; b < moving.length; b++) worst = Math.min(worst, Math.hypot(moving[a]!.x - moving[b]!.x, moving[a]!.z - moving[b]!.z));
+      parkedLater += loaded.cars.filter((c) => c.state === 'parked' && c.lot === undefined && !before.has(c.id)).length;
+    }
+    expect(worst).toBeGreaterThan(0.75);
+    expect(parkedLater).toBeGreaterThan(0);
+    for (const id of before.keys()) expect(loaded.cars.some((c) => c.id === id && c.state === 'parked')).toBe(false);
   });
 });

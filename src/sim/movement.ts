@@ -38,15 +38,15 @@ export function turnToward(yaw: number, target: number, maxStep: number): number
   return yaw + Math.sign(d) * maxStep;
 }
 
-/** Replace sharp corners with short arcs so cars sweep round turns. */
-export function roundPath(pts: Vec2[], radius = 0.9, segments = 4): Vec2[] {
+/** Replace sharp corners with short arcs so cars sweep round turns (`radius` can be given corner by corner, by point). */
+export function roundPath(pts: Vec2[], radius: number | number[] = 0.9, segments = 4): Vec2[] {
   if (pts.length < 3) return pts.slice();
   const out: Vec2[] = [pts[0]!];
   for (let i = 1; i < pts.length - 1; i++) {
     const a = pts[i - 1]!, b = pts[i]!, c = pts[i + 1]!;
     const ab = { x: b.x - a.x, z: b.z - a.z }, bc = { x: c.x - b.x, z: c.z - b.z };
     const lab = Math.hypot(ab.x, ab.z), lbc = Math.hypot(bc.x, bc.z);
-    const r = Math.min(radius, lab / 2, lbc / 2);
+    const r = Math.min(typeof radius === 'number' ? radius : radius[i] ?? 0.9, lab / 2, lbc / 2);
     if (r < 0.05 || lab < 1e-6 || lbc < 1e-6) { out.push(b); continue; }
     const p1 = { x: b.x - (ab.x / lab) * r, z: b.z - (ab.z / lab) * r };
     const p2 = { x: b.x + (bc.x / lbc) * r, z: b.z + (bc.z / lbc) * r };

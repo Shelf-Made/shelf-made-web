@@ -1023,7 +1023,7 @@ test('a window put in breaks no shader', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('building outside: a flower bed on the grass, a tile of paving, and one more parking bay painted', async ({ page }) => {
+test('building outside: a flower bed on the grass, paving laid (over the path to the door too), and a parking bay put down by the aisle', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Fit Out', { tutorial: false });
   await hooks(page, 'quickSetup', false);
@@ -1042,24 +1042,32 @@ test('building outside: a flower bed on the grass, a tile of paving, and one mor
   await clickAt(page, 3.5, 2.0);
   await expect.poll(async () => (await state(page)).shop.fixtures.filter((f) => f.type === 'flowerBed').map((f) => `${f.x},${f.z}`)).toEqual(['3,1.5']);
   await page.keyboard.press('Escape');
-  // Brick paving, a tile at a time; not on the walkway (paved already).
+  // Brick paving, a tile at a time: on the grass, and over the concrete path to the door (it is all tiles to lay again).
   await build.locator('.item', { hasText: 'Brick paving' }).getByRole('button', { name: 'Lay' }).click();
-  await pointAt(page, 0.0, 2.0);
-  await expect.poll(() => aimText(page)).toMatch(/Paved already/);
   await pointAt(page, 2.5, 2.0);
-  await expect.poll(() => aimText(page)).toMatch(/^Lay brick paving/i);
+  await expect.poll(() => aimText(page)).toMatch(/^Lay brick paving · \$12/i);
   await clickAt(page, 2.5, 2.0);
   await expect.poll(async () => (await hooks<{ shop: { lotTiles?: Record<string, string> } }>(page, 'state')).shop.lotTiles?.['2,1.5']).toBe('brick');
+  // (Over the concrete it replaces: part of that back. Stood out front, so the path is not under the toolbar.)
+  await hooks(page, 'fp', 0.5, 1.0);
+  await pointAt(page, 0.0, 2.0);
+  await expect.poll(() => aimText(page)).toMatch(/^Lay brick paving · \$10/i);
+  await clickAt(page, 0.0, 2.0);
+  await expect.poll(async () => (await hooks<{ shop: { lotTiles?: Record<string, string> } }>(page, 'state')).shop.lotTiles?.['0,1.5']).toBe('brick');
   await page.keyboard.press('Escape');
-  // A fifth bay, across the aisle from the four the lot came with.
+  // A fifth bay, across the aisle from the four the lot came with, turned to open onto it (it brings its own tarmac).
   const bays = (await hooks<{ shop: { bays: unknown[] } }>(page, 'state')).shop.bays.length;
-  await build.locator('.item', { hasText: 'bays' }).getByRole('button', { name: 'Paint' }).click();
+  await build.locator('.item', { hasText: 'bays' }).getByRole('button', { name: 'Place a bay' }).click();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('KeyR');
   // Over to the car park, so it is not behind the card.
   await hooks(page, 'fp', 6.9, -1.0);
-  await pointAt(page, 8.5, -1.6);
-  await expect.poll(() => aimText(page)).toMatch(/^Paint a parking bay/);
-  await clickAt(page, 8.5, -1.6);
+  await pointAt(page, 7.5, -1.0);
+  await expect.poll(() => aimText(page)).toMatch(/^Place Parking bay/);
+  await clickAt(page, 7.5, -1.0);
   await expect.poll(async () => (await hooks<{ shop: { bays: unknown[] } }>(page, 'state')).shop.bays.length).toBe(bays + 1);
+  const bay = (await state(page)).shop.fixtures.filter((f) => f.type === 'parkingBay').pop()!;
+  expect(`${bay.x},${bay.z},${bay.rot}`).toBe('7,-1.5,3');
+  await expect(build.getByText('no car can get there')).toHaveCount(0);
 });
 
 test('a spill beside a shelf: F mops it rather than stocking the shelf, and clicking its marker walks over to mop it', async ({ page }) => {

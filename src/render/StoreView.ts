@@ -8,9 +8,10 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
 import { DEFAULT_PAINT } from '@/sim/layout';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, type Rect } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, wallKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
+import { FRONT_ROW } from '@/sim/drive';
 import { wordsTexture, tickerTexture } from './labels';
 import { doubleHeight } from '@/sim/storeys';
 import { underFloors, spillMark } from './levels';
@@ -30,7 +31,7 @@ const DEPT_COLOURS: Partial<Record<string, string>> = {
   books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
 };
 const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
-  'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger']);
+  'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger', 'parkingBay']);
 
 /** Drops of spray over each fountain. */
 const SPRAY = 36;
@@ -48,7 +49,7 @@ import type { FloorStyle, WallStyle } from '@/sim/types';
 import { WINDOW_GLOW, SIGN_GLOW, SPILL, LAMP_GLOW, spillGeometry } from './glow';
 import { fittingGeometry, fittingGlass, glowGeometry, windowGhost, FITTING_MODELS, WALL_PIECES, GONE_WITH_WALLS, LAMPS, modelOf } from './fittings';
 import { BlobShadows } from './blobs';
-import { cornerProps, pylonSpot, cornerGarden } from './dressing';
+import { cornerProps, pylonSpot, cornerGarden, playerCorner } from './dressing';
 import { tuftMesh } from './StaticWorld';
 import { PROP_MODELS, posterGeometry, buntingGeometry, rideBikeGeometry } from './props';
 import { textGeometry } from './letters';
@@ -331,41 +332,51 @@ export class StoreView {
     const slab = (r: { x0: number; z0: number; x1: number; z1: number }, hex: string, h = 0.03, y = -0.012) =>
       floorParts.push(box(pal, hex, r.x1 - r.x0, h, r.z1 - r.z0, ox + (r.x0 + r.x1) / 2, y, oz + (r.z0 + r.z1) / 2));
     const swIn = MAIN_N[0] - NORTH_Z, swOut = MAIN_N[1] - NORTH_Z, kerb = ROAD_Z - 1.0 - NORTH_Z;
-    // The apron stops at the driveway so the tarmac runs unbroken from the road to the bays.
-    slab({ ...L.apron, z0: WALL_T - 0.02, x1: Math.min(L.apron.x1, L.driveway.x0) }, '#CFCBC2', 0.04);
-    slab({ x0: L.walkwayX - 0.5, z0: L.apron.z1 - 0.02, x1: L.walkwayX + 0.5, z1: swIn + 0.02 }, '#CFCBC2', 0.04);
-    slab({ ...L.aisle, z1: L.driveway.z0 + 0.02 }, '#6E717C'); slab({ ...L.driveway, z1: kerb }, '#6E717C'); slab({ ...L.serviceLane, z1: kerb }, '#6E717C'); slab(L.backYard, '#6E717C');
-    for (const b of L.bays) {
-      slab({ x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 }, '#6E717C');
-      floorParts.push(box(pal, '#F2F2F2', 1.6, 0.004, 0.05, ox + b.x, 0.02, oz + b.z - 0.55));
-      floorParts.push(box(pal, '#F2F2F2', 1.6, 0.004, 0.05, ox + b.x, 0.02, oz + b.z + 0.55));
+    // (Laid as tiles, the lot is drawn tile by tile below; an older one not yet laid so, as it was.)
+    if (!shop.lotBaked) {
+      // The apron stops at the driveway so the tarmac runs unbroken from the road to the bays.
+      slab({ ...L.apron, z0: WALL_T - 0.02, x1: Math.min(L.apron.x1, L.driveway.x0) }, '#CFCBC2', 0.04);
+      slab({ x0: L.walkwayX - 0.5, z0: L.apron.z1 - 0.02, x1: L.walkwayX + 0.5, z1: swIn + 0.02 }, '#CFCBC2', 0.04);
+      slab({ ...L.aisle, z1: L.driveway.z0 + 0.02 }, '#6E717C'); slab({ ...L.driveway, z1: kerb }, '#6E717C'); slab({ ...L.serviceLane, z1: kerb }, '#6E717C'); slab(L.backYard, '#6E717C');
+      for (const b of L.bays) {
+        slab({ x0: b.x - 0.85, z0: b.z - 0.55, x1: b.x + 0.85, z1: b.z + 0.55 }, '#6E717C');
+        floorParts.push(box(pal, '#F2F2F2', 1.6, 0.004, 0.05, ox + b.x, 0.02, oz + b.z - 0.55));
+        floorParts.push(box(pal, '#F2F2F2', 1.6, 0.004, 0.05, ox + b.x, 0.02, oz + b.z + 0.55));
+      }
     }
     // Surfaces laid on the lot, tile by tile.
     for (const [k, sf] of Object.entries(shop.lotTiles ?? {})) {
       const [x, z] = k.split(',').map(Number) as [number, number];
       const at = (dx: number, dz: number, w: number, d: number, hex: string, y = 0.019) => floorParts.push(box(pal, hex, w, 0.003, d, ox + x + dx, y, oz + z + dz));
-      if (sf === 'asphalt') slab({ x0: x, z0: z, x1: x + 1, z1: z + 1 }, '#6E717C');
-      else if (sf === 'paving') { slab({ x0: x, z0: z, x1: x + 1, z1: z + 1 }, '#B9BCC4'); for (const [i, j] of [[0, 0], [1, 0], [0, 1], [1, 1]]) at(0.25 + i! * 0.5, 0.25 + j! * 0.5, 0.47, 0.47, PAVEMENT); }
+      // (The front row runs on to the sidewalk's edge.)
+      const z1 = z + 1 > swIn - 0.2 ? swIn + 0.02 : z + 1;
+      if (sf === 'asphalt') slab({ x0: x, z0: z, x1: x + 1, z1 }, '#6E717C');
+      else if (sf === 'concrete') slab({ x0: x, z0: z, x1: x + 1, z1 }, '#CFCBC2', 0.04);
+      else if (sf === 'paving') { slab({ x0: x, z0: z, x1: x + 1, z1 }, '#B9BCC4'); for (const [i, j] of [[0, 0], [1, 0], [0, 1], [1, 1]]) at(0.25 + i! * 0.5, 0.25 + j! * 0.5, 0.47, 0.47, PAVEMENT); }
       else if (sf === 'brick') {
-        slab({ x0: x, z0: z, x1: x + 1, z1: z + 1 }, '#D8DADF');
+        slab({ x0: x, z0: z, x1: x + 1, z1 }, '#D8DADF');
         for (let row = 0; row < 8; row++) for (let c = -1; c < 4; c++) {
           const x0 = Math.max(0, c * 0.25 + (row % 2) * 0.125), x1 = Math.min(1, c * 0.25 + (row % 2) * 0.125 + 0.25);
           if (x1 - x0 > 0.03) at((x0 + x1) / 2, row * 0.125 + 0.0625, x1 - x0 - 0.018, 0.107, (row + c) % 3 === 0 ? '#A84E37' : '#B8573F');
         }
       } else {
-        slab({ x0: x, z0: z, x1: x + 1, z1: z + 1 }, '#CFC3A6');
+        slab({ x0: x, z0: z, x1: x + 1, z1 }, '#CFC3A6');
         for (let i = 0; i < 26; i++) { const h = Math.sin((x * 31 + z * 17 + i * 7.13) * 12.9898) * 43758.5453, u = h - Math.floor(h), v = (h * 7.31) - Math.floor(h * 7.31); at(0.05 + u * 0.9, 0.05 + v * 0.9, 0.035, 0.035, i % 2 ? '#B5A88A' : '#E3DAC4'); }
       }
     }
     // Sidewalk across the whole plot frontage, with dropped kerbs where the driveway and service lane cross it.
-    const cuts = [[L.serviceLane.x0, L.serviceLane.x1], [L.driveway.x0, L.driveway.x1]].sort((a, b) => a[0]! - b[0]!);
+    const cuts = shop.lotBaked ? wayInRuns(shop) : [[L.serviceLane.x0, L.serviceLane.x1], [L.driveway.x0, L.driveway.x1]].sort((a, b) => a[0]! - b[0]!);
     let sx = PLOT_RECT.x0;
     for (const [c0, c1] of cuts) { if (c0! > sx) slab({ x0: sx, z0: swIn, x1: c0!, z1: swOut }, PAVEMENT, 0.06, -0.012); sx = c1!; }
     slab({ x0: sx, z0: swIn, x1: PLOT_RECT.x1, z1: swOut }, PAVEMENT, 0.06, -0.012);
     for (const [c0, c1] of cuts) slab({ x0: c0!, z0: swIn, x1: c1!, z1: swOut }, '#B9BCC4', 0.034, -0.01);
     // A zebra across the driveway mouth: walkers have priority.
     // Painted like the street's zebras: slim bars along the traffic, in the same soft off-white.
-    for (let x = L.driveway.x0 + 0.2; x + 0.15 <= L.driveway.x1 - 0.1; x += 0.3) floorParts.push(box(pal, '#D8DADF', 0.15, 0.004, swOut - swIn - 0.12, ox + x + 0.075, 0.026, oz + (swIn + swOut) / 2));
+    for (const [c0, c1] of shop.lotBaked ? cuts : [[L.driveway.x0, L.driveway.x1]]) {
+      for (let x = c0! + 0.2; x + 0.15 <= c1! - 0.1; x += 0.3) floorParts.push(box(pal, '#D8DADF', 0.15, 0.004, swOut - swIn - 0.12, ox + x + 0.075, 0.026, oz + (swIn + swOut) / 2));
+      // Tarmac across the sidewalk to the kerb, where cars come and go.
+      if (shop.lotBaked) slab({ x0: c0!, z0: swOut - 0.02, x1: c1!, z1: kerb }, '#6E717C');
+    }
     this.dressLot(shop, floorParts);
     // The ground material: the lot and the pavement get wet in the rain (the shop floor is sheltered).
     if (paintParts.length) { const pm = new Mesh(mergeTinted(paintParts), this.paintMat()); pm.receiveShadow = true; this.shell.add(pm); }
@@ -706,11 +717,7 @@ export class StoreView {
     // Street props first (more as the shop grows), on the lawn beside the paths; then the garden round them.
     const tier = shop.sizeId === 'large' ? 2 : shop.sizeId === 'medium' ? 1 : 0;
     // Everything the player built or laid out there: the street props and the garden keep off it.
-    const extra: Rect[] = [
-      ...shop.fixtures.filter((f) => FIXTURES[f.type].outdoor).map((f) => footprintOf(f.type, f.x, f.z, f.rot)),
-      ...Object.keys(shop.lotTiles ?? {}).map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x0: x, z0: z, x1: x + 1, z1: z + 1 }; }),
-    ];
-    const shape = { ...shop, extra };
+    const shape = playerCorner(shop);
     const props = cornerProps(shape, tier, { trolleys: shop.lotRows >= 2, noBikes: true });
     for (const pr of props) parts.push(this.placed(pr.model, pr.x, pr.z, pr.yaw, pr.scale ?? 1));
     const garden = cornerGarden(shape, props, 1);
@@ -1281,6 +1288,14 @@ function stockKey(shop: Shop): string {
 }
 
 export { mergeGeometries, paint };
+
+/** Where front-row tarmac meets the sidewalk, as runs along x (shop-relative): the dropped kerbs. */
+function wayInRuns(shop: Shop): [number, number][] {
+  const xs = Object.entries(shop.lotTiles ?? {}).filter(([k, s]) => s === 'asphalt' && Math.abs(Number(k.split(',')[1]) - FRONT_ROW) < 1e-6).map(([k]) => Number(k.split(',')[0])).sort((a, b) => a - b);
+  const runs: [number, number][] = [];
+  for (const x of xs) { const last = runs[runs.length - 1]; if (last && Math.abs(last[1] - x) < 1e-6) last[1] = x + 1; else runs.push([x, x + 1]); }
+  return runs;
+}
 
 function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${JSON.stringify(shop.wallStyles ?? {})}|${JSON.stringify(shop.wallColors ?? {})}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.loadingBay ? 'bay' : ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => f.type === 'window' || FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 

@@ -1,12 +1,13 @@
-import type { GameState, Person, Fixture, Slot, CustomerType, Vec2 } from './types';
+import type { GameState, Person, Fixture, Slot, CustomerType, Vec2, Car } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, lotLayout, toWorld, toLocal, dirToWorld, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
+import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, toWorld, toLocal, dirToWorld, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
 import { offTheBus } from './frontage';
 import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, cellCentre, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
-import { spawnCustomerCar, leaveLot } from './cars';
+import { spawnCustomerCar, leaveLot, drivewayX } from './cars';
+import { bayCentre, DIRS } from './drive';
 import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
 import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
 import { listWeight, budgetFor, explainChoice, computeScores } from './customers';
@@ -190,7 +191,7 @@ export function spawnCustomer(state: GameState, forceFoot = false): Person | nul
       // Lot full: the car drives on past, and (when there is one) pulls into a rival's lot instead.
       state.today.turnedAway++;
       complain(state, 'lotFull');
-      { const L = lotLayout(state.shop); popup(state, toWorld(state.shop, L.driveway.x0 + 1, L.driveway.z1), 'Lot full!', 'bad', 0.8); }
+      popup(state, { x: drivewayX(state), z: toWorld(state.shop, 0, 2).z }, 'Lot full!', 'bad', 0.8);
       if (car && onward?.kind === 'rival') rivalShopperInCar(state, car, onward.rival.id, look, ctype);
       return null;
     }
@@ -807,7 +808,13 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
 }
 
 /** Beside a parked car on the aisle side, as the lot lies (a corner turned round has its aisle the other way). */
-function carSide(state: GameState, car: { x: number; z: number }): Vec2 { const d = dirToWorld(state.shop, { x: 0.75, z: 0.55 }); return { x: car.x + d.x, z: car.z + d.z }; }
+function carSide(state: GameState, car: Car): Vec2 {
+  // In a bay of your own lot: out by its open end, just behind the car (a bay can face any way now).
+  const fid = car.lot === undefined && car.bay !== null ? state.shop.bays[car.bay]?.fid : undefined;
+  const f = fid !== undefined ? state.shop.fixtures.find((x) => x.id === fid) : undefined;
+  if (f) { const c = bayCentre(f), v = DIRS[f.rot & 3]!; return toWorld(state.shop, c.x + v.x * 0.95 + v.z * 0.3, c.z + v.z * 0.95 - v.x * 0.3); }
+  const d = dirToWorld(state.shop, { x: 0.75, z: 0.55 }); return { x: car.x + d.x, z: car.z + d.z };
+}
 
 /**
  * Sitting down or asking at the help desk: walk over, then sit (or wait at the desk) for a moment.

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
 import { tick, applyCommand, TICK } from './index';
 import { spawnTraffic, tickCars, leaveLot } from './cars';
-import { lotLayout, toLocal, toWorld } from './layout';
+import { lotLayout, toLocal, toWorld, LOT_FRONT } from './layout';
 import type { Car, GameState } from './types';
 
 /** Do two cars' bodies (1.5 × 0.82, centred) overlap? Separating-axis test on the two rectangles. */
@@ -126,7 +126,8 @@ describe('getting out of the car', () => {
       const s = openGame({ seed: 1, plotId, name: 'Out', tutorial: false });
       const f = s.shop.floor, was = new Map<number, string>();
       let inside = 0, out = 0;
-      for (let i = 0; i < 240 / TICK; i++) {
+      // (Six minutes: Elm Street is a quiet corner, few enough drive there that four can be a near thing.)
+      for (let i = 0; i < 360 / TICK; i++) {
         tick(s);
         if (i % 6 === 0) applyCommand(s, { type: 'scan' });
         for (const p of s.people) {
@@ -138,5 +139,55 @@ describe('getting out of the car', () => {
       expect(out, plotId).toBeGreaterThan(3);
       expect(inside, plotId).toBe(0);
     }
+  });
+});
+
+describe('a lot laid by hand', () => {
+  /** Dig up the car park and the service lane, and sell the bays: a bare lot to lay your own on. */
+  function bare(seed: number): GameState {
+    const s = openGame({ seed, plotId: 'main', name: 'Lane', tutorial: false });
+    s.cash = 50000;
+    for (const f of s.shop.fixtures.filter((x) => x.type === 'parkingBay')) expect(applyCommand(s, { type: 'removeFixture', fixtureId: f.id }).ok).toBe(true);
+    for (const [k, v] of Object.entries(s.shop.lotTiles!)) {
+      if (v !== 'asphalt') continue;
+      const [x, z] = k.split(',').map(Number) as [number, number];
+      expect(applyCommand(s, { type: 'pave', x, z, surface: null }).ok).toBe(true);
+    }
+    return s;
+  }
+
+  it('one lane a tile wide, bays either side: cars take turns in it, never meet head on, and give up rather than block the road', () => {
+    const s = bare(5);
+    for (let z = 1.5; z >= -4.5; z--) expect(applyCommand(s, { type: 'pave', x: 8, z, surface: 'asphalt' }).ok).toBe(true);
+    for (const z of [-0.5, -1.5, -2.5, -3.5]) {
+      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'parkingBay', x: 9, z, rot: 3 }).ok).toBe(true);
+      expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'parkingBay', x: 7, z, rot: 1 }).ok).toBe(true);
+    }
+    expect(s.shop.bays.length).toBe(8);
+    let worst = Infinity, parked = 0, out = 0;
+    const was = new Map<number, string>();
+    for (let i = 0; i < 600 / TICK; i++) {
+      tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+      const moving = s.cars.filter((c) => c.state !== 'parked' && c.state !== 'unloading');
+      for (let a = 0; a < moving.length; a++) for (let b = a + 1; b < moving.length; b++) worst = Math.min(worst, Math.hypot(moving[a]!.x - moving[b]!.x, moving[a]!.z - moving[b]!.z));
+      parked += s.cars.filter((c) => c.state === 'parked' && c.lot === undefined).length;
+      for (const c of s.cars) if (c.lot === undefined) expect(c.waited ?? 0, `car ${c.id} ${c.state}`).toBeLessThan(35);
+      for (const p of s.people) { if (was.get(p.id) === 'driving' && p.state === 'toDoor') out++; was.set(p.id, p.state); }
+    }
+    expect(worst).toBeGreaterThan(0.75);
+    expect(parked).toBeGreaterThan(0);
+    expect(out).toBeGreaterThan(3);
+  });
+
+  it('with no tarmac to the back door, the truck unloads at the kerb (and the news says how to fix it)', () => {
+    const s = bare(6);
+    expect(applyCommand(s, { type: 'placeOrder', supplierId: 'local', lines: [{ productId: 'bread', qty: 10 }] }).ok).toBe(true);
+    let truck = null as Car | null;
+    for (let i = 0; i < 120 / TICK && !s.orders.every((o) => o.state === 'delivered'); i++) { tick(s); truck ??= s.cars.find((c) => c.model >= 6 && c.model <= 7) ?? null; }
+    expect(s.orders.every((o) => o.state === 'delivered')).toBe(true);
+    expect(s.notices.some((n) => n.text.startsWith('No tarmac to the back door'))).toBe(true);
+    // It stopped on the road, by the door, never on the lot.
+    const l = toLocal(s.shop, truck!.x, truck!.z);
+    expect(l.z).toBeGreaterThan(LOT_FRONT);
   });
 });

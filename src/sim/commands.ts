@@ -21,7 +21,8 @@ import { hire, fire, giveRaise, setShift, setBreak, restyle } from './staff';
 import { caught } from './shoplifting';
 import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall } from './build';
 import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild, keepFinishes } from './storeys';
-import { pave, paintBay, eraseBay } from './lot';
+import { pave, paintBay, eraseBay, bayLaid, bayTakenBack, bayHoldsCharger } from './lot';
+import { syncLotBays } from './drive';
 import { startFlyers, toggleBillboard, setPromotion, setAd, bookOpeningEvent } from './marketing';
 import { openFranchise, closeFranchise, replaceManager } from './franchise';
 import { schemeById } from './schemes';
@@ -288,6 +289,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const opened = VERTICAL.has(fx.type) ? [...storeysOf(state.shop).built] : null;
       state.shop.fixtures.push(fx);
       state.shop.layoutVersion++;
+      if (fx.type === 'parkingBay') bayLaid(state, fx);
       if (opened) ceilFloorsOpened(state.shop, opened);
       popup(state, fixtureCentre(state.shop, fx), dollars(-check.price), 'bad', 1.2);
       cue(state, 'place');
@@ -302,12 +304,15 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (f.type === 'register' && state.shop.fixtures.filter((x) => x.type === 'register').length === 1) return { ok: false, message: 'You need one register.' };
       if ((f.type === 'register' || f.type === 'kiosk') && (f.serving || (f.queue?.length ?? 0) > 0)) return { ok: false, message: 'Wait until the line is served.' };
       if (f.bikes?.some((b) => b !== null)) return { ok: false, message: 'Bikes are locked to it: wait till they ride off.' };
+      if (f.type === 'parkingBay' && state.shop.bays.some((b) => b.fid === f.id && b.carId !== null)) return { ok: false, message: 'A car is parked in it: wait till it drives off.' };
+      { const why = f.type === 'parkingBay' ? bayHoldsCharger(state.shop, f.id) : null; if (why) return { ok: false, message: `${why}.` }; }
       { const why = canTakeAway(state, f.id) ?? removalShuts(state, f.id); if (why) return { ok: false, message: `${why}.` }; }
       if (f.type === 'pallet' || f.type === 'storeRack') { const units = storageUsed(state.shop); if (units > storageCap(state.shop) - (f.type === 'pallet' ? PALLET_UNITS : STORE_RACK_UNITS)) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
-      const refund = refundOf(f, state, CONVEYOR_PRICE);
+      const refund = refundOf(f, state, CONVEYOR_PRICE) + (f.type === 'parkingBay' ? bayTakenBack(state, f) : 0);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });
       state.shop.fixtures.splice(i, 1);
       state.shop.layoutVersion++;
+      if (f.type === 'parkingBay') syncLotBays(state);
       state.cash += refund;
       return { ok: true };
     }

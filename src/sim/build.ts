@@ -4,14 +4,15 @@
  * must stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop } from './types';
-import { DEFAULT_PAINT, FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList } from './layout';
+import { DEFAULT_PAINT, FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, wallSegments, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
 import { buildGrid, frontInside, cellOf, isBlocked, type Grid } from './grid';
 import { findPath } from './pathfinding';
 import { doorInside, doorOutside, storeroomPoint } from './people';
 import { dollars } from './money';
 import { resetGridCache, gridFor } from './state';
-import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays } from './lot';
+import { canPlaceOutside, lotClash, pruneSurfaces, paintAllBays, bayLaid } from './lot';
+import { syncLotBays, relayLot } from './drive';
 
 /** `ceiling`: the part of the price that is a ceiling over a floor it opens (all a move costs). */
 export interface PlaceCheck { ok: boolean; reason: string; price: number; ceiling?: number }
@@ -252,7 +253,7 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   const trial = { ...shop };
   setFloorTiles(trial, rest);
   trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 };
-  if (paintedBays(trial).bays.length < paintedBays(shop).bays.length) return { ok: false, reason: 'A bay at the back would go: paint it out first', price };
+  if (!shop.lotBaked && paintedBays(trial).bays.length < paintedBays(shop).bays.length) return { ok: false, reason: 'A bay at the back would go: paint it out first', price };
   const clash = lotClash(state, trial);
   if (clash) return { ok: false, reason: clash, price };
   // The floors above lose it too: nothing up there (nor the way up to them) may be cut off. The back door comes
@@ -435,9 +436,25 @@ function reshape(state: GameState): void {
   const n = floorTileCount(shop);
   shop.sizeId = sizeOfTiles(n);
   shop.storageCapacity = 120 + 5 * Math.max(0, n - 30);
-  const L = lotLayout(shop);
-  shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
-  shop.lotRows = paintedBays(shop).rows;
+  if (shop.lotBaked) {
+    // Laid as tiles, the lot stays where it is: what the building now stands on is dug up, and a bay under it sold
+    // back (lotClash never lets the shop grow over a car).
+    const under = shop.fixtures.filter((fx) => fx.type === 'parkingBay' && onBuilding(shop, footprintOf(fx.type, fx.x, fx.z, fx.rot)));
+    if (under.length) {
+      for (const fx of under) state.cash += refundOf(fx, state);
+      shop.fixtures = shop.fixtures.filter((fx) => !under.includes(fx));
+      // One word a day on it, however many tiles it took (the count carries on).
+      const was = state.notices.find((n) => n.day === state.day && n.text.startsWith('The shop grew over'));
+      const total = under.length + (was ? Number(/over (\d+)/.exec(was.text)?.[1] ?? 1) : 0);
+      const text = `The shop grew over ${total === 1 ? 'a parking bay' : `${total} parking bays`}: sold back. Lay more bays where there is room (Build, Outside).`;
+      if (was) was.text = text; else state.notices.push({ day: state.day, text, kind: 'info' });
+    }
+    syncLotBays(state);
+  } else {
+    const L = lotLayout(shop);
+    shop.bays = L.bays.map((b, i) => ({ ...toWorld(shop, b.x, b.z), yaw: yawToWorld(shop, b.yaw), carId: shop.bays[i]?.carId ?? null }));
+    shop.lotRows = paintedBays(shop).rows;
+  }
   // Paving the building or the moved lanes now cover is gone with the grass.
   pruneSurfaces(shop);
   shop.layoutVersion++;
@@ -523,7 +540,9 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   state.cash -= cost;
   const rows = ensureCeilings(shop);
   for (const L of [0, ...up]) rows[L] = [...rows[L]!, ...want.map((t) => tileKey(t.x, t.z))];
+  const before = { floor: { ...shop.floor }, storeroom: { ...shop.storeroom }, door: shop.door };
   addFloor(shop, want);
+  if (shop.lotBaked) relayLot(state, before);
   // The delivery pallet goes to the new back corner, by the back door (out to the back edge of its column: reshape).
   shop.delivery = deliveryZone(size.floor);
   shop.backDoor = { x: shop.backDoor.x, z: size.floor.z0 };
@@ -547,9 +566,13 @@ export function moveFixture(state: GameState, id: number, x: number, z: number, 
   if (state.people.some((p) => p.climb !== undefined && p.path[p.pathIdx]?.via === id)) return 'Someone is on it: wait till they are off.';
   const check = canPlace(state, f.type, x, z, rot, id);
   if (!check.ok) return check.reason;
+  // A bay moved onto grass brings its tarmac (paid for as it goes down).
+  const tarmac = f.type === 'parkingBay' ? Math.max(0, check.price - FIXTURES.parkingBay.price) : 0;
+  if (tarmac > state.cash) return `Need ${dollars(tarmac)} for the tarmac`;
   const opened = VERTICAL.has(f.type) ? [...storeysOf(state.shop).built] : null;
   f.x = x; f.z = z; f.rot = rot;
   state.shop.layoutVersion++;
+  if (f.type === 'parkingBay') { state.cash -= tarmac; bayLaid(state, f); }
   // A floor it opens where it goes gets its ceiling, as placing it there would.
   if (opened) { ceilFloorsOpened(state.shop, opened); state.cash -= check.ceiling ?? 0; }
   return null;

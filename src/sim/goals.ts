@@ -7,10 +7,17 @@ import type { GameState, DayStats } from './types';
 import { popup, cue } from './state';
 import { doorOutside } from './people';
 import { SHOP_SIZES, floorTileCount } from './layout';
+import { bayReachable } from './drive';
 import { dollars } from './money';
 
 /** Bays the Market hall goal asks for (the bigger car park). */
 export const HALL_BAYS = 10;
+/** Your bays a car can drive to (on a lot not yet laid as tiles: all of them). */
+function usableBays(state: GameState): number {
+  const shop = state.shop;
+  if (!shop.lotBaked) return shop.bays.length;
+  return shop.fixtures.filter((f) => f.type === 'parkingBay' && bayReachable(shop, f)).length;
+}
 
 export interface GoalDef {
   id: string;
@@ -108,9 +115,10 @@ export function goalProgress(state: GameState, g: GoalDef): { frac: number; text
       return { frac: Math.min(full ? 1 : 0.95, w.share / SHARE_TARGET), text: `${Math.round(w.share * 100)}% of the crossroads over the last ${w.days} day${w.days === 1 ? '' : 's'} (a third over a week)` };
     }
     case 'hall': {
-      const big = state.shop.sizeId === 'large', bays = state.shop.bays.length, lot = bays >= HALL_BAYS;
+      // (Bays a car can get to: one out on the grass with no tarmac to it parks nobody.)
+      const big = state.shop.sizeId === 'large', bays = usableBays(state), lot = bays >= HALL_BAYS;
       const n = floorTileCount(state.shop);
-      return { frac: Math.min(0.5, Math.max(0, (n - 30) / 42) * 0.5) + Math.min(0.5, (bays / HALL_BAYS) * 0.5) * (lot ? 1 : 0.8), text: big && !lot ? `Now paint more bays: ${bays} of ${HALL_BAYS} (Build card, Outside)` : !big ? `${n} of 72 tiles${lot ? '' : `, and ${HALL_BAYS} bays`} (Build card)` : 'Done' };
+      return { frac: Math.min(0.5, Math.max(0, (n - 30) / 42) * 0.5) + Math.min(0.5, (bays / HALL_BAYS) * 0.5) * (lot ? 1 : 0.8), text: big && !lot ? `Now more parking bays a car can get to: ${bays} of ${HALL_BAYS} (Build card, Outside)` : !big ? `${n} of 72 tiles${lot ? '' : `, and ${HALL_BAYS} bays`} (Build card)` : 'Done' };
     }
     case 'own': {
       const bought = state.rivals.some((r) => r.boughtDay !== undefined);
@@ -128,7 +136,7 @@ function met(state: GameState, g: GoalDef): boolean {
     case 'cheapo': return state.goals.run >= CHEAPO_DAYS;
     case 'grocer': return sizeRank(state.shop.sizeId) >= 1 && state.phase === 'night' && state.today.profit >= GROCER_NET;
     case 'busiest': { const w = weekShare(state); return !!w && w.days >= SHARE_DAYS && w.share >= SHARE_TARGET; }
-    case 'hall': return state.shop.sizeId === 'large' && state.shop.bays.length >= HALL_BAYS;
+    case 'hall': return state.shop.sizeId === 'large' && usableBays(state) >= HALL_BAYS;
     case 'own': return state.rivals.some((r) => r.boughtDay !== undefined);
   }
   return false;

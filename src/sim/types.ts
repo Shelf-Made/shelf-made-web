@@ -30,13 +30,15 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard'
   /** More for the lot: a fountain, a statue, lamp posts, bollards, balloons, hedges, a car charger and your own bus stop. */
   | 'fountain' | 'statue' | 'lampPost' | 'bollard' | 'balloons' | 'hedge' | 'evCharger' | 'busStop'
+  /** A parking bay on your own lot, anywhere there is tarmac to drive to it. */
+  | 'parkingBay'
   /** Up to the next floor. */
   | 'stairs' | 'escalator' | 'elevator';
 
 /** The Build card's tabs. */
 export type BuildCategory = 'checkout' | 'shelves' | 'furniture' | 'decor' | 'walls' | 'lights' | 'security' | 'outside' | 'storeys';
 /** What a tile of the lot is laid with (grass where none is). */
-export type LotSurface = 'gravel' | 'asphalt' | 'paving' | 'brick';
+export type LotSurface = 'gravel' | 'asphalt' | 'paving' | 'brick' | 'concrete';
 /** The shop floor's finish (the warm checker lino it starts with, or one bought). */
 export type FloorStyle = 'lino' | 'wood' | 'checker' | 'stone' | 'colour' | 'concrete' | 'carpet' | 'marble' | 'terracotta' | 'parquet' | 'paint' | 'photo';
 /** The inside finish of a stretch of outer wall. */
@@ -105,6 +107,8 @@ export interface Fixture {
   /** Register only: when its conveyor belt was fitted (the day, and the time on the shop's clock): sold just after, all the belt cost comes back. */
   conveyorBought?: number;
   conveyorBoughtAt?: number;
+  /** A Parking bay: the lot tiles that were not tarmac until it went down (keys), taken up again if you change your mind. */
+  laid?: string[];
   /** The day it was bought (sold just after, it fetches all it cost back: you changed your mind). */
   bought?: number;
   /** The shop's clock when it was bought (with `bought`: how long it has traded since). */
@@ -333,9 +337,11 @@ export interface Car {
   gap?: number;
   /** The car holding this one up, if any (to break two-car standoffs). */
   blocker?: number;
+  /** Seconds waiting on the road to turn into your lot while a car drives out up a one-tile lane (it gives up in the end). */
+  held?: number;
 }
 
-export interface ParkingBay { x: number; z: number; yaw: number; carId: number | null }
+export interface ParkingBay { x: number; z: number; yaw: number; carId: number | null; /** Your own lot: the Parking bay piece it is. */ fid?: number }
 
 export interface Order {
   id: number;
@@ -428,8 +434,12 @@ export interface Shop {
    * A panel is also the floor of the storey above, so `ceilings[0]` is the first floor up. Old saves: none.
    */
   ceilings?: string[][];
-  /** The lot, tile by tile (keys from lotKey): what is laid where it is not grass. */
+  /** The lot, tile by tile (keys from lotKey): what is laid where it is not grass (the paths and tarmac the shop came with too, once laid as tiles: see lotBaked). */
   lotTiles?: Record<string, LotSurface>;
+  /** The lot is all tiles and pieces: its paths, lanes and yard laid as tiles, its bays Parking bay pieces (older saves are laid out so on loading). */
+  lotBaked?: boolean;
+  /** Where the pylon sign stands (shop-relative centre and board width), fixed once the lot is laid as tiles. */
+  pylon?: { x: number; z: number; w: number };
   /** Which parking bays are painted, by slot (see baySlots), in the order they were painted (`bays` follows it). Old saves: every slot of `lotRows` rows. */
   bayPlan?: number[];
 }

@@ -261,7 +261,8 @@ export function inLot(r: Rect): boolean { const e = 1e-6; return r.x0 >= PLOT_RE
 /** Surfaces to lay on the lot: the price a tile, what each adds to the frontage, how gladly people walk on it (1 = paving). */
 export const SURFACES: { id: LotSurface; name: string; perTile: number; curb: number; walk: number }[] = [
   { id: 'gravel', name: 'Gravel', perTile: 4, curb: 0.004, walk: 1.2 },
-  { id: 'asphalt', name: 'Asphalt', perTile: 6, curb: 0, walk: 1.1 },
+  { id: 'concrete', name: 'Concrete', perTile: 3, curb: 0, walk: 1 },
+  { id: 'asphalt', name: 'Tarmac', perTile: 6, curb: 0, walk: 1.2 },
   { id: 'paving', name: 'Sidewalk slabs', perTile: 8, curb: 0.006, walk: 1 },
   { id: 'brick', name: 'Brick paving', perTile: 12, curb: 0.01, walk: 1 },
 ];
@@ -288,14 +289,18 @@ export function onBuilding(shop: FloorShape, r: Rect): boolean {
  * Where the pylon sign stands, shop-relative: on the lawn by the sidewalk, between the service lane
  * (where the delivery truck turns in) and the walkway to the door, never on either. `w` is the board's width.
  */
-export function pylonSpot(shape: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[] }): { x: number; z: number; w: number } {
+export function pylonSpot(shape: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; pylon?: { x: number; z: number; w: number } }): { x: number; z: number; w: number } {
+  if (shape.pylon) return shape.pylon;
   const L = lotLayout(shape);
   const left = L.serviceLane.x1 + 0.35, right = L.walkwayX - 0.5 - 0.35;
   return { x: (left + right) / 2, z: 1.85, w: Math.min(2.6, right - left) };
 }
 /** What on the lot is spoken for: the apron, the walkway, lanes and yard, the painted bays and the pylon sign. Nothing is built on them. */
-export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[] }): Rect[] {
-  const L = lotLayout(shop), py = pylonSpot(shop);
+export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; lotBaked?: boolean; pylon?: { x: number; z: number; w: number } }): Rect[] {
+  const py = pylonSpot(shop);
+  // Laid as tiles, the paths and lanes are yours to dig up: only the pylon sign stands where it stands.
+  if (shop.lotBaked) return [{ x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 }];
+  const L = lotLayout(shop);
   return [
     L.apron, { x0: L.walkwayX - 0.5, z0: L.apron.z0, x1: L.walkwayX + 0.5, z1: LOT_FRONT }, L.aisle, { ...L.driveway, z1: LOT_FRONT }, { ...L.serviceLane, z1: LOT_FRONT }, L.backYard,
     ...L.bays.map(bayRect), { x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 },
@@ -306,8 +311,16 @@ export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: numb
 // is its bounding rectangle and `gaps` the tiles inside that are not floor yet (keys "x,z" of their
 // corner). A shop without gaps is the plain rectangle every older save has.
 
-/** The most floor a shop can have (the front wall never moves). */
-export const MAX_FLOOR: Rect = { x0: -4.5, z0: -8, x1: 4.5, z1: 0 };
+/**
+ * The most floor a shop can have: as far as the plot goes, walls and all (the front wall never moves). The floor's
+ * tiles have corners on half x and whole z; the walls, half a tile thick, then end on the lot's grid.
+ */
+export const MAX_FLOOR: Rect = { x0: Math.ceil(PLOT_RECT.x0 + WALL_T - 0.5) + 0.5, z0: Math.ceil(PLOT_RECT.z0 + WALL_T), x1: Math.floor(PLOT_RECT.x1 - WALL_T - 0.5) + 0.5, z1: 0 };
+/**
+ * Shop-relative x a point upstairs (in a floor's region, beyond the plot's back) can be at: within the widest walls a
+ * shop can have, and no further. Out past them, behind the plot, is the town: the side street's sidewalk runs there.
+ */
+export function inUpperX(x: number): boolean { return x > MAX_FLOOR.x0 - WALL_T - 0.05 && x < MAX_FLOOR.x1 + WALL_T + 0.05; }
 type FloorShape = { floor: Rect; gaps?: string[]; ceilings?: string[][]; fixtures?: readonly { type: FixtureType; x: number; z: number; rot: number }[]; layoutVersion?: number };
 export const tileKey = (x: number, z: number): string => `${x},${z}`;
 const gapSets = new WeakMap<string[], Set<string>>();
@@ -523,7 +536,7 @@ export function rideEnds(f: { type: FixtureType; x: number; z: number; rot: numb
 /** A world point as it really stands: one upstairs (in its floor's region) back over the ground floor, `y` a storey up a floor. */
 export function liftWorld(f: Frame, x: number, z: number): { x: number; y: number; z: number; level: number } {
   const l = toLocal(f, x, z);
-  const level = l.x > MAX_FLOOR.x0 - 1.5 && l.x < MAX_FLOOR.x1 + 1.5 ? levelOfZ(l.z) : 0;
+  const level = inUpperX(l.x) ? levelOfZ(l.z) : 0;
   if (!level) return { x, y: 0, z, level: 0 };
   const w = toWorld(f, l.x, zOnLevel(l.z, -level));
   return { x: w.x, y: level * STOREY, z: w.z, level };
@@ -621,6 +634,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   evCharger: { type: 'evCharger', name: 'Car charger', price: 1200, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'outside', outdoor: true, curb: 0.02, looksCap: 2 },
   /** Your own stop on the bus route, by the sidewalk: more shoppers, and the rush-hour crowd gets off at your door. */
   busStop: { type: 'busStop', name: 'Bus stop', price: 2500, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3, category: 'outside', outdoor: true },
+  /** Laid on tarmac (it comes with it), its open end facing the tarmac a car drives up. */
+  parkingBay: { type: 'parkingBay', name: 'Parking bay', price: BAY_PRICE, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, walkable: true },
   // Up to the next floor: each runs back from its front tile and comes up through the floor above.
   stairs: { type: 'stairs', name: 'Stairs', price: 450, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'storeys' },
   escalator: { type: 'escalator', name: 'Escalator', price: 1600, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 5, category: 'storeys' },

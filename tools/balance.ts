@@ -7,7 +7,8 @@
 import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, GOALS, playerShareOf, SHOP_SIZES, type GameState, type Difficulty, type FixtureType } from '../src/sim/index';
 import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
 import { TYPE_BASE, priceIndex, rivalPriceIndex } from '../src/sim/customers';
-import { plotDef, lotLayout, BAY_PRICE } from '../src/sim/layout';
+import { plotDef, BAY_PRICE } from '../src/sim/layout';
+import { lotSlots } from '../src/sim/lot';
 import { writeFileSync } from 'node:fs';
 
 type Strategy = (s: GameState, day: number) => void;
@@ -138,9 +139,9 @@ const STRATEGIES: Record<string, Strategy> = {
     // Moving up comes first on the morning it is affordable (with $200 kept back for the day's stock).
     if (s.shop.sizeId === 'starter' && day >= 6 && s.cash - SHOP_SIZES[1]!.cost >= 200) applyCommand(s, { type: 'expandShop', sizeId: 'medium' });
     // A bigger shop has room for more bays down its side: paint them in the first row.
-    if (s.shop.sizeId !== 'starter') for (const sl of lotLayout(s.shop).slots) if (sl.row === 0 && can(BAY_PRICE) && !s.shop.bayPlan?.includes(sl.id)) applyCommand(s, { type: 'paintBay', slot: sl.id });
+    if (s.shop.sizeId !== 'starter') for (const sl of lotSlots(s.shop)) if (sl.row === 0 && sl.fid === undefined && can(BAY_PRICE)) applyCommand(s, { type: 'paintBay', slot: sl.id });
     // And the second row once drivers are being turned away.
-    const freeBays = lotLayout(s.shop).slots.length - s.shop.bays.length;
+    const freeBays = lotSlots(s.shop).filter((sl) => sl.fid === undefined).length;
     if (s.shop.sizeId !== 'starter' && freeBays > 0 && (last?.turnedAway ?? 0) >= 15 && s.cash - freeBays * BAY_PRICE >= 200) applyCommand(s, { type: 'expandLot' });
     if (s.cash > 120) orderToFill(s, 'local', 2.5, Math.max(220, s.cash * 0.5));
     if (s.cash > reserve) orderNew(s, (s.cash - reserve) * 0.5);
