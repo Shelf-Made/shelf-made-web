@@ -19,7 +19,7 @@ import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan } from './money';
 import { hire, fire, giveRaise, setShift, setBreak, restyle } from './staff';
 import { caught } from './shoplifting';
-import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall, hungOn, wallUp } from './build';
+import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall, hungOn, wallUp, wallsToPieces } from './build';
 import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild, keepFinishes } from './storeys';
 import { pave, paintBay, eraseBay, bayLaid, bayTakenBack, bayHoldsCharger } from './lot';
 import { syncLotBays } from './drive';
@@ -164,6 +164,8 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (!plot) return { ok: false, message: 'No such plot.' };
       const name = cmd.name.trim().slice(0, 18) || 'Shelf Made';
       state.shop = makeShop(plot.id, name, cmd.scheme);
+      // Walled all round, as a new game's shop is: its walls and doors, every one a piece.
+      wallsToPieces(state);
       seatRivals(state);
       state.cars = state.cars.filter((c) => c.state === 'passing');
       state.people = state.people.filter((p) => p.kind === 'walker' && !p.rivalId);

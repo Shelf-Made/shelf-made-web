@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
 import { cellOf, isBlocked, fixtureAccessWorld } from './grid';
 import { spawnCustomer, palletChoices, neediestInStorage, wrongFixture } from './people';
-import { canPlace } from './build';
+import { canPlace, openEdges } from './build';
 import { toWorld, toLocal } from './layout';
 import { deliveryStatus } from './economy';
 
@@ -173,6 +173,10 @@ describe('simulation', () => {
     expect(s.shop.flip).toBe(true);
     // The rivals took the other three corners.
     expect(new Set(s.rivals.map((r) => r.corner))).toEqual(new Set(['nw', 'ne', 'se']));
+    // Walled all round, its doors in: as a new game's shop is.
+    expect(s.shop.walled).toBe(true);
+    expect(openEdges(s.shop)).toEqual([]);
+    expect(s.shop.fixtures.filter((f) => f.type === 'frontDoor' || f.type === 'backDoor').length).toBe(2);
   });
   it('building never traps the manager: not on top of you, never boxing you in', () => {
     const s = newGame({ seed: 9, plotId: 'main', name: 'Boxed' });
