@@ -96,13 +96,13 @@
     // Fitting it out: one piece after another lands on the beat-ish.
     a_build: {
       setup(h) { h.dispatch({ type: 'cheat', cash: 30000 }); const s = h.state(); const o = owner(s); if (o) { const w = world(s, 0.3, -0.6); o.x = o.px = w.x; o.z = o.pz = w.z; } return { i: 0 }; },
-      cam: (tt) => ({ x: 0, z: -3, yaw: -0.45 + tt * 0.035, dist: 14.5 - tt * 0.15, pitch: 0.95 }),
+      cam: (tt) => ({ x: -0.2, z: -3.2, yaw: -0.4 + tt * 0.035, dist: 11.8 - tt * 0.15, pitch: 0.92 }),
       act(tt, h, rt, s, c) {
         const f = s.shop.floor;
-        const plan = [['register', f.x1 - 1, f.z1 - 3, 2], ['shelf', f.x0, f.z0 + 2, 1], ['shelf', f.x0, f.z0 + 3, 1], ['fridge', f.x1 - 1, f.z0, 3], ['shelf', -1, -3.5, 0], ['produce', 0.5, -3.5, 0], ['plant', f.x0, f.z1 - 1, 0], ['flowers', 1, -1, 0], ['shelf', -0.5, f.z0, 0]];
+        const plan = [['register', f.x1 - 1, f.z1 - 3, 2], ['shelf', f.x0, f.z0 + 2, 1], ['shelf', f.x0, f.z0 + 3, 1], ['fridge', f.x1 - 1, f.z0, 3], ['shelf', -0.5, -4, 0], ['shelf', 0.5, -4, 0], ['produce', -0.5, -2, 0], ['produce', 0.5, -2, 0], ['plant', f.x0, f.z1 - 1, 0], ['shelf', -0.5, f.z0, 0], ['flowers', 0.5, -1, 0]];
         while (c.i < plan.length && tt >= 0.6 + c.i * 0.55) {
           const [ty, x, z, rot] = plan[c.i++];
-          place(h, ty, x + 0.5 * 0, z, rot);
+          if (place(h, ty, x, z, rot)) mark('placed', ty); else mark('failed', ty);
           if (c.i === plan.length) ko('lastPiece');
         }
         if (c.i === plan.length && !c.stocked && tt > 0.6 + plan.length * 0.55 + 0.4) { c.stocked = true; stockAll(s); h.restock(); s.sounds.push('stock'); }
