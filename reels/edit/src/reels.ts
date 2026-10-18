@@ -64,7 +64,7 @@ const restock: ReelProps = {
     { clip: "b_refill", from: 0.7, beats: 8, text: "FILL *EVERY* SHELF", accent: GREEN, push: 1.08 },
     koCut("b_refill", 4, { text: "*PERFECT*" }, 0.3),
     { clip: "b_aisle", from: 1.0, beats: 6, text: "THEN THE *RUSH*", accent: HOT },
-    { clip: "b_till", from: 1.4, beats: 6, text: "BEEP BEEP *KA-CHING*" },
+    { clip: "b_till", from: 1.4, beats: 6, text: "*KA-CHING*", sub: "BEEP BEEP BEEP" },
     { clip: "a_busy", from: 4.6, beats: 6 },
   ],
 };
