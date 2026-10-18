@@ -4,3 +4,6 @@ edit/node_modules/
 edit/public/footage/
 final/
 out2/
+render.log
+batch*.log
+rebuild.log

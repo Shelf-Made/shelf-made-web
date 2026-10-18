@@ -38,10 +38,10 @@ const glowUp: ReelProps = {
   cta: "LINK IN BIO",
   segments: [
     { clip: "a_empty", from: 1.0, beats: 4, text: "DAY *1*", sub: "ONE EMPTY ROOM", push: 1.1 },
-    { clip: "a_build", from: 0.4, beats: 6, rate: 1.6, text: "FIT IT *OUT*", sub: "SHELF BY SHELF", accent: GREEN },
+    { clip: "a_build", from: 0.4, beats: 6, rate: 2.1, text: "FIT IT *OUT*", sub: "SHELF BY SHELF", accent: GREEN },
     koCut("a_open", 4, { text: "DOORS *OPEN*", accent: GREEN }, 0.4),
     koCut("b_truck", 4, { text: "*STOCK* UP" }, 0.5),
-    { clip: "a_busy", from: 1.0, beats: 4, text: "DAY *30*", sub: "A WHOLE MARKET HALL", accent: ACCENT },
+    { clip: "a_busy", from: 3.6, beats: 4, text: "DAY *30*", sub: "A WHOLE MARKET HALL", accent: ACCENT },
     { clip: "b_refill", from: 2.6, beats: 4, rate: 1.3 },
     { clip: "a_dusk", from: 0.2, beats: 14, rate: 1.2, text: "THE TOWN'S *FAVOURITE*", sub: "GROCER", accent: ACCENT, push: 1.02 },
   ],
@@ -65,7 +65,7 @@ const restock: ReelProps = {
     koCut("b_refill", 4, { text: "*PERFECT*" }, 0.3),
     { clip: "b_aisle", from: 1.0, beats: 6, text: "THEN THE *RUSH*", accent: HOT },
     { clip: "b_till", from: 1.4, beats: 6, text: "BEEP BEEP *KA-CHING*" },
-    { clip: "a_busy", from: 2.0, beats: 6 },
+    { clip: "a_busy", from: 4.6, beats: 6 },
   ],
 };
 

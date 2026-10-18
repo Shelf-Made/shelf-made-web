@@ -1,12 +1,22 @@
 {
  "a_build": {
   "seconds": 8,
-  "ko": 5,
+  "ko": 6.1,
   "marks": [
+   {
+    "t": 0.6,
+    "kind": "placed",
+    "label": "register"
+   },
    {
     "t": 0.633,
     "kind": "sound",
     "label": "place"
+   },
+   {
+    "t": 1.167,
+    "kind": "placed",
+    "label": "shelf"
    },
    {
     "t": 1.2,
@@ -14,9 +24,19 @@
     "label": "place"
    },
    {
+    "t": 1.733,
+    "kind": "placed",
+    "label": "shelf"
+   },
+   {
     "t": 1.767,
     "kind": "sound",
     "label": "place"
+   },
+   {
+    "t": 2.267,
+    "kind": "placed",
+    "label": "fridge"
    },
    {
     "t": 2.3,
@@ -24,12 +44,67 @@
     "label": "place"
    },
    {
+    "t": 2.833,
+    "kind": "placed",
+    "label": "shelf"
+   },
+   {
+    "t": 2.867,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 3.367,
+    "kind": "placed",
+    "label": "shelf"
+   },
+   {
+    "t": 3.4,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 3.933,
+    "kind": "placed",
+    "label": "produce"
+   },
+   {
     "t": 3.967,
     "kind": "sound",
     "label": "place"
    },
    {
+    "t": 4.467,
+    "kind": "placed",
+    "label": "produce"
+   },
+   {
+    "t": 4.5,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
     "t": 5,
+    "kind": "placed",
+    "label": "plant"
+   },
+   {
+    "t": 5.033,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 5.567,
+    "kind": "failed",
+    "label": "shelf"
+   },
+   {
+    "t": 6.1,
+    "kind": "failed",
+    "label": "flowers"
+   },
+   {
+    "t": 6.1,
     "kind": "ko",
     "label": "lastPiece"
    }
@@ -37,10 +112,10 @@
  },
  "a_busy": {
   "seconds": 8,
-  "ko": 6.866666666666666,
+  "ko": 2.033333333333333,
   "marks": [
    {
-    "t": 6.867,
+    "t": 2.033,
     "kind": "ko",
     "label": "cash"
    }
@@ -102,10 +177,10 @@
  },
  "b_till": {
   "seconds": 7,
-  "ko": 1.0333333333333334,
+  "ko": 1.4,
   "marks": [
    {
-    "t": 1.033,
+    "t": 1.4,
     "kind": "ko",
     "label": "cash"
    }
