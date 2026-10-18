@@ -120,7 +120,7 @@
     },
     // Day 30: a market hall, staff on the floor, packed.
     a_busy: {
-      setup(h) { fitOut(h); marketHall(h); h.crowd(12); h.crowd(5, false); h.advanceScan(30, 2); h.crowd(6); h.advanceScan(8, 2); h.restock(); },
+      setup(h) { fitOut(h); marketHall(h); h.crowd(16); h.crowd(6, false); h.advanceScan(25, 3); h.crowd(16); h.advanceScan(12, 4); h.crowd(8); h.advanceScan(4, 4); h.restock(); },
       cam: (tt) => ({ x: -0.3, z: -4, yaw: 0.65 - tt * 0.05, dist: 16 - tt * 0.2, pitch: 0.85 }),
       act(tt, h) { if (Math.floor(tt * 3) !== this.q) { this.q = Math.floor(tt * 3); h.dispatch({ type: 'scan' }); } },
       ko: 'cash', koAfter: 1.5,
@@ -197,7 +197,7 @@
     b_till: {
       setup(h) {
         fitOut(h, { staff: false, warm: 30 });
-        h.crowd(9); h.advanceNoScan(28);
+        h.crowd(14); h.advanceNoScan(34); h.crowd(4); h.advanceNoScan(6);
         const s = h.state(); const reg = s.shop.fixtures.find((f) => f.type === 'register');
         return { reg: reg?.id };
       },
@@ -205,7 +205,7 @@
         const reg = s.shop.fixtures.find((f) => f.id === c.reg);
         return { x: (reg?.x ?? 1.5) - 0.3, z: (reg?.z ?? -3) + 0.8, yaw: -0.45 + tt * 0.02, dist: 8.5, pitch: 0.72, lookY: 0.6 };
       },
-      act(tt, h) { if (Math.floor(tt * 5) !== this.q) { this.q = Math.floor(tt * 5); h.dispatch({ type: 'scan' }); } },
+      act(tt, h) { if (Math.floor(tt * 2.2) !== this.q) { this.q = Math.floor(tt * 2.2); h.dispatch({ type: 'scan' }); } },
       ko: 'cash', koAfter: 1,
     },
 

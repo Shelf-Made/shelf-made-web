@@ -96,7 +96,7 @@ export const REELS: Record<string, ReelProps> = {
 };
 
 export const COVERS: Record<string, CoverProps> = {
-  Cover1GlowUp: { still: "stills/glowup.jpg", text: "DAY *1* VS DAY *30*", sub: "MY GROCERY STORE", accent: ACCENT },
+  Cover1GlowUp: { still: "stills/glowup.jpg", text: "DAY *1* VS *30*", sub: "MY GROCERY STORE", accent: ACCENT },
   Cover2Restock: { still: "stills/restock.jpg", text: "RESTOCK *ASMR*", sub: "SOUND ON", accent: GREEN },
   Cover3TierList: { still: "stills/tierlist.jpg", text: "CHAOS *TIER* LIST", sub: "WHAT'S YOUR S TIER?", accent: HOT },
 };

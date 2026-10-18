@@ -1,1 +1,215 @@
-{}
+{
+ "a_build": {
+  "seconds": 8,
+  "ko": 5,
+  "marks": [
+   {
+    "t": 0.633,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 1.2,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 1.767,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 2.3,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 3.967,
+    "kind": "sound",
+    "label": "place"
+   },
+   {
+    "t": 5,
+    "kind": "ko",
+    "label": "lastPiece"
+   }
+  ]
+ },
+ "a_busy": {
+  "seconds": 8,
+  "ko": 6.866666666666666,
+  "marks": [
+   {
+    "t": 6.867,
+    "kind": "ko",
+    "label": "cash"
+   }
+  ]
+ },
+ "a_dusk": {
+  "seconds": 9,
+  "ko": 4.033333333333333,
+  "marks": [
+   {
+    "t": 4.033,
+    "kind": "ko",
+    "label": "pullout"
+   }
+  ]
+ },
+ "a_empty": {
+  "seconds": 6,
+  "ko": 2.533333333333333,
+  "marks": [
+   {
+    "t": 2.533,
+    "kind": "ko",
+    "label": "hop"
+   }
+  ]
+ },
+ "a_open": {
+  "seconds": 7,
+  "ko": 1,
+  "marks": [
+   {
+    "t": 1,
+    "kind": "ko",
+    "label": "open"
+   },
+   {
+    "t": 1.033,
+    "kind": "sound",
+    "label": "open"
+   }
+  ]
+ },
+ "b_aisle": {
+  "seconds": 8,
+  "ko": -1,
+  "marks": []
+ },
+ "b_refill": {
+  "seconds": 8,
+  "ko": 5.2,
+  "marks": [
+   {
+    "t": 5.2,
+    "kind": "ko",
+    "label": "full"
+   }
+  ]
+ },
+ "b_till": {
+  "seconds": 7,
+  "ko": 1.0333333333333334,
+  "marks": [
+   {
+    "t": 1.033,
+    "kind": "ko",
+    "label": "cash"
+   }
+  ]
+ },
+ "b_truck": {
+  "seconds": 9.833,
+  "ko": 6.333333333333333,
+  "marks": [
+   {
+    "t": 4.267,
+    "kind": "sound",
+    "label": "truck"
+   },
+   {
+    "t": 6.333,
+    "kind": "ko",
+    "label": "boxes"
+   },
+   {
+    "t": 6.333,
+    "kind": "sound",
+    "label": "boxes"
+   }
+  ]
+ },
+ "c_bump": {
+  "seconds": 7,
+  "ko": 1.2,
+  "marks": [
+   {
+    "t": 1.2,
+    "kind": "ko",
+    "label": "bump"
+   }
+  ]
+ },
+ "c_rival": {
+  "seconds": 7,
+  "ko": 1,
+  "marks": [
+   {
+    "t": 1,
+    "kind": "ko",
+    "label": "rival"
+   }
+  ]
+ },
+ "c_spill": {
+  "seconds": 7,
+  "ko": 1.2,
+  "marks": [
+   {
+    "t": 1.2,
+    "kind": "ko",
+    "label": "spill"
+   },
+   {
+    "t": 1.233,
+    "kind": "sound",
+    "label": "spill"
+   }
+  ]
+ },
+ "c_storm": {
+  "seconds": 9,
+  "ko": 2.033333333333333,
+  "marks": [
+   {
+    "t": 2.033,
+    "kind": "thunder",
+    "label": "9"
+   },
+   {
+    "t": 2.033,
+    "kind": "ko",
+    "label": "thunder"
+   },
+   {
+    "t": 5.533,
+    "kind": "thunder",
+    "label": "7"
+   }
+  ]
+ },
+ "c_thief": {
+  "seconds": 8.2,
+  "ko": 4.166666666666667,
+  "marks": [
+   {
+    "t": 3.133,
+    "kind": "sound",
+    "label": "alarm"
+   },
+   {
+    "t": 4.167,
+    "kind": "ko",
+    "label": "caught"
+   },
+   {
+    "t": 4.167,
+    "kind": "sound",
+    "label": "caught"
+   }
+  ]
+ }
+}
