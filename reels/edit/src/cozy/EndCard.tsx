@@ -16,8 +16,9 @@ export const EndCard: React.FC<{ frames: number; cta: string; line?: string }> =
   return (
     <AbsoluteFill style={{ fontFamily: FREDOKA, alignItems: "center", justifyContent: "center", opacity: interpolate(f, [frames - 5, frames], [1, 0.25], clamp) }}>
       <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 42%, ${C.white} 0%, ${C.cream} 55%, #F6E2BC 100%)`, opacity: interpolate(f, [0, 5], [0, 1], clamp) }} />
+      <Confetti seed="end" />
       <Img src={staticFile("brand/logo.png")} style={{ width: 600, marginTop: -170, scale: String(interpolate(logo, [0, 1], [0.4, 1])), rotate: `${interpolate(logo, [0, 1], [-8, 0])}deg` }} />
-      {line ? <div style={{ marginTop: 6, fontWeight: 600, fontSize: 46, color: C.slate, opacity: interpolate(f, [4, 9], [0, 1], clamp) }}>{line}</div> : null}
+      {line ? <div style={{ position: "relative", marginTop: 6, fontWeight: 600, fontSize: 46, color: C.slate, opacity: interpolate(f, [4, 9], [0, 1], clamp) }}>{line}</div> : null}
       <div
         style={{
           marginTop: 44,
@@ -35,7 +36,6 @@ export const EndCard: React.FC<{ frames: number; cta: string; line?: string }> =
       >
         {cta}
       </div>
-      <Confetti seed="end" />
     </AbsoluteFill>
   );
 };

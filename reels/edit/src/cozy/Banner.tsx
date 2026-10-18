@@ -37,7 +37,7 @@ export const Banner: React.FC<{ label?: string; text: string; top?: number; fram
         }}
       >
         {label ? <div style={{ fontWeight: 700, fontSize: size * 0.4, letterSpacing: 3, textTransform: "uppercase", color: labelColor, marginBottom: 6 }}>{label}</div> : null}
-        <div style={{ fontWeight: 700, fontSize: size, lineHeight: 1.05 }}>{text}</div>
+        <div style={{ fontWeight: 700, fontSize: text.length > 18 ? Math.min(size, Math.floor(1560 / text.length)) : size, lineHeight: 1.05, whiteSpace: text.length > 34 ? "normal" : "nowrap" }}>{text}</div>
       </div>
     </div>
   );
