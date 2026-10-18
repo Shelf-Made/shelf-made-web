@@ -1,0 +1,14 @@
+[
+ { "name": "d_day", "scene": "d_day", "seconds": 23, "tail": 30, "rawSpeed": 34, "hud": true },
+ { "name": "g_bad", "scene": "g_bad", "seconds": 7.5, "tail": 30 },
+ { "name": "e_pick1", "scene": "e_pick", "seconds": 6.5, "tail": 30, "scheme": "green", "shopName": "Corner Fresh", "sign": "classic", "floor": "wood" },
+ { "name": "e_pick2", "scene": "e_pick", "seconds": 6.5, "tail": 30, "scheme": "berry", "shopName": "Berry Good", "sign": "neon", "floor": "checker" },
+ { "name": "e_pick3", "scene": "e_pick", "seconds": 6.5, "tail": 30, "scheme": "tangerine", "shopName": "Sunny Side", "sign": "lit", "floor": "terracotta" },
+ { "name": "e_pick4", "scene": "e_pick", "seconds": 6.5, "tail": 30, "scheme": "plum", "shopName": "Plum & Co", "sign": "neon", "floor": "marble" },
+ { "name": "e_pick5", "scene": "e_pick", "seconds": 6.5, "tail": 30, "scheme": "teal", "shopName": "Tidal Grocer", "sign": "led", "floor": "stone" },
+ { "name": "e_pick6", "scene": "e_pick", "seconds": 6.5, "tail": 30, "scheme": "cocoa", "shopName": "Bean There", "sign": "lit", "floor": "parquet" },
+ { "name": "g_stocker", "scene": "g_stocker", "seconds": 7.5, "tail": 30 },
+ { "name": "g_tills", "scene": "g_tills", "seconds": 7.5, "tail": 30 },
+ { "name": "g_mop", "scene": "g_mop", "seconds": 7.5, "tail": 30 },
+ { "name": "g_five", "scene": "g_five", "seconds": 7.5, "tail": 30 }
+]

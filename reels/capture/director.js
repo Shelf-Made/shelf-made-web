@@ -75,6 +75,7 @@
     if (p) { const l = local(s, p.x, p.z); c.fx = c.fx === undefined ? l.x : lerp(c.fx, l.x, k); c.fz = c.fz === undefined ? l.z : lerp(c.fz, l.z, k); }
     return { x: c.fx ?? 0, z: c.fz ?? -3 };
   };
+  const FULL = () => 8;
   const emptyShelves = (s, keep = 0) => { for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) sl.qty = keep; };
 
   const SCENES = {
@@ -209,6 +210,169 @@
       ko: 'cash', koAfter: 1,
     },
 
+    // ---------------- Round 2, reel 4: one whole day, opening to lights-on, as a timelapse.
+    d_day: {
+      setup(h) {
+        fitOut(h, { warm: 0 }); marketHall(h); h.setSky('clear');
+        h.crowd(10); h.crowd(4, false); h.advanceScan(14, 2);
+        const s = h.state(); s.time = 4; h.restock();
+        return {};
+      },
+      cam: (tt) => { const k = tt / 22; return { x: -0.2, z: -3.6, yaw: 0.2 + 1.9 * k, dist: 19 - 2 * Math.sin(k * Math.PI), pitch: 0.86 - 0.12 * k, lookY: 0.4 }; },
+      act(tt, h, rt, s, c) {
+        if (s.phase === 'open' && Math.floor(tt * 10) !== c.q) { c.q = Math.floor(tt * 10); h.dispatch({ type: 'scan' }); if (c.q % 15 === 0) h.restock(); }
+        if (s.phase === 'open' && (c.q ?? 0) % 25 === 0 && c.qq !== c.q) { c.qq = c.q; h.crowd(2); }
+        if (s.time / 720 > 0.86 && R.koAt < 0) ko('lights');
+        // The night stops the clock and slows the game to 1x: hold it at the timelapse speed until then.
+        if (s.phase !== 'night') rt.speed = R.opts.rawSpeed ?? 34;
+      },
+    },
+
+    // ---------------- Round 2, reel 5: the same shop front in six colourways (match cuts in the edit).
+    e_pick: {
+      setup(h, rt, s, o) {
+        fitOut(h, { warm: 20 });
+        h.dispatch({ type: 'cheat', cash: 90000 });
+        h.dispatch({ type: 'signStyle', style: o.sign ?? 'classic' });
+        h.dispatch({ type: 'setFloor', style: o.floor ?? 'wood' });
+        h.dispatch({ type: 'outsideSign', on: true });
+        for (const [x, z, ty] of [[0.5, -1, 'flowers'], [-0.5, -4, 'shelf'], [0.5, -4, 'shelf'], [-0.5, -2, 'produce']]) place(h, ty, x, z, 0);
+        stockAll(h.state()); h.restock();
+        h.crowd(4); h.advanceScan(6, 2);
+        h.setSky('clear');
+        h.setTime(720 * 0.875);
+        return {};
+      },
+      cam: (tt) => { const k = ease(tt / 6); return { x: lerp(-0.4, 0.2, k), z: lerp(-1.2, -2.2, k), yaw: lerp(-0.55, 0.35, k), dist: lerp(9.5, 13.5, k), pitch: lerp(0.42, 0.62, k), lookY: lerp(1.6, 0.8, k) }; },
+      act(tt, h, rt, s) { s.time = Math.min(s.time, 720 * 0.9); },
+    },
+
+    // ---------------- Round 2, reel 6: POV, you run the shop, on the game's own follow camera.
+    // (fp scenes: the play camera behind the manager, turned to look where they look.)
+    f_carry: {
+      fp: true, dist: 6.2, pitch: 0.62,
+      setup(h) {
+        fitOut(h, { warm: 10 }); marketHall(h);
+        const s = h.state();
+        const far = s.shop.fixtures.filter((f) => f.type === 'shelf').sort((a, b) => b.x - a.x)[0];
+        for (const sl of far.slots) if (sl.productId) sl.qty = 0;
+        h.crowd(6); h.advanceScan(6, 2);
+        for (const sl of far.slots) if (sl.productId) sl.qty = 0;
+        s.shop.storage = far.slots.filter((sl) => sl.productId).map((sl) => ({ productId: sl.productId, qty: 12, day: s.day }));
+        s.people = s.people.filter((p) => !(p.kind === 'staff' && p.role === 'stocker'));
+        return { shelf: far.id, start: [-3.5, -7.4] };
+      },
+      act(tt, h, rt, s, c) {
+        if (!c.sent && tt >= 0.5 && !c.tried) { c.tried = true; const r = h.dispatch({ type: 'carry', fixtureId: c.shelf }); c.sent = r.ok; const o = owner(s); mark('carry', `${r.ok} ${r.message ?? ''} at ${JSON.stringify(local(s, o.x, o.z))} pallet ${JSON.stringify(s.shop.pallet ?? s.shop.delivery ?? null)}`); }
+      },
+      ko: 'stock',
+    },
+    f_till: {
+      fp: true, dist: 5.2, pitch: 0.5, faceTill: true,
+      setup(h) {
+        fitOut(h, { staff: false, warm: 10 });
+        const s = h.state(); const reg = s.shop.fixtures.find((f) => f.type === 'register');
+        const o = owner(s); const till = { x: o.x, z: o.z };
+        h.crowd(9); h.advanceNoScan(30);
+        o.x = o.px = till.x; o.z = o.pz = till.z; o.path = []; o.state = 'idle';
+        return { reg: reg.id, till };
+      },
+      act(tt, h, rt, s, c) { if (Math.floor(tt * 2.6) !== c.q) { c.q = Math.floor(tt * 2.6); h.dispatch({ type: 'scanHere', registerId: c.reg }); } },
+      ko: 'cash', koAfter: 0.5,
+    },
+    f_eyes: {
+      fp: true, eyes: true,
+      setup(h) {
+        fitOut(h, { warm: 10 }); marketHall(h); h.crowd(10); h.advanceScan(10, 2); h.restock();
+        return { start: [-1, -1.2], heading: [-1, -7.5] };
+      },
+      act(tt, h, rt, s, c) { h.dispatch({ type: 'moveDir', ...c.dir }); },
+    },
+    f_close: {
+      fp: true, dist: 7.5, pitch: 0.32, lookBack: true,
+      setup(h) {
+        fitOut(h, { warm: 10 });
+        h.dispatch({ type: 'signStyle', style: 'neon' }); h.dispatch({ type: 'outsideSign', on: true });
+        h.setSky('clear'); h.setTime(720 * 0.93);
+        return { start: [0.3, 2.2] };
+      },
+      act(tt, h, rt, s, c) { s.time = Math.min(s.time, 720 * 0.95); if (tt >= 2.2 && !c.hop) { c.hop = true; h.jump(); ko('hop'); } },
+    },
+
+    // ---------------- Round 2, reel 6: fixing my worst reviews (each complaint, then its fix).
+    // The neglected shop the 1-star reviews came from: gaps on the shelves, mess, one slow till.
+    g_bad: {
+      setup(h) {
+        fitOut(h, { staff: false, warm: 0 });
+        const s = h.state();
+        for (const f of s.shop.fixtures) f.slots.forEach((sl, i) => { if (sl.productId) sl.qty = i % 3 === 0 ? 2 : 0; });
+        h.crowd(12); h.advanceNoScan(40); h.crowd(4); h.advanceNoScan(8);
+        for (const [x, z] of [[-0.6, -2.4], [0.8, -1.6], [-1.6, -1.2], [0.2, -4.6]]) { const w = world(s, x, z); s.shop.litter.push({ id: s.nextId++, x: w.x, z: w.z, dirt: 0.04 }); }
+        s.shop.cleanliness = 0.35;
+        return {};
+      },
+      cam: (tt) => ({ x: 0.2, z: -2.6, yaw: 0.5 - tt * 0.035, dist: 10.5 - tt * 0.15, pitch: 0.82 }),
+      act(tt, h, rt, s, c) { if (Math.floor(tt * 0.8) !== c.q) { c.q = Math.floor(tt * 0.8); h.dispatch({ type: 'scan' }); } },
+    },
+    // Fix 1: a stocker refills the gaps (the camera stays on them).
+    g_stocker: {
+      setup(h) {
+        fitOut(h, { staff: false, warm: 10 }); marketHall(h);
+        const s = h.state();
+        for (const f of s.shop.fixtures) f.slots.forEach((sl) => { if (sl.productId) sl.qty = 0; });
+        s.shop.storage = [...new Set(s.shop.fixtures.flatMap((f) => f.slots.map((sl) => sl.productId)).filter(Boolean))].slice(0, 8).map((pid) => ({ productId: pid, qty: 12, day: s.day }));
+        hireAll(h, ['stocker']); h.crowd(5); h.advanceNoScan(6);
+        const st = s.people.find((p) => p.kind === 'staff' && p.role === 'stocker');
+        return { id: st?.id };
+      },
+      cam(tt, s, c) { const p = track(s, c, c.id, 0.05); return { x: lerp(p.x, -0.5, 0.35), z: lerp(p.z, -5, 0.35), yaw: 0.35 + tt * 0.03, dist: 9.5, pitch: 0.78 }; },
+      // The bare shelf nearest the stocker fills as they pass (their own trips are slow to start).
+      act(tt, h, rt, s, c) {
+        const p = person(s, c.id); if (!p || tt < 0.8 || tt - (c.last ?? -9) < 0.7) return;
+        const bare = s.shop.fixtures.filter((f) => f.slots.some((sl) => sl.productId && sl.qty === 0));
+        if (!bare.length) return;
+        const near = bare.map((f) => { const w = world(s, f.x + 0.5, f.z + 0.5); return { f, d: Math.hypot(w.x - p.x, w.z - p.z) }; }).sort((a, b) => a.d - b.d)[0].f;
+        for (const sl of near.slots) if (sl.productId) sl.qty = FULL(near);
+        c.last = tt; s.sounds.push('stock'); if (!bare.slice(1).length) ko('full');
+      },
+    },
+    // Fix 2: a second till and two cashiers, and the queue melts.
+    g_tills: {
+      setup(h) {
+        fitOut(h, { staff: false, warm: 10 });
+        const s = h.state(); const f = s.shop.floor;
+        place(h, 'register', f.x1 - 1, f.z1 - 5, 2);
+        h.crowd(14); h.advanceNoScan(32); h.crowd(3); h.advanceNoScan(4);
+        return {};
+      },
+      act(tt, h, rt, s, c) { if (tt >= 0.3 && !c.hired) { c.hired = true; hireAll(h, ['cashier']); hireAll(h, ['cashier']); } },
+      cam: (tt) => ({ x: 0.9, z: -3.2, yaw: -0.5 + tt * 0.035, dist: 9.5 - tt * 0.12, pitch: 0.72 }),
+      ko: 'cash', koAfter: 1,
+    },
+    // Fix 3: the cleaner and their mop.
+    g_mop: {
+      setup(h) {
+        fitOut(h, { staff: false, warm: 10 });
+        const s = h.state();
+        for (const [x, z] of [[-0.5, -2.4], [0.6, -1.6], [-1.4, -1.4]]) { const w = world(s, x, z); s.shop.litter.push({ id: s.nextId++, x: w.x, z: w.z, dirt: 0.04 }); }
+        hireAll(h, ['cleaner']); h.crowd(3); h.advanceScan(3, 2);
+        const cl = s.people.find((p) => p.kind === 'staff' && p.role === 'cleaner');
+        return { id: cl?.id };
+      },
+      cam(tt, s, c) { const p = track(s, c, c.id, 0.06); return { x: lerp(p.x, -0.4, 0.3), z: lerp(p.z, -2, 0.3), yaw: 0.25 + tt * 0.03, dist: 7.8, pitch: 0.8 }; },
+    },
+    // Five stars: the market hall at golden hour, full and happy.
+    g_five: {
+      setup(h) {
+        fitOut(h); marketHall(h);
+        h.dispatch({ type: 'signStyle', style: 'lit' });
+        h.crowd(14); h.crowd(4, false); h.advanceScan(25, 2); h.crowd(6); h.advanceScan(6, 2); h.restock();
+        h.setSky('clear'); h.setTime(720 * 0.8);
+      },
+      cam: (tt) => ({ x: 0, z: -3.4, yaw: -0.7 + tt * 0.06, dist: 13 - tt * 0.25, pitch: 0.6, lookY: 0.7 }),
+      act(tt, h, rt, s, c) { if (Math.floor(tt * 3) !== c.q) { c.q = Math.floor(tt * 3); h.dispatch({ type: 'scan' }); } },
+    },
+
     // ---------------- Reel 3: ranking the chaos.
     // D tier: a spill. Someone drops a jar; the cleaner mops it up.
     c_spill: {
@@ -309,21 +473,48 @@
     sfx.setMood = () => {};
 
     // ---- The scene. (Paused while it is set up, then the clock runs at the shot's speed.)
-    h.newGame(opts.seed ?? 3, opts.plot ?? 'main', opts.shopName ?? 'Corner Fresh', { tutorial: false });
+    h.newGame(opts.seed ?? 3, opts.plot ?? 'main', opts.shopName ?? 'Corner Fresh', { tutorial: false, scheme: opts.scheme });
     h.setSpeed(0);
     rt.settings.quality = 'high';
     ctx = scene.setup(h, rt, h.state(), opts) || {};
     h.state().sounds.length = 0;
     h.state().popups.length = 0;
-    rt.cinematic = true;
+    rt.cinematic = !scene.fp;
     const r = rt.renderer;
     r.camera.bounds = { minX: -80, maxX: 80, minZ: -80, maxZ: 80 };
     r.camera.limits.minPitch = 0.05; r.camera.limits.maxPitch = 1.5;
     r.camera.camera.fov = opts.fov ?? 44;
     r.camera.camera.updateProjectionMatrix();
     h.setSpeed(opts.speed ?? 1);
-    aim(0);
-    r.camera.snap();
+    if (opts.rawSpeed) rt.speed = opts.rawSpeed;
+    if (scene.fp) fpSetup(h, rt, h.state(), ctx);
+    else { aim(0); r.camera.snap(); }
+  };
+
+  /** Play camera on the manager (or their own eyes), looking the way they face. */
+  const fpSetup = (h, rt, s, c) => {
+    const o = owner(s), f = rt.renderer.follow;
+    if (c.start) { const w = world(s, c.start[0], c.start[1]); o.x = o.px = w.x; o.z = o.pz = w.z; o.path = []; o.state = 'idle'; }
+    const l = local(s, o.x, o.z);
+    h.fp(l.x, l.z, 0, scene.pitch ?? 0.6, scene.dist ?? 6);
+    f.camera.fov = R.opts.fov ?? (scene.eyes ? 62 : 52); f.camera.updateProjectionMatrix();
+    if (c.heading) { const a = world(s, c.heading[0], c.heading[1]); const d = Math.hypot(a.x - o.x, a.z - o.z); c.dir = { x: (a.x - o.x) / d, z: (a.z - o.z) / d }; o.yaw = Math.atan2(c.dir.x, c.dir.z); }
+    if (scene.faceTill) { const reg = s.shop.fixtures.find((x) => x.id === c.reg); const w = world(s, reg.x, reg.z); o.yaw = Math.atan2(w.x - o.x, w.z - o.z); }
+    c.yaw = o.yaw + Math.PI + (scene.lookBack ? Math.PI : 0);
+    if (scene.eyes) h.eyes(true, c.yaw, 0.12);
+    f.goal.yaw = f.yaw = c.yaw; f.goal.pitch = f.pitch = scene.pitch ?? 0.6; f.goal.distance = f.distance = scene.dist ?? 6;
+    f.snap();
+  };
+  const steer = (s, rt, c) => {
+    const o = owner(s), f = rt.renderer.follow;
+    if (!scene.lookBack && !scene.faceTill && o.state === 'walking' && c.lx !== undefined && Math.hypot(o.x - c.lx, o.z - c.lz) > 0.01) {
+      const want = Math.atan2(c.lx - o.x, c.lz - o.z);
+      let d = want - c.yaw; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+      c.yaw += d * 0.06;
+    }
+    if (scene.lookBack) c.yaw += 0.004;
+    c.lx = o.x; c.lz = o.z;
+    f.goal.yaw = c.yaw; f.goal.pitch = scene.pitch ?? 0.6; f.goal.distance = scene.dist ?? 6;
   };
 
   /** The portrait camera for take time `tt` (snapped: the path itself is smooth). */
@@ -408,10 +599,11 @@
     const h = H(), rt = RT();
     const tt = t();
     if (scene.act) scene.act(tt, h, rt, h.state(), ctx);
-    aim(tt);
+    if (!scene.fp) aim(tt); else steer(h.state(), rt, ctx);
     R.frame++;
     rt.frame(1 / FPS);
     ambience();
+    if (R.opts.hud && R.frame % 3 === 0) { const st = h.state(); R.marks.push({ t: +t().toFixed(3), kind: 'hud', label: `${st.time.toFixed(1)}|${st.cash.toFixed(2)}|${st.phase}` }); }
     const gl = rt.renderer.renderer.getContext();
     const w = gl.drawingBufferWidth, hh = gl.drawingBufferHeight;
     if (!R.buf || R.buf.length !== w * hh * 4) R.buf = new Uint8Array(w * hh * 4);
