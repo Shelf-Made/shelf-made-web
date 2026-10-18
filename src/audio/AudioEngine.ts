@@ -31,7 +31,14 @@ export class AudioEngine {
     if (this.ctx) { if (this.ctx.state === 'suspended') void this.ctx.resume(); return; }
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
-    this.ctx = new Ctx();
+    this.attach(new Ctx());
+    this.startAmbience();
+    this.startMusic();
+  }
+
+  /** Play into a given context (an offline one renders a recorded take's sounds for the promo reels). */
+  attach(ctx: BaseAudioContext): void {
+    this.ctx = ctx as AudioContext;
     this.master = this.ctx.createGain();
     this.musicGain = this.ctx.createGain();
     this.sfxGain = this.ctx.createGain();
@@ -39,8 +46,6 @@ export class AudioEngine {
     this.master.connect(this.ctx.destination);
     this.musicGain.connect(this.master); this.sfxGain.connect(this.master); this.ambienceGain.connect(this.master);
     this.applyVolumes();
-    this.startAmbience();
-    this.startMusic();
   }
 
   setVolumes(v: { master: number; music: number; sfx: number }): void { this.volumes = v; if (this.ctx) this.applyVolumes(); }

@@ -1,0 +1,16 @@
+[
+ { "name": "c_storm", "scene": "c_storm", "seconds": 9, "tail": 7 },
+ { "name": "a_build", "scene": "a_build", "seconds": 8, "tail": 9 },
+ { "name": "b_truck", "scene": "b_truck", "seconds": 10, "tail": 3.5 },
+ { "name": "c_thief", "scene": "c_thief", "seconds": 9, "tail": 4 },
+ { "name": "a_dusk", "scene": "a_dusk", "seconds": 9, "tail": 9 },
+ { "name": "a_busy", "scene": "a_busy", "seconds": 8, "tail": 9 },
+ { "name": "b_refill", "scene": "b_refill", "seconds": 8, "tail": 2.8 },
+ { "name": "a_empty", "scene": "a_empty", "seconds": 6, "tail": 9 },
+ { "name": "a_open", "scene": "a_open", "seconds": 7, "tail": 9 },
+ { "name": "b_aisle", "scene": "b_aisle", "seconds": 8, "tail": 9 },
+ { "name": "b_till", "scene": "b_till", "seconds": 7, "tail": 9 },
+ { "name": "c_spill", "scene": "c_spill", "seconds": 7, "tail": 9 },
+ { "name": "c_rival", "scene": "c_rival", "seconds": 7, "tail": 9 },
+ { "name": "c_bump", "scene": "c_bump", "seconds": 7, "tail": 9 }
+]
