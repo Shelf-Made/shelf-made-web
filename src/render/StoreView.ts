@@ -7,7 +7,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
-import { DEFAULT_PAINT } from '@/sim/layout';
+import { DEFAULT_PAINT, serviceDoor } from '@/sim/layout';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
@@ -632,8 +632,10 @@ export class StoreView {
         }
       }
     }
-    // A loading bay: hatching where the truck stands, and a dock with rubber bumpers by the back door.
-    if (shop.loadingBay) {
+    // A loading bay: hatching where the truck stands, and a dock with rubber bumpers by the delivery door (while it is in
+    // a wall at the back, where the dock and the yard are).
+    const sd = serviceDoor(shop);
+    if (shop.loadingBay && sd && sd.nz < 0) {
       const ts = lotLayout(shop).truckStop, bay: BufferGeometry[] = [];
       // Against the back door's own wall (a shop grown back a tile elsewhere has its back edge deeper).
       const len = 2.8, wid = 1.25, wallOut = shop.backDoor.z - WALL_T, face = shop.backDoor.z - WALL_OUT;

@@ -7,7 +7,7 @@
  * two tiles wide and save turns. A shop starts with the lot it always had, laid as tiles (see defaultLot).
  */
 import type { GameState, Shop, Fixture, Vec2, LotSurface, Rot } from './types';
-import { PLOT_RECT, LOT_FRONT, WALL_T, FIXTURES, footprintOf, onBuilding, lotKey, lotReserved, overlaps, toWorld, yawToWorld, paintedBays, pylonSpot, type Rect } from './layout';
+import { PLOT_RECT, LOT_FRONT, WALL_T, FIXTURES, footprintOf, onBuilding, lotKey, lotReserved, overlaps, toWorld, yawToWorld, paintedBays, pylonSpot, serviceDoor, byDoor, type Rect } from './layout';
 
 // ---- The grid.
 
@@ -260,10 +260,11 @@ export function bayReachable(shop: Shop, f: Fixture): boolean {
   return !!net.drive[i] && net.reach[i]! < Infinity;
 }
 
-/** Where the delivery truck stops: tarmac a way in reaches, as near the back door as can be (within a few tiles), or null. */
+/** Where the delivery truck stops: tarmac a way in reaches, as near the delivery door as can be (within a few tiles), or null. */
 export function truckStop(shop: Shop): { tile: number; at: Vec2 } | null {
-  const net = lotNet(shop);
-  const door = { x: shop.backDoor.x, z: shop.backDoor.z - WALL_T - 0.5 };
+  const net = lotNet(shop), sd = serviceDoor(shop);
+  // (Just outside it, whichever wall it is in.)
+  const door = sd ? byDoor(sd, WALL_T + 0.5) : { x: shop.backDoor.x, z: shop.backDoor.z - WALL_T - 0.5 };
   let best = -1, bd = 3.2;
   for (let i = 0; i < net.drive.length; i++) {
     if (!net.drive[i] || net.reach[i]! === Infinity) continue;

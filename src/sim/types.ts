@@ -181,6 +181,8 @@ export interface Person {
   patience?: number;
   maxPatience?: number;
   carId?: number | null;
+  /** Customers and shoplifters: the door they are going in or out by (a piece's id: see entrances), the quickest way for them. */
+  doorId?: number;
   registerId?: number | null;
   queueSlot?: number;
   targetFixture?: number | null;

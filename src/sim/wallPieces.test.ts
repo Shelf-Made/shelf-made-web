@@ -165,7 +165,7 @@ describe('walls are pieces', () => {
   it('the tile behind the back door is never bought on its own: the back door is moved first, or pushed out with its wall', () => {
     const s = shop();
     const bd = s.shop.fixtures.find((x) => x.type === 'backDoor')!, e = edgeOf(bd);
-    expect(canBuyTile(s, e.bx, e.bz).reason).toMatch(/back door opens out here/);
+    expect(canBuyTile(s, e.bx, e.bz).reason).toMatch(/door opens out here/);
     const seg = wallSegments(s.shop).find((w) => w.id === bd.id)!;
     expect(applyCommand(s, { type: 'pushWall', key: seg.key }).ok).toBe(true);
     expect(s.shop.backDoor.z).toBe(e.line - 1);

@@ -327,8 +327,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
               <div className="item swatched">
                 <span className="swatch big" style={{ background: truck ? '#6E717C' : '#7CC26B' }} aria-hidden="true" />
                 <div style={{ flex: 1 }}>
-                  <div className="name">{truck ? 'Deliveries come to the back door' : 'Deliveries are unloaded at the kerb'}</div>
-                  <div className={truck ? 'sub' : 'sub need'}>{truck ? 'The truck drives round on the tarmac: keep a way through for it.' : 'Lay tarmac from the road round to the back door and the truck drives up to it.'}</div>
+                  <div className="name">{truck ? 'Deliveries come to the door by the pallet' : 'Deliveries are unloaded at the kerb'}</div>
+                  <div className={truck ? 'sub' : 'sub need'}>{truck ? 'The truck drives round on the tarmac: keep a way through for it.' : 'Lay tarmac from the road round to the door nearest the pallet and the truck drives up to it.'}</div>
                 </div>
               </div>
             );

@@ -5,7 +5,7 @@
  * a cost so people prefer paving over gardens.
  */
 import type { Shop, Vec2, Fixture } from './types';
-import { lotLayout, LOT_FRONT, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ, FACING, edgeOf, edgeSide, edgePieceAt, SOLID_EDGE, type EdgeAt } from './layout';
+import { lotLayout, LOT_FRONT, WALL_T, rectToWorld, toWorld, toLocal, dirToWorld, FIXTURES, isFloor, floorTileList, footprintOf, blockedRect, PLOT_RECT, SURFACES, storeysOf, levelTileList, levelOfZ, levelOf, zOnLevel, rideEnds, RIDE, VERTICAL, MAX_FLOOR, LEVEL_DZ, FACING, edgeOf, edgeSide, edgePieceAt, SOLID_EDGE, mainDoor, serviceDoor, byDoor, type EdgeAt } from './layout';
 
 export const CELL = 0.5;
 
@@ -140,7 +140,9 @@ export function reachableCells(shop: Shop, g: Grid, ride?: (pt: Portal, at: numb
   const hit = ride ? undefined : reachCache.get(g);
   if (hit) return hit;
   const r = new Uint8Array(g.w * g.h);
-  const [sx, sz] = cellOf(g, toWorld(shop, shop.door.x, shop.floor.z1 - 0.25));
+  // (From just inside the main door, wherever it is.)
+  const md = mainDoor(shop), at = md ? byDoor(md, -0.25) : { x: shop.door.x, z: shop.floor.z1 - 0.25 };
+  const [sx, sz] = cellOf(g, toWorld(shop, at.x, at.z));
   if (!isBlocked(g, sx, sz)) {
     r[cellIndex(g, sx, sz)] = 1;
     const todo = [sx, sz];
@@ -181,7 +183,8 @@ export function fixtureFacing(rot: number): Vec2 {
 }
 
 /** Grid in world coordinates: store-relative rects are carried into the world by the shop's frame. */
-export function buildGrid(shop: Shop, version: number, backDoorShut = false, thinWalls = false): Grid {
+/** `shut`: the delivery door shut, for whether it is reached from inside (never by coming in at it). */
+export function buildGrid(shop: Shop, version: number, shut = false, thinWalls = false): Grid {
   const L = lotLayout(shop);
   const st = storeysOf(shop);
   // The whole plot (pieces out on the lot can stand anywhere on it), to the far side of the frontage sidewalk.
@@ -232,6 +235,7 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false, thi
   const corners = tiles.flatMap((t) => DIAGONALS.filter(([dx, dz]) => !isFloor(shop, t.x + dx, t.z) && !isFloor(shop, t.x, t.z + dz)).map(([dx, dz]) => ({ t, dx, dz })));
   for (const t of tiles) for (const d of FACING) if (!isFloor(shop, t.x + d.x, t.z + d.z)) R(band(t.x, t.z, d.x, d.z), 1);
   for (const c of corners) R(corner(c.t.x, c.t.z, c.dx, c.dz), 1);
+  const sd = shut ? serviceDoor(shop) : null;
   const solid: { x0: number; z0: number; x1: number; z1: number }[] = [];
   for (const p of shop.fixtures) {
     if (!FIXTURES[p.type].edge) continue;
@@ -239,7 +243,7 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false, thi
     if (side === 'inner') { if (SOLID_EDGE.has(p.type)) wallOff(g, shop, e); continue; }
     // Upstairs is nothing but its floors: what stands round them walls nothing more off.
     if (side !== 'outer' || levelOf(p) > 0) continue;
-    if (p.type === 'backDoor') R(band(p.x, p.z, e.nx, e.nz), backDoorShut ? 0 : 1.1);
+    if (sd && sd.f.id === p.id) R(band(p.x, p.z, e.nx, e.nz), 0);
     else if (SOLID_EDGE.has(p.type)) solid.push(band(p.x, p.z, e.nx, e.nz));
   }
   // (`thinWalls`, the manager's grid: the walls round the building are walked up to by their drawn shape, wallBodies.)

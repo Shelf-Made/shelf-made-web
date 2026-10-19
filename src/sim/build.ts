@@ -4,7 +4,7 @@
  * must stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop, Person } from './types';
-import { DEFAULT_PAINT, FIXTURES, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, WALL_T, wallSegments, outlineSegments, edgeOf, edgeIndex, edgePieceAt, edgeSide, SOLID_EDGE, HANGS_ON, FACING, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf } from './layout';
+import { DEFAULT_PAINT, FIXTURES, mainDoor, serviceDoor, entrances, byDoor, DOORS, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, WALL_T, wallSegments, outlineSegments, edgeOf, edgeIndex, edgePieceAt, edgeSide, SOLID_EDGE, HANGS_ON, FACING, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
 import { buildGrid, frontInside, cellOf, isBlocked, type Grid } from './grid';
 import { findPath } from './pathfinding';
@@ -31,7 +31,6 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   if (def.edge) return canPlaceEdge(state, type, x, z, rot, ignoreId);
   if (def.unlisted) return { ok: false, reason: 'Put up a Wall with window instead', price: def.price };
   const shop = state.shop;
-  const f = shop.floor;
   let price = def.price;
   if (offTile(shop, x, z)) return { ok: false, reason: 'Snap to a floor tile', price };
   const level = levelOfZ(z + 0.5);
@@ -52,8 +51,7 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const ends = def.walkable ? undefined : shop.fixtures.find((fx) => fx.id !== ignoreId && VERTICAL.has(fx.type) && (() => { const e = rideEnds(fx); return [e.bottom, e.top].some((t) => overlaps(mine, { x0: t.x - 0.5, z0: t.z - 0.5, x1: t.x + 0.5, z1: t.z + 0.5 })); })());
   if (ends) return { ok: false, reason: `Keep the way on and off the ${FIXTURES[ends.type].name.toLowerCase()} clear`, price };
   // A doormat, a rug, a light on the wall: nothing anyone could bump into, so they may go by the doors.
-  if (!def.walkable && overlaps(mine, { x0: shop.door.x - 0.5, z0: f.z1 - 1, x1: shop.door.x + 0.5, z1: f.z1 })) return { ok: false, reason: 'Keep the front door clear', price };
-  if (!def.walkable && overlaps(mine, { x0: shop.backDoor.x - 0.5, z0: shop.backDoor.z, x1: shop.backDoor.x + 0.5, z1: shop.backDoor.z + 1 })) return { ok: false, reason: 'Keep the back door clear', price };
+  if (!def.walkable && entrances(shop).some((d) => overlaps(mine, { x0: d.f.x, z0: d.f.z, x1: d.f.x + 1, z1: d.f.z + 1 }))) return { ok: false, reason: 'Keep the door clear', price };
   if (def.onWall) {
     // Its back against a wall: one on the edge of its tile behind it (round the shop or across it), not a window or a door.
     const w = edgePieceAt(shop.fixtures, x, z, rot);
@@ -96,12 +94,14 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   return { ok: true, reason: def.slots ? `${def.name}: ${def.slots} slots` : VERTICAL.has(type) ? `${def.name} up to the next floor${ceiling ? `, and a ceiling over it for ${dollars(ceiling)}` : ''}` : def.name, price, ...(ceiling ? { ceiling } : {}) };
 }
 
-/** Where the doors are (shop.door, shop.backDoor), from the door pieces: the rest of the game asks there. */
+/**
+ * Where the main door and the service door are (shop.door, shop.backDoor: the middle of each one's line), from the doors
+ * in the walls (see mainDoor, serviceDoor): the rest of the game asks there. With no way in at all, where they were.
+ */
 export function syncDoors(shop: Shop): void {
-  for (const f of shop.fixtures) {
-    if (f.type === 'frontDoor') shop.door = { x: f.x + 0.5, z: shop.door.z };
-    else if (f.type === 'backDoor') shop.backDoor = { x: f.x + 0.5, z: edgeOf(f).line };
-  }
+  const main = mainDoor(shop), service = serviceDoor(shop);
+  if (main) shop.door = { x: main.x, z: main.z };
+  if (service) shop.backDoor = { x: service.x, z: service.z };
 }
 
 /** Pieces hanging on this wall (a light, a camera, a wall shelf), on either side of it. */
@@ -126,24 +126,22 @@ function canPlaceEdge(state: GameState, type: FixtureType, x: number, z: number,
   if (!isFloor(shop, x, z)) return { ok: false, reason: level > 0 ? 'Only on the floor up here' : 'Only inside the shop floor', price };
   const e = edgeOf({ x, z, rot });
   const across = insideOn(shop, level, e.bx, groundZ(e.bz));
-  if (type === 'frontDoor' && (level > 0 || rot !== 2 || e.line !== shop.floor.z1)) return { ok: false, reason: 'The front door goes in the front wall, facing the street', price };
-  if (type === 'backDoor' && (level > 0 || rot !== 0 || across)) return { ok: false, reason: 'The back door goes in a wall at the back, opening out behind the shop', price };
   const there = edgeIndex(shop.fixtures).get(e.key);
   if (there && there.id !== ignoreId) return { ok: false, reason: FIXTURES[there.type].fixed ? `The ${FIXTURES[there.type].name.toLowerCase()} is there` : 'A wall is there already (R turns it to another side)', price };
   // A tall wall reaches up through a double-height space (no panel over its tile: placeUpstairs), and stands as the
   // wall up there on its line: none of that floor's may be on it.
   if (type === 'tallWall' && edgeIndex(shop.fixtures).get(edgeOf({ x, z: zOnLevel(z, 1), rot }).key)) return { ok: false, reason: 'A wall upstairs stands on that line', price };
   if (moving && hungOn(shop, moving).length) return { ok: false, reason: 'Take down what hangs on it first', price };
-  // A door opens onto its tile: nothing may stand in the way there.
-  if (def.fixed && shop.fixtures.some((f) => f.id !== ignoreId && !FIXTURES[f.type].walkable && !FIXTURES[f.type].edge && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: `Keep the ${def.name.toLowerCase()} clear: something stands inside it`, price };
+  // A door out of the shop opens onto its tile: nothing may stand in the way there.
+  if (DOORS.has(type) && !across && level === 0 && shop.fixtures.some((f) => f.id !== ignoreId && !FIXTURES[f.type].walkable && !FIXTURES[f.type].edge && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: `Keep the ${def.name.toLowerCase()} clear: something stands inside it`, price };
   if (!moving && state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   // Nobody stands across its line (a wall round the shop: nobody where it goes up out there either).
   if (SOLID_EDGE.has(type)) { const p = state.people.find((q) => inWallsWay(shop, q, { x, z, rot })); if (p) return { ok: false, reason: p.kind === 'owner' ? 'You are standing there' : 'Someone is standing there', price }; }
-  // The doors stay where they say they are.
+  // The main door and the delivery door wherever the doors are then, and one way out at least.
   const trial: Fixture = { id: ignoreId ?? -1, type, x, z, rot, slots: [] };
   const trialShop: Shop = { ...shop, fixtures: shop.fixtures.filter((f) => f.id !== ignoreId).concat([trial]) };
-  if (type === 'frontDoor') trialShop.door = { x: x + 0.5, z: shop.door.z };
-  if (type === 'backDoor') trialShop.backDoor = { x: x + 0.5, z: e.line };
+  if (!entrances(trialShop).length) return { ok: false, reason: 'The shop needs a door to the outside', price };
+  syncDoors(trialShop);
   const inside = buildGrid(trialShop, -1, true), open = buildGrid(trialShop, -1);
   const shut = builtOver(state, open) ?? shuts(state, trialShop, inside, open);
   if (shut) return { ok: false, reason: shut, price };
@@ -174,9 +172,11 @@ function waysShut(state: GameState, shop: Shop, inside: Grid, open = buildGrid(s
   const at = { ...state, shop }, from = doorInside(at), owner = state.people.find((p) => p.kind === 'owner'), out: string[] = [];
   if (!findPath(open, doorOutside(at), from)) out.push('Would block the door');
   if (owner && !findPath(open, { x: owner.x, z: owner.z }, doorOutside(at))) out.push('Would box you in');
-  if (!findPath(open, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z - 0.6))) out.push('Would block the back door');
-  if ([-0.25, 0.25].some((dx) => [0.25, 0.75].some((dz) => { const [cx, cz] = cellOf(inside, toWorld(shop, shop.backDoor.x + dx, shop.backDoor.z + dz)); return isBlocked(inside, cx, cz); }))) out.push('Keep the back door clear');
-  if (!findPath(inside, from, toWorld(shop, shop.backDoor.x, shop.backDoor.z + 0.6))) out.push('Would cut the shop in two');
+  // The door deliveries come in at, wherever it is.
+  const sd = serviceDoor(shop), by = (out: number, side = 0) => { const p = sd ? byDoor(sd, out, side) : { x: shop.backDoor.x, z: shop.backDoor.z - out }; return toWorld(shop, p.x, p.z); };
+  if (!findPath(open, from, by(0.6))) out.push('Would block the delivery door');
+  if ([-0.25, 0.25].some((dx) => [-0.25, -0.75].some((dz) => { const [cx, cz] = cellOf(inside, by(dz, dx)); return isBlocked(inside, cx, cz); }))) out.push('Keep the delivery door clear');
+  if (!findPath(inside, from, by(-0.6))) out.push('Would cut the shop in two');
   if (!findPath(inside, from, storeroomPoint(at))) out.push('Would block the way to the delivery pallet');
   // Where boxes are picked up itself, or the way there is judged by the nearest free floor to it (a pocket, maybe).
   if (isBlocked(inside, ...cellOf(inside, storeroomPoint(at)))) out.push('Keep the way to the delivery pallet clear');
@@ -322,11 +322,12 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   if (levelOfZ(z + 0.5) > 0) return { ok: false, reason: 'Upstairs, take the ceiling panel down instead (Upstairs tab)', price };
   if (offTile(shop, x, z)) return { ok: false, reason: 'Snap to a tile', price };
   if (!isFloor(shop, x, z)) return { ok: false, reason: 'Point at a tile of floor', price };
-  if (Math.abs(x + 0.5 - shop.door.x) < 0.6 && z + 1 === shop.floor.z1) return { ok: false, reason: 'The front door stands here', price };
+  // A door out of the shop opens onto it: moved first.
+  const doors = entrances(shop);
+  if (doors.some((d) => d.f.x === x && d.f.z === z)) return { ok: false, reason: 'A door stands here: move it first', price };
   const d = shop.delivery;
   if (x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
   if (shop.fixtures.some((f) => !FIXTURES[f.type].outdoor && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: 'Move or sell what is on it first', price };
-  if (shop.fixtures.some((f) => f.type === 'backDoor' && f.x === x && f.z === z)) return { ok: false, reason: 'The back door opens onto it: move the back door first', price };
   for (let L = 1; L < MAX_LEVELS; L++) {
     const t = { x0: x, z0: zOnLevel(z, L), x1: x + 1, z1: zOnLevel(z, L) + 1 };
     if (shop.fixtures.some((f) => !FIXTURES[f.type].outdoor && levelOf(f) === L && overlaps(footprintOf(f.type, f.x, f.z, f.rot), t))) return { ok: false, reason: 'Something upstairs stands over it', price };
@@ -338,7 +339,9 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   // Still one room: every other tile reachable from the door's.
   const rest = floorTileList(shop).filter((t) => !(t.x === x && t.z === z));
   const keys = new Set(rest.map((t) => tileKey(t.x, t.z)));
-  const start = tileKey(shop.door.x - 0.5, shop.floor.z1 - 1), seen = new Set([start]), todo = [start];
+  // (From a door's tile that stays: the main door's, unless it is this one.)
+  const by = doors.find((d) => d.f.x !== x || d.f.z !== z), first = by ? { x: by.f.x, z: by.f.z } : rest[0];
+  const start = first ? tileKey(first.x, first.z) : '', seen = new Set([start]), todo = [start];
   while (todo.length) {
     const [tx, tz] = todo.pop()!.split(',').map(Number) as [number, number];
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = tileKey(tx + dx!, tz + dz!); if (keys.has(k) && !seen.has(k)) { seen.add(k); todo.push(k); } }
@@ -419,9 +422,8 @@ export function canBuyTile(state: GameState, x: number, z: number, pushing = fal
   if (z + 1 > m.z1) return { ok: false, reason: 'The front wall stays where it is', price };
   if (x < m.x0 || x + 1 > m.x1 || z < m.z0) return { ok: false, reason: 'The plot ends here', price };
   if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => isFloor(shop, x + dx!, z + dz!))) return { ok: false, reason: 'Next to the floor you have', price };
-  // The back door opens out onto it.
-  const bd = shop.fixtures.find((f) => f.type === 'backDoor');
-  if (bd && !pushing && edgeOf(bd).bx === x && edgeOf(bd).bz === z) return { ok: false, reason: 'The back door opens out here: move it first', price };
+  // A door opens out onto it (it would be a door inside the shop after): moved first, or pushed out with its wall.
+  if (!pushing && entrances(shop).some((d) => { const e = edgeOf(d.f); return e.bx === x && e.bz === z; })) return { ok: false, reason: 'A door opens out here: move it first', price };
   // The walls and the lot move out with it: nothing out on the lot may end up in the way.
   const trial = { ...shop };
   setFloorTiles(trial, [...floorTileList(shop), { x, z }]);
@@ -748,6 +750,8 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const want: { x: number; z: number }[] = [];
   for (let z = size.floor.z0; z < size.floor.z1; z++) for (let x = size.floor.x0; x < size.floor.x1; x++) if (!isFloor(shop, x, z)) want.push({ x, z });
   if (!want.length) return 'The shop is already that big.';
+  // (The doors out of the shop now: still doors out after, in its new walls.)
+  const outs = new Set(entrances(shop).map((d) => d.f.id));
   {
     const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash;
     // The delivery pallet goes to the new back corner (of that size: a tile bought further out the back is no corner
@@ -756,7 +760,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
     if (shop.fixtures.some((fx) => !FIXTURES[fx.type].outdoor && !FIXTURES[fx.type].onWall && levelOf(fx) === 0 && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), zone))) return 'Clear the back corner first: the delivery pallet goes there.';
     const foot = shop.fixtures.find((fx) => VERTICAL.has(fx.type) && (() => { const b = rideEnds(fx).bottom; return overlaps({ x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, zone); })());
     if (foot) return `The delivery pallet would go where you get on the ${FIXTURES[foot.type].name.toLowerCase()}: move it first.`;
-    trial.delivery = zone; trial.fixtures = rewalled(trial, () => -1); syncDoors(trial);
+    trial.delivery = zone; trial.fixtures = rewalled(trial, () => -1, outs); syncDoors(trial);
     const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
     if (why) return `${why}: the delivery pallet goes to the new back corner.`;
     // The walls go up round it: never round anyone.
@@ -777,25 +781,25 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   // The delivery pallet goes to the new back corner, by the back door (out to the back edge of its column), and the
   // extension comes walled as the shop did: the walls it came with that are inside it now come down.
   shop.delivery = deliveryZone(size.floor);
-  shop.fixtures = rewalled(shop, () => state.nextId++);
+  shop.fixtures = rewalled(shop, () => state.nextId++, outs);
   reshape(state);
   state.notices.push({ day: state.day, text: `Extension built: the shop is now a ${size.name.toLowerCase()}.`, kind: 'info' });
   return null;
 }
 
 /**
- * An extension's walls (the shop's pieces after it): the back door out to the back edge of its column, the walls the
- * shop came with that are inside the shop now taken down, and every open edge walled for nothing (glass at the front).
+ * An extension's walls (the shop's pieces after it): each door that was a door out (`outs`) out to the new edge the
+ * way it opened, the walls the shop came with that are inside the shop now taken down, and every open edge walled for nothing (glass at the front).
  */
-function rewalled(shop: Shop, id: () => number): Fixture[] {
+function rewalled(shop: Shop, id: () => number, outs: ReadonlySet<number>): Fixture[] {
   const out = shop.fixtures.map((f) => ({ ...f }));
-  const bd = out.find((f) => f.type === 'backDoor');
-  if (bd && edgeSide({ ...shop, fixtures: out }, bd) === 'inner') {
-    let z = bd.z;
-    while (isFloor(shop, bd.x, z - 1)) z--;
-    bd.z = z;
+  // (A door that was a door out, inside the shop now: out to its new outside wall, the way it opened.)
+  for (const bd of out.filter((f) => outs.has(f.id))) {
+    if (edgeSide({ ...shop, fixtures: out }, bd) !== 'inner') continue;
+    const { nx, nz } = edgeOf(bd);
+    while (isFloor(shop, bd.x + nx, bd.z + nz)) { bd.x += nx; bd.z += nz; }
   }
-  const kept = out.filter((f) => !(FIXTURES[f.type].edge && f.free && !FIXTURES[f.type].fixed && edgeSide({ ...shop, fixtures: out }, f) === 'inner'));
+  const kept = out.filter((f) => !(FIXTURES[f.type].edge && f.free && !DOORS.has(f.type) && edgeSide({ ...shop, fixtures: out }, f) === 'inner'));
   const walled = { ...shop, fixtures: kept };
   for (const g of openEdges(walled)) kept.push({ id: id(), type: gapWall(walled, g), x: g.x, z: g.z, rot: g.rot, slots: [], free: true });
   return kept;
@@ -822,7 +826,7 @@ export function moveFixture(state: GameState, id: number, x: number, z: number, 
   const opened = VERTICAL.has(f.type) ? [...storeysOf(state.shop).built] : null;
   f.x = x; f.z = z; f.rot = rot;
   state.shop.layoutVersion++;
-  if (FIXTURES[f.type].fixed) syncDoors(state.shop);
+  if (DOORS.has(f.type)) syncDoors(state.shop);
   if (f.type === 'parkingBay') { state.cash -= tarmac; bayLaid(state, f); }
   // A floor it opens where it goes gets its ceiling, as placing it there would.
   if (opened) { ceilFloorsOpened(state.shop, opened); state.cash -= check.ceiling ?? 0; }

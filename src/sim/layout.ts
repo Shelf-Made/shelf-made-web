@@ -439,6 +439,38 @@ export function edgeSide(shop: FloorShape, f: { x: number; z: number; rot: numbe
   const e = edgeOf(f), L = levelOfZ(f.z + 0.5);
   return insideOn(shop, L, e.bx, groundZ(e.bz)) ? 'inner' : 'outer';
 }
+/** The doors: a door, or a doorway (with no door in it). In a wall round the ground floor, each is a way into the shop. */
+export const DOORS: ReadonlySet<FixtureType> = new Set<FixtureType>(['frontDoor', 'backDoor', 'doorway']);
+/**
+ * A way into the shop: a door in a wall round the ground floor. `x`, `z` the middle of its line (shop-relative), `nx`,
+ * `nz` the way out through it, `ax`, `az` along it.
+ */
+export interface Entrance { f: Fixture; x: number; z: number; nx: number; nz: number; ax: number; az: number }
+export function entranceOf(f: Fixture): Entrance {
+  const e = edgeOf(f);
+  return { f, x: e.axis === 'x' ? e.t : e.line, z: e.axis === 'x' ? e.line : e.t, nx: e.nx, nz: e.nz, ax: Math.abs(e.nz), az: Math.abs(e.nx) };
+}
+/** Every way into the shop, the doors in its outside walls on the ground floor. */
+export function entrances(shop: FloorShape & { fixtures: readonly Fixture[] }): Entrance[] {
+  return (shop.fixtures as readonly Fixture[]).filter((f) => DOORS.has(f.type) && levelOf(f) === 0 && edgeSide(shop, f) === 'outer').map(entranceOf);
+}
+/** A point by a door (shop-relative): `out` beyond its line (less than 0: inside), `side` along it. */
+export const byDoor = (d: Entrance, out: number, side = 0): Vec2 => ({ x: d.x + d.nx * out + d.ax * side, z: d.z + d.nz * out + d.az * side });
+/**
+ * The shop's main door, the one it is known by (the sign over it, its frontage): the shop's own door if it is still a
+ * way in, else a door in the front wall (the middlemost), else the one nearest the street. Null with none.
+ */
+export function mainDoor(shop: FloorShape & { fixtures: readonly Fixture[]; floor: Rect }): Entrance | null {
+  const all = entrances(shop);
+  const mid = (shop.floor.x0 + shop.floor.x1) / 2;
+  return all.find((d) => d.f.type === 'frontDoor') ?? [...all].sort((a, b) => (b.nz > 0 ? 1 : 0) - (a.nz > 0 ? 1 : 0) || b.z - a.z || Math.abs(a.x - mid) - Math.abs(b.x - mid))[0] ?? null;
+}
+/** The door deliveries come in at (and staff go out of on a break): the shop's back door if it is still a way in, else the one nearest the delivery pallet. */
+export function serviceDoor(shop: FloorShape & { fixtures: readonly Fixture[]; floor: Rect; delivery?: Rect | null }): Entrance | null {
+  const all = entrances(shop), d = shop.delivery, c = d ? { x: (d.x0 + d.x1) / 2, z: (d.z0 + d.z1) / 2 } : { x: shop.floor.x0, z: shop.floor.z0 };
+  return all.find((e) => e.f.type === 'backDoor') ?? [...all].sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z))[0] ?? null;
+}
+
 /** The walls round the building, floor by floor, as stretches (the piece standing on each). */
 export function wallSegments(shop: FloorShape & { fixtures: readonly Fixture[] }): (WallSeg & { id: number; type: FixtureType })[] {
   const out: (WallSeg & { id: number; type: FixtureType })[] = [];
@@ -670,8 +702,9 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   /** Twice as tall as a wall: for a double-height space, where the ceiling panel above has been sold. */
   tallWall: { type: 'tallWall', name: 'Tall wall', price: 75, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true },
   /** The shop's own doors: the way in at the front (it slides along the front wall), and the back door for deliveries and staff. */
-  frontDoor: { type: 'frontDoor', name: 'Front door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, fixed: true, unlisted: true },
-  backDoor: { type: 'backDoor', name: 'Back door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, fixed: true, unlisted: true },
+  // The doors the shop came with: doors like any other (Doorway), moved, turned or taken out as you like.
+  frontDoor: { type: 'frontDoor', name: 'Door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, unlisted: true },
+  backDoor: { type: 'backDoor', name: 'Door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, unlisted: true },
   // Lights.
   floorLamp: { type: 'floorLamp', name: 'Floor lamp', price: 45, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', looks: 0.07, looksCap: 4 },
   wallLight: { type: 'wallLight', name: 'Wall light', price: 30, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 1, category: 'lights', walkable: true, onWall: true, looks: 0.06, looksCap: 4 },

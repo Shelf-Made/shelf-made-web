@@ -11,7 +11,7 @@ import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE, mopUp } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
-import { PLOTS, FIXTURES, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf, refundOf, VARIANTS } from './layout';
+import { PLOTS, FIXTURES, DOORS, entrances, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf, refundOf, VARIANTS } from './layout';
 import { topUp, topUpAll, recycle } from './stocking';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
@@ -19,7 +19,7 @@ import { fixtureCentre } from './grid';
 import { takeLoan, repayLoan, topUpSandbox } from './money';
 import { hire, fire, giveRaise, setShift, setBreak, restyle } from './staff';
 import { caught } from './shoplifting';
-import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall, hungOn, wallUp, wallsToPieces } from './build';
+import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall, hungOn, wallUp, wallsToPieces, syncDoors } from './build';
 import { addPanel, removePanel, canTakeAway, ceilFloorsOpened, rideOn, startRide, repathAfterBuild, keepFinishes } from './storeys';
 import { pave, paintBay, eraseBay, bayLaid, bayTakenBack, bayHoldsCharger } from './lot';
 import { syncLotBays } from './drive';
@@ -148,7 +148,8 @@ export function applyCommand(state: GameState, cmd: Command): CommandResult {
   topUpSandbox(state);
   const c = COMMAND_CUES[cmd.type];
   if (res.ok && c && state.sounds.length === before) cue(state, c);
-  if (res.ok && was) { keepFinishes(state.shop, was); repathAfterBuild(state); }
+  // (A door put in, moved or taken out: the main and service doors are wherever the doors are now.)
+  if (res.ok && was) { syncDoors(state.shop); keepFinishes(state.shop, was); repathAfterBuild(state); }
   return res;
 }
 
@@ -309,6 +310,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       const f = state.shop.fixtures[i]!;
       if (f.type === 'register' && state.shop.fixtures.filter((x) => x.type === 'register').length === 1) return { ok: false, message: 'You need one register.' };
       if (FIXTURES[f.type].fixed) return { ok: false, message: `The shop needs its ${FIXTURES[f.type].name.toLowerCase()}: move it instead.` };
+      if (DOORS.has(f.type) && !entrances({ ...state.shop, fixtures: state.shop.fixtures.filter((x) => x !== f) }).length && entrances(state.shop).length) return { ok: false, message: 'The shop needs a door to the outside: put in another first.' };
       if (FIXTURES[f.type].edge && hungOn(state.shop, f).length) return { ok: false, message: 'Take down what hangs on it first.' };
       if ((f.type === 'register' || f.type === 'kiosk') && (f.serving || (f.queue?.length ?? 0) > 0)) return { ok: false, message: 'Wait until the line is served.' };
       if (f.bikes?.some((b) => b !== null)) return { ok: false, message: 'Bikes are locked to it: wait till they ride off.' };

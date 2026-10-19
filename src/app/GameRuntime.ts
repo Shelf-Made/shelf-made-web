@@ -149,7 +149,7 @@ const TIPS: TipInfo[] = [
   { id: 'counter', text: 'Open Build, pick the counter, click the floor.', anchor: 'button:build' },
   { id: 'shelf', text: 'Now pick a shelf. R turns it.', anchor: 'button:build' },
   { id: 'order', text: 'Open Stock and order a few boxes.', anchor: 'button:stock' },
-  { id: 'stock', text: 'Click the pallet by the back door to grab a box.', anchor: 'delivery' },
+  { id: 'stock', text: 'Click the delivery pallet to grab a box.', anchor: 'delivery' },
   { id: 'open', text: 'Press Open shop to let the town in.', anchor: 'button:open' },
   { id: 'ringUp', text: 'Stand behind the counter, press {scan}.', anchor: 'register' },
   { id: 'price', text: 'Open Prices: a little above average still sells.', anchor: 'button:prices' },

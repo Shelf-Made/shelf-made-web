@@ -23,7 +23,7 @@ import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './s
 import { freeStand, standPoint, freeStands } from './lot';
 import { RIDE_REACH, rideAt, rideStep, startRide, stepOff, levelOfPerson, replan } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
-import { RACK_STANDS } from './layout';
+import { RACK_STANDS, WALL_T, entrances, mainDoor, serviceDoor, byDoor, type Entrance } from './layout';
 
 /** How much faster than walking someone rides a bike. */
 export const BIKE_SPEED = 2.3;
@@ -32,10 +32,59 @@ export const CUSTOMER_MODELS = 12;
 
 export function plotOf(state: GameState) { return PLOTS.find((p) => p.id === state.shop.plotId) ?? PLOTS[0]!; }
 
-/** World-space points just outside and just inside the front door. */
-// Walls are WALL_T thick outside the floor edge, so the threshold runs from z = 0 to z = 0.5.
-export function doorOutside(state: GameState, id = 0): Vec2 { const s = state.shop; return toWorld(s, s.door.x + ((id % 3) - 1) * 0.22, s.door.z + 0.95 + (id % 2) * 0.3); }
-export function doorInside(state: GameState, id = 0): Vec2 { const s = state.shop; return toWorld(s, s.door.x + ((id % 3) - 1) * 0.2, s.door.z - 0.7 - (id % 2) * 0.3); }
+/**
+ * The door someone goes by: the one they chose (person `id`'s doorId) while it is still a way in, else the main door.
+ * Null with no way in at all.
+ */
+function doorOf(state: GameState, id: number): Entrance | null {
+  const all = entrances(state.shop), mine = id ? state.people.find((p) => p.id === id)?.doorId : undefined;
+  return (mine !== undefined ? all.find((d) => d.f.id === mine) : undefined) ?? mainDoor(state.shop);
+}
+/**
+ * World-space points just outside and just inside a door: person `id`'s (spread a little by their id), or the one
+ * given. Walls are WALL_T thick outside the floor edge, so the threshold runs from the line out to WALL_T.
+ */
+export function doorOutside(state: GameState, id = 0, door: Entrance | null = doorOf(state, id)): Vec2 {
+  const s = state.shop, side = ((id % 3) - 1) * 0.22, out = WALL_T + 0.45 + (id % 2) * 0.3;
+  const p = door ? byDoor(door, out, side) : { x: s.door.x + side, z: s.door.z + out };
+  return toWorld(s, p.x, p.z);
+}
+export function doorInside(state: GameState, id = 0, door: Entrance | null = doorOf(state, id)): Vec2 {
+  const s = state.shop, side = ((id % 3) - 1) * 0.2, out = -0.7 - (id % 2) * 0.3;
+  const p = door ? byDoor(door, out, side) : { x: s.door.x + side, z: s.door.z + out };
+  return toWorld(s, p.x, p.z);
+}
+/** How far it is to walk from a to b (by the walking grid; Infinity with no way). */
+function walkLength(state: GameState, a: Vec2, b: Vec2): number {
+  const path = findPath(gridFor(state), a, b);
+  if (!path) return Infinity;
+  let d = 0, px = a.x, pz = a.z;
+  for (const w of path) { d += Math.hypot(w.x - px, w.z - pz); px = w.x; pz = w.z; }
+  return d;
+}
+/**
+ * Pick the door that gets someone in (from where they are) or out (on to `then`) soonest, any door in the shop's
+ * outside walls, and keep to it.
+ */
+export function chooseDoor(state: GameState, p: Person, inward: boolean, then?: Vec2): void {
+  const all = entrances(state.shop);
+  if (all.length < 2) { p.doorId = all[0]?.f.id; return; }
+  let best: Entrance | null = null, bestD = Infinity;
+  for (const d of all) {
+    const len = inward ? walkLength(state, p, doorOutside(state, p.id, d))
+      : walkLength(state, p, doorInside(state, p.id, d)) + (then ? walkLength(state, doorOutside(state, p.id, d), then) : 0);
+    if (len < bestD) { bestD = len; best = d; }
+  }
+  p.doorId = (best ?? all[0]!).f.id;
+}
+/** Where someone leaving goes once out of the door: back to their car, their bike, or off along the frontage. */
+function goingTo(state: GameState, p: Person): Vec2 {
+  const car = p.carId != null ? state.cars.find((c) => c.id === p.carId) : undefined;
+  if (car && car.lot === undefined) return carSide(state, car);
+  const rack = p.bike ? state.shop.fixtures.find((f) => f.id === p.bike!.rackId) : undefined;
+  if (rack) { const sp = standPoint(rack, p.bike!.slot); return toWorld(state.shop, sp.rider.x, sp.rider.z); }
+  return toWorld(state.shop, state.shop.door.x, FRONT_WALK_Z);
+}
 /** Where workers pick up boxes: just in front of the delivery zone. */
 export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; const d = s.delivery; return toWorld(s, (d.x0 + d.x1) / 2, d.z1 + 0.35); }
 
@@ -405,6 +454,7 @@ export function startLeaving(state: GameState, p: Person, happy: boolean): void 
     returnToShelves(state, p);
   }
   p.state = 'leaving'; p.anim = happy && p.basket && p.basket.length ? 'carry' : 'walk';
+  chooseDoor(state, p, false, goingTo(state, p));
   setPath(state, p, doorInside(state, p.id));
 }
 
@@ -568,6 +618,7 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         const spot = nearestWalkable(gridFor(state), { x: p.x, z: p.z }, dyn);
         p.x = spot.x; p.z = spot.z;
         p.state = 'toDoor'; p.anim = 'walk';
+        chooseDoor(state, p, true);
         setPath(state, p, doorOutside(state, p.id), dyn);
       }
       break;
@@ -579,13 +630,13 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
         // By bike: over to the rack first.
         if (rack) { const sp = standPoint(rack, p.bike!.slot); p.state = 'toRack'; setPath(state, p, toWorld(state.shop, sp.rider.x, sp.rider.z), dyn); break; }
         if (p.riding) { p.riding = false; p.speed /= BIKE_SPEED; p.bike = null; }
-        p.state = 'toDoor'; p.anim = 'walk'; setPath(state, p, doorOutside(state, p.id), dyn);
+        p.state = 'toDoor'; p.anim = 'walk'; chooseDoor(state, p, true); setPath(state, p, doorOutside(state, p.id), dyn);
       }
       break;
     }
     case 'toRack': {
       // Off the bike and lock it to the stand, then in on foot.
-      if (followPath(p, p.speed, dt, 12, 0.22)) { p.riding = false; p.speed /= BIKE_SPEED; p.state = 'toDoor'; p.anim = 'walk'; setPath(state, p, doorOutside(state, p.id), dyn); }
+      if (followPath(p, p.speed, dt, 12, 0.22)) { p.riding = false; p.speed /= BIKE_SPEED; p.state = 'toDoor'; p.anim = 'walk'; chooseDoor(state, p, true); setPath(state, p, doorOutside(state, p.id), dyn); }
       break;
     }
     case 'toBike': {
@@ -1112,15 +1163,15 @@ function mannedBy(state: GameState, p: Person, spot: Vec2): boolean {
   return !!o && dist(o, spot) < MANAGER_ROOM && dist(p, spot) < MANAGER_ROOM + 0.3;
 }
 
-/** Spots out behind the shop, either side of the back door, a body apart: (along the back wall, out from it). */
-const OFF_SPOTS: readonly [number, number][] = [1.6, 2.3, 3.0, -1.6, -2.3, -3.0].flatMap((x) => [[x, -1.0], [x, -1.7]] as [number, number][]);
+/** Spots out by the delivery door, either side of it, a body apart: (along its wall, out from it). */
+const OFF_SPOTS: readonly [number, number][] = [1.6, 2.3, 3.0, -1.6, -2.3, -3.0].flatMap((x) => [[x, 1.0], [x, 1.7]] as [number, number][]);
 /**
  * Where a worker on a break or off shift waits: out by the back door, each on a spot of their own (all on one, they
  * shoved each other off it for good). Only a spot the door reaches; with none (built over), at their post.
  */
 function offShiftSpot(state: GameState, p: Person): Vec2 {
-  const s = state.shop, g = gridFor(state), reach = reachableCells(s, g);
-  const spots = OFF_SPOTS.map(([dx, dz]) => toWorld(s, s.backDoor.x + dx, s.backDoor.z + dz)).filter((w) => {
+  const s = state.shop, g = gridFor(state), reach = reachableCells(s, g), sd = serviceDoor(s);
+  const spots = OFF_SPOTS.map(([side, out]) => { const p = sd ? byDoor(sd, out, side) : { x: s.backDoor.x + side, z: s.backDoor.z - out }; return toWorld(s, p.x, p.z); }).filter((w) => {
     const [cx, cz] = cellOf(g, w);
     return inBounds(g, cx, cz) && !isBlocked(g, cx, cz) && !g.inside[cellIndex(g, cx, cz)] && !!reach[cellIndex(g, cx, cz)];
   });

@@ -123,7 +123,7 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
           )}
         </div>
         <div className="row between"><h3>On the delivery pallet</h3><span className="tag">{storageUnits} / {storageCap(s.shop)} units</span></div>
-        <p className="muted">Boxes wait on the pallet by the back door: F to pick one up, F at a shelf to stock it (or the stock tool, {keyLabel(snap.settings.keys.stockTool)}).</p>
+        <p className="muted">Boxes wait on the delivery pallet: F to pick one up, F at a shelf to stock it (or the stock tool, {keyLabel(snap.settings.keys.stockTool)}).</p>
         {storageUnits > 0 && (
           <div className="list pallet-list">
             {[...new Set(s.shop.storage.map((e) => e.productId))].map((pid) => {
@@ -183,7 +183,7 @@ function nextHoliday(day: number): string {
 const SUPPLIER_LOOK: Record<string, { tagline: string; badge: string }> = {
   local: { tagline: 'Everyday prices, no fuss', badge: 'All-rounder' },
   bulk: { tagline: 'Cheapest when you buy a lot', badge: 'Best in bulk' },
-  express: { tagline: 'Fastest to your back door', badge: 'Fastest' },
+  express: { tagline: 'Fastest to your door', badge: 'Fastest' },
 };
 /** Game seconds are game minutes: "40 min", "1½ hours", "3 hours". */
 function arrival(secs: number): string {

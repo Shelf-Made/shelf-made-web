@@ -109,6 +109,8 @@ describe('tag gates', () => {
     let stopped = 0;
     for (let seed = 60; seed < 70; seed++) {
       const s = quiet(seed);
+      // (The one way out, gated: a thief goes out by whichever door is nearest.)
+      s.shop.fixtures = s.shop.fixtures.filter((x) => x.type !== 'backDoor'); s.shop.layoutVersion++;
       const d = s.shop.door, f = s.shop.floor;
       place(s, 'tagGate', d.x - 0.5, f.z1 - 1, 0);
       const p = thiefAt(s, f.x0 + 0.6, f.z0 + 0.6);

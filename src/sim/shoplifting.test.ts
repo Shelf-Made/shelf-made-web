@@ -61,6 +61,8 @@ describe('shoplifters', () => {
 
   it('a member of staff with nothing on runs them down, and the goods go back on the shelf', () => {
     const s = quiet(42);
+    // (Out of the front door: the only one.)
+    s.shop.fixtures = s.shop.fixtures.filter((x) => x.type !== 'backDoor'); s.shop.layoutVersion++;
     const st = hireRole(s, 'stocker');
     // Standing by the door, hands empty, nothing to shelve.
     const d = doorInside(s);

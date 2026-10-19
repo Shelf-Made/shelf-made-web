@@ -7,7 +7,7 @@ import { withRng, popup, cue, dist, react } from './state';
 import { onShift, gainXp, staffLevel } from './staff';
 import { securityFactor, watchAt, gateAt, FREEZE, GATE_STOP, QUIPS } from './security';
 import { formatMoney } from './money';
-import { doorInside, doorOutside, setPath, returnToShelves, tillIdle } from './people';
+import { doorInside, doorOutside, setPath, returnToShelves, tillIdle, chooseDoor } from './people';
 
 /**
  * Shoplifters, and the staff who catch them. Now and then a shopper fills a basket and, instead of
@@ -67,6 +67,8 @@ export function bolt(state: GameState, p: Person): void {
   p.state = 'fleeing'; p.anim = 'carry';
   p.speed *= BOLT;
   p.timer = 0;
+  // Out by whichever door is nearest.
+  chooseDoor(state, p, false);
   setPath(state, p, doorOutside(state, p.id));
   popup(state, { x: p.x, z: p.z }, watchAt(state, p) ? 'Shoplifter! On camera' : 'Shoplifter!', 'bad', 1.5);
   react(state, p.id, 'thief');

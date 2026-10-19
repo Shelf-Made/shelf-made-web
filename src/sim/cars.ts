@@ -2,7 +2,7 @@ import type { GameState, Car, Vec2, Order, ParkingBay, RivalState } from './type
 import { BAY_UNLOAD, CHARGE_REACH, chargersInUse, isElectric } from './frontage';
 import {
   ROAD_Z, LANE_EAST_Z, LANE_WEST_Z, LANE_NORTH_X, LANE_SOUTH_X, SIDE_HALF, STOP_LINE, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK, ROAD_FAR,
-  lotLayout, toWorld, toLocal, greenFor, type Frame, type LotLayout,
+  lotLayout, toWorld, toLocal, greenFor, serviceDoor, byDoor, type Frame, type LotLayout,
 } from './layout';
 import { followPath, roundPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, complain } from './state';
@@ -652,6 +652,7 @@ const STOP_AT = 2.0;
  * (or crossing in front), so cars queue instead of driving through each other.
  */
 function headroom(state: GameState, car: Car): number {
+  const was = car.blocker;
   car.gap = Infinity; car.blocker = undefined;
   if (car.reversing) {
     // Backing out: wait until the aisle behind is clear, and never reverse into a car.
@@ -717,8 +718,9 @@ function headroom(state: GameState, car: Car): number {
     const ofx = Math.sin(o.yaw), ofz = Math.cos(o.yaw);
     const facing = ofx * fx + ofz * fz < -0.5 && (-dx * ofx - dz * ofz) > 0;
     if (facing && car.id < o.id) continue;
-    // Two cars each waiting for the other: the older one goes.
-    if (o.blocker === car.id && car.id < o.id && (o.waited ?? 0) > 3) continue;
+    // Two cars each waiting for the other: the older one goes. (Each for the other: one waiting on us while we wait on
+    // something else, a gap in the traffic say, is not a tie to break, and pulling away we would drive into it.)
+    if (o.blocker === car.id && was === o.id && car.id < o.id && (o.waited ?? 0) > 3) continue;
     if (along < gap) { gap = along; car.blocker = o.id; }
   }
   car.gap = gap;
@@ -770,6 +772,17 @@ function light(state: GameState, car: Car): { k: number; red: boolean; room: num
 function mustYield(state: GameState, car: Car): boolean {
   const ahead = car.path.slice(car.pathIdx, car.pathIdx + 8).filter((p) => Math.hypot(p.x - car.x, p.z - car.z) < 3.4);
   if (!ahead.length) return false;
+  // About to turn into your lot: not across a car already pulling out of it (it is past waiting for us, out in the
+  // mouth of the drive; nose to nose there, neither could get by).
+  if ((car.state === 'arriving' || car.state === 'delivering') && car.lot === undefined && state.shop.lotBaked && onRoad(car.x, car.z) && untilLot(car) < 3) {
+    let mine: Vec2[] | null = null;
+    for (const o of state.cars) {
+      if (o === car || o.lot !== undefined || o.state !== 'leaving' || o.reversing || o.yielding || (o.v ?? 0) < 0.05) continue;
+      if (Math.abs(o.x - car.x) > 5 || Math.abs(o.z - car.z) > 5) continue;
+      mine ??= pathAhead(car, 3);
+      if (pathAhead(o, 3).some((q) => mine!.some((m) => Math.hypot(q.x - m.x, q.z - m.z) < 0.9))) return true;
+    }
+  }
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
   const N = ROAD_Z - 1.0, S = ROAD_Z + 1.0;
   // Turning across the oncoming lane: it waits for a gap until its nose is in that lane, then it is committed.
@@ -786,7 +799,7 @@ function mustYield(state: GameState, car: Car): boolean {
   if ((fromNorth || fromSouth) && car.lot === undefined && state.shop.lotBaked) {
     let mine: Vec2[] | null = null;
     for (const o of state.cars) {
-      if (o === car || o.lot !== undefined || (o.state !== 'arriving' && o.state !== 'delivering') || o.held !== undefined || !onRoad(o.x, o.z)) continue;
+      if (o === car || o.lot !== undefined || (o.state !== 'arriving' && o.state !== 'delivering') || o.held !== undefined || o.yielding || !onRoad(o.x, o.z)) continue;
       if (Math.abs(o.x - car.x) > 6 || Math.abs(o.z - car.z) > 6 || untilLot(o) > 5) continue;
       mine ??= pathAhead(car, 3);
       if (pathAhead(o, 4).some((q) => onRoad(q.x, q.z) && mine!.some((m) => Math.hypot(q.x - m.x, q.z - m.z) < 1.0))) return true;
@@ -1040,7 +1053,7 @@ export function deliverOrder(state: GameState, order: Order): void {
     if (existing) existing.qty += line.qty;
     else state.shop.storage.push({ productId: line.productId, qty: line.qty, day: state.day });
   }
-  const o = state.shop;
-  popup(state, toWorld(o, o.backDoor.x, o.backDoor.z - 0.5), 'Delivery!', 'info', 1.2);
+  const o = state.shop, sd = serviceDoor(o), at = sd ? byDoor(sd, 0.5) : { x: o.backDoor.x, z: o.backDoor.z - 0.5 };
+  popup(state, toWorld(o, at.x, at.z), 'Delivery!', 'info', 1.2);
   cue(state, 'boxes');
 }
