@@ -347,6 +347,11 @@ export interface Car {
   yaws?: number[];
   /** The path to follow once the car has backed out. */
   next?: Vec2[];
+  /**
+   * Coming to your lot, its bay not chosen yet: it drives down Main Road (from the west or not) and picks a free bay
+   * as it reaches the lot (a bay is only taken by a car that is there to park in it).
+   */
+  seek?: { west: boolean };
   /** Seconds spent held up behind another car (breaks rare deadlocks). */
   waited?: number;
   /** Waiting at a junction for a gap in the traffic. */

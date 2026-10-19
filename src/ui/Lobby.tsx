@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { listSlots, deleteSave, loadGame, parse, serialize, type SlotInfo, type Slot } from '@/save/saves';
 import type { Difficulty } from '@/sim/types';
-import { money } from './useRuntime';
+import { cashText } from './useRuntime';
 import { SettingsBody } from './cards/SettingsCard';
 import { ManagerDesigner } from './ManagerDesigner';
 
@@ -61,7 +61,7 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
             <button className="tagbtn" disabled={!snap.loaded} onClick={() => setView('manager')}>{label('Your manager', 'design')}</button>
             <button className="tagbtn" disabled={!snap.loaded} onClick={() => setView('saves')}>{label('Save slots')}</button>
             <button className="tagbtn" onClick={() => setView('settings')}>{label('Settings')}</button>
-            {auto && <div className="muted small">Autosave: {auto.name}, day {auto.day}, {money(auto.cash)}</div>}
+            {auto && <div className="muted small">Autosave: {auto.name}, day {auto.day}, {cashText(auto.cash)}</div>}
           </>
         )}
         {view === 'new' && (
@@ -83,7 +83,7 @@ export function Lobby({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot 
             {slots.length === 0 && <p className="muted">No saves yet.</p>}
             {slots.map((s) => (
               <div className="slot" key={s.slot}>
-                <div><b>{s.name}</b><div className="sub muted">Day {s.day} · {money(s.cash)} · {s.slot === 'auto' ? 'autosave' : s.slot}</div></div>
+                <div><b>{s.name}</b><div className="sub muted">Day {s.day} · {cashText(s.cash)} · {s.slot === 'auto' ? 'autosave' : s.slot}</div></div>
                 <button className="btn small" onClick={() => void runtime.load(s.slot as Slot)}>Load</button>
                 <button className="btn small ghost" onClick={() => void exportSlot(s.slot as Slot)}>Export</button>
                 <button className="btn small danger" onClick={() => { void deleteSave(runtime.storage, s.slot as Slot).then(refresh); }}>Delete</button>

@@ -1,5 +1,5 @@
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { money } from '../useRuntime';
+import { money, cashText } from '../useRuntime';
 import { LOAN_OFFERS, upcoming } from '@/sim/money';
 import { dailyRent, dailyUtilities, dailyWages } from '@/sim/economy';
 
@@ -14,7 +14,7 @@ export function MoneySection({ runtime, snap }: { runtime: GameRuntime; snap: Sn
   return (
     <>
       <h3>Money</h3>
-      <div className="stat"><span>Cash</span><b>{money(s.cash)}</b></div>
+      <div className="stat"><span>Cash</span><b>{cashText(s.cash)}</b></div>
       <div className="stat"><span>Sales so far today</span><b>{money(t.revenue)}</b></div>
       <div className="stat"><span>Tonight: rent, power, wages</span><b>-{money(tonight)}</b></div>
       {due.slice(0, 4).map((d, i) => <div className="stat" key={i}><span>Day {d.day}: {d.name}</span><b>-{money(d.amount)}</b></div>)}

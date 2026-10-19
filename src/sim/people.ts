@@ -6,7 +6,7 @@ import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, 
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, wallBodiesFor, dist, react, complain } from './state';
-import { spawnCustomerCar, leaveLot, drivewayX } from './cars';
+import { spawnCustomerCar, leaveLot, drivewayX, atLot, turnIntoLot, driveOn, headHome, onTheRoad, onwardDestination } from './cars';
 import { bayCentre, DIRS } from './drive';
 import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
 import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
@@ -160,6 +160,20 @@ function makeList(state: GameState, ctype: CustomerType): { productId: string; q
 export function typeLook(p: Person): void {
   if (p.ctype === 'impulse') p.look = { ...p.look, height: Math.round(p.look.height * 0.84 * 1000) / 1000 };
   if (p.ctype === 'convenience') p.speed *= 1.12;
+}
+
+/** The lot is full as a customer drives up: on to a rival's lot (theirs now), Elm Street's bays (walking over), or away. */
+function lotFullAtLot(state: GameState, p: Person, car: Car): void {
+  const preferStreet = withRng(state, 'traffic', (r) => r.chance(0.35));
+  const dest = onwardDestination(state, car.seek!.west, car.x, preferStreet);
+  driveOn(state, car, dest);
+  if (dest.kind === 'street') return;
+  state.today.turnedAway++;
+  complain(state, 'lotFull');
+  popup(state, { x: drivewayX(state), z: toWorld(state.shop, 0, 2).z }, 'Lot full!', 'bad', 0.8);
+  if (dest.kind === 'rival') rivalShopperInCar(state, car, dest.rival.id, p.look, p.ctype);
+  else car.ownerId = null;
+  p.state = 'gone';
 }
 
 export function spawnCustomer(state: GameState, forceFoot = false): Person | null {
@@ -535,6 +549,10 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       const car = state.cars.find((c) => c.id === p.carId);
       if (!car) { p.state = 'gone'; break; }
       p.x = car.x; p.z = car.z; p.yaw = car.yaw;
+      // Closing time with the car still out on the road: no turning in now, home instead.
+      if (state.phase !== 'open' && car.lot === undefined && car.state === 'arriving' && onTheRoad(car)) { headHome(state, car); p.state = 'gone'; break; }
+      // At your lot: the free bay they can get to, or (none) on past it.
+      if (car.seek && atLot(state, car) && !turnIntoLot(state, car)) { lotFullAtLot(state, p, car); break; }
       if (car.state === 'parked' && car.lot === 'street') {
         // Parked on Elm Street: onto the sidewalk and round to the shop on foot.
         p.x = SIDEWALK_E_X; p.z = car.z;

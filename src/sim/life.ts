@@ -196,8 +196,9 @@ function tryBump(state: GameState, force = false): void {
   const life = lifeOf(state);
   // A car close behind another in a queue, still rolling when the one in front has stopped.
   // (Queued cars wait about two units apart, centre to centre; one still doing more than a crawl inside 2.8 is too close.)
-  // Only cars driving through (or on their way out of town) can be held: they wait out their timer where they stand.
-  const held = (c: Car) => (c.state === 'passing' || c.state === 'turnedAway' || c.state === 'leaving') && !c.reversing && c.timer <= 0 && onMainClear(c);
+  // Only cars driving through (on their way out of town, or down the road to your lot: not turned in yet) can be held:
+  // they wait out their timer where they stand.
+  const held = (c: Car) => (c.state === 'passing' || c.state === 'turnedAway' || c.state === 'leaving' || (c.state === 'arriving' && !!c.seek)) && !c.reversing && c.timer <= 0 && onMainClear(c);
   // Nobody close behind it (a car stopping dead must not have another run into it), and slow enough that it stops short.
   const tailgated = (c: Car) => state.cars.some((t) => t.blocker === c.id && (t.v ?? 0) > 0.3 && (t.gap ?? Infinity) < 3.5);
   const cand = state.cars.filter((c) => held(c) && (c.v ?? 0) > 0.6 && (c.v ?? 0) < 1.8 && c.gap !== undefined && c.gap < 2.8 && !tailgated(c) && state.cars.some((a) => a.id === c.blocker && held(a) && (a.v ?? 0) < 0.8));

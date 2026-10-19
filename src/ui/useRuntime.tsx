@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { formatMoney } from '@/sim/money';
+import { formatMoney, SANDBOX_CASH } from '@/sim/money';
 
 export function useSnapshot(rt: GameRuntime): Snapshot {
   return useSyncExternalStore(rt.subscribe, rt.getSnapshot, rt.getSnapshot);
@@ -9,6 +9,11 @@ export function useSnapshot(rt: GameRuntime): Snapshot {
 /** Every money string in the UI: the sim's one sign-correct formatter ("-$46.70"; `sign` adds "+" on gains). */
 export function money(n: number, sign = false): string {
   return formatMoney(n, { sign });
+}
+
+/** Cash in hand: a sandbox's endless cash is "Unlimited". */
+export function cashText(n: number): string {
+  return n >= SANDBOX_CASH ? 'Unlimited' : money(n);
 }
 
 /** A product's picture (its shelf model, rendered at load), or a dot in its colour until the pictures exist. */

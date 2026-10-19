@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
 import { tick, applyCommand, TICK } from './index';
-import { spawnTraffic, spawnCustomerCar, carTo } from './cars';
+import { spawnTraffic, carTo } from './cars';
+import { spawnCustomer } from './people';
 import { STOP_LINE, greenFor, LANE_EAST_Z, LANE_WEST_Z, LANE_SOUTH_X, LANE_NORTH_X, toLocal, CORNERS } from './layout';
 import { rivalVisitors, rivalFront } from './rivalShoppers';
 import { onZebra } from './streets';
@@ -47,18 +48,23 @@ describe('crossroads traffic', () => {
     const s = openGame({ seed: 12, plotId: 'main', name: 'Full' });
     for (const r of s.rivals) r.open = true;
     for (const b of s.shop.bays) b.carId = 999999;
+    // Customers on their way by car: nothing is decided until they get to the lot and find it full.
     const sent: number[] = [];
-    for (let k = 0; k < 6; k++) {
-      const { car, onward } = spawnCustomerCar(s, 5000 + k, k % 2 === 0);
-      expect(onward).not.toBeNull();
-      if (car) sent.push(car.id);
+    for (let k = 0; sent.length < 6 && k < 60; k++) {
+      const p = spawnCustomer(s);
+      const car = p?.carId != null ? s.cars.find((c) => c.id === p.carId) : undefined;
+      if (car) { expect(car.seek).toBeDefined(); expect(car.bay).toBeNull(); sent.push(car.id); }
     }
-    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.length).toBe(6);
+    const turned = s.today.turnedAway;
     let parkedElsewhere = 0;
     run(s, 120, (st) => { for (const c of st.cars) if (sent.includes(c.id) && c.state === 'parked') parkedElsewhere++; });
     expect(parkedElsewhere).toBeGreaterThan(0);
+    expect(s.today.turnedAway).toBeGreaterThan(turned);
+    // None of them ever took one of your bays, and none is stuck.
+    for (const b of s.shop.bays) expect(b.carId).toBe(999999);
     for (const c of s.cars.filter((x) => sent.includes(x.id))) {
-      expect(c.state === 'parked' || c.state === 'leaving').toBe(true);
+      expect(c.lot === undefined && c.state === 'arriving').toBe(false);
       expect((c.waited ?? 0)).toBeLessThan(20);
     }
   });

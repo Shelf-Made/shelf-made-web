@@ -8,6 +8,7 @@ import { spawnCustomer, palletChoices, neediestInStorage, wrongFixture } from '.
 import { canPlace, openEdges } from './build';
 import { toWorld, toLocal } from './layout';
 import { deliveryStatus } from './economy';
+import { SANDBOX_CASH } from './money';
 
 function runDay(state: GameState, autoScan = true): void {
   const ticks = Math.ceil((DAY_SECONDS + 130) / TICK);
@@ -191,6 +192,21 @@ describe('simulation', () => {
       for (let i = 0; i < 300; i++) { tick(s); const l = toLocal(s.shop, o.x, o.z); expect(l.x > f.x0 && l.x < f.x1 && l.z > f.z0 && l.z < f.z1).toBe(false); }
     }
     applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
+  });
+
+  it('a sandbox never runs out of money; a won game carrying on as one keeps its own', () => {
+    const s = newGame({ seed: 5, sandbox: true, plotId: 'main', name: 'Sandbox', tutorial: false });
+    expect(s.cash).toBe(SANDBOX_CASH);
+    // Whatever it has spent, there is always the money for the next thing.
+    s.cash = 3;
+    expect(applyCommand(s, { type: 'paintBay', slot: 8 }).ok).toBe(true);
+    s.cash = 3;
+    tick(s);
+    expect(s.cash).toBe(SANDBOX_CASH);
+    const won = openGame({ seed: 5, plotId: 'main', name: 'Won' });
+    won.sandbox = true; won.goals.champion = true; won.cash = 1234;
+    tick(won);
+    expect(won.cash).toBeLessThan(SANDBOX_CASH);
   });
 
   it('plot picking sets up the shop and the sign name', () => {

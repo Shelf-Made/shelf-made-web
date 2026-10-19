@@ -3,6 +3,7 @@ import { schemeById } from '@/sim/schemes';
 import type { GameRuntime, Snapshot, CardId, Speed } from '@/app/GameRuntime';
 import { keyLabel } from '@/save/settings';
 import { money } from './useRuntime';
+import { SANDBOX_CASH } from '@/sim/money';
 import { GoalChip } from './Goals';
 
 type Card = Exclude<CardId, null>;
@@ -98,7 +99,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
         <img className="hud-logo" src="/brand/logo-small.svg" alt="Shelf Made" width={48} height={48} style={{ filter: logoTint(snap.scheme) }} />
         <div className="pill cash" aria-live="polite" aria-label="Cash">
           <span className="coin" aria-hidden="true">$</span>
-          <span className="money">{money(shown)}</span>
+          <span className="money">{snap.cash >= SANDBOX_CASH ? '∞' : money(shown)}</span>
         </div>
         <div className="pill day" aria-label="Day and time">
           <span className={`dial${night ? ' moon' : ''}`} aria-hidden="true" style={{ ['--t' as string]: snap.dayFrac }}><i /></span>

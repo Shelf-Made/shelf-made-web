@@ -12,6 +12,7 @@ import { expectedByType, townGrowth } from './customers';
 import { tickRivalSpawns } from './rivalShoppers';
 import { checkGoals } from './goals';
 import type { CustomerType } from './types';
+import { topUpSandbox } from './money';
 
 /** Customers per day the shop can expect, before the time-of-day curve. */
 export function expectedCustomers(state: GameState): number {
@@ -42,6 +43,7 @@ export function dayCurve(time: number): number {
 /** Advance the simulation by one fixed step. */
 export function tick(state: GameState): void {
   state.tick++;
+  topUpSandbox(state);
   if (state.phase === 'picking' || state.phase === 'night' || state.phase === 'setup') {
     // The world keeps breathing: traffic and walkers; during setup deliveries still arrive and you can work.
     ambient(state, state.phase === 'night' ? 0.4 : 1);

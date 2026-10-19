@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openGame } from './testUtil';
-import { tick, applyCommand, TICK } from './index';
+import { tick, applyCommand, TICK, DAY_SECONDS } from './index';
+import { spawnCustomer } from './people';
 import { spawnTraffic, tickCars, leaveLot } from './cars';
 import { lotLayout, toLocal, toWorld, LOT_FRONT } from './layout';
 import type { Car, GameState } from './types';
@@ -189,5 +190,85 @@ describe('a lot laid by hand', () => {
     // It stopped on the road, by the door, never on the lot.
     const l = toLocal(s.shop, truck!.x, truck!.z);
     expect(l.z).toBeGreaterThan(LOT_FRONT);
+  });
+});
+
+describe('coming to your lot', () => {
+  /** A customer coming by car (spawned until one does). */
+  const byCar = (s: GameState): Car => {
+    for (let k = 0; k < 80; k++) {
+      const p = spawnCustomer(s);
+      const car = p?.carId != null ? s.cars.find((c) => c.id === p.carId) : undefined;
+      if (car) return car;
+    }
+    throw new Error('nobody came by car');
+  };
+  const onLot = (s: GameState, c: Car) => toLocal(s.shop, c.x, c.z).z < LOT_FRONT;
+
+  it('holds no bay on the way, and takes whichever is free when it gets there (one freed meanwhile too)', () => {
+    const s = openGame({ seed: 5, plotId: 'main', name: 'T', tutorial: false });
+    s.cars = [];
+    const parked = s.shop.bays.map((_, i) => parkAt(s, i, 900000 + i));
+    const car = byCar(s);
+    for (let i = 0; i < 2 / TICK; i++) tick(s);
+    // Out on the road: no bay is its yet, so none shows taken by a car that is not there.
+    expect(car.bay).toBeNull();
+    expect(s.shop.bays.some((b) => b.carId === car.id)).toBe(false);
+    // A bay comes free before it gets there: it is the one it parks in.
+    s.cars = s.cars.filter((c) => c !== parked[1]); s.shop.bays[1]!.carId = null;
+    const turned = s.today.turnedAway;
+    for (let i = 0; i < 60 / TICK && car.state !== 'parked'; i++) tick(s);
+    expect(car.state).toBe('parked');
+    expect(car.bay).toBe(1);
+    expect(s.today.turnedAway).toBe(turned);
+  });
+
+  it('pulls into a bay between two parked cars without stopping for them', () => {
+    const s = openGame({ seed: 5, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 1e6;
+    // The car park's second row, across the aisle: a car turns into it past the cars either side.
+    for (const k of [8, 9, 10, 11]) expect(applyCommand(s, { type: 'paintBay', slot: k }).ok).toBe(true);
+    s.cars = [];
+    const target = s.shop.bays.findIndex((b) => b.fid === s.shop.fixtures.filter((f) => f.type === 'parkingBay').at(-3)!.id);
+    s.shop.bays.forEach((_, i) => { if (i !== target) parkAt(s, i, 900000 + i); });
+    const car = byCar(s);
+    let stopped = 0;
+    for (let i = 0; i < 60 / TICK && car.state !== 'parked'; i++) {
+      tick(s);
+      if (car.state === 'arriving' && onLot(s, car) && (car.v ?? 1) < 0.05) stopped += TICK;
+    }
+    expect(car.state).toBe('parked');
+    expect(car.bay).toBe(target);
+    expect(stopped).toBeLessThan(0.5);
+  });
+
+  it('after closing, a car still on the road drives on instead of turning in', () => {
+    const s = openGame({ seed: 5, plotId: 'main', name: 'T', tutorial: false });
+    s.cars = [];
+    const car = byCar(s), driver = car.ownerId;
+    s.time = DAY_SECONDS - 1;
+    for (let i = 0; i < 40 / TICK; i++) { tick(s); expect(car.state === 'arriving' && onLot(s, car)).toBe(false); }
+    expect(car.state === 'parked').toBe(false);
+    expect(s.shop.bays.some((b) => b.carId === car.id)).toBe(false);
+    expect(s.people.some((p) => p.id === driver)).toBe(false);
+  });
+
+  it('turns in on whichever side of the shop gets it to a bay soonest', () => {
+    const s = openGame({ seed: 3, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 1e6;
+    // Bays down the west lane as well as the car park on the east.
+    for (let z = -0.5; z >= -3.5; z--) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'parkingBay', x: -7, z, rot: 1 }).ok).toBe(true);
+    const sides = new Set<string>(), seen = new Set<number>();
+    for (let i = 0; i < 300 / TICK; i++) {
+      tick(s);
+      if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+      if (i % Math.round(6 / TICK) === 0) spawnCustomer(s);
+      for (const c of s.cars) {
+        if (c.lot !== undefined || c.state !== 'arriving' || c.bay === null || seen.has(c.id) || !onLot(s, c)) continue;
+        seen.add(c.id);
+        sides.add(toLocal(s.shop, c.x, c.z).x < 0 ? 'west' : 'east');
+      }
+    }
+    expect(sides).toEqual(new Set(['west', 'east']));
   });
 });

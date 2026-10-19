@@ -22,6 +22,15 @@ export function formatMoney(n: number, opts: { cents?: boolean; sign?: boolean }
 /** Whole dollars, for prices and costs that never carry cents. */
 export const dollars = (n: number, sign = false) => formatMoney(n, { cents: false, sign });
 
+/** A sandbox game's cash: topped back up to this before everything it does, so it never runs out. */
+export const SANDBOX_CASH = 1_000_000_000;
+/** Is this game's money unlimited? A sandbox started as one (not a won game carrying on as a sandbox). */
+export const unlimitedCash = (state: GameState): boolean => state.sandbox && !state.goals.champion;
+/** Back up to the sandbox's endless cash (nothing in any other game). */
+export function topUpSandbox(state: GameState): void {
+  if (unlimitedCash(state) && state.cash < SANDBOX_CASH) state.cash = SANDBOX_CASH;
+}
+
 export const PAYROLL_TAX = 0.12;
 export const CARD_FEE = 0.018;
 

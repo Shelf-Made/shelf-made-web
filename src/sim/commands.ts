@@ -16,7 +16,7 @@ import { topUp, topUpAll, recycle } from './stocking';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
 import { fixtureCentre } from './grid';
-import { takeLoan, repayLoan } from './money';
+import { takeLoan, repayLoan, topUpSandbox } from './money';
 import { hire, fire, giveRaise, setShift, setBreak, restyle } from './staff';
 import { caught } from './shoplifting';
 import { canPlace, expandShop, expandLot, moveFixture, setFloor, paintFloor, buyTile, sellTile, paintWall, removalShuts, pushWall, pullWall, hungOn, wallUp, wallsToPieces } from './build';
@@ -143,7 +143,9 @@ const REBUILDS = new Set<Command['type']>(['placeFixture', 'removeFixture', 'mov
 
 export function applyCommand(state: GameState, cmd: Command): CommandResult {
   const before = state.sounds.length, was = REBUILDS.has(cmd.type) ? storeysOf(state.shop) : null;
+  topUpSandbox(state);
   const res = apply(state, cmd);
+  topUpSandbox(state);
   const c = COMMAND_CUES[cmd.type];
   if (res.ok && c && state.sounds.length === before) cue(state, c);
   if (res.ok && was) { keepFinishes(state.shop, was); repathAfterBuild(state); }

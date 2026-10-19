@@ -80,7 +80,7 @@ function makeCar(state: GameState, model: number, path: Vec2[], carState: Car['s
  * bays were painted in. On your own lot: a bay a car can get to, the furthest along the tarmac first, and
  * an electric car one by a free charger if there is one.
  */
-export function freeBay(state: GameState, electric = false): number {
+export function freeBay(state: GameState, electric = false, from?: Entry[]): number {
   const shop = state.shop;
   let best = -1, bestKey = Infinity;
   const net = shop.lotBaked ? lotNet(shop) : null;
@@ -90,11 +90,14 @@ export function freeBay(state: GameState, electric = false): number {
     if (net) {
       const f = b.fid !== undefined ? shop.fixtures.find((x) => x.id === b.fid) : undefined;
       if (!f) return;
-      const m = bayMouth(f);
-      const cost = onLotGrid(m.x, m.z) && net.drive[tileIndex(m.x, m.z)] ? net.reach[tileIndex(m.x, m.z)]! : Infinity;
-      if (cost === Infinity) return;
+      const r = bayRoute(shop, f, from);
+      if (!r) return;
+      // (How deep into the lot it is, from the nearest way in: not how far the car has to come.)
+      const m = bayMouth(f), cost = net.reach[tileIndex(m.x, m.z)]!;
       const c = bayCentre(f), plug = chargers.some((q) => Math.hypot(q.x + 0.5 - c.x, q.z + 0.5 - c.z) < CHARGE_REACH);
-      const key = -cost - (plug ? 1000 : 0);
+      // A bay opening onto the far side of a lane two wide (turned into across the cars driving out) only once the bays
+      // on the near side are taken: crossing that lane is where the cars coming and going get in each other's way.
+      const key = -cost - (plug ? 1000 : 0) + (r.across ? 500 : 0);
       if (key < bestKey) { bestKey = key; best = i; }
       return;
     }
@@ -136,19 +139,40 @@ function roadOut(f: Frame, cx: number, plus: boolean): Vec2[] {
  * opening onto the far lane of a two-lane run is turned into from the near one, across the lane, as a driver would.
  * Null when there is no way.
  */
-function pathIntoPlayerBay(state: GameState, bayIdx: number, fromWest: boolean): Vec2[] | null {
-  const shop = state.shop, f = bayPiece(state, bayIdx);
-  if (!f) return null;
-  const net = lotNet(shop), m = bayMouth(f), into = bayHeading(f), back = (into + 2) % 4;
+/** A way in off the road (a front-row tile of your lot), with what it costs a car to get to it. */
+type Entry = { tile: number; dir: number; cost?: number };
+/**
+ * The ways in for a car coming down Main Road to your lot: each costs the drive along the road to it (a unit of road
+ * is driven in about a third of the time a tile of lot is), so the car turns in at the way that gets it to its bay
+ * soonest, not the first or the last one along.
+ */
+function entriesFor(state: GameState, car: Car): Entry[] {
+  const shop = state.shop, l = toLocal(shop, car.x, car.z), fromMinus = shop.flip ? !car.seek!.west : car.seek!.west;
+  return lotNet(shop).entrances.map((i) => {
+    const cx = tileAt(i).x + 0.5;
+    return { tile: i, dir: 2, cost: Math.max(0, fromMinus ? cx - l.x : l.x - cx) * (CAR_LOT_SPEED / CAR_ROAD_SPEED) };
+  });
+}
+/** The way over your lot's tarmac from the road to a bay's open end, and whether it is turned into across a lane. */
+function bayRoute(shop: GameState['shop'], f: { x: number; z: number; rot: number }, from?: Entry[]): { tiles: number[]; across: boolean } | null {
+  const net = lotNet(shop), m = bayMouth(f), back = (bayHeading(f) + 2) % 4;
   if (!onLotGrid(m.x, m.z)) return null;
   const mi = tileIndex(m.x, m.z), far = net.drive[mi] ? step(mi, back) : -1;
   const across = far >= 0 && !!net.drive[far];
-  const r = route(net, net.entrances.map((i) => ({ tile: i, dir: 2 })), (t, d) => d !== back && (t === mi || (across && t === far)));
+  const r = route(net, from ?? net.entrances.map((i) => ({ tile: i, dir: 2 })), (t, d) => d !== back && (t === mi || (across && t === far)));
+  return r ? { tiles: r.tiles, across: r.tiles[r.tiles.length - 1] === far } : null;
+}
+
+function pathIntoPlayerBay(state: GameState, bayIdx: number, fromWest: boolean, start?: Vec2, from?: Entry[]): Vec2[] | null {
+  const shop = state.shop, f = bayPiece(state, bayIdx);
+  if (!f) return null;
+  const m = bayMouth(f), into = bayHeading(f);
+  const r = bayRoute(shop, f, from);
   if (!r) return null;
   const fromMinus = shop.flip ? !fromWest : fromWest;
   const cx = tileAt(r.tiles[0]!).x + 0.5, c = bayCentre(f), v = DIRS[into]!;
-  const turn = r.tiles[r.tiles.length - 1] === far ? [{ x: m.x + 0.5, z: m.z + 0.5 }] : [];
-  return offRoadOnto(shop, farEnd(shop, fromMinus ? -1 : 1, fromMinus ? FAR_L : NEAR_L), roadIn(cx, fromMinus), [...corners(r.tiles), ...turn, { x: m.x + 0.5 + v.x, z: m.z + 0.5 + v.z }, c]);
+  const turn = r.across ? [{ x: m.x + 0.5, z: m.z + 0.5 }] : [];
+  return offRoadOnto(shop, start ?? farEnd(shop, fromMinus ? -1 : 1, fromMinus ? FAR_L : NEAR_L), roadIn(cx, fromMinus), [...corners(r.tiles), ...turn, { x: m.x + 0.5 + v.x, z: m.z + 0.5 + v.z }, c]);
 }
 
 /** Into a lot's free bay from Main Road. fromWest is the world direction the car comes from. */
@@ -225,9 +249,16 @@ export function carTo(state: GameState, dest: Destination, fromWest: boolean, mo
  * and the driver walks over anyway.
  */
 export function spawnCustomerCar(state: GameState, ownerId: number, fromWest: boolean): { car: Car | null; onward: Destination | null } {
+  const model = withRng(state, 'traffic', (r) => r.pick(CUSTOMER_CAR_MODELS));
+  // Your own lot: down Main Road toward it, the bay picked on getting there (from whatever is free then: no bay is
+  // held for a car still out of town, and a bay freed meanwhile is there for it).
+  if (state.shop.lotBaked && state.shop.bays.length) {
+    const car = makeCar(state, model, roundPath(passByPath(fromWest), 1.4), 'arriving', CAR_ROAD_SPEED);
+    car.ownerId = ownerId; car.seek = { west: fromWest };
+    return { car, onward: null };
+  }
   // (The car about to be made gets the next id: whether it is electric goes by that.)
   const bayIdx = freeBay(state, isElectric({ id: state.nextId }));
-  const model = withRng(state, 'traffic', (r) => r.pick(CUSTOMER_CAR_MODELS));
   if (bayIdx < 0) {
     const preferStreet = withRng(state, 'traffic', (r) => r.chance(0.35));
     const dest = onwardDestination(state, fromWest, drivewayX(state), preferStreet);
@@ -242,6 +273,59 @@ export function spawnCustomerCar(state: GameState, ownerId: number, fromWest: bo
   car.bay = bayIdx; car.ownerId = ownerId; site.bays[bayIdx]!.carId = car.id;
   return { car, onward: null };
 }
+
+/** How far short of its first turn off Main Road a car coming to your lot picks its bay (and so its way in). */
+const SEEK_AHEAD = 8;
+/** Has a car coming to your lot reached where it picks its bay (every way in still ahead, room to slow for the turn)? */
+export function atLot(state: GameState, car: Car): boolean {
+  if (!car.seek) return false;
+  const shop = state.shop, xs = wayInXs(state), l = toLocal(shop, car.x, car.z);
+  if (!xs.length) return true;
+  const fromMinus = shop.flip ? !car.seek.west : car.seek.west;
+  return fromMinus ? l.x >= Math.min(...xs) - 1.2 - SEEK_AHEAD : l.x <= Math.max(...xs) + 0.9 + SEEK_AHEAD;
+}
+/** A car at your lot takes the free bay it can get to (as at spawning, the far end first) and turns in. False: none free. */
+export function turnIntoLot(state: GameState, car: Car): boolean {
+  const west = car.seek!.west, from = entriesFor(state, car);
+  const bayIdx = freeBay(state, isElectric(car), from);
+  const into = bayIdx >= 0 ? pathIntoPlayerBay(state, bayIdx, west, { x: car.x, z: car.z }, from) : null;
+  if (!into) return false;
+  car.seek = undefined;
+  car.path = into; car.pathIdx = 1;
+  car.bay = bayIdx; state.shop.bays[bayIdx]!.carId = car.id;
+  return true;
+}
+/**
+ * Your lot full as the car gets there: on to `dest` from where it is (a rival's lot or Elm Street's bays further on), or
+ * on out of town.
+ */
+export function driveOn(state: GameState, car: Car, dest: Destination): void {
+  const here = { x: car.x, z: car.z }, west = car.seek?.west ?? Math.sin(car.yaw) > 0;
+  car.seek = undefined;
+  if (dest.kind === 'away') { car.state = 'turnedAway'; return; }
+  if (dest.kind === 'street') {
+    const bay = state.streetBays[dest.bay]!;
+    car.path = roundPath([here, ...pathIntoStreetBay(bay).slice(1).filter((q) => q.x < here.x - 0.3)], 1.0); car.pathIdx = 1;
+    car.bay = dest.bay; car.lot = 'street'; bay.carId = car.id;
+    return;
+  }
+  const site = rivalSite(dest.rival);
+  car.path = roundPath([here, ...pathIntoLot(site, dest.bay, west).slice(1)], 1.0); car.pathIdx = 1;
+  car.bay = dest.bay; car.lot = dest.rival.id; site.bays[dest.bay]!.carId = car.id;
+}
+/**
+ * Closing time (or the driver gone): a car still on Main Road on its way to your lot does not turn in. It drives on
+ * down the road, its bay (if it had one yet) free again.
+ */
+export function headHome(state: GameState, car: Car): void {
+  const shop = state.shop;
+  if (car.bay !== null) { const b = shop.bays[car.bay]; if (b && b.carId === car.id) b.carId = null; }
+  car.seek = undefined; car.bay = null; car.held = undefined; car.yielding = false; car.state = 'passing'; car.speed = CAR_ROAD_SPEED;
+  const l = toLocal(shop, car.x, car.z), plus = Math.abs(l.z - FAR_L) < Math.abs(l.z - NEAR_L);
+  car.path = [{ x: car.x, z: car.z }, farEnd(shop, plus ? 1 : -1, plus ? FAR_L : NEAR_L)]; car.pathIdx = 1;
+}
+/** Still on Main Road (or the side street), not yet turned off it into a lot. */
+export function onTheRoad(car: Car): boolean { return onRoad(car.x, car.z); }
 
 /** Backing out: the rear axle sits this far behind a car's centre, and runs on an arc this tight. */
 const REAR_AXLE = 0.45, BACK_RADIUS = 1.35;
@@ -506,9 +590,13 @@ function untilLot(car: Car): number {
   }
   return Infinity;
 }
-/** Do two stretches of path meet head to head in one lane (a lane a tile wide, where there is no passing)? */
-function headOn(a: Stretch, b: Stretch): boolean {
+/**
+ * Do two stretches of path meet head to head in one lane (a lane a tile wide, where there is no passing)? Only where the
+ * tarmac really is a tile wide there (with `shop`): in a wider lane they keep to their own sides and pass.
+ */
+function headOn(a: Stretch, b: Stretch, shop?: GameState['shop']): boolean {
   if (!a.length || !b.length) return false;
+  const narrow = (p: Stretch[number]) => !shop || singleLane(shop, p);
   // (Bucketed by half-unit cell, so each point is only weighed against those beside it.)
   const cell = (x: number, z: number) => (Math.floor(x * 2) + 4096) * 8192 + Math.floor(z * 2) + 4096;
   const cells = new Map<number, Stretch>();
@@ -517,10 +605,21 @@ function headOn(a: Stretch, b: Stretch): boolean {
     const cx = Math.floor(q.x * 2), cz = Math.floor(q.z * 2);
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
       const l = cells.get((cx + i + 4096) * 8192 + cz + j + 4096);
-      if (l) for (const p of l) if (Math.hypot(p.x - q.x, p.z - q.z) < 0.45 && p.hx * q.hx + p.hz * q.hz < -0.7) return true;
+      if (l) for (const p of l) if (Math.hypot(p.x - q.x, p.z - q.z) < 0.45 && p.hx * q.hx + p.hz * q.hz < -0.7 && narrow(p)) return true;
     }
   }
   return false;
+}
+/** Is your lot's tarmac a single tile wide across the way a car is heading at this (world) point? Off the tarmac: no. */
+function singleLane(shop: GameState['shop'], p: Stretch[number]): boolean {
+  const l = toLocal(shop, p.x, p.z), x = Math.floor(l.x), z = Math.floor(l.z - 0.5) + 0.5;
+  if (!onLotGrid(x, z)) return false;
+  const net = lotNet(shop), i = tileIndex(x, z);
+  if (!net.drive[i]) return false;
+  // (Across the heading, in shop terms: a step either side.)
+  const h = toLocal(shop, p.x + p.hx, p.z + p.hz), d = Math.abs(h.x - l.x) > Math.abs(h.z - l.z) ? 0 : 1;
+  const side = (k: number) => { const j = step(i, d === 0 ? (k > 0 ? 0 : 2) : (k > 0 ? 1 : 3)); return j >= 0 && !!net.drive[j]; };
+  return !side(1) && !side(-1);
 }
 /** Where a car that is driving out of your lot goes from here on (once it has backed out, if it still has to). */
 const onwardOf = (o: Car) => (o.reversing ? lotStretch(o.next ?? [], 1) : lotStretch(o.path, o.pathIdx));
@@ -540,10 +639,13 @@ function lotHold(state: GameState, car: Car): number {
     // One still in its bay waits for us instead.
     if (o.reversing && Math.hypot(o.x - o.path[0]!.x, o.z - o.path[0]!.z) < 0.05) continue;
     mine ??= lotStretch(car.path, car.pathIdx);
-    if (headOn(mine, onwardOf(o))) return Math.sqrt(Math.max(0, Math.min(1, (d - 4) / 3)));
+    if (headOn(mine, onwardOf(o), state.shop)) return Math.sqrt(Math.max(0, Math.min(1, (d - 4) / 3)));
   }
   return 1;
 }
+
+/** The gap a car stops at behind another (centre to centre). */
+const STOP_AT = 2.0;
 
 /**
  * How far a car may go this tick: it keeps a gap to whatever is ahead of it in its lane
@@ -570,7 +672,7 @@ function headroom(state: GameState, car: Car): number {
       // road to: it was there first, and the cars backing out would otherwise keep it waiting one after another).
       if (starting && car.lot === undefined && o.lot === undefined && (o.state === 'arriving' || o.state === 'delivering')) {
         const d = untilLot(o);
-        if ((d < 3 || (o.yielding && d <= 10)) && headOn(onwardOf(car), lotStretch(o.path, o.pathIdx))) return 0;
+        if ((d < 3 || (o.yielding && d <= 10)) && headOn(onwardOf(car), lotStretch(o.path, o.pathIdx), state.shop)) return 0;
       }
       const along = (dx * mx + dz * mz) / ml, side = Math.abs(dx * mz - dz * mx) / ml;
       // Once out of the bay, a car already waiting for us lets us finish.
@@ -592,13 +694,19 @@ function headroom(state: GameState, car: Car): number {
     }
   }
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
-  let gap = Infinity;
+  let gap = Infinity, ahead: Vec2[] | null = null;
   for (const o of state.cars) {
     if (o === car || o.state === 'gone') continue;
-    // A car about to back out is still in its bay: not in our way yet.
-    if (o.reversing && Math.hypot(o.x - o.path[0]!.x, o.z - o.path[0]!.z) < 0.05) continue;
     const dx = o.x - car.x, dz = o.z - car.z;
     if (Math.abs(dx) > 6 || Math.abs(dz) > 6) continue;
+    // A car standing still in its bay (or about to back out of it) is only in the way if our path runs into it: turning
+    // into the bay beside it, the cone ahead sweeps over it (and every car pulling in braked for its neighbour).
+    if (o.state === 'parked' || o.state === 'unloading' || (o.reversing && Math.hypot(o.x - o.path[0]!.x, o.z - o.path[0]!.z) < 0.05)) {
+      ahead ??= pathAhead(car, 4.5);
+      const k = ahead.findIndex((q, i) => i > 0 && bodyHits(o, q));
+      if (k > 0 && k * 0.25 < gap) { gap = k * 0.25 + STOP_AT; car.blocker = o.id; }
+      continue;
+    }
     const along = dx * fx + dz * fz;
     if (along <= 0.05 || along > 4.5) continue;
     const side = Math.abs(dx * fz - dz * fx);
@@ -617,7 +725,7 @@ function headroom(state: GameState, car: Car): number {
   if (gap === Infinity) return 1;
   // Square-root, not linear: from road speed that is a steady braking a car can actually follow, so it
   // rolls up behind the queue instead of snapping to a stop at the last moment.
-  const stop = 2.0, free = 3.8;
+  const stop = STOP_AT, free = 3.8;
   return Math.sqrt(Math.max(0, Math.min(1, (gap - stop) / (free - stop))));
 }
 
@@ -699,6 +807,12 @@ function mustYield(state: GameState, car: Car): boolean {
     if ((crossS || fromNorth || fromSouth) && east && dx < 1.8 && dx > -14) return true;
   }
   return false;
+}
+
+/** Our centre at `q` would put our body into car `o` (a car's half length and half width, and ours beside it). */
+function bodyHits(o: Car, q: Vec2): boolean {
+  const dx = q.x - o.x, dz = q.z - o.z, fx = Math.sin(o.yaw), fz = Math.cos(o.yaw);
+  return Math.abs(dx * fx + dz * fz) < 1.25 && Math.abs(dx * fz - dz * fx) < 0.8;
 }
 
 /** Points every quarter unit along a car's path from where it is, for `len`. */
@@ -856,9 +970,12 @@ export function tickCars(state: GameState): void {
   // A parked car whose driver is gone (closing time sends the last customers home) drives off by itself.
   let drivers: Set<number> | null = null;
   for (const car of state.cars) {
-    if (car.state !== 'parked' || car.ownerId === null) continue;
+    if ((car.state !== 'parked' && car.state !== 'arriving') || car.ownerId === null) continue;
     drivers ??= new Set(state.people.map((p) => p.id));
-    if (!drivers.has(car.ownerId)) leaveLot(state, car);
+    if (drivers.has(car.ownerId)) continue;
+    if (car.state === 'parked') leaveLot(state, car);
+    // (One on its way to your lot still out on the road, its driver gone home at closing: it never turns in.)
+    else if (car.lot === undefined && onRoad(car.x, car.z)) { car.ownerId = null; headHome(state, car); }
   }
   for (const car of state.cars) {
     car.px = car.x; car.pz = car.z; car.pyaw = car.yaw;
@@ -881,6 +998,8 @@ export function tickCars(state: GameState): void {
         break;
       }
       case 'arriving': {
+        // (Stopped at the roadside after a bump on its way.)
+        if (car.timer > 0) { car.timer -= TICK; break; }
         if (lotSpeed(car)) car.speed = CAR_LOT_SPEED;
         if (drive(state, car, car.speed, 5)) {
           car.state = 'parked';

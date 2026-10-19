@@ -10,6 +10,7 @@ import { makeRivals } from './rivals';
 import { makeMarket } from './market';
 import { DEFAULT_RULES, refreshPool } from './staff';
 import { makeMarketing } from './marketing';
+import { SANDBOX_CASH } from './money';
 
 export const SAVE_VERSION = 12;
 
@@ -77,7 +78,7 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
   const state: GameState = {
     version: SAVE_VERSION, seed: opts.seed, difficulty, sandbox: opts.sandbox ?? false,
     tick: 0, day: 1, time: 0, timeScale: 1, phase: picked ? 'setup' : 'picking',
-    cash: opts.sandbox ? 50000 : d.cash,
+    cash: opts.sandbox ? SANDBOX_CASH : d.cash,
     shop, prices, people: [], cars: [], orders: [],
     today: emptyDayStats(1), history: [], popups: [], reactions: [],
     tutorial: { enabled: opts.tutorial ?? !opts.sandbox, step: 0, done: false, completed: [], rewardsPaid: 0 },

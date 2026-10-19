@@ -1,6 +1,6 @@
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
 import { nightReport, type NightReport } from '@/sim/report';
-import { money } from './useRuntime';
+import { money, cashText } from './useRuntime';
 import { cardUnlocked, openOrSayWhen, UNLOCK_DAYS } from './TopBar';
 
 const CARD_NAMES: Record<string, string> = { stock: 'Stock', staff: 'Staff', prices: 'Prices', build: 'Build', marketing: 'Marketing', stats: 'Stats' };
@@ -65,7 +65,7 @@ export function DayLog({ runtime, snap, r, compact = false }: { runtime: GameRun
               <b>{money(-v)}</b>
             </div>
           ))}
-          <div className="stat total"><span>{r.latest ? 'Cash now' : 'Cash that night'}</span><b>{money(r.cash)}</b></div>
+          <div className="stat total"><span>{r.latest ? 'Cash now' : 'Cash that night'}</span><b>{cashText(r.cash)}</b></div>
         </section>
 
         {r.complaints.length > 0 && (
