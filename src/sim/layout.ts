@@ -735,7 +735,7 @@ const BODY: Partial<Record<FixtureType, { w: number; d: number; centred?: boolea
   produce: { w: 0.7, d: 0.61 }, endcap: { w: 0.8, d: 0.41 }, kiosk: { w: 0.46, d: 0.49 }, trolleys: { w: 0.5, d: 0.75 }, desk: { w: 0.76, d: 0.43 },
   screen: { w: 0.7, d: 0.23 }, bookcase: { w: 0.44, d: 0.29 }, flowers: { w: 0.48, d: 0.21 }, bench: { w: 0.83, d: 0.39 }, sofa: { w: 0.83, d: 0.39 },
   sign: { w: 0.72, d: 0.72, centred: true }, plant: { w: 0.3, d: 0.3, centred: true }, basketStack: { w: 0.36, d: 0.36, centred: true },
-  cafe: { w: 0.9, d: 0.5, centred: true }, bin: { w: 0.24, d: 0.24, centred: true }, speaker: { w: 0.2, d: 0.2, centred: true }, floorLamp: { w: 0.2, d: 0.2, centred: true },
+  storeRack: { w: 1.94, d: 0.68 }, cafe: { w: 0.9, d: 0.5, centred: true }, bin: { w: 0.24, d: 0.24, centred: true }, speaker: { w: 0.2, d: 0.2, centred: true }, floorLamp: { w: 0.2, d: 0.2, centred: true },
 };
 /** How thick a wall across the shop is, on its line (one round the building stands out in the WALL_T band behind it). */
 export const INNER_WALL = 0.22;
@@ -749,11 +749,13 @@ export function solidRect(f: { type: FixtureType; x: number; z: number; rot: num
   const along = (f.rot & 1) === 0; // its width runs along x
   const hw = b.w / 2;
   if (b.centred) { const cx = f.x + 0.5, cz = f.z + 0.5, hx = along ? hw : b.d / 2, hz = along ? b.d / 2 : hw; return { x0: cx - hx, z0: cz - hz, x1: cx + hx, z1: cz + hz }; }
+  // (Across the middle of its footprint: a piece two tiles wide is centred on both.)
+  const r = footprintOf(f.type, f.x, f.z, f.rot), mx = (r.x0 + r.x1) / 2, mz = (r.z0 + r.z1) / 2;
   switch (f.rot & 3) {
-    case 0: return { x0: f.x + 0.5 - hw, z0: f.z, x1: f.x + 0.5 + hw, z1: f.z + b.d };
-    case 1: return { x0: f.x, z0: f.z + 0.5 - hw, x1: f.x + b.d, z1: f.z + 0.5 + hw };
-    case 2: return { x0: f.x + 0.5 - hw, z0: f.z + 1 - b.d, x1: f.x + 0.5 + hw, z1: f.z + 1 };
-    default: return { x0: f.x + 1 - b.d, z0: f.z + 0.5 - hw, x1: f.x + 1, z1: f.z + 0.5 + hw };
+    case 0: return { x0: mx - hw, z0: r.z0, x1: mx + hw, z1: r.z0 + b.d };
+    case 1: return { x0: r.x0, z0: mz - hw, x1: r.x0 + b.d, z1: mz + hw };
+    case 2: return { x0: mx - hw, z0: r.z1 - b.d, x1: mx + hw, z1: r.z1 };
+    default: return { x0: r.x1 - b.d, z0: mz - hw, x1: r.x1, z1: mz + hw };
   }
 }
 

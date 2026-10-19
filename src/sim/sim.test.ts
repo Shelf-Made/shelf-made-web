@@ -1,9 +1,9 @@
-import { CORNERS, FIXTURES, solidRect, footprintOf } from './layout';
+import { CORNERS, FIXTURES, solidRect, footprintOf, edgeSide } from './layout';
 import { wallGridFor } from './state';
 import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { newGame, tick, applyCommand, TICK, DAY_SECONDS, findPath, buildGrid, resetGridCache, gridFor, type GameState } from './index';
-import { cellOf, isBlocked, fixtureAccessWorld } from './grid';
+import { cellOf, isBlocked, fixtureAccessWorld, wallBodies } from './grid';
 import { spawnCustomer, palletChoices, neediestInStorage, wrongFixture } from './people';
 import { canPlace, openEdges } from './build';
 import { toWorld, toLocal } from './layout';
@@ -142,7 +142,8 @@ describe('simulation', () => {
     const s = openGame({ seed: 13, plotId: 'main', name: 'T' });
     const owner = s.people.find((p) => p.kind === 'owner')!;
     const walls = wallGridFor(s);
-    const solids = s.shop.fixtures.filter((f) => !FIXTURES[f.type].walkable).map((f) => solidRect(f) ?? footprintOf(f.type, f.x, f.z, f.rot));
+    // (The walls round the building as drawn, standing in over the floor's edge and out into the step past it.)
+    const solids = s.shop.fixtures.filter((f) => !FIXTURES[f.type].walkable && !(FIXTURES[f.type].edge && edgeSide(s.shop, f) === 'outer')).map((f) => solidRect(f) ?? footprintOf(f.type, f.x, f.z, f.rot)).concat(wallBodies(s.shop));
     const gap = () => { const l = toLocal(s.shop, owner.x, owner.z); return Math.min(...solids.map((b) => Math.hypot(Math.max(b.x0 - l.x, 0, l.x - b.x1), Math.max(b.z0 - l.z, 0, l.z - b.z1)))); };
     const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const;
     let closest = Infinity;
@@ -161,6 +162,35 @@ describe('simulation', () => {
     applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
     // Up against something at some point: no invisible margin round the furniture.
     expect(closest).toBeLessThan(0.25);
+  });
+
+  it('a click beside a piece walks right up to it, and the walls are walked up to from outside, never through', () => {
+    const s = openGame({ seed: 13, plotId: 'main', name: 'T' });
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    const put = (x: number, z: number) => { const w = toWorld(s.shop, x, z); o.x = o.px = w.x; o.z = o.pz = w.z; o.path = []; o.pathIdx = 0; o.state = 'idle'; };
+    const gapTo = (b: { x0: number; z0: number; x1: number; z1: number }) => { const l = toLocal(s.shop, o.x, o.z); return Math.hypot(Math.max(b.x0 - l.x, 0, l.x - b.x1), Math.max(b.z0 - l.z, 0, l.z - b.z1)); };
+    put(-1.5, -0.5);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: 0.5, z: -3, rot: 0 }).ok).toBe(true);
+    const shelf = s.shop.fixtures.at(-1)!, body = solidRect(shelf)!;
+    // Clicked just in front of its boards: the grid keeps a whole tile off it, the manager walks on up to it.
+    const at = toWorld(s.shop, (body.x0 + body.x1) / 2, body.z1 + 0.05);
+    expect(applyCommand(s, { type: 'walkTo', x: at.x, z: at.z }).ok).toBe(true);
+    for (let i = 0; i < 400; i++) tick(s);
+    expect(gapTo(body)).toBeLessThan(0.3);
+    // The side wall from out on the lot: up to its face (it stands in the step outside the floor), not the step's edge.
+    const f = s.shop.floor, a = toWorld(s.shop, 0, 0), b = toWorld(s.shop, -1, 0);
+    put(f.x1 + 1.5, -4.5);
+    applyCommand(s, { type: 'moveDir', x: b.x - a.x, z: b.z - a.z });
+    for (let i = 0; i < 150; i++) tick(s);
+    expect(toLocal(s.shop, o.x, o.z).x).toBeLessThan(f.x1 + 0.45);
+    // Into each outside corner of the building: never in through it.
+    for (const [cx, cz, dx, dz] of [[f.x1, f.z0, -1, 1], [f.x0, f.z0, 1, 1], [f.x1, f.z1, -1, -1], [f.x0, f.z1, 1, -1]] as const) {
+      put(cx - dx, cz - dz);
+      const c = toWorld(s.shop, dx, dz);
+      applyCommand(s, { type: 'moveDir', x: c.x - a.x, z: c.z - a.z });
+      for (let i = 0; i < 300; i++) { tick(s); const l = toLocal(s.shop, o.x, o.z); expect(l.x > f.x0 && l.x < f.x1 && l.z > f.z0 && l.z < f.z1).toBe(false); }
+    }
+    applyCommand(s, { type: 'moveDir', x: 0, z: 0 });
   });
 
   it('plot picking sets up the shop and the sign name', () => {

@@ -173,7 +173,7 @@ export function fixtureFacing(rot: number): Vec2 {
 }
 
 /** Grid in world coordinates: store-relative rects are carried into the world by the shop's frame. */
-export function buildGrid(shop: Shop, version: number, backDoorShut = false): Grid {
+export function buildGrid(shop: Shop, version: number, backDoorShut = false, thinWalls = false): Grid {
   const L = lotLayout(shop);
   const st = storeysOf(shop);
   // The whole plot (pieces out on the lot can stand anywhere on it), to the far side of the frontage sidewalk.
@@ -234,10 +234,12 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
     if (p.type === 'backDoor') R(band(p.x, p.z, e.nx, e.nz), backDoorShut ? 0 : 1.1);
     else if (SOLID_EDGE.has(p.type)) solid.push(band(p.x, p.z, e.nx, e.nz));
   }
-  for (const r of solid) R(r, 0);
-  // A corner post stands outside a corner wherever a wall comes to it.
-  const walled = (x: number, z: number, nx: number, nz: number) => { const w = edgePieceAt(shop.fixtures, x, z, behindRot(nx, nz)); return !!w && SOLID_EDGE.has(w.type); };
-  for (const c of corners) if (walled(c.t.x, c.t.z, c.dx, 0) || walled(c.t.x, c.t.z, 0, c.dz)) R(corner(c.t.x, c.t.z, c.dx, c.dz), 0);
+  // (`thinWalls`, the manager's grid: the walls round the building are walked up to by their drawn shape, wallBodies.)
+  if (!thinWalls) {
+    for (const r of solid) R(r, 0);
+    // A corner post stands outside a corner wherever a wall comes to it.
+    for (const c of corners) if (walledOut(shop, c.t.x, c.t.z, c.dx, 0) || walledOut(shop, c.t.x, c.t.z, 0, c.dz)) R(corner(c.t.x, c.t.z, c.dx, c.dz), 0);
+  }
   // Upstairs: each open floor, with the building's walls round it, its openings and double-height spaces closed off.
   for (let lv = 1; lv <= st.top; lv++) for (const t of levelTileList(shop, lv)) R({ x0: t.x, z0: t.z, x1: t.x + 1, z1: t.z + 1 }, 1, true);
   // Delivered boxes stand here.
@@ -251,6 +253,30 @@ export function buildGrid(shop: Shop, version: number, backDoorShut = false): Gr
   }
   if (st.top) addPortals(shop, g);
   return g;
+}
+
+const walledOut = (shop: Shop, x: number, z: number, nx: number, nz: number) => { const w = edgePieceAt(shop.fixtures, x, z, behindRot(nx, nz)); return !!w && SOLID_EDGE.has(w.type); };
+/** How far a wall round the building stands in over the floor's edge, and out past it, as drawn (render's WALL_IN, WALL_OUT). */
+const DRAWN_IN = 0.05, DRAWN_OUT = 0.15;
+/**
+ * The walls round the ground floor as drawn (store-relative): each wall piece, and the post outside each corner a
+ * wall comes to. The manager walks up to these; everyone else keeps to the floor and the lot beyond the whole band.
+ */
+export function wallBodies(shop: Shop): { x0: number; z0: number; x1: number; z1: number }[] {
+  const out: { x0: number; z0: number; x1: number; z1: number }[] = [];
+  for (const p of shop.fixtures) {
+    if (!FIXTURES[p.type].edge || !SOLID_EDGE.has(p.type) || levelOf(p) > 0 || edgeSide(shop, p) !== 'outer') continue;
+    const { nx, nz } = edgeOf(p), x = p.x, z = p.z;
+    out.push(nx
+      ? { x0: nx < 0 ? x - DRAWN_OUT : x + 1 - DRAWN_IN, z0: z, x1: nx < 0 ? x + DRAWN_IN : x + 1 + DRAWN_OUT, z1: z + 1 }
+      : { x0: x, z0: nz < 0 ? z - DRAWN_OUT : z + 1 - DRAWN_IN, x1: x + 1, z1: nz < 0 ? z + DRAWN_IN : z + 1 + DRAWN_OUT });
+  }
+  for (const t of floorTileList(shop)) for (const [dx, dz] of DIAGONALS) {
+    if (isFloor(shop, t.x + dx, t.z) || isFloor(shop, t.x, t.z + dz) || !(walledOut(shop, t.x, t.z, dx, 0) || walledOut(shop, t.x, t.z, 0, dz))) continue;
+    const cx = dx < 0 ? t.x : t.x + 1, cz = dz < 0 ? t.z : t.z + 1;
+    out.push({ x0: Math.min(cx, cx + dx * DRAWN_OUT), z0: Math.min(cz, cz + dz * DRAWN_OUT), x1: Math.max(cx, cx + dx * DRAWN_OUT), z1: Math.max(cz, cz + dz * DRAWN_OUT) });
+  }
+  return out;
 }
 
 /** The rides between floors: from the foot of each flight of stairs, escalator and lift to where it comes off upstairs, and back down. */

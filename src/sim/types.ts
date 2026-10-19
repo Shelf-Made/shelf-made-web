@@ -202,6 +202,8 @@ export interface Person {
   shift?: 'full' | 'morning' | 'evening';
   /** Owner only: the direction the player is steering (world space), or null. */
   moveDir?: { x: number; z: number } | null;
+  /** Owner only: the point clicked to walk to, walked right up to after the path (which keeps a tile off the furniture). */
+  walkGoal?: Vec2;
   /** Out on the streets: path indices where a zebra starts (wait for the walk light there). */
   xings?: number[];
   /** Shoppers bound for a rival: which one, and whether they carry its bags home. */

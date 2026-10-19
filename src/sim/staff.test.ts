@@ -2,6 +2,7 @@ import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
 import { tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, toWorld, type GameState } from './index';
 import { storeroomPoint } from './people';
+import { fixtureBackWorld } from './grid';
 
 function day(s: GameState, scan: boolean): void {
   for (let i = 0; i < (DAY_SECONDS + 130) / TICK && s.phase !== 'night'; i++) { tick(s); if (scan && i % 6 === 0) applyCommand(s, { type: 'scan' }); }
@@ -130,6 +131,41 @@ describe('two bound for the same corner', () => {
     let t = 0;
     for (; t < 30 && (a.pathIdx === 0 || b.pathIdx === 0); t += TICK) tick(s);
     expect(t).toBeLessThan(3);
+    expect(s.stuckRescues).toBe(0);
+  });
+});
+
+describe('breaks', () => {
+  // All on one spot out by the back door, they shoved each other off it for good and the watchdog kept moving them.
+  it('everyone on a break waits on a spot of their own, and back at work nobody is stuck', () => {
+    const s = openGame({ seed: 21, plotId: 'main', name: 'T', tutorial: false });
+    resetGridCache();
+    s.cash = 50000;
+    for (const c of [...s.staffPool]) applyCommand(s, { type: 'hire', candidateId: c.id });
+    const staff = s.people.filter((p) => p.kind === 'staff');
+    expect(staff.length).toBeGreaterThan(3);
+    for (let i = 0; i < 600; i++) tick(s);
+    for (const p of staff) expect(applyCommand(s, { type: 'setBreak', staffId: p.id, on: true }).ok).toBe(true);
+    for (let i = 0; i < 1500; i++) tick(s);
+    for (const p of staff) expect(p.state).toBe('idle');
+    for (const [i, p] of staff.entries()) for (const q of staff.slice(i + 1)) expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeGreaterThan(0.45);
+    for (const p of staff) applyCommand(s, { type: 'setBreak', staffId: p.id, on: false });
+    day(s, true);
+    expect(s.stuckRescues).toBe(0);
+  });
+
+  it('a cashier whose post the manager stands on waits beside them, ready to serve', () => {
+    const s = openGame({ seed: 21, plotId: 'main', name: 'T', tutorial: false });
+    resetGridCache();
+    s.cash = 5000;
+    expect(applyCommand(s, { type: 'hire', candidateId: s.staffPool.find((c) => c.role === 'cashier')!.id }).ok).toBe(true);
+    const cashier = s.people.find((p) => p.kind === 'staff')!;
+    const reg = s.shop.fixtures.find((f) => f.staffId === cashier.id)!, post = fixtureBackWorld(s.shop, reg);
+    const o = s.people.find((p) => p.kind === 'owner')!;
+    o.x = o.px = post.x; o.z = o.pz = post.z; o.path = []; o.pathIdx = 0; o.state = 'idle';
+    for (let i = 0; i < 1000; i++) tick(s);
+    expect(cashier.state).toBe('idle');
+    expect(Math.hypot(cashier.x - post.x, cashier.z - post.z)).toBeLessThan(0.8);
     expect(s.stuckRescues).toBe(0);
   });
 });

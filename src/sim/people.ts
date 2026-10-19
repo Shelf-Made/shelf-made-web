@@ -1,11 +1,11 @@
 import type { GameState, Person, Fixture, Slot, CustomerType, Vec2, Car } from './types';
 import { PRODUCTS, productDef } from './products';
-import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, toWorld, toLocal, dirToWorld, solidRect, footprintOf, zOnLevel, levelOf, isFloor } from './layout';
+import { PLOTS, WALK_SPEED, TICK, DIFFICULTY, FIXTURES, FRONT_WALK_Z, BUS_STOP, SIDEWALK_E_X, toWorld, toLocal, dirToWorld, solidRect, footprintOf, zOnLevel, levelOf, isFloor, edgeSide } from './layout';
 import { offTheBus } from './frontage';
 import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, fixtureCentre, fixtureAccessWorld, fixtureStandWorld, cellOf, cellCentre, isBlocked, nearestWalkable, cellIndex, canStep, inBounds, reachableCells, lineClear } from './grid';
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
-import { withRng, nextId, popup, cue, gridFor, wallGridFor, dist, react, complain } from './state';
+import { withRng, nextId, popup, cue, gridFor, wallGridFor, wallBodiesFor, dist, react, complain } from './state';
 import { spawnCustomerCar, leaveLot, drivewayX } from './cars';
 import { bayCentre, DIRS } from './drive';
 import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
@@ -868,20 +868,34 @@ function tickWalker(state: GameState, p: Person): void {
 
 /** Direct steering (WASD): slide along walls and fixtures instead of stopping dead. */
 function steer(state: GameState, p: Person, dyn: Set<number>): void {
-  // Walls from the grid; the furniture by the shape of each model, so you can walk right up to any of it.
-  const g = wallGridFor(state);
   const d = p.moveDir!;
   // Pushing into the stairs at their foot (or their top, or a lift's door): ride them. Off at the other end,
   // not again till they let go or step clear and back (sliding along a lift's doors is not stepping back on).
   if (p.rideLock && Math.hypot(p.x - p.rideLock.x, p.z - p.rideLock.z) > RIDE_REACH + 0.1) p.rideLock = undefined;
   const ride = p.rideLock ? null : rideAt(state, p, d);
   if (ride) { startRide(state, p, ride); p.rideLock = { x: ride.x, z: ride.z }; p.anim = p.carrying ? 'carry' : 'walk'; if (p.task && !p.carrying) p.task = null; return; }
+  slide(state, p, d, (p.speed * TICK) / Math.max(1, state.timeScale || 1), dyn);
+  p.yaw = turnToward(p.yaw, Math.atan2(d.x, d.z), 14 * TICK);
+  p.path = []; p.pathIdx = 0; p.walkGoal = undefined;
+  if (p.state !== 'carrying') p.state = 'idle';
+  p.anim = p.carrying ? 'carry' : 'walk';
+  // A pending carry trip is cancelled by taking the controls; what you hold stays in your hands.
+  if (p.task && !p.carrying) p.task = null;
+}
+
+/**
+ * The manager's step of up to `step` along `d`: walls by the grid, the furniture by the shape of each model, so they
+ * walk right up to any of it, sliding along what is in the way. Whether they moved.
+ */
+function slide(state: GameState, p: Person, d: Vec2, step: number, dyn: Set<number>): boolean {
+  const g = wallGridFor(state);
   const len = Math.hypot(d.x, d.z) || 1;
-  const step = (p.speed * TICK) / Math.max(1, state.timeScale || 1);
   const dx = (d.x / len) * step, dz = (d.z / len) * step;
   const others = state.people.filter((o) => o !== p && o.kind !== 'walker' && o.state !== 'driving' && o.state !== 'gone' && Math.abs(o.x - p.x) < 1 && Math.abs(o.z - p.z) < 1);
   const near = (f: Fixture) => { const c = fixtureCentre(state.shop, f); return Math.abs(c.x - p.x) < 2.5 && Math.abs(c.z - p.z) < 2.5; };
-  const bodies = state.shop.fixtures.filter((f) => !FIXTURES[f.type].walkable && near(f)).map((f) => solidRect(f) ?? footprintOf(f.type, f.x, f.z, f.rot));
+  const here = toLocal(state.shop, p.x, p.z), nearRect = (b: { x0: number; z0: number; x1: number; z1: number }) => b.x0 < here.x + 2 && b.x1 > here.x - 2 && b.z0 < here.z + 2 && b.z1 > here.z - 2;
+  const bodies = state.shop.fixtures.filter((f) => !FIXTURES[f.type].walkable && !FIXTURES[f.type].edge && near(f)).map((f) => solidRect(f) ?? footprintOf(f.type, f.x, f.z, f.rot))
+    .concat(state.shop.fixtures.filter((f) => FIXTURES[f.type].edge && !FIXTURES[f.type].walkable && edgeSide(state.shop, f) === 'inner').map((f) => solidRect(f)!), wallBodiesFor(state).filter(nearRect));
   const gap = (x: number, z: number) => {
     const l = toLocal(state.shop, x, z);
     let d = Infinity;
@@ -905,12 +919,8 @@ function steer(state: GameState, p: Person, dyn: Set<number>): void {
   if (free(p.x + dx, p.z + dz)) { p.x += dx; p.z += dz; }
   else if (free(p.x + dx, p.z)) p.x += dx;
   else if (free(p.x, p.z + dz)) p.z += dz;
-  p.yaw = turnToward(p.yaw, Math.atan2(d.x, d.z), 14 * TICK);
-  p.path = []; p.pathIdx = 0;
-  if (p.state !== 'carrying') p.state = 'idle';
-  p.anim = p.carrying ? 'carry' : 'walk';
-  // A pending carry trip is cancelled by taking the controls; what you hold stays in your hands.
-  if (p.task && !p.carrying) p.task = null;
+  else return false;
+  return true;
 }
 
 /** How far the owner is from a world point. */
@@ -1049,7 +1059,7 @@ export function ownerWalkTo(state: GameState, to: Vec2): boolean {
   // Nowhere they can walk to ("You can't get there"): nothing changes, never off in a straight line at it.
   if (!setPath(state, o, to, dynamicBlockers(state), true)) return false;
   // Where clicked, a box in hand or not: a trip to stock a shelf is off (arriving is no reason to stock it from there).
-  o.moveDir = null; o.task = null; o.state = 'walking';
+  o.moveDir = null; o.task = null; o.state = 'walking'; o.walkGoal = { x: to.x, z: to.z };
   return true;
 }
 
@@ -1075,6 +1085,30 @@ function spillFor(state: GameState, p: Person): { id: number; x: number; z: numb
     if (d < bestD) { best = l; bestD = d; }
   }
   return best;
+}
+
+/** Is the manager standing on `spot`, with this worker as close to it as they can get (beside them)? */
+function mannedBy(state: GameState, p: Person, spot: Vec2): boolean {
+  if (p.kind !== 'staff') return false;
+  const o = state.people.find((x) => x.kind === 'owner');
+  return !!o && dist(o, spot) < MANAGER_ROOM && dist(p, spot) < MANAGER_ROOM + 0.3;
+}
+
+/** Spots out behind the shop, either side of the back door, a body apart: (along the back wall, out from it). */
+const OFF_SPOTS: readonly [number, number][] = [1.6, 2.3, 3.0, -1.6, -2.3, -3.0].flatMap((x) => [[x, -1.0], [x, -1.7]] as [number, number][]);
+/**
+ * Where a worker on a break or off shift waits: out by the back door, each on a spot of their own (all on one, they
+ * shoved each other off it for good). Only a spot the door reaches; with none (built over), at their post.
+ */
+function offShiftSpot(state: GameState, p: Person): Vec2 {
+  const s = state.shop, g = gridFor(state), reach = reachableCells(s, g);
+  const spots = OFF_SPOTS.map(([dx, dz]) => toWorld(s, s.backDoor.x + dx, s.backDoor.z + dz)).filter((w) => {
+    const [cx, cz] = cellOf(g, w);
+    return inBounds(g, cx, cz) && !isBlocked(g, cx, cz) && !g.inside[cellIndex(g, cx, cz)] && !!reach[cellIndex(g, cx, cz)];
+  });
+  if (!spots.length) return homeOf(state, p);
+  const k = state.people.filter((x) => x.kind === 'staff').indexOf(p);
+  return spots[Math.max(0, k) % spots.length]!;
 }
 
 /** Where a worker stands when idle (a post an older save left cut off: just inside the front door). */
@@ -1145,22 +1179,31 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     // Off a ride with nowhere more to go (Use, the keys let go on it or just past its end, a walk stopped on it): a
     // step clear of where the way back starts, or nobody could get on it while they stood there.
     const to = p.rideLock && p.pathIdx >= p.path.length && (p.state === 'idle' || p.state === 'walking') ? stepOff(state, p) : null;
-    if (to) { p.path = [to]; p.pathIdx = 0; p.state = 'walking'; }
+    if (to) { p.path = [to]; p.pathIdx = 0; p.state = 'walking'; p.walkGoal = undefined; }
     p.rideLock = undefined;
   }
   if (p.kind === 'owner' && p.climb === undefined && p.moveDir && (p.moveDir.x !== 0 || p.moveDir.z !== 0)) { steer(state, p, dyn); return; }
   if (p.kind === 'owner' && p.state === 'walking') {
-    // Click-to-move.
-    if (followPath(p, p.speed / Math.max(1, state.timeScale || 1), dt, 12, 0.15)) { p.state = 'idle'; p.anim = p.carrying ? 'carry' : 'idle'; }
+    // Click-to-move: along the path, then (it keeps a tile off the furniture) on up to the point clicked, as far as the
+    // furniture's own shape lets them.
+    const speed = p.speed / Math.max(1, state.timeScale || 1);
+    let done = followPath(p, speed, dt, 12, 0.15);
+    const goal = p.walkGoal;
+    if (done && goal) {
+      const gx = goal.x - p.x, gz = goal.z - p.z, gd = Math.hypot(gx, gz);
+      if (gd > 0.05 && gd < 1.5 && slide(state, p, { x: gx, z: gz }, Math.min(gd, speed * dt), dyn)) { p.yaw = turnToward(p.yaw, Math.atan2(gx, gz), 12 * dt); done = false; }
+      else p.walkGoal = undefined;
+    }
+    if (done) { p.state = 'idle'; p.anim = p.carrying ? 'carry' : 'idle'; }
     else p.anim = p.carrying ? 'carry' : 'walk';
     return;
   }
   // Off shift: stand out by the back door (or walk there), do nothing else.
   if (p.kind === 'staff' && !onShift(p, state.time)) {
-    const s = state.shop; const off = toWorld(s, s.backDoor.x + 1.6, s.backDoor.z - 1.0);
+    const off = offShiftSpot(state, p);
     if (p.task || p.carrying) { if (p.carrying) { state.shop.storage.push({ productId: p.carrying.productId, qty: p.carrying.qty, day: state.day }); p.carrying = null; } p.task = null; }
-    if (dist(p, off) > 0.4) { if (p.state !== 'toRegister' || p.pathIdx >= p.path.length) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, off, dyn); } followPath(p, p.speed, dt, 12, 0.22); }
-    else { p.state = 'idle'; p.anim = 'idle'; }
+    if (dist(p, off) > 0.4 && !mannedBy(state, p, off)) { if (p.state !== 'toRegister' || p.pathIdx >= p.path.length) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, off, dyn); } followPath(p, p.speed, dt, 12, 0.22); }
+    else { p.state = 'idle'; p.anim = 'idle'; p.path = []; p.pathIdx = 0; }
     return;
   }
   // A shoplifter making a run for it: whoever has nothing on goes after them.
@@ -1198,7 +1241,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     }
     if (!p.task) { const l = spill(); if (l) { mop(l); return; } }
     // Nothing doing: after a while at their post, off to straighten a shelf (not a cashier).
-    if (!p.task && floorHand && p.state === 'idle' && dist(p, home) <= 0.35 && isFree(state, p)) {
+    if (!p.task && floorHand && p.state === 'idle' && (dist(p, home) <= 0.35 || mannedBy(state, p, home)) && isFree(state, p)) {
       p.idleFor = (p.idleFor ?? 0) + dt;
       if (p.idleFor > 9) {
         const shelves = state.shop.fixtures.filter((f) => FIXTURES[f.type].slots > 0 && getsTo(state, f));
@@ -1222,7 +1265,7 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
         else p.task = null;
       } else if (p.task && palletReached(state)) { p.state = 'toStock'; p.anim = 'walk'; p.timer = 0; setPath(state, p, storeroomPoint(state), dyn); }
       else if (p.task) p.task = null;
-      else if (dist(p, home) > 0.35) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }
+      else if (dist(p, home) > 0.35 && !mannedBy(state, p, home)) { p.state = 'toRegister'; p.anim = 'walk'; setPath(state, p, home, dyn); }
       else {
         p.anim = p.carrying ? 'carry' : 'idle';
         // Facing their till: standing between two (back to back, say), the one with someone paying, else someone waiting.
@@ -1235,7 +1278,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     }
     case 'working': { p.state = 'idle'; break; }
     case 'toRegister': {
-      if (followPath(p, p.speed, dt, 12, 0.22)) p.state = 'idle';
+      // The manager standing on their post (at the till, say): they stop beside them, never held off it for good.
+      if (followPath(p, p.speed, dt, 12, 0.22) || mannedBy(state, p, home)) { p.state = 'idle'; p.path = []; p.pathIdx = 0; }
       if (p.task) p.state = 'idle';
       break;
     }

@@ -1,7 +1,7 @@
 /** Helpers over GameState: RNG streams, ids, popups, sound cues, grid cache. */
 import { Rng, hashString } from './rng';
 import type { GameState, Popup, Vec2, ReactionKind, Complaints } from './types';
-import { buildGrid, type Grid } from './grid';
+import { buildGrid, wallBodies, type Grid } from './grid';
 import { VERTICAL, FIXTURES } from './layout';
 
 export function withRng<T>(state: GameState, stream: string, fn: (r: Rng) => T): T {
@@ -48,17 +48,26 @@ export function gridFor(state: GameState): Grid {
   return gridCache.grid;
 }
 
-/** The same grid without the fixtures: walls, doors and the delivery pallet only (the manager steers round fixtures by their real shape). */
+/** The same grid without the fixtures or the walls round the building: walls across it, doors and the delivery pallet only (the manager steers round the rest by their real shape). */
 let wallCache: { key: string; version: number; grid: Grid } | null = null;
 export function wallGridFor(state: GameState): Grid {
   const shop = state.shop;
   const key = `${state.seed}:${shop.plotId}`;
   // The walls and doors stay (they are pieces), and the stairs: they open the floors above, and their footprints are walked round.
-  if (!wallCache || wallCache.key !== key || wallCache.version !== shop.layoutVersion) wallCache = { key, version: shop.layoutVersion, grid: buildGrid({ ...shop, fixtures: shop.fixtures.filter((f) => VERTICAL.has(f.type) || FIXTURES[f.type].edge) }, shop.layoutVersion) };
+  if (!wallCache || wallCache.key !== key || wallCache.version !== shop.layoutVersion) wallCache = { key, version: shop.layoutVersion, grid: buildGrid({ ...shop, fixtures: shop.fixtures.filter((f) => VERTICAL.has(f.type) || FIXTURES[f.type].edge) }, shop.layoutVersion, false, true) };
   return wallCache.grid;
 }
 
-export function resetGridCache(): void { gridCache = null; wallCache = null; }
+/** The walls round the building as drawn, for the manager to walk up to (with the grid above). */
+let bodyCache: { key: string; version: number; bodies: ReturnType<typeof wallBodies> } | null = null;
+export function wallBodiesFor(state: GameState): ReturnType<typeof wallBodies> {
+  const shop = state.shop;
+  const key = `${state.seed}:${shop.plotId}`;
+  if (!bodyCache || bodyCache.key !== key || bodyCache.version !== shop.layoutVersion) bodyCache = { key, version: shop.layoutVersion, bodies: wallBodies(shop) };
+  return bodyCache.bodies;
+}
+
+export function resetGridCache(): void { gridCache = null; wallCache = null; bodyCache = null; }
 
 export function clockLabel(time: number): string {
   const totalMin = 8 * 60 + Math.floor(time / 60) * 60 + Math.floor((time % 60));
