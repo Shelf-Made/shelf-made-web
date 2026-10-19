@@ -251,7 +251,9 @@ describe('simulation', () => {
     const o = s.people.find((p) => p.kind === 'owner')!;
     const w = fixtureAccessWorld(s.shop, f, o), p = toLocal(s.shop, w.x, w.z);
     expect(p.x).toBeGreaterThan(s.shop.floor.x0);
-    expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeCloseTo(1, 5);
+    // On the half of the tile beside it, not out past it.
+    expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeGreaterThan(0.7);
+    expect(Math.hypot(p.x - (f.x + 0.5), p.z - (f.z + 0.5))).toBeLessThan(0.8);
   });
   it('a box you are holding goes back on the pallet, and stays there', () => {
     const s = newGame({ seed: 11, plotId: 'main', name: 'Back' });

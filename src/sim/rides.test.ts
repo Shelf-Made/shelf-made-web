@@ -345,7 +345,7 @@ describe('stairs sold or moved while someone heads for them', () => {
   });
 
   it('someone after a shelf used from the landing of a flight that is sold or moved gets there another way', () => {
-    // The shelf upstairs is used standing where the flight comes up, so a way to it ends with the ride.
+    // The shelf upstairs is used standing beside where the flight comes up, so a way to it ends with the ride (and a step).
     for (const [change, who] of [['sold', 'customer'], ['sold', 'stocker'], ['moved', 'customer'], ['moved', 'stocker']] as const) {
       const s = shop(81), tag = `${change}, ${who}`;
       expect(place(s, change === 'sold' ? 'escalator' : 'stairs', STAIRS.x, STAIRS.z).ok).toBe(true);
@@ -357,8 +357,9 @@ describe('stairs sold or moved while someone heads for them', () => {
       let p: Person;
       if (who === 'customer') { shelf.slots = shelf.slots.map(() => ({ productId: 'apples', qty: 8 })); p = spawnCustomer(s, true)!; p.list = [{ productId: 'apples', qty: 1 }]; }
       else { shelf.slots = shelf.slots.map(() => ({ productId: 'rice', qty: 0 })); s.shop.storage = [{ productId: 'rice', qty: 40, day: s.day }]; p = hire(s, 'stocker'); }
-      run(s, 60, () => p.path[p.path.length - 1]?.via === flight.id && p.pathIdx < p.path.length - 1);
-      expect(p.path[p.path.length - 1]?.via, tag).toBe(flight.id);
+      const rideAt = () => p.path.findIndex((w) => w.via === flight.id);
+      run(s, 60, () => rideAt() >= 0 && rideAt() >= p.path.length - 2 && p.pathIdx < rideAt());
+      expect(p.path[rideAt()]?.via, tag).toBe(flight.id);
       expect(applyCommand(s, change === 'sold' ? { type: 'removeFixture', fixtureId: flight.id } : { type: 'moveFixture', fixtureId: flight.id, x: STAIRS.x - 1, z: STAIRS.z, rot: 0 }).ok, tag).toBe(true);
       const w = rideWatch(s), done = () => who === 'customer' ? !!p.basket?.some((b) => b.productId === 'apples') : rice(shelf) > 0;
       let stale = false, plans = 0, path = p.path;

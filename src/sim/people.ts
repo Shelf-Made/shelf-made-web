@@ -1150,13 +1150,17 @@ function postOf(state: GameState, p: Person): Vec2 {
 /** Can someone in at the front door get to where boxes are picked up? (An older save may have left it cut off.) */
 export function palletReached(state: GameState): boolean { return doorReaches(state, storeroomPoint(state)); }
 
-/** A cashier on shift without a till takes one nobody on shift is working (its own cashier's shift is over). One cut off is given up. */
+/**
+ * A cashier on shift without a till takes a checkout counter nobody on shift is working (its own cashier's shift is
+ * over). One cut off is given up, and a self-checkout is never theirs (an older save may have put them on one): it needs
+ * nobody, and they stood behind it, out through the wall.
+ */
 function takeTill(state: GameState, p: Person): void {
   if (p.kind !== 'staff' || p.role !== 'cashier' || !onShift(p, state.time)) return;
   const mine = state.shop.fixtures.find((f) => f.staffId === p.id);
-  if (mine && tillOpen(state, mine)) return;
+  if (mine && mine.type === 'register' && tillOpen(state, mine)) return;
   if (mine) mine.staffId = null;
-  const till = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && tillOpen(state, f, p.id) && (() => {
+  const till = state.shop.fixtures.find((f) => f.type === 'register' && tillOpen(state, f, p.id) && (() => {
     if (!f.staffId) return true;
     const o = state.people.find((x) => x.id === f.staffId);
     return !o || !onShift(o, state.time);
@@ -1175,7 +1179,7 @@ function spareCashier(state: GameState, p: Person): boolean {
 export function needOf(state: GameState, p: Person): string | null {
   const has = (t: Fixture['type']) => state.shop.fixtures.some((f) => f.type === t);
   switch (p.role) {
-    case 'cashier': return !has('register') && !has('kiosk') ? 'I need a till!' : null;
+    case 'cashier': return !has('register') ? 'I need a checkout counter!' : null;
     case 'cleaner': return !has('bin') ? 'I need a bin!' : null;
     case 'manager': return !has('desk') ? 'I need a desk!' : null;
     case 'stocker': return !palletReached(state) ? "I can't reach the pallet!" : null;

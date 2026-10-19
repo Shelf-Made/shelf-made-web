@@ -83,10 +83,10 @@ export function fixtureFront(f: Fixture): Vec2 {
 }
 
 /**
- * Where someone stands to use a fixture: its front tile if that is free shop floor, otherwise its back
- * or a side (a shelf pushed against the wall is used from the room side). Always on the shop floor,
- * never outside the walls, and only a tile someone coming in at the door can walk to (by `grid`, the
- * shop's walking grid); the nearest to `from` wins, the front by half a tile. Null when no side will do.
+ * Where someone stands to use a fixture: on its front tile if that is free shop floor, otherwise its back
+ * or a side (a shelf pushed against the wall is used from the room side), on the half of that tile beside it.
+ * Always on the shop floor, never outside the walls, and only where someone coming in at the door can walk
+ * (by `grid`, the shop's walking grid); the nearest to `from` wins, the front by half a tile. Null when no side will do.
  */
 export function fixtureStandWorld(shop: Shop, f: Fixture, from?: Vec2, grid: Grid = shopGrid(shop)): Vec2 | null {
   const cx = f.x + 0.5, cz = f.z + 0.5;
@@ -99,13 +99,21 @@ export function fixtureStandWorld(shop: Shop, f: Fixture, from?: Vec2, grid: Gri
   let best: Vec2 | null = null, bestD = Infinity;
   tiles.forEach((t, i) => {
     if (!isFloor(shop, t.x - 0.5, t.z - 0.5)) return;
+    const own = t.x === cx && t.z === cz;
     // Never through a wall from its tile.
-    if ((t.x !== cx || t.z !== cz) && walledBetween(shop, f.x, f.z, t.x - cx, t.z - cz)) return;
-    const w = toWorld(shop, t.x, t.z);
-    const [gx, gz] = cellOf(grid, w);
-    if (!inBounds(grid, gx, gz) || !reach[cellIndex(grid, gx, gz)]) return;
-    const dd = (from ? Math.hypot(w.x - from.x, w.z - from.z) : i) + (i === 0 ? -0.5 : 0);
-    if (dd < bestD) { bestD = dd; best = w; }
+    if (!own && walledBetween(shop, f.x, f.z, t.x - cx, t.z - cz)) return;
+    // Beside the piece: the half of the tile next to it (one of its two cells against the piece's side), not the tile's
+    // middle. A shallow piece on that tile blocks only its back half: turned to face this one, the half by it is a way
+    // through; turned the other way, its back is up against it and there is none.
+    const dx = Math.sign(t.x - cx), dz = Math.sign(t.z - cz);
+    const spots = own ? [t] : [-0.25, 0.25].map((k) => ({ x: t.x - dx * 0.25 + (dz ? k : 0), z: t.z - dz * 0.25 + (dx ? k : 0) }));
+    for (const sp of spots) {
+      const w = toWorld(shop, sp.x, sp.z);
+      const [gx, gz] = cellOf(grid, w);
+      if (!inBounds(grid, gx, gz) || !reach[cellIndex(grid, gx, gz)]) continue;
+      const dd = (from ? Math.hypot(w.x - from.x, w.z - from.z) : i) + (i === 0 ? -0.5 : 0);
+      if (dd < bestD) { bestD = dd; best = w; }
+    }
   });
   return best;
 }

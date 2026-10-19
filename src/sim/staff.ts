@@ -152,7 +152,8 @@ export function hire(state: GameState, candidateId: number): string | null {
     role: c.role, wage: c.wage, skill: c.skill, morale: 0.85, name: c.name, task: null, carrying: null, stuckTicks: 0, hiredDay: state.day, shift: 'full',
   };
   state.people.push(p);
-  if (c.role === 'cashier') { const reg = state.shop.fixtures.find((f) => (f.type === 'register' || f.type === 'kiosk') && !f.staffId); if (reg) reg.staffId = p.id; }
+  // (A counter: a self-checkout needs nobody, and its back may be out through the wall.)
+  if (c.role === 'cashier') { const reg = state.shop.fixtures.find((f) => f.type === 'register' && !f.staffId); if (reg) reg.staffId = p.id; }
   // A guard is quicker on their feet than the rest.
   if (c.role === 'guard') p.speed *= 1.1;
   state.notices.push({ day: state.day, text: `${c.name} starts today as your ${ROLE_NAMES[c.role].toLowerCase()} (${dollars(c.wage)}/day).`, kind: 'staff' });
@@ -164,7 +165,9 @@ export function fire(state: GameState, staffId: number): string | null {
   const p = state.people.find((x) => x.id === staffId && x.kind === 'staff');
   if (!p) return 'No such employee.';
   releaseStaff(state, p);
+  // Off the books and out of the shop now (marked gone, the next tick's work put them straight back on the floor).
   p.state = 'gone';
+  state.people = state.people.filter((x) => x !== p);
   state.notices.push({ day: state.day, text: `${p.name} was let go.`, kind: 'staff' });
   return null;
 }

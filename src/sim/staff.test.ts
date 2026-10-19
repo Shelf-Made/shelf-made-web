@@ -1,6 +1,6 @@
 import { openGame } from './testUtil';
 import { describe, it, expect } from 'vitest';
-import { tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, toWorld, type GameState } from './index';
+import { tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, toWorld, toLocal, type GameState } from './index';
 import { storeroomPoint } from './people';
 import { fixtureBackWorld } from './grid';
 
@@ -167,5 +167,39 @@ describe('breaks', () => {
     expect(cashier.state).toBe('idle');
     expect(Math.hypot(cashier.x - post.x, cashier.z - post.z)).toBeLessThan(0.8);
     expect(s.stuckRescues).toBe(0);
+  });
+});
+
+describe('the team', () => {
+  it('someone let go leaves for good, and a till they worked is free for another', () => {
+    const s = openGame({ seed: 21, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 5000;
+    expect(applyCommand(s, { type: 'hire', candidateId: s.staffPool.find((c) => c.role === 'cashier')!.id }).ok).toBe(true);
+    const p = s.people.find((x) => x.kind === 'staff')!;
+    for (let i = 0; i < 100; i++) tick(s);
+    expect(applyCommand(s, { type: 'fire', staffId: p.id }).ok).toBe(true);
+    for (let i = 0; i < 100; i++) tick(s);
+    expect(s.people.some((x) => x.id === p.id)).toBe(false);
+    expect(s.shop.fixtures.some((f) => f.staffId === p.id)).toBe(false);
+  });
+
+  it('cashiers work the checkout counters, never a self-checkout (whose back is out through the wall)', () => {
+    const s = openGame({ seed: 21, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 1e5;
+    // A self-checkout against the front wall, facing into the shop.
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'kiosk', x: -2.5, z: -1, rot: 2 }).ok).toBe(true);
+    for (let k = 0; k < 3; k++) { const c = s.staffPool.find((x) => x.role === 'cashier'); if (c) expect(applyCommand(s, { type: 'hire', candidateId: c.id }).ok).toBe(true); }
+    const cashiers = s.people.filter((x) => x.kind === 'staff' && x.role === 'cashier');
+    expect(cashiers.length).toBeGreaterThan(1);
+    const kiosk = s.shop.fixtures.find((f) => f.type === 'kiosk')!;
+    // (An older save's cashier on it lets it go.)
+    kiosk.staffId = cashiers[1]!.id;
+    for (let i = 0; i < 120 / TICK; i++) {
+      tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' });
+      if (i > 30 / TICK) {
+        expect(kiosk.staffId ?? null).toBeNull();
+        for (const p of cashiers) expect(toLocal(s.shop, p.x, p.z).z).toBeLessThan(s.shop.floor.z1);
+      }
+    }
   });
 });

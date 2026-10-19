@@ -591,3 +591,19 @@ describe('growing out over the lot', () => {
     expect(canBuyTile(s, x, z).ok).toBe(true);
   });
 });
+
+describe('reaching a shelf past what stands in front of it', () => {
+  // A shelf in the corner, another beside it: the only way to it is the tile in front, where a chiller goes. A chiller
+  // only fills the back half of its tile: turned so that half is away from the shelf, the half by it is a way through.
+  it('takes a piece that leaves room to stand at the shelf, and refuses one that backs up against it', () => {
+    for (const rot of [0, 1, 2, 3] as const) {
+      const s = shop();
+      expect(place(s, 'shelf', 1.5, -6, 0).ok).toBe(true);
+      expect(place(s, 'shelf', 0.5, -6, 0).ok).toBe(true);
+      const r = place(s, 'fridge', 1.5, -5, rot);
+      // (Facing the shelf, or turned side on to it: room. Its back to the shelf: none.)
+      if (rot === 0) expect(r.message, `rot ${rot}`).toBe('Would cut off the shelf');
+      else expect(r.ok, `rot ${rot}: ${r.message}`).toBe(true);
+    }
+  });
+});
