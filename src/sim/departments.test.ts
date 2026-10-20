@@ -177,14 +177,13 @@ describe('the new displays', () => {
     expect(ok).toBe(true);
   });
 
-  it('a wall shelf never hangs over the delivery corner (a light still may)', async () => {
+  it('a wall shelf never hangs over a pallet, the shop\'s own included', async () => {
     const { canPlace } = await import('./build');
     const s = openGame({ seed: 9, plotId: 'main', name: 'T', tutorial: false });
     s.cash = 9999;
-    const d = s.shop.delivery;
+    const d = s.shop.fixtures.find((f) => f.type === 'pallet')!;
     // On the back wall, facing in, over the boxes.
-    expect(canPlace(s, 'wallShelf', d.x0, d.z0, 0).reason).toBe('That is where deliveries go');
-    expect(canPlace(s, 'wallLight', d.x0, d.z0, 0).ok).toBe(true);
+    expect(canPlace(s, 'wallShelf', d.x, d.z, 0).ok).toBe(false);
   });
 
   it('a shopper at a wall shelf faces the wall, however they came to it', async () => {

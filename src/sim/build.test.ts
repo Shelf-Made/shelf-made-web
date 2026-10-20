@@ -181,7 +181,7 @@ describe('pallets', () => {
     const cap = storageCap(s.shop);
     expect(place(s, 'pallet', -0.5, -3).ok).toBe(true);
     expect(storageCap(s.shop)).toBe(cap + PALLET_UNITS);
-    const pallet = s.shop.fixtures.find((f) => f.type === 'pallet')!;
+    const pallet = s.shop.fixtures.filter((f) => f.type === 'pallet').at(-1)!;
     // It takes up its tile like anything else on the floor.
     expect(canPlace(s, 'shelf', -0.5, -3, 0).ok).toBe(false);
     s.shop.storage = [{ productId: 'beans', qty: cap + 10, day: s.day }];
@@ -193,19 +193,34 @@ describe('pallets', () => {
   // Where boxes are picked up was judged by the nearest free cell to it, so a piece could stand on it; taking a piece
   // away (never judged at all) then moved that cell into a pocket, and stockers walked to it through the sign.
   it('nothing stands where boxes are picked up, and taking a piece away never cuts the pallet off', () => {
-    const s = openGame({ seed: 138, plotId: 'main', name: 'Pallet', tutorial: false });
-    s.cash = 20000;
+    const s = shop(138);
     const o = s.people.find((p) => p.kind === 'owner')!, out = toWorld(s.shop, 0, 1);
     o.x = o.px = out.x; o.z = o.pz = out.z;
     s.people = [o];
-    expect(place(s, 'pallet', -2.5, -5, 3).ok).toBe(true);
-    expect(place(s, 'sign', -1.5, -5, 0).message).toBe('Keep the way to the delivery pallet clear');
-    // As an older save could have it: then the pallet does not go.
-    s.shop.fixtures.push({ id: s.nextId++, type: 'sign', x: -1.5, z: -5, rot: 0, slots: [] });
-    s.shop.layoutVersion++;
-    const extra = s.shop.fixtures.find((f) => f.type === 'pallet')!;
+    // The pallet nearest the back door is the one boxes are fetched from: moved out into the room, it still is.
+    const main = s.shop.fixtures.find((f) => f.type === 'pallet' && f.x === -1.5)!;
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: main.id, x: 0.5, z: -5, rot: 0 }).ok).toBe(true);
+    for (const [x, z] of [[0.5, -6], [1.5, -5], [0.5, -4]] as const) expect(place(s, 'sign', x, z, 0).message, `${x},${z}`).toBeUndefined();
+    // Picked up from its last free side: nothing goes there.
+    expect(place(s, 'sign', -0.5, -5, 0).message).toMatch(/^(Keep the way to the pallet clear|Would block the way to the pallet)$/);
     expect(findPath(buildGrid(s.shop, -1, true), doorInside(s), storeroomPoint(s))).not.toBeNull();
-    expect(applyCommand(s, { type: 'removeFixture', fixtureId: extra.id }).message).toBe('Would block the way to the delivery pallet.');
+  });
+
+  it('the pallets the shop came with move and turn like any other, and the last one stays', () => {
+    const s = shop();
+    const mine = s.shop.fixtures.filter((f) => f.type === 'pallet');
+    expect(mine.length).toBe(2);
+    expect(mine.every((f) => f.free)).toBe(true);
+    const cap = storageCap(s.shop);
+    expect(applyCommand(s, { type: 'moveFixture', fixtureId: mine[0]!.id, x: 1.5, z: -3, rot: 1 }).ok).toBe(true);
+    expect(storageCap(s.shop)).toBe(cap);
+    // Boxes are fetched beside them wherever they stand.
+    expect(findPath(buildGrid(s.shop, -1, true), doorInside(s), storeroomPoint(s))).not.toBeNull();
+    // Taken away, nothing back for them; never the last one.
+    const cash = s.cash;
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: mine[0]!.id }).ok).toBe(true);
+    expect(s.cash).toBe(cash);
+    expect(applyCommand(s, { type: 'removeFixture', fixtureId: mine[1]!.id }).message).toMatch(/pallet/);
   });
 
   it('the manager can pick a box up at an extra pallet', () => {
@@ -357,8 +372,8 @@ describe('the commands themselves (bots, tests): only what the Build card offers
     expect(applyCommand(s, { type: 'buyTile', x: 1.5, z: -7 }).ok).toBe(true);
     expect(applyCommand(s, { type: 'buyTile', x: 1.5, z: -8 }).ok).toBe(true);
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).ok).toBe(true);
-    const d = s.shop.delivery, b = s.shop.backDoor;
-    for (let x = d.x0; x < d.x1; x++) for (let z = d.z0; z < d.z1; z++) expect(isFloor(s.shop, x, z), `pallet on ${x},${z}`).toBe(true);
+    const b = s.shop.backDoor;
+    for (const p of s.shop.fixtures.filter((f) => f.type === 'pallet')) expect(isFloor(s.shop, p.x, p.z), `pallet on ${p.x},${p.z}`).toBe(true);
     expect(isFloor(s.shop, b.x - 0.5, b.z), 'back door').toBe(true);
     expect(findPath(buildGrid(s.shop, 99), doorInside(s), toWorld(s.shop, b.x, b.z - 0.6))).not.toBeNull();
   });
@@ -402,7 +417,8 @@ describe('finishes and selling floor', () => {
     const n = floorTileCount(s.shop), cash = s.cash;
     // The door's tile, the pallet's: no.
     expect(canSellTile(s, s.shop.door.x - 0.5, f.z1 - 1).ok).toBe(false);
-    expect(canSellTile(s, s.shop.delivery.x0, s.shop.delivery.z0).ok).toBe(false);
+    const pallet = s.shop.fixtures.find((x) => x.type === 'pallet')!;
+    expect(canSellTile(s, pallet.x, pallet.z).ok).toBe(false);
     // The tile just bought: yes, for part of its price.
     expect(applyCommand(s, { type: 'sellTile', x: f.x1, z: -3 }).ok).toBe(true);
     expect(floorTileCount(s.shop)).toBe(n - 1);

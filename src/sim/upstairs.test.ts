@@ -100,7 +100,7 @@ describe('finishes upstairs', () => {
     expect(levelTileList(s.shop, 1).filter((t) => styleAt(s.shop, t.x, t.z) !== 'lino').length).toBe(1);
   });
 
-  it('will not grow the shop with its delivery pallet where someone gets on a lift', () => {
+  it('grows the shop round a lift in the back corner, the pallets staying where they stand', () => {
     const s = shop(84);
     // The back door out of the way (a wall taken down for it along the back), floor round to the back-left corner of the
     // market hall, and a lift there stepped into from that corner.
@@ -113,10 +113,8 @@ describe('finishes upstairs', () => {
     expect(moved).toBe(true);
     for (const [x, z] of [[-0.5, -7], [-1.5, -7], [-2.5, -7], [-3.5, -7], [-3.5, -8], [-2.5, -8]] as const) expect(applyCommand(s, { type: 'buyTile', x, z }).ok, `${x},${z}`).toBe(true);
     expect(place(s, 'elevator', -2.5, -8, 3).ok).toBe(true);
-    expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).message).toBe('The delivery pallet would go where you get on the lift: move it first.');
-    // Turned to be got on from the floor in front of it, it is out of the way.
-    const lift = s.shop.fixtures.find((f) => f.type === 'elevator')!;
-    expect(applyCommand(s, { type: 'moveFixture', fixtureId: lift.id, x: -2.5, z: -8, rot: 0 }).ok).toBe(true);
+    const pallets = s.shop.fixtures.filter((f) => f.type === 'pallet').map((f) => `${f.x},${f.z}`);
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'large' }).ok).toBe(true);
+    expect(s.shop.fixtures.filter((f) => f.type === 'pallet').map((f) => `${f.x},${f.z}`)).toEqual(pallets);
   });
 });

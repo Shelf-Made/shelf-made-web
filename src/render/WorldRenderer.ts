@@ -54,7 +54,7 @@ export class WorldRenderer {
   mode: 'play' | 'cinematic' = 'cinematic';
   /** Highlight round whatever pressing Use (or a click) would act on. */
   readonly marker = new TargetMarker();
-  /** Cinematic views cut the near walls down to show the floor; the lobby keeps the building whole. */
+  /** Cinematic views take the roof off to show the floor; the lobby keeps the building whole. */
   cutaway = true;
   readonly assets = new AssetLibrary();
   readonly lighting: Lighting;
@@ -214,9 +214,8 @@ export class WorldRenderer {
     if (fog && eyes) { const k = this.lighting.fogScale; fog.near = 14 * k; fog.far = EYES_FAR * (0.5 + 0.5 * k); }
     else if (fog) { const d = fp ? this.follow.distance : this.camera.goalDistance, k = this.lighting.fogScale; fog.near = (45 + d * 1.1) * k; fog.far = (160 + d * 1.6) * (0.4 + 0.6 * k); }
     this.setTown(state.seed, state.shop.plotId);
-    // With the manager inside, the roof comes off and the walls between the camera and the manager
-    // drop to stubs. Outside, the shop stands whole and wears its roof once the camera pulls back.
-    // The cinematic camera (picker, screenshots) cuts the near walls down; the lobby keeps them whole.
+    // With the manager inside, the roof comes off. The walls always stand at full height, from every angle.
+    // Outside, the shop wears its roof once the camera pulls back.
     let inside = false;
     if (fp && tracked && pose) {
       const f = state.shop.floor;
@@ -229,8 +228,7 @@ export class WorldRenderer {
     this.store.setViewLevel(this.viewLevel);
     // (Through the eyes, no bubbles over the floors above: they would show through the ceiling.)
     this.people.viewLevel = this.viewLevel; this.reactions.viewLevel = eyes && pose ? pose.level : this.viewLevel;
-    const camYaw = fp ? this.follow.yaw : this.camera.yaw;
-    this.store.update(state, eyes ? null : fp ? (inside || this.buildLevel !== null ? camYaw : null) : (this.cutaway ? camYaw : null), this.activeCamera.position);
+    this.store.update(state, null, this.activeCamera.position);
     // (Never over the floor the Build card builds on, the top one too.) Through the eyes it is always on, a ceiling under it.
     this.store.setRoof(eyes || (fp ? !inside && this.buildLevel === null && this.follow.distance > 16 : !this.cutaway));
     this.store.setCeiling(eyes);

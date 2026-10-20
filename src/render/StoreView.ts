@@ -8,7 +8,7 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
 import { DEFAULT_PAINT, serviceDoor } from '@/sim/layout';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, rectToWorld, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
+import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
 import { FRONT_ROW } from '@/sim/drive';
@@ -62,7 +62,7 @@ const LEDGE = 0.3;
 
 export const STORE_MODELS = [...new Set([...Object.values(FIXTURE_MODEL).filter((id) => !id.startsWith('gen:')), ...FITTING_MODELS])].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds(), ...PROP_MODELS]);
 
-export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'delivery'; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
+export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
 
 interface Side { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull: Mesh[]; extraLedge?: Mesh[] }
 
@@ -100,7 +100,6 @@ export class StoreView {
   private spillMat: MeshBasicMaterial;
   private nightLight: PointLight;
   private font: Font | null = null;
-  private deliveryBox = new Box3();
   private chillerGeo: BufferGeometry | null = null;
   private roof: Mesh | null = null;
   /** The ceiling under the roof, seen only through the manager's eyes: white tiles and glowing light panels. */
@@ -321,17 +320,6 @@ export class StoreView {
     }
     if (photoParts.length && shop.floorImage) { const pm = new Mesh(merge(photoParts), this.photoMat(shop.floorImage)); pm.receiveShadow = true; this.shell.add(pm); }
     // (Door thresholds are laid with the walls, below: wherever a wall is not.)
-    // Delivery zone: yellow-and-charcoal hazard border and a pallet.
-    const d = shop.delivery;
-    const dw = d.x1 - d.x0, dd = d.z1 - d.z0;
-    const dcx = ox + (d.x0 + d.x1) / 2, dcz = oz + (d.z0 + d.z1) / 2;
-    for (let i = 0; i < 20; i++) {
-      const along = (i + 0.5) / 20;
-      floorParts.push(box(pal, i % 2 ? SLATE : YELLOW, dw / 20, 0.006, 0.06, ox + d.x0 + along * dw, 0.025, oz + d.z1 - 0.04));
-    }
-    for (let i = 0; i < 10; i++) floorParts.push(box(pal, i % 2 ? SLATE : YELLOW, 0.06, 0.006, dd / 10, ox + d.x1 - 0.04, 0.025, oz + d.z0 + ((i + 0.5) / 10) * dd));
-    floorParts.push(box(pal, '#B8824C', dw - 0.24, 0.05, dd - 0.2, dcx, 0.025, dcz));
-    { const w = rectToWorld(shop, d); this.deliveryBox.set(new Vector3(w.x0, 0, w.z0), new Vector3(w.x1, 1.0, w.z1)); }
     // Lot: apron, walkway, aisle, bays, driveway, service lane, back yard; then the frontage sidewalk.
     const L = lotLayout(shop);
     const slab = (r: { x0: number; z0: number; x1: number; z1: number }, hex: string, h = 0.03, y = -0.012) =>
@@ -1191,10 +1179,9 @@ export class StoreView {
 
   private rebuildBoxes(shop: Shop): void {
     const units = storageUsed(shop);
-    // A box is about four units of room (a bulky one takes more). The delivery pallet fills first, the extra Pallets take the overflow.
+    // A box is about four units of room (a bulky one takes more), stacked on the Pallets in turn.
     const all = Math.min(BOX_MAX, Math.ceil(units / 4));
-    const n = Math.min(all, Math.ceil(shop.storageCapacity / 4));
-    let k = n;
+    let k = 0;
     const m = new Matrix4();
     for (const f of shop.fixtures) {
       if (f.type !== 'pallet' || k >= all) continue;
@@ -1209,19 +1196,6 @@ export class StoreView {
         this.dummy.updateMatrix();
         this.boxes.setMatrixAt(k, this.dummy.matrix);
       }
-    }
-    const d = shop.delivery;
-    const ox = 0, oz = 0;
-    const cols = Math.max(1, Math.floor((d.x1 - d.x0 - 0.2) / 0.3)), rows = Math.max(1, Math.floor((d.z1 - d.z0 - 0.2) / 0.3));
-    for (let i = 0; i < n; i++) {
-      const layer = Math.floor(i / (cols * rows));
-      const j = i % (cols * rows);
-      const col = j % cols, row = Math.floor(j / cols);
-      this.dummy.position.set(ox + d.x0 + 0.25 + col * 0.3, 0.075 + layer * 0.34, oz + d.z0 + 0.25 + row * 0.3);
-      this.dummy.rotation.set(0, ((i * 13) % 7 - 3) * 0.04, 0);
-      this.dummy.scale.set(1, 1, 1);
-      this.dummy.updateMatrix();
-      this.boxes.setMatrixAt(i, this.dummy.matrix);
     }
     this.boxes.count = k; this.boxes.instanceMatrix.needsUpdate = true;
   }
@@ -1319,7 +1293,7 @@ export class StoreView {
   debugFixtures(): unknown { return [...this.fixtureMeshes.entries()].map(([k, v]) => ({ model: k, count: v.mesh.count, ids: v.ids })); }
 
   /**
-   * Raycast fixtures, then the delivery boxes, then the floor (of floor `level`, in its region as the sim has it).
+   * Raycast fixtures, then the floor (of floor `level`, in its region as the sim has it).
    * Only what is in sight: nothing under the floor in view (or one between), but down a stairwell or into a double-height space.
    */
   pick(ray: Raycaster, shop: Shop, level = 0): StoreHit | null {
@@ -1328,12 +1302,10 @@ export class StoreView {
     const cutOf = new Map(this.wallCut.map((w) => [w.full, w.cut]));
     const meshes = [...this.fixtureMeshes.values()].filter((e) => e.ids.length).map((e) => { const c = cutOf.get(e.mesh); return c?.visible ? c : e.mesh; })
       .filter((m) => m.geometry.getAttribute('position'));
-    // Hidden or not by the floor the thing stands on (the delivery's on the ground), not by how high the ray met it.
+    // Hidden or not by the floor the thing stands on, not by how high the ray met it.
     const eye = ray.ray.origin, hidden = (p: Vector3, on: number) => underFloors(shop, eye, p.x, p.y, p.z, on, this.viewLevel);
     const fixtureOf = (h: { object: unknown; instanceId?: number }) => { const ids = (h.object as InstancedMesh).userData.fixtureIds as number[]; return shop.fixtures.find((x) => x.id === ids[h.instanceId ?? 0]); };
     const hits = ray.intersectObjects(meshes, false).filter((h) => { const f = fixtureOf(h); return f && !hidden(h.point, levelOf(f)); });
-    const boxHit = ray.ray.intersectBox(this.deliveryBox, new Vector3());
-    const boxDist = boxHit && !hidden(boxHit, 0) ? boxHit.distanceTo(eye) : Infinity;
     // The walls round the building: the nearest box the ray goes into (in the shell's frame).
     const local = ray.ray.clone().applyMatrix4(new Matrix4().copy(this.root.matrixWorld).invert()), q = new Vector3();
     let wall: { id: number; dist: number } | null = null;
@@ -1342,12 +1314,11 @@ export class StoreView {
       const p = q.clone().applyMatrix4(this.root.matrixWorld), d = p.distanceTo(eye);
       if (!hidden(p, w.level) && (!wall || d < wall.dist)) wall = { id: w.id, dist: d };
     }
-    if (hits.length && hits[0]!.distance < boxDist && (!wall || hits[0]!.distance < wall.dist)) {
+    if (hits.length && (!wall || hits[0]!.distance < wall.dist)) {
       const h = hits[0]!, f = fixtureOf(h)!;
       return { kind: 'fixture', id: f.id, type: f.type, dist: h.distance };
     }
-    if (wall && wall.dist < boxDist) { const f = shop.fixtures.find((x) => x.id === wall!.id); if (f) return { kind: 'fixture', id: f.id, type: f.type, dist: wall.dist }; }
-    if (boxDist < Infinity && shop.storage.length) return { kind: 'delivery', dist: boxDist };
+    if (wall) { const f = shop.fixtures.find((x) => x.id === wall!.id); if (f) return { kind: 'fixture', id: f.id, type: f.type, dist: wall.dist }; }
     const t = (level * STOREY - ray.ray.origin.y) / ray.ray.direction.y;
     if (t > 0) { const p = new Vector3().copy(ray.ray.origin).addScaledVector(ray.ray.direction, t); const q = sinkWorld(shop, p.x, p.z, level); return { kind: 'floor', x: q.x, z: q.z, dist: t }; }
     return null;

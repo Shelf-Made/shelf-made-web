@@ -44,14 +44,13 @@ export function makeShop(plotId: string, name: string, scheme: string = DEFAULT_
     floor: { ...STARTER.floor }, storeroom: { ...STARTER.storeroom }, door: { ...STARTER.door }, backDoor: { ...STARTER.backDoor },
     fixtures: [],
     storage: [],
-    storageCapacity: 120,
+    storageCapacity: 0,
     // Four bays painted along the east wall come with the lot; more go on one at a time.
     bays: lotLayout({ floor: STARTER.floor, storeroom: STARTER.storeroom, bayPlan: STARTER_BAYS }).bays.map((b) => ({ ...toWorld(fr, b.x, b.z), yaw: yawToWorld(fr, b.yaw), carId: null })),
     bayPlan: [...STARTER_BAYS],
     reputation: 0.5, awareness: 0.35, cleanliness: 1, layoutVersion: 1, litter: [], sizeId: 'starter', lotRows: 1,
     // Plain plaster walls come with the shop; finishes go on a stretch at a time.
     wallStyle: 'plain',
-    delivery: deliveryZone(STARTER.floor),
     // A ceiling panel over every tile (the floor of a storey above, once stairs go up to it).
     ceilings: [floorTileList({ floor: STARTER.floor }).map((t) => tileKey(t.x, t.z)), [], [], []],
   };
@@ -95,5 +94,9 @@ export function newGame(opts: { seed: number; difficulty?: Difficulty; sandbox?:
   refreshPool(state);
   // The lot, laid as tiles: the paths, lanes, yard and four bays a shop starts with, every bit of it yours to change.
   bakeLot(state, () => state.nextId++);
+  // Two Pallets in the back corner by the back door, for deliveries: pieces like any bought, to move as you like
+  // (they came with the shop: taken away, nothing back for them).
+  const zone = deliveryZone(shop.floor);
+  for (let x = zone.x0; x < zone.x1; x++) shop.fixtures.push({ ...makeFixture(state.nextId++, 'pallet', x, zone.z0, 0), free: true });
   return state;
 }

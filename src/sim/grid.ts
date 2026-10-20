@@ -254,8 +254,6 @@ export function buildGrid(shop: Shop, version: number, shut = false, thinWalls =
   }
   // Upstairs: each open floor, with the building's walls round it, its openings and double-height spaces closed off.
   for (let lv = 1; lv <= st.top; lv++) for (const t of levelTileList(shop, lv)) R({ x0: t.x, z0: t.z, x1: t.x + 1, z1: t.z + 1 }, 1, true);
-  // Delivered boxes stand here.
-  if (shop.delivery) R(shop.delivery, 0);
   // Fixtures.
   // Fixtures: a shallow one (a chiller, a produce stand) only blocks the back of its tile, so people can
   // walk right up to it and between two that face each other.

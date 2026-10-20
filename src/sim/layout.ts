@@ -146,8 +146,6 @@ export const STARTER = {
   storeroom: { x0: -2.5, z0: -6, x1: 2.5, z1: -6 },   // no separate room
   door: { x: 0, z: 0 },
   backDoor: { x: 0, z: -6 },
-  /** Where trucks drop boxes: two tiles inside, beside the back door. Never buildable, never walkable. */
-  delivery: { x0: -2.5, z0: -6, x1: -0.5, z1: -5 },
   /** Front apron (paving) in front of the shop. */
   apron: { x0: -3.5, z0: 0, x1: 7, z1: 1.2 },
   /** Walkway from the door to the sidewalk. */
@@ -165,20 +163,22 @@ export const STARTER = {
   serviceLane: { x0: -5.4, z0: -8.2, x1: -3.6, z1: 1.5 },
 };
 
-/** Units of stock an extra Pallet holds. */
+/** Units of stock a Pallet holds. */
 export const PALLET_UNITS = 60;
-/** Room for deliveries: the pallet by the back door, and every extra Pallet on the floor. */
 /** Room the pallet's stock takes (bulky goods take more than one unit's room each). */
 export function storageUsed(shop: { storage: { productId: string; qty: number }[] }): number {
   return shop.storage.reduce((a, e) => a + e.qty * sizeOf(e.productId), 0);
 }
 /** Room a storage rack adds. */
 export const STORE_RACK_UNITS = 200;
+/** Room for deliveries: every Pallet and storage rack, and what a bigger floor adds. */
 export function storageCap(shop: { storageCapacity: number; fixtures: { type: FixtureType }[] }): number {
   return shop.storageCapacity + PALLET_UNITS * shop.fixtures.filter((f) => f.type === 'pallet').length + STORE_RACK_UNITS * shop.fixtures.filter((f) => f.type === 'storeRack').length;
 }
-/** The delivery zone for any floor: two tiles in the back-left corner beside the back door. */
+/** Where a shop's first two Pallets go: the two tiles in the back-left corner, beside the back door. */
 export function deliveryZone(floor: Rect): Rect { return { x0: floor.x0, z0: floor.z0, x1: floor.x0 + 2, z1: floor.z0 + 1 }; }
+/** A piece deliveries go on: a Pallet or a storage rack. */
+export const holdsDeliveries = (f: { type: FixtureType }): boolean => f.type === 'pallet' || f.type === 'storeRack';
 
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
 export interface LotLayout {
@@ -465,10 +465,21 @@ export function mainDoor(shop: FloorShape & { fixtures: readonly Fixture[]; floo
   const mid = (shop.floor.x0 + shop.floor.x1) / 2;
   return all.find((d) => d.f.type === 'frontDoor') ?? [...all].sort((a, b) => (b.nz > 0 ? 1 : 0) - (a.nz > 0 ? 1 : 0) || b.z - a.z || Math.abs(a.x - mid) - Math.abs(b.x - mid))[0] ?? null;
 }
-/** The door deliveries come in at (and staff go out of on a break): the shop's back door if it is still a way in, else the one nearest the delivery pallet. */
-export function serviceDoor(shop: FloorShape & { fixtures: readonly Fixture[]; floor: Rect; delivery?: Rect | null }): Entrance | null {
-  const all = entrances(shop), d = shop.delivery, c = d ? { x: (d.x0 + d.x1) / 2, z: (d.z0 + d.z1) / 2 } : { x: shop.floor.x0, z: shop.floor.z0 };
-  return all.find((e) => e.f.type === 'backDoor') ?? [...all].sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z))[0] ?? null;
+/** The door deliveries come in at (and staff go out of on a break): the shop's back door if it is still a way in, else the one nearest a pallet. */
+export function serviceDoor(shop: FloorShape & { fixtures: readonly Fixture[]; floor: Rect }): Entrance | null {
+  const all = entrances(shop), back = all.find((e) => e.f.type === 'backDoor');
+  if (back) return back;
+  const p = shop.fixtures.find((f) => holdsDeliveries(f) && levelOf(f) === 0), c = p ? { x: p.x + 0.5, z: p.z + 0.5 } : { x: shop.floor.x0, z: shop.floor.z0 };
+  return [...all].sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z))[0] ?? null;
+}
+/** The pallet deliveries are dropped at and boxes fetched from: on the ground floor if one is, the nearest the service door. Null with none. */
+export function mainPallet(shop: FloorShape & { fixtures: readonly Fixture[]; floor: Rect }): Fixture | null {
+  const all = (shop.fixtures as readonly Fixture[]).filter(holdsDeliveries);
+  if (!all.length) return null;
+  const ground = all.filter((f) => levelOf(f) === 0), list = ground.length ? ground : all, d = serviceDoor(shop);
+  if (!d) return list[0]!;
+  const far = (f: Fixture) => { const r = footprintOf(f.type, f.x, f.z, f.rot); return Math.hypot((r.x0 + r.x1) / 2 - d.x, (r.z0 + r.z1) / 2 - d.z); };
+  return list.reduce((a, b) => (far(b) < far(a) ? b : a));
 }
 
 /** The walls round the building, floor by floor, as stretches (the piece standing on each). */

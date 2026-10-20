@@ -113,6 +113,8 @@ describe('two bound for the same corner', () => {
     const s = openGame({ seed: 4, plotId: 'elm', name: 'T', tutorial: false });
     s.cash = 60000;
     expect(applyCommand(s, { type: 'expandShop', sizeId: 'medium' }).ok).toBe(true);
+    // The pallets into the new back corner.
+    s.shop.fixtures.filter((f) => f.type === 'pallet').forEach((f, i) => expect(applyCommand(s, { type: 'moveFixture', fixtureId: f.id, x: -3.5 + i, z: -7, rot: 0 }).ok).toBe(true));
     for (const [x, z, type] of [[-3.5, -6, 'shelf'], [-1.5, -6, 'shelf'], [-3.5, -5, 'shelf'], [-1.5, -5, 'fridge']] as const) expect(applyCommand(s, { type: 'placeFixture', fixtureType: type, x, z, rot: 0 }).ok).toBe(true);
     for (let i = 0; i < 2; i++) expect(applyCommand(s, { type: 'hire', candidateId: s.staffPool.find((c) => c.role === 'stocker')!.id }).ok).toBe(true);
     s.people = s.people.filter((p) => p.kind !== 'customer');

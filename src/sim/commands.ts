@@ -11,7 +11,7 @@ import { placeOrder, openTomorrow } from './economy';
 import { scanItem, pickCarryTask, completeTutorial, ownerAt, ownerWalkTo, ownerPickUp, ownerPutBack, ownerStock, getsTo, palletReached, CONVEYOR_PRICE, mopUp } from './people';
 import { fixtureBackWorld } from './grid';
 import { makeShop, makeOwner } from './newGame';
-import { PLOTS, FIXTURES, DOORS, entrances, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf, refundOf, VARIANTS } from './layout';
+import { PLOTS, FIXTURES, DOORS, entrances, holdsDeliveries, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, storageCap, storageUsed, VERTICAL, storeysOf, refundOf, VARIANTS } from './layout';
 import { topUp, topUpAll, recycle } from './stocking';
 import { productDef } from './products';
 import { cue, popup, withRng } from './state';
@@ -317,6 +317,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
       if (f.type === 'parkingBay' && state.shop.bays.some((b) => b.fid === f.id && b.carId !== null)) return { ok: false, message: 'A car is parked in it: wait till it drives off.' };
       { const why = f.type === 'parkingBay' ? bayHoldsCharger(state.shop, f.id) : null; if (why) return { ok: false, message: `${why}.` }; }
       { const why = canTakeAway(state, f.id) ?? removalShuts(state, f.id); if (why) return { ok: false, message: `${why}.` }; }
+      if (holdsDeliveries(f) && !state.shop.fixtures.some((x) => x !== f && holdsDeliveries(x))) return { ok: false, message: 'Deliveries need a pallet to go on: put in another first.' };
       if (f.type === 'pallet' || f.type === 'storeRack') { const units = storageUsed(state.shop); if (units > storageCap(state.shop) - (f.type === 'pallet' ? PALLET_UNITS : STORE_RACK_UNITS)) return { ok: false, message: 'Shelve some boxes first: they would have nowhere to go.' }; }
       const refund = refundOf(f, state, CONVEYOR_PRICE) + (f.type === 'parkingBay' ? bayTakenBack(state, f) : 0);
       for (const s of f.slots) if (s.productId && s.qty > 0) state.shop.storage.push({ productId: s.productId, qty: s.qty, day: state.day });

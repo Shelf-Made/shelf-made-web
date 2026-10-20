@@ -7,7 +7,7 @@ import { canPlace, facingOffWall, canBuyTile, canPaintFloor, canPaintWall, canSe
 import { MANAGER_DEFAULT_MODEL, GRAB_REACH } from '@/sim/commands';
 import { CONVEYOR_PRICE, twinTill } from '@/sim/people';
 import { onShift } from '@/sim/staff';
-import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, edgeOf, edgeSide, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, justBought, VARIANTS } from '@/sim/layout';
+import { PLOTS, FIXTURES, FLOORS, WALLS, SURFACES, MAX_FLOOR, toLocal, toWorld, storeFrame, rectToWorld, wallSegments, footprintOf, edgeOf, edgeSide, lotTileAt, type Rect, type WallSeg, storeysOf, panelsOver, liftWorld, VERTICAL, levelOf, zOnLevel, groundZ, rideEnds, STOREY, DEFAULT_PAINT, refundOf, justBought, VARIANTS, mainPallet } from '@/sim/layout';
 import { canPave } from '@/sim/lot';
 import { bayMouth, lotNet, onLotGrid, tileIndex } from '@/sim/drive';
 import { canAddPanel, canRemovePanel, levelOfPerson, rideOn } from '@/sim/storeys';
@@ -104,7 +104,7 @@ export interface Snapshot {
   /** The person clicked on, for the inspect panel (null when nobody is selected), and whether the camera follows them. */
   inspect: (InspectInfo & { following: boolean }) | null;
   /** A piece of furniture clicked with empty hands: its menu (its use, Move, Turn), null when closed. */
-  /** A piece's menu (id -1: the delivery pallet). A pallet's lists what is on it to pick up; the delivery pallet cannot be moved. */
+  /** A piece's menu (id -1: the main pallet's). A pallet's lists what is on it to pick up. */
   fixtureMenu: { id: number; name: string; use: string | null; refund?: number; picks?: { productId: string; name: string; qty: number }[]; fixed?: boolean; upgrade?: { label: string; price: number }; words?: string;
     /** One of the shop's doors: it moves, never turns or sells. */
     door?: boolean;
@@ -149,7 +149,7 @@ const TIPS: TipInfo[] = [
   { id: 'counter', text: 'Open Build, pick the counter, click the floor.', anchor: 'button:build' },
   { id: 'shelf', text: 'Now pick a shelf. R turns it.', anchor: 'button:build' },
   { id: 'order', text: 'Open Stock and order a few boxes.', anchor: 'button:stock' },
-  { id: 'stock', text: 'Click the delivery pallet to grab a box.', anchor: 'delivery' },
+  { id: 'stock', text: 'Click a pallet to grab a box.', anchor: 'delivery' },
   { id: 'open', text: 'Press Open shop to let the town in.', anchor: 'button:open' },
   { id: 'ringUp', text: 'Stand behind the counter, press {scan}.', anchor: 'register' },
   { id: 'price', text: 'Open Prices: a little above average still sells.', anchor: 'button:prices' },
@@ -329,7 +329,7 @@ export class GameRuntime {
     const s = this.state;
     if (!s || id === null || !this.inPlay || s.phase === 'night' || this.card === 'build') return null;
     const picks = () => palletChoices(s).slice(0, 8).map((c) => ({ productId: c.productId, name: productDef(c.productId).name, qty: c.qty }));
-    if (id === -1) return { id, name: 'Delivery pallet', use: null, picks: picks(), fixed: true };
+    if (id === -1) { const p = mainPallet(s.shop); return p ? this.fixtureMenuInfo(p.id) : null; }
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const def = FIXTURES[f.type];
     return { id, name: f.conveyor ? `${def.name} (conveyor)` : def.name, use: f.type === 'register' ? 'Serve here' : def.slots > 0 ? 'Stock' : VERTICAL.has(f.type) ? 'Ride' : null, refund: refundOf(f, s, CONVEYOR_PRICE), ...(f.type === 'pallet' || f.type === 'storeRack' ? { picks: picks() } : {}),
@@ -1343,8 +1343,6 @@ export class GameRuntime {
       // Empty-handed, furniture opens its menu (use it, move it, turn it); carrying a box, a click stocks the shelf.
       const carrying = !!s.people.find((p) => p.kind === 'owner')?.carrying;
       if (t.kind === 'fixture' && !carrying) { if (hadMenu !== t.id) this.openFixtureMenu(t.id); return; }
-      // The delivery pallet with more than one kind of box on it: a menu to pick which.
-      if (t.kind === 'delivery' && !carrying && palletChoices(s).length > 1) { if (hadMenu !== -1) this.openFixtureMenu(-1); return; }
       this.walkAndUse(t); return;
     }
     const g = r.groundAt(px, py);
@@ -1428,7 +1426,7 @@ export class GameRuntime {
       if (VERTICAL.has(f.type) && o && levelOfPerson(s.shop, o) === levelOf(f) + 1) return rectToWorld(s.shop, { ...r, z0: zOnLevel(r.z0, 1), z1: zOnLevel(r.z1, 1) });
       return rectToWorld(s.shop, r);
     }
-    if (t.kind === 'delivery') return rectToWorld(s.shop, s.shop.delivery);
+    if (t.kind === 'delivery') { const p = mainPallet(s.shop); if (p) return rectToWorld(s.shop, footprintOf(p.type, p.x, p.z, p.rot)); const w = storeroomPoint(s); return { x0: w.x - 0.3, z0: w.z - 0.3, x1: w.x + 0.3, z1: w.z + 0.3 }; }
     if (t.kind === 'thief') { const p = s.people.find((x) => x.id === t.id); const x = p?.x ?? 0, z = p?.z ?? 0; return { x0: x - 0.3, z0: z - 0.3, x1: x + 0.3, z1: z + 0.3 }; }
     const l = t.kind === 'mess' ? s.life!.litter.find((x) => x.id === t.id)! : s.shop.litter.find((x) => x.id === t.id)!;
     return { x0: l.x - 0.25, z0: l.z - 0.25, x1: l.x + 0.25, z1: l.z + 0.25 };
@@ -1462,13 +1460,10 @@ export class GameRuntime {
     }
     if (!hit) return null;
     if (hit.kind === 'fixture') return { kind: 'fixture', id: hit.id };
-    if (hit.kind === 'delivery') return { kind: 'delivery', id: 0 };
     const spill = s.shop.litter.find((l) => Math.hypot(l.x - hit.x, l.z - hit.z) < 0.45);
     if (spill) return { kind: 'spill', id: spill.id };
-    // The pallet's own tiles count even when it is empty.
-    const lp = toLocal(s.shop, hit.x, hit.z), d = s.shop.delivery;
-    if (lp.x >= d.x0 && lp.x <= d.x1 && lp.z >= d.z0 && lp.z <= d.z1) return { kind: 'delivery', id: 0 };
-    // So does a piece's: pieces stand back against an edge of their tile, and a click on the floor in front still means them.
+    // A piece's own tile counts: pieces stand back against an edge of their tile, and a click on the floor in front still means them.
+    const lp = toLocal(s.shop, hit.x, hit.z);
     const f = s.shop.fixtures.find((x) => { if (FIXTURES[x.type].walkable) return false; const r = footprintOf(x.type, x.x, x.z, x.rot); return lp.x >= r.x0 && lp.x < r.x1 && lp.z >= r.z0 && lp.z < r.z1; });
     if (f) return { kind: 'fixture', id: f.id };
     return null;
@@ -1499,7 +1494,6 @@ export class GameRuntime {
       if (score < bestD) { bestD = score; best = t; }
     };
     for (const f of s.shop.fixtures) if (FIXTURES[f.type].slots > 0 || f.type === 'register' || f.type === 'pallet' || f.type === 'storeRack' || VERTICAL.has(f.type)) consider({ kind: 'fixture', id: f.id });
-    consider({ kind: 'delivery', id: 0 });
     for (const l of s.shop.litter) consider({ kind: 'spill', id: l.id });
     for (const l of frontageLitter(s)) consider({ kind: 'mess', id: l.id });
     // A shoplifter running past within grabbing distance comes before anything else.
@@ -1530,7 +1524,7 @@ export class GameRuntime {
     const f = s.shop.fixtures.find((x) => x.id === t.id);
     if (!f) return { text: '', ok: false, key: null, run: null };
     const def = FIXTURES[f.type];
-    // An extra pallet (or a storage rack): its boxes are the delivery's, picked up and put back the same way.
+    // A pallet (or a storage rack): its boxes are the deliveries', one pool, picked up and put back the same way.
     if (f.type === 'pallet' || f.type === 'storeRack') return this.actionFor(s, { kind: 'delivery', id: 0 }, near);
     if (VERTICAL.has(f.type)) {
       // Up or down, from whichever end you are at (walking into it does the same); beside it, round to that end first.
@@ -1681,8 +1675,6 @@ export class GameRuntime {
       const what = m ? [m.use, 'Move', !m.door && 'Turn', !m.door && (m.free ? 'Take down' : 'Sell')].filter(Boolean).join(', ').replace(/, (?=[^,]*$)/, ' or ') : 'Move, Turn or Sell';
       return { info: { key: 'Click', text: `${m?.name ?? 'Furniture'}: ${what}`, ok: true, at }, run: () => this.openFixtureMenu(show.id) };
     }
-    // The delivery pallet across the room with several kinds of box on it: a click asks which.
-    if (show.kind === 'delivery' && !owner.carrying && palletChoices(s).length > 1) return { info: { key: 'Click', text: 'Delivery pallet: choose a box', ok: true, at }, run: () => this.openFixtureMenu(-1) };
     // Across the room: a click walks over and does it.
     return { info: { key: a.ok ? 'Click' : null, text: a.text, ok: a.ok, at }, run: a.ok ? () => this.walkAndUse(show) : null };
   }
@@ -1718,7 +1710,7 @@ export class GameRuntime {
     if (snap) r.camera.snap();
   }
 
-  /** Is a piece (-1: the delivery pallet) in sight: on the floor in view, not under the boards of one over it? */
+  /** Is a piece (-1: the main pallet) in sight: on the floor in view, not under the boards of one over it? */
   fixtureInSight(id: number): boolean {
     const s = this.state, r = this.renderer, a = this.fixtureAnchor(id);
     return !s || !r || !a || r.inSight(s, a.x, 0.5, a.z);
@@ -1726,7 +1718,7 @@ export class GameRuntime {
 
   fixtureAnchor(id: number): { x: number; y: number; z: number } | null {
     const s = this.state; if (!s) return null;
-    if (id === -1) { const d = s.shop.delivery; const w = toWorld(s.shop, (d.x0 + d.x1) / 2, (d.z0 + d.z1) / 2); return { x: w.x, y: 0.8, z: w.z }; }
+    if (id === -1) { const p = mainPallet(s.shop); if (p) return this.fixtureAnchor(p.id); const w = storeroomPoint(s); return { x: w.x, y: 0.8, z: w.z }; }
     const f = s.shop.fixtures.find((x) => x.id === id); if (!f) return null;
     const c = fixtureCentre(s.shop, f);
     return { x: c.x, y: 1.05, z: c.z };

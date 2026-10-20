@@ -23,7 +23,7 @@ import { maybeThief, bolt, fleeStep, chaseStep, isFree, fleeingThief } from './s
 import { freeStand, standPoint, freeStands } from './lot';
 import { RIDE_REACH, rideAt, rideStep, startRide, stepOff, levelOfPerson, replan } from './storeys';
 import { onEnter, tillExtras, queueDrain, grimeFactor, freeSeat, seatPose, seatApproach, freeDesk, fetchFromPallet, REST_BONUS } from './furniture';
-import { RACK_STANDS, WALL_T, entrances, mainDoor, serviceDoor, byDoor, type Entrance } from './layout';
+import { RACK_STANDS, WALL_T, entrances, mainDoor, serviceDoor, mainPallet, byDoor, type Entrance } from './layout';
 
 /** How much faster than walking someone rides a bike. */
 export const BIKE_SPEED = 2.3;
@@ -85,8 +85,20 @@ function goingTo(state: GameState, p: Person): Vec2 {
   if (rack) { const sp = standPoint(rack, p.bike!.slot); return toWorld(state.shop, sp.rider.x, sp.rider.z); }
   return toWorld(state.shop, state.shop.door.x, FRONT_WALK_Z);
 }
-/** Where workers pick up boxes: just in front of the delivery zone. */
-export function storeroomPoint(state: GameState): Vec2 { const s = state.shop; const d = s.delivery; return toWorld(s, (d.x0 + d.x1) / 2, d.z1 + 0.35); }
+/**
+ * Where workers pick up boxes (and the truck's are put down): in front of the main pallet, or beside it where its
+ * front is blocked. With no pallet at all, just inside the door deliveries come in at. (Worked out once per walking grid: a layout
+ * being tried out passes its own.)
+ */
+const palletPoints = new WeakMap<object, Vec2>();
+export function storeroomPoint(state: GameState, g = gridFor(state)): Vec2 {
+  const s = state.shop, hit = palletPoints.get(g);
+  if (hit) return hit;
+  const p = mainPallet(s);
+  const at = p ? fixtureStandWorld(s, p, undefined, g) ?? fixtureFrontWorld(s, p) : doorInside(state, 0, serviceDoor(s) ?? undefined);
+  palletPoints.set(g, at);
+  return at;
+}
 
 /** Cells occupied by parked cars, so people walk around them. */
 export function dynamicBlockers(state: GameState): Set<number> {
@@ -1040,11 +1052,8 @@ export function wrongFixture(productId: string, type: Fixture['type']): string |
 
 /** Is someone close enough to the delivery pallet to reach it? */
 function atPallet(state: GameState, p: Person): boolean {
-  const d = state.shop.delivery;
   const lo = toLocal(state.shop, p.x, p.z);
-  const zone = toWorld(state.shop, Math.max(d.x0, Math.min(d.x1, lo.x)), Math.max(d.z0, Math.min(d.z1, lo.z)));
-  if (Math.hypot(p.x - zone.x, p.z - zone.z) <= 1.4) return true;
-  // Or by any of the extra pallets (the stock on them is one pool).
+  // By any of the pallets (the stock on them is one pool).
   return state.shop.fixtures.some((f) => (f.type === 'pallet' && Math.max(Math.abs(lo.x - (f.x + 0.5)), Math.abs(lo.z - (f.z + 0.5))) <= 1.3)
     || (f.type === 'storeRack' && (() => { const r = footprintOf(f.type, f.x, f.z, f.rot); return lo.x > r.x0 - 1.3 && lo.x < r.x1 + 1.3 && lo.z > r.z0 - 1.3 && lo.z < r.z1 + 1.3; })()));
 }

@@ -7,7 +7,7 @@ import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
 import { inferGoals } from '@/sim/goals';
 import { makeMarket } from '@/sim/market';
 import { DEFAULT_RULES, staffLook } from '@/sim/staff';
-import { windowsFromSides, stepOnInside, bandsWrittenDown, wallsToPieces } from '@/sim/build';
+import { windowsFromSides, stepOnInside, bandsWrittenDown, wallsToPieces, palletsFromDelivery } from '@/sim/build';
 import { makeMarketing } from '@/sim/marketing';
 import { letOwnerOut, letOthersOut, leaveShutTills } from '@/sim/people';
 import { repathAfterBuild } from '@/sim/storeys';
@@ -128,6 +128,8 @@ export function migrate(file: SaveFile): SaveFile {
   for (const p of st.people ?? []) if (p.kind === 'staff' && p.look.model >= 12) p.look = staffLook(p.id, { model: p.id % 12, variant: p.look.variant, height: p.look.height });
   // Stairs put facing out through a wall (the first build of floors let that by) are turned to step on from inside.
   stepOnInside(st);
+  // The delivery corner the shop came with: a Pallet on each of its tiles, to move like any other.
+  palletsFromDelivery(st);
   // The lot laid as tiles: its paths, lanes and yard tiles to dig up or lay again, its bays Parking bays to move.
   st.cars ??= [];
   bakeLot(st, () => st.nextId++);

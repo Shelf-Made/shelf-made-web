@@ -60,7 +60,7 @@ describe('security cameras', () => {
     const s = quiet(51);
     const f = s.shop.floor;
     // On the back wall, looking into the shop.
-    const x = s.shop.backDoor.x - 0.5 === f.x0 + 1 ? f.x0 + 2 : f.x0 + 1;
+    const x = [f.x0 + 1, f.x0 + 2, f.x0 + 3, f.x0 + 4].find((x) => s.shop.backDoor.x - 0.5 !== x && !s.shop.fixtures.some((p) => p.type === 'pallet' && p.x === x && p.z === f.z0))!;
     const cam = place(s, 'camera', x, f.z0, 0);
     const cover = cameraCover(s.shop);
     expect(cover.get(tileKey(cam.x, cam.z + 2))).toBeTruthy();

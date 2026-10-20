@@ -420,7 +420,7 @@ export interface Shop {
   backDoor: Vec2;
   fixtures: Fixture[];
   storage: StockEntry[];
-  /** Room on the delivery pallet the shop came with (each extra Pallet adds PALLET_UNITS; see storageCap). */
+  /** Room for deliveries a bigger floor adds (each Pallet adds PALLET_UNITS, each storage rack STORE_RACK_UNITS; see storageCap). */
   storageCapacity: number;
   bays: ParkingBay[];
   reputation: number;
@@ -440,8 +440,8 @@ export interface Shop {
   litter: Litter[];
   sizeId: string;
   lotRows: number;
-  /** Store-relative tiles where delivered boxes are stacked. */
-  delivery: { x0: number; z0: number; x1: number; z1: number };
+  /** Old saves only: the fixed tiles boxes were stacked on, before the shop's pallets were Pallets (see palletsFromDelivery). */
+  delivery?: { x0: number; z0: number; x1: number; z1: number };
   /** The shop's colour scheme (an id from SHOP_SCHEMES). */
   scheme: string;
   /** The floor's finish (older saves: the checker lino). */

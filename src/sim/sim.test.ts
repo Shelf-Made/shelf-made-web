@@ -98,8 +98,9 @@ describe('simulation', () => {
   it('starts as a bare shell and only opens once there is a counter and stock', () => {
     const s = newGame({ seed: 8, plotId: 'main', name: 'Bare' });
     // Nothing inside but its walls and doors (every edge of the floor, the front all glass); outside, the car park's bays.
-    expect(s.shop.fixtures.filter((f) => !FIXTURES[f.type].outdoor && !FIXTURES[f.type].edge).length).toBe(0);
-    expect(s.shop.fixtures.every((f) => f.type === 'parkingBay' || FIXTURES[f.type].edge)).toBe(true);
+    // Nothing inside but its walls and doors, and two pallets by the back door for deliveries.
+    expect(s.shop.fixtures.filter((f) => !FIXTURES[f.type].outdoor && !FIXTURES[f.type].edge).map((f) => f.type)).toEqual(['pallet', 'pallet']);
+    expect(s.shop.fixtures.every((f) => f.type === 'parkingBay' || f.type === 'pallet' || FIXTURES[f.type].edge)).toBe(true);
     expect(s.shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => f.type).sort()).toEqual(['backDoor', 'frontDoor', ...Array(4).fill('wallWindow'), ...Array(16).fill('wall')].sort());
     expect(s.shop.fixtures.filter((f) => FIXTURES[f.type].edge).every((f) => f.free)).toBe(true);
     expect(s.phase).toBe('setup');
@@ -235,11 +236,6 @@ describe('simulation', () => {
     const ring: [number, number][] = [[-0.5, -3], [1.5, -3], [0.5, -4], [-0.5, -4], [1.5, -4], [-0.5, -2], [1.5, -2]];
     for (const [x, z] of ring) expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x, z, rot: 0 }).ok, `${x},${z}`).toBe(true);
     expect(canPlace(s, 'shelf', 0.5, -2, 0).reason).toBe('Would box you in');
-    // Nor sealing the spot in front of the pallet into a pocket (the stock has to come off it).
-    const t = newGame({ seed: 9, plotId: 'main', name: 'Pallet' });
-    t.cash = 5000;
-    expect(applyCommand(t, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: -4, rot: 0 }).ok).toBe(true);
-    expect(canPlace(t, 'shelf', -1.5, -5, 0).reason).toBe('Would block the way to the delivery pallet');
   });
 
   it('clicking a shelf against the wall walks you to its room side', () => {
@@ -258,7 +254,7 @@ describe('simulation', () => {
   it('a box you are holding goes back on the pallet, and stays there', () => {
     const s = newGame({ seed: 11, plotId: 'main', name: 'Back' });
     const o = s.people.find((p) => p.kind === 'owner')!;
-    const d = s.shop.delivery;
+    const p = s.shop.fixtures.find((f) => f.type === 'pallet')!, d = { x0: p.x, z0: p.z + 1, x1: p.x + 1, z1: p.z + 1.4 };
     const at = (x: number, z: number) => { const w = toWorld(s.shop, x, z); o.x = o.px = w.x; o.z = o.pz = w.z; };
     s.shop.storage = [{ productId: 'soup', qty: 20, day: s.day }];
     expect(applyCommand(s, { type: 'putBack' }).message).toBe('You are not holding a box.');

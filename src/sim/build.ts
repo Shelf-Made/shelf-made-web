@@ -4,7 +4,7 @@
  * must stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop, Person } from './types';
-import { DEFAULT_PAINT, FIXTURES, mainDoor, serviceDoor, entrances, byDoor, DOORS, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, deliveryZone, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, WALL_T, wallSegments, outlineSegments, edgeOf, edgeIndex, edgePieceAt, edgeSide, SOLID_EDGE, HANGS_ON, FACING, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf } from './layout';
+import { DEFAULT_PAINT, FIXTURES, mainDoor, serviceDoor, entrances, byDoor, DOORS, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, WALL_T, wallSegments, outlineSegments, edgeOf, edgeIndex, edgePieceAt, edgeSide, SOLID_EDGE, HANGS_ON, FACING, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
 import { buildGrid, frontInside, cellOf, isBlocked, type Grid } from './grid';
 import { findPath } from './pathfinding';
@@ -58,9 +58,6 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
     if (!w || w.id === ignoreId) return { ok: false, reason: 'Hang it on a wall, facing in (R turns it)', price };
     if (!HANGS_ON.has(w.type)) return { ok: false, reason: w.type === 'frontDoor' || w.type === 'backDoor' || w.type === 'doorway' || w.type === 'gate' ? 'Not over a door' : 'Hang it on a plain wall, not a window', price };
   }
-  // (A light or a window hangs up on the wall over the boxes; a wall shelf's goods would be in among them.)
-  const d = shop.delivery;
-  if ((!def.onWall || def.slots > 0) && d && overlaps(mine, d)) return { ok: false, reason: 'That is where deliveries go', price };
   // Trial layout (a piece moved keeps its id): a floor it opens gets its ceiling, at the panel price.
   const trial: Fixture = { id: ignoreId ?? -1, type, x, z, rot, slots: [] };
   const fixtures = shop.fixtures.filter((fx) => fx.id !== ignoreId).concat([trial]);
@@ -177,9 +174,9 @@ function waysShut(state: GameState, shop: Shop, inside: Grid, open = buildGrid(s
   if (!findPath(open, from, by(0.6))) out.push('Would block the delivery door');
   if ([-0.25, 0.25].some((dx) => [-0.25, -0.75].some((dz) => { const [cx, cz] = cellOf(inside, by(dz, dx)); return isBlocked(inside, cx, cz); }))) out.push('Keep the delivery door clear');
   if (!findPath(inside, from, by(-0.6))) out.push('Would cut the shop in two');
-  if (!findPath(inside, from, storeroomPoint(at))) out.push('Would block the way to the delivery pallet');
+  if (!findPath(inside, from, storeroomPoint(at, inside))) out.push('Would block the way to the pallet');
   // Where boxes are picked up itself, or the way there is judged by the nearest free floor to it (a pocket, maybe).
-  if (isBlocked(inside, ...cellOf(inside, storeroomPoint(at)))) out.push('Keep the way to the delivery pallet clear');
+  if (isBlocked(inside, ...cellOf(inside, storeroomPoint(at, inside)))) out.push('Keep the way to the pallet clear');
   return out;
 }
 /** Why a change (making the shop `trial`, `inside` its grid with the back door shut) would shut one of those ways that is open now, or null. What is shut already (an older save's) stops nobody. */
@@ -325,8 +322,6 @@ export function canSellTile(state: GameState, x: number, z: number): PlaceCheck 
   // A door out of the shop opens onto it: moved first.
   const doors = entrances(shop);
   if (doors.some((d) => d.f.x === x && d.f.z === z)) return { ok: false, reason: 'A door stands here: move it first', price };
-  const d = shop.delivery;
-  if (x + 1 > d.x0 && x < d.x1 && z + 1 > d.z0 && z < d.z1) return { ok: false, reason: 'That is where deliveries go', price };
   if (shop.fixtures.some((f) => !FIXTURES[f.type].outdoor && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: 'Move or sell what is on it first', price };
   for (let L = 1; L < MAX_LEVELS; L++) {
     const t = { x0: x, z0: zOnLevel(z, L), x1: x + 1, z1: zOnLevel(z, L) + 1 };
@@ -634,7 +629,7 @@ function reshape(state: GameState): void {
   syncDoors(shop);
   const n = floorTileCount(shop);
   shop.sizeId = sizeOfTiles(n);
-  shop.storageCapacity = 120 + 5 * Math.max(0, n - 30);
+  shop.storageCapacity = 5 * Math.max(0, n - 30);
   if (shop.lotBaked) {
     // Laid as tiles, the lot stays where it is: what the building now stands on is dug up, and a bay under it sold
     // back (lotClash never lets the shop grow over a car).
@@ -754,15 +749,10 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const outs = new Set(entrances(shop).map((d) => d.f.id));
   {
     const trial = { ...shop }; setFloorTiles(trial, [...floorTileList(shop), ...want]); trial.storeroom = { x0: trial.floor.x0, z0: trial.floor.z0, x1: trial.floor.x1, z1: trial.floor.z0 }; const clash = lotClash(state, trial); if (clash) return clash;
-    // The delivery pallet goes to the new back corner (of that size: a tile bought further out the back is no corner
-    // of floor): nothing may stand there, nor a way up be stepped onto from it, nor anything upstairs be cut off by it.
-    const zone = deliveryZone(size.floor);
-    if (shop.fixtures.some((fx) => !FIXTURES[fx.type].outdoor && !FIXTURES[fx.type].onWall && levelOf(fx) === 0 && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), zone))) return 'Clear the back corner first: the delivery pallet goes there.';
-    const foot = shop.fixtures.find((fx) => VERTICAL.has(fx.type) && (() => { const b = rideEnds(fx).bottom; return overlaps({ x0: b.x - 0.5, z0: b.z - 0.5, x1: b.x + 0.5, z1: b.z + 0.5 }, zone); })());
-    if (foot) return `The delivery pallet would go where you get on the ${FIXTURES[foot.type].name.toLowerCase()}: move it first.`;
-    trial.delivery = zone; trial.fixtures = rewalled(trial, () => -1, outs); syncDoors(trial);
+    // (The pallets stay where they stand: they are pieces.)
+    trial.fixtures = rewalled(trial, () => -1, outs); syncDoors(trial);
     const why = cutOff(state, reachOf(state, shop), reachOf(state, trial), trial);
-    if (why) return `${why}: the delivery pallet goes to the new back corner.`;
+    if (why) return why;
     // The walls go up round it: never round anyone.
     const over = builtOver(state, buildGrid(trial, -1));
     if (over) return over;
@@ -778,9 +768,7 @@ export function expandShop(state: GameState, sizeId: string): string | null {
   const before = { floor: { ...shop.floor }, storeroom: { ...shop.storeroom }, door: shop.door };
   addFloor(shop, want);
   if (shop.lotBaked) relayLot(state, before);
-  // The delivery pallet goes to the new back corner, by the back door (out to the back edge of its column), and the
-  // extension comes walled as the shop did: the walls it came with that are inside it now come down.
-  shop.delivery = deliveryZone(size.floor);
+  // The extension comes walled as the shop did: the walls it came with that are inside it now come down.
   shop.fixtures = rewalled(shop, () => state.nextId++, outs);
   reshape(state);
   state.notices.push({ day: state.day, text: `Extension built: the shop is now a ${size.name.toLowerCase()}.`, kind: 'info' });
@@ -853,4 +841,21 @@ export function stepOnInside(state: GameState): void {
     state.notices.push({ day: state.day, text: moved ? `${name}: turned to be stepped onto from inside the shop.` : `${name}: stepped onto from outside. Turn or move it to step on from inside.`, kind: 'info' });
   }
   repathAfterBuild(state);
+}
+
+/**
+ * Loading an older save: the fixed delivery corner the shop came with becomes a Pallet on each of its tiles, pieces
+ * to move like any bought (the room they hold is what the corner held; came with the shop, nothing back for them), and the corner is gone.
+ */
+export function palletsFromDelivery(state: GameState): void {
+  const shop = state.shop, d = shop.delivery;
+  if (!d) return;
+  delete shop.delivery;
+  for (let z = d.z0; z < d.z1; z++) for (let x = d.x0; x < d.x1; x++) {
+    const tile = { x0: x, z0: z, x1: x + 1, z1: z + 1 };
+    if (!isFloor(shop, x, z) || shop.fixtures.some((f) => !FIXTURES[f.type].onWall && !FIXTURES[f.type].edge && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), tile))) continue;
+    shop.fixtures.push({ id: state.nextId++, type: 'pallet', x, z, rot: 0, slots: [], free: true });
+  }
+  shop.storageCapacity = 5 * Math.max(0, floorTileCount(shop) - 30);
+  shop.layoutVersion++;
 }
