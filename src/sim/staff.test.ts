@@ -205,3 +205,19 @@ describe('the team', () => {
     }
   });
 });
+
+describe('closing up', () => {
+  it('the last shopper gone, the staff fill the shelves and mop up before the day ends', () => {
+    const s = openGame({ seed: 7, plotId: 'main', name: 'T', tutorial: false });
+    s.cash = 50000;
+    expect(applyCommand(s, { type: 'hire', candidateId: s.staffPool.find((c) => c.role === 'stocker')!.id }).ok).toBe(true);
+    s.time = DAY_SECONDS - 2;
+    s.people = s.people.filter((p) => p.kind !== 'customer');
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf' && f.slots.some((sl) => sl.productId))!, slot = shelf.slots.find((sl) => sl.productId)!;
+    slot.qty = 0;
+    s.shop.storage = [{ productId: slot.productId!, qty: 20, day: s.day }];
+    for (let i = 0; i < 600 / TICK && s.phase !== 'night'; i++) { tick(s); if (s.phase === 'closing') s.people = s.people.filter((p) => p.kind !== 'customer'); }
+    expect(s.phase).toBe('night');
+    expect(slot.qty).toBeGreaterThan(0);
+  });
+});

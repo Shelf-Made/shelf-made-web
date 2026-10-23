@@ -5,7 +5,7 @@ import { tickReviews } from './reviews';
 import type { GameState } from './types';
 import { TICK, DAY_SECONDS, DIFFICULTY } from './layout';
 import { tickCars, spawnTraffic } from './cars';
-import { tickPeople, spawnCustomer, spawnWalker, plotOf, pruneTills } from './people';
+import { tickPeople, spawnCustomer, spawnWalker, plotOf, pruneTills, tidyLeft } from './people';
 import { tickOrders, closeDay, isClosingTime } from './economy';
 import { withRng } from './state';
 import { expectedByType, townGrowth } from './customers';
@@ -78,10 +78,14 @@ export function tick(state: GameState): void {
   tickLife(state);
   tickReviews(state);
   if (state.phase === 'closing') {
-    const customersLeft = state.people.some((p) => p.kind === 'customer');
-    if (!customersLeft || state.time > DAY_SECONDS + 120) {
+    // Two minutes after closing, any shopper still in is seen out.
+    if (state.time > DAY_SECONDS + 120 && state.people.some((p) => p.kind === 'customer')) {
       for (const p of state.people) if (p.kind === 'customer') p.state = 'gone';
       state.people = state.people.filter((p) => p.state !== 'gone');
+      pruneTills(state);
+    }
+    // The last shopper gone, the staff mop up and fill the shelves before they go home (for a few minutes at most).
+    if (!state.people.some((p) => p.kind === 'customer') && (!tidyLeft(state) || state.time > DAY_SECONDS + 300)) {
       pruneTills(state);
       closeDay(state);
     }

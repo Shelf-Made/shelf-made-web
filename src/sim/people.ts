@@ -1245,6 +1245,17 @@ function settleOn(state: GameState, g: ReturnType<typeof gridFor>, w: Vec2): Vec
   }
   return w;
 }
+/**
+ * Closing up: is there still tidying for the staff on shift before they go home (a spill to mop, a box in hand, a
+ * shelf with room for something on the pallet)? Nobody on shift: nothing (the manager tidies up overnight).
+ */
+export function tidyLeft(state: GameState): boolean {
+  const crew = state.people.filter((p) => p.kind === 'staff' && onShift(p, state.time));
+  if (!crew.length) return false;
+  if (crew.some((p) => p.task || p.carrying || (p.state === 'toStock' && p.timer === -2))) return true;
+  if (state.shop.litter.length) return true;
+  return palletReached(state) && state.shop.fixtures.some((f) => FIXTURES[f.type].slots > 0 && f.slots.some((sl) => sl.qty < FIXTURES[f.type].capacity) && getsTo(state, f) && !!pickCarryTask(state, f));
+}
 /** Can someone in at the front door get to where boxes are picked up? (An older save may have left it cut off.) */
 export function palletReached(state: GameState): boolean { return doorReaches(state, storeroomPoint(state)); }
 
@@ -1336,13 +1347,15 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
   takeTill(state, p);
   if (p.kind === 'staff') sayNeeds(state, p);
   const home = homeOf(state, p);
-  // (A guard stays by the door: no shelves, no mopping.)
-  const floorHand = p.kind === 'staff' && p.role !== 'guard' && (p.role !== 'cashier' || spareCashier(state, p));
+  // (A guard stays by the door: no shelves, no mopping. After closing, with the last shopper gone, everyone on shift
+  // tidies up and fills the shelves for the morning before going home.)
+  const closing = state.phase === 'closing' && !state.people.some((x) => x.kind === 'customer');
+  const floorHand = p.kind === 'staff' && (closing || (p.role !== 'guard' && (p.role !== 'cashier' || spareCashier(state, p))));
   // Anyone with nothing on finds something to do: shelves to fill (everyone but a cashier, who keeps
   // to the till; a spare cashier with no till helps), a spill to mop (cleaners see to spills first and go furthest for one), and failing
   // all that, now and then a shelf to tidy, so nobody just stands about.
   if ((p.state === 'idle' || p.state === 'toRegister') && !p.task) {
-    const spill = () => (p.state === 'idle' && p.role !== 'guard' && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null);
+    const spill = () => (p.state === 'idle' && (p.role !== 'guard' || closing) && state.shop.litter.length && isFree(state, p) ? spillFor(state, p) : null);
     const mop = (l: { id: number; x: number; z: number }) => {
       p.state = 'toStock'; p.anim = 'walk'; p.timer = -2; // -2 marks a cleaning trip
       p.targetFixture = l.id; p.idleFor = 0;
