@@ -7,7 +7,7 @@
 import { newGame, tick, applyCommand, DAY_SECONDS, TICK, resetGridCache, FIXTURES, PRODUCTS, playerShare, GOALS, playerShareOf, SHOP_SIZES, type GameState, type Difficulty, type FixtureType } from '../src/sim/index';
 import { STARTER_SHELF, STARTER_FRIDGE } from '../src/sim/products';
 import { TYPE_BASE, priceIndex, rivalPriceIndex } from '../src/sim/customers';
-import { plotDef, BAY_PRICE } from '../src/sim/layout';
+import { plotDef, BAY_PRICE, storageCap } from '../src/sim/layout';
 import { lotSlots } from '../src/sim/lot';
 import { writeFileSync } from 'node:fs';
 
@@ -21,7 +21,7 @@ function orderToFill(s: GameState, supplier: string, mul = 1.5, cap = Infinity):
   for (const f of sellers(s)) for (const sl of f.slots) if (sl.productId) need.set(sl.productId, (need.get(sl.productId) ?? 0) + Math.max(0, Math.ceil(FIXTURES[f.type].capacity * mul - sl.qty)));
   for (const e of s.shop.storage) need.set(e.productId, Math.max(0, (need.get(e.productId) ?? 0) - e.qty));
   let budget = Math.min(cap, s.cash * 0.6);
-  let room = s.shop.storageCapacity - storageUnits(s);
+  let room = storageCap(s.shop) - storageUnits(s);
   const lines: { productId: string; qty: number }[] = [];
   for (const [productId, qty0] of need) {
     const qty = Math.min(qty0, room);
@@ -38,7 +38,7 @@ function orderNew(s: GameState, budget: number): void {
   const stocked = new Set<string>([...s.shop.storage.map((e) => e.productId), ...s.shop.fixtures.flatMap((f) => f.slots.map((sl) => sl.productId).filter((x): x is string => !!x))]);
   for (const o of s.orders) if (o.state !== 'delivered') for (const l of o.lines) stocked.add(l.productId);
   const lines: { productId: string; qty: number }[] = [];
-  let room = s.shop.storageCapacity - storageUnits(s);
+  let room = storageCap(s.shop) - storageUnits(s);
   for (const f of sellers(s)) {
     const def = FIXTURES[f.type];
     for (const sl of f.slots) {
@@ -217,7 +217,7 @@ function runGame(strategy: string, seed: number, days: number, difficulty: Diffi
       if (scanner && waiting() && !busy() && i % (strategy === 'careless' ? 14 : 6) === 0) applyCommand(s, { type: 'scan' });
       if (i % 60 === 0 && (!scanner || !waiting())) carryAll(s);
       // The guided player reorders when the pallet runs low (the truck is there in a minute and a half).
-      if (strategy === 'guided' && i % 1200 === 600 && s.phase === 'open' && storageUnits(s) < s.shop.storageCapacity * 0.3 && !s.orders.some((o) => o.state !== 'delivered') && s.cash > 250) orderToFill(s, 'local', 2.0, (s.cash - 200) * 0.6);
+      if (strategy === 'guided' && i % 1200 === 600 && s.phase === 'open' && storageUnits(s) < storageCap(s.shop) * 0.3 && !s.orders.some((o) => o.state !== 'delivered') && s.cash > 250) orderToFill(s, 'local', 2.0, (s.cash - 200) * 0.6);
       if (s.cash < minCash) minCash = s.cash;
     }
     if (trace) { const h = s.history[s.history.length - 1]; console.log(`    day ${day}: ${Date.now() - t0}ms, ${s.people.length} people, ${s.cars.length} cars, $${s.cash.toFixed(0)}, ${s.shop.sizeId}${h ? `, ${h.customers} came, ${h.served} served, ${h.walkedOut} walked out, ${h.turnedAway} turned away, ${h.missedItems} missed, profit ${h.profit.toFixed(0)}` : ''}, staff ${s.people.filter((p) => p.kind === 'staff').map((p) => p.role).join('/') || '-'}, rivals ${s.rivals.filter((r) => r.open).map((r) => r.id).join('/') || '-'}`); }

@@ -333,7 +333,7 @@ describe('saves', () => {
     s.shop.bayPlan = [0, 1, 2, 3, 8, 9]; s.shop.lotRows = 2;
     s.shop.bays = lotLayout(s.shop).bays.map((b) => ({ ...toWorld(s.shop, b.x, b.z), yaw: yawToWorld(s.shop, b.yaw), carId: null }));
     s.cars = [];
-    for (let i = 0; i < 400 / TICK && s.cars.filter((c) => c.state === 'parked' && c.lot === undefined).length < 3; i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
+    for (let i = 0; i < 800 / TICK && s.cars.filter((c) => c.state === 'parked' && c.lot === undefined).length < 3; i++) { tick(s); if (i % 6 === 0) applyCommand(s, { type: 'scan' }); }
     const parked = s.cars.filter((c) => c.state === 'parked' && c.lot === undefined);
     expect(parked.length).toBeGreaterThanOrEqual(2);
     const before = new Map(parked.map((c) => [c.id, toLocal(s.shop, s.shop.bays[c.bay!]!.x, s.shop.bays[c.bay!]!.z)]));

@@ -175,6 +175,18 @@ function pathIntoPlayerBay(state: GameState, bayIdx: number, fromWest: boolean, 
   return offRoadOnto(shop, start ?? farEnd(shop, fromMinus ? -1 : 1, fromMinus ? FAR_L : NEAR_L), roadIn(cx, fromMinus), [...corners(r.tiles), ...turn, { x: m.x + 0.5 + v.x, z: m.z + 0.5 + v.z }, c]);
 }
 
+/**
+ * Loading an older save, the lot laid as tiles moves each bay onto the lot's grid: a car still out on the road on its
+ * way into one of your bays is sent the way into where its bay is now (not the way it planned, to where it was).
+ */
+export function rerouteToBays(state: GameState): void {
+  for (const car of state.cars) {
+    if (car.lot !== undefined || car.bay === null || car.state !== 'arriving' || !onRoad(car.x, car.z)) continue;
+    const path = pathIntoPlayerBay(state, car.bay, Math.sin(car.yaw) > 0, { x: car.x, z: car.z });
+    if (path) { car.path = path; car.pathIdx = 1; }
+  }
+}
+
 /** Into a lot's free bay from Main Road. fromWest is the world direction the car comes from. */
 function pathIntoLot(site: LotSite, bayIdx: number, fromWest: boolean): Vec2[] {
   const f = site.frame, L = site.L, dx = dwX(L);
@@ -711,7 +723,15 @@ function headroom(state: GameState, car: Car): number {
     const along = dx * fx + dz * fz;
     if (along <= 0.05 || along > 4.5) continue;
     const side = Math.abs(dx * fz - dz * fx);
-    if (side > 0.86) continue;
+    if (side > 0.86) {
+      // Not in our lane, but cutting across it (turning in, pulling out) or stopped across it (backing out of a bay):
+      // braked for where our way runs into it.
+      if (o.yielding || ((o.v ?? 0) < 0.05 ? !o.reversing : Math.sin(o.yaw) * fx + Math.cos(o.yaw) * fz > 0.7)) continue;
+      ahead ??= pathAhead(car, 4.5);
+      const k = ahead.findIndex((q, i) => i > 0 && bodyHits(o, q));
+      if (k > 0 && k * 0.25 < gap) { gap = k * 0.25 + STOP_AT * 0.5; car.blocker = o.id; }
+      continue;
+    }
     // A car waiting at the kerb for a gap is not in our lane.
     if (o.yielding && side > 0.45) continue;
     // Two cars nose to nose (a rare crossing): the older one goes first.
@@ -815,12 +835,17 @@ function mustYield(state: GameState, car: Car): boolean {
     }
     const west = Math.sin(o.yaw) < -0.8 && Math.abs(o.z - LANE_WEST_Z) < 0.45;
     const east = Math.sin(o.yaw) > 0.8 && Math.abs(o.z - LANE_EAST_Z) < 0.45;
-    // A gap of about two and a half seconds at road speed: a turning car slows for its bend and takes that long to clear the lane.
-    if ((crossN || fromNorth || fromSouth) && west && dx > -1.8 && dx < 14) return true;
-    if ((crossS || fromNorth || fromSouth) && east && dx < 1.8 && dx > -14) return true;
+    // A gap of a few seconds: a turning car slows for its bend (or pulls away from the kerb) and takes that long to
+    // clear the lane, and turning across it drives on toward whatever is coming the other way, closing the gap faster.
+    const theirs = o.v ?? o.speed, mine = car.v ?? 0;
+    if ((crossN || fromNorth || fromSouth) && west && dx > -1.8 && dx < 2 + GAP_SECONDS * (theirs + Math.max(0, mine * fx))) return true;
+    if ((crossS || fromNorth || fromSouth) && east && dx < 1.8 && dx > -2 - GAP_SECONDS * (theirs + Math.max(0, -mine * fx))) return true;
   }
   return false;
 }
+
+/** Seconds away traffic must be for a car to turn across it or pull out in front of it. */
+const GAP_SECONDS = 3;
 
 /** Our centre at `q` would put our body into car `o` (a car's half length and half width, and ours beside it). */
 function bodyHits(o: Car, q: Vec2): boolean {

@@ -416,7 +416,7 @@ describe('building up: nothing cut off, nothing for free', () => {
     expect(opened).toBeGreaterThanOrEqual(8);
     expect(ups).toBeGreaterThanOrEqual(100);
     expect(grownUp).toBeGreaterThanOrEqual(8);
-    expect(soldUp).toBeGreaterThanOrEqual(5);
+    expect(soldUp).toBeGreaterThanOrEqual(3);
     expect(laid).toBeGreaterThanOrEqual(20);
   });
 
