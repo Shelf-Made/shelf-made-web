@@ -232,7 +232,8 @@ export class WorldRenderer {
     // (Never over the floor the Build card builds on, the top one too.) Through the eyes it is always on, a ceiling under it.
     this.store.setRoof(eyes || (fp ? !inside && this.buildLevel === null && this.follow.distance > 16 : !this.cutaway));
     this.store.setCeiling(eyes);
-    if (fp && tracked && !eyes) this.rivals.occlude(this.follow.camera.position, tracked.x, tracked.z); else this.rivals.occlude(null, 0, 0);
+    // (The rivals' walls stand whole too, from every angle.)
+    this.rivals.occlude(null, 0, 0);
     // Inside under the roof, the shop's own lights are on (the roof keeps the sun out), the light bouncing off the
     // pale ceiling and floor instead of the grass, as in a photo down the aisles.
     if (eyes && inside) {

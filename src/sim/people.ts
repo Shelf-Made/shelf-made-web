@@ -997,9 +997,12 @@ function slide(state: GameState, p: Person, d: Vec2, step: number, dyn: Set<numb
     }
     return true;
   };
+  // (Sliding along a wall on one axis only counts as a move when that axis has some way to go: walking straight into a
+  // piece, one of the two is nothing, and "moving" by it walked on the spot for good.)
+  const tiny = step * 0.05;
   if (free(p.x + dx, p.z + dz)) { p.x += dx; p.z += dz; }
-  else if (free(p.x + dx, p.z)) p.x += dx;
-  else if (free(p.x, p.z + dz)) p.z += dz;
+  else if (Math.abs(dx) > tiny && free(p.x + dx, p.z)) p.x += dx;
+  else if (Math.abs(dz) > tiny && free(p.x, p.z + dz)) p.z += dz;
   else return false;
   return true;
 }
@@ -1172,8 +1175,8 @@ function mannedBy(state: GameState, p: Person, spot: Vec2): boolean {
   return !!o && dist(o, spot) < MANAGER_ROOM && dist(p, spot) < MANAGER_ROOM + 0.3;
 }
 
-/** Spots out by the delivery door, either side of it, a body apart: (along its wall, out from it). */
-const OFF_SPOTS: readonly [number, number][] = [1.6, 2.3, 3.0, -1.6, -2.3, -3.0].flatMap((x) => [[x, 1.0], [x, 1.7]] as [number, number][]);
+/** Spots out by the delivery door, either side of it, a body apart (rows of them, enough for a big staff): (along its wall, out from it). */
+const OFF_SPOTS: readonly [number, number][] = [1.6, 2.3, 3.0, 3.7, 4.4, -1.6, -2.3, -3.0, -3.7, -4.4].flatMap((x) => [[x, 1.0], [x, 1.7], [x, 2.4]] as [number, number][]);
 /**
  * Where a worker on a break or off shift waits: out by the back door, each on a spot of their own (all on one, they
  * shoved each other off it for good). Only a spot the door reaches; with none (built over), at their post.
@@ -1195,17 +1198,51 @@ function homeOf(state: GameState, p: Person): Vec2 {
   return p.kind === 'owner' || doorReaches(state, at) ? at : doorInside(state, p.id);
 }
 function postOf(state: GameState, p: Person): Vec2 {
-  const reg = state.shop.fixtures.find((f) => f.type === 'register');
+  const shop = state.shop, reg = shop.fixtures.find((f) => f.type === 'register');
   if (p.kind === 'owner') return { x: p.x, z: p.z }; // the manager stays where the player leaves them
+  // (Offsets in the shop's own frame, so a shop turned round on its corner keeps its posts inside it.)
+  const near = (at: Vec2, dx: number, dz: number) => { const d = dirToWorld(shop, { x: dx, z: dz }); return settlePost(state, { x: at.x + d.x, z: at.z + d.z }); };
+  const md = mainDoor(shop), byMain = (out: number, side: number) => { if (!md) return doorInside(state); const q = byDoor(md, out, side); return settlePost(state, toWorld(shop, q.x, q.z)); };
   switch (p.role) {
-    case 'cashier': { const mine = state.shop.fixtures.find((f) => f.staffId === p.id); if (mine) return fixtureBackWorld(state.shop, mine); if (!reg) return storeroomPoint(state); break; }
-    case 'stocker': { const sp = storeroomPoint(state); return { x: sp.x + 0.8, z: sp.z + 0.4 }; }
-    case 'cleaner': { const d = doorInside(state); return { x: d.x - 1.2, z: d.z - 0.3 }; }
+    case 'cashier': { const mine = shop.fixtures.find((f) => f.staffId === p.id); if (mine) return fixtureBackWorld(shop, mine); if (!reg) return storeroomPoint(state); break; }
+    case 'stocker': return near(storeroomPoint(state), 0.8, 0.4);
+    case 'cleaner': return byMain(-1.0, -1.2);
     // A guard keeps an eye on the door from just inside it, the other side from the cleaner.
-    case 'guard': { const d = doorInside(state); return { x: d.x + 1.1, z: d.z - 0.5 }; }
+    case 'guard': return byMain(-1.2, 1.1);
   }
   // Everyone else, and a spare cashier with no till of their own: by the pallet.
-  const sp = storeroomPoint(state); return { x: sp.x + 2.2, z: sp.z + 0.6 };
+  return near(storeroomPoint(state), 2.2, 0.6);
+}
+/**
+ * A worker's post as near `w` as it can be: inside the shop, on floor someone in at the door can walk to, and never
+ * where shoppers stand to use a till or a self-checkout. (Worked out from the walking grid: furniture moved, it moves.)
+ */
+const settled = new WeakMap<object, Map<string, Vec2>>();
+function settlePost(state: GameState, w: Vec2): Vec2 {
+  const g = gridFor(state), key = `${w.x.toFixed(2)},${w.z.toFixed(2)}`;
+  let memo = settled.get(g);
+  if (!memo) { memo = new Map(); settled.set(g, memo); }
+  const hit = memo.get(key);
+  if (hit) return hit;
+  const at = settleOn(state, g, w);
+  memo.set(key, at);
+  return at;
+}
+function settleOn(state: GameState, g: ReturnType<typeof gridFor>, w: Vec2): Vec2 {
+  const reach = reachableCells(state.shop, g), [cx, cz] = cellOf(g, w);
+  const tills = state.shop.fixtures.filter((f) => f.type === 'register' || f.type === 'kiosk').map((f) => fixtureFrontWorld(state.shop, f));
+  const ok = (x: number, z: number) => {
+    if (!inBounds(g, x, z) || isBlocked(g, x, z)) return false;
+    const i = cellIndex(g, x, z);
+    if (!g.inside[i] || !reach[i]) return false;
+    const c = cellCentre(g, x, z);
+    return !tills.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < 0.9);
+  };
+  for (let r = 0; r <= 10; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    if (Math.max(Math.abs(dx), Math.abs(dz)) !== r || !ok(cx + dx, cz + dz)) continue;
+    return cellCentre(g, cx + dx, cz + dz);
+  }
+  return w;
 }
 /** Can someone in at the front door get to where boxes are picked up? (An older save may have left it cut off.) */
 export function palletReached(state: GameState): boolean { return doorReaches(state, storeroomPoint(state)); }
@@ -1273,7 +1310,8 @@ function tickWorker(state: GameState, p: Person, dyn: Set<number>): void {
     const goal = p.walkGoal;
     if (done && goal) {
       const gx = goal.x - p.x, gz = goal.z - p.z, gd = Math.hypot(gx, gz);
-      if (gd > 0.05 && gd < 1.5 && slide(state, p, { x: gx, z: gz }, Math.min(gd, speed * dt), dyn)) { p.yaw = turnToward(p.yaw, Math.atan2(gx, gz), 12 * dt); done = false; }
+      // (Only while it gets them nearer: up against a piece, sliding along it no closer, they stop there.)
+      if (gd > 0.05 && gd < 1.5 && slide(state, p, { x: gx, z: gz }, Math.min(gd, speed * dt), dyn) && Math.hypot(goal.x - p.x, goal.z - p.z) < gd - 1e-3) { p.yaw = turnToward(p.yaw, Math.atan2(gx, gz), 12 * dt); done = false; }
       else p.walkGoal = undefined;
     }
     if (done) { p.state = 'idle'; p.anim = p.carrying ? 'carry' : 'idle'; }
