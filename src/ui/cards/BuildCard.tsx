@@ -40,7 +40,7 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   camera: 'On a wall, watching the floor in front of it: fewer shoplifters, and one more of your staff gives chase when one runs past it',
   dome: 'On the ceiling, watching all round it (over a shelf too)',
   smartCam: 'Watches all round, further, and freezes a running thief for a moment',
-  tagGate: 'Just inside the door: beeps at a thief running out, and stops most of them', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)',
+  tagGate: 'Just inside the door: beeps at a thief running out, and stops most of them', tallWall: 'Twice as tall, for a double-height space (no ceiling panel over it)', tallWindow: 'A window on both storeys of a double-height space (no ceiling panel over it)',
   fountain: 'Two tiers of stone and a pool: the frontage at its finest', statue: 'On a plinth by the car park (two kinds)', lampPost: 'Lights the lot after dark',
   bollard: 'A pair of posts to line a path', balloons: 'A bunch on a string: it looks like a party', hedge: 'Tile by tile: a row makes one hedge',
   evCharger: `Electric cars parked within reach plug in: ${money(CHARGE_FEE)} a charge, and a few more drivers come`,

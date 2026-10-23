@@ -4,7 +4,7 @@
  * must stay reachable after the change.
  */
 import type { GameState, FixtureType, Rot, Fixture, FloorStyle, WallStyle, Shop, Person } from './types';
-import { DEFAULT_PAINT, FIXTURES, mainDoor, serviceDoor, entrances, byDoor, DOORS, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, WALL_T, wallSegments, outlineSegments, edgeOf, edgeIndex, edgePieceAt, edgeSide, SOLID_EDGE, HANGS_ON, FACING, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf } from './layout';
+import { DEFAULT_PAINT, FIXTURES, mainDoor, serviceDoor, entrances, byDoor, DOORS, SHOP_SIZES, FLOORS, paintedBays, MAX_FLOOR, lotLayout, toWorld, toLocal, yawToWorld, isFloor, floorTileList, floorTileCount, tileKey, tilePrice, tilePriceAt, sizeOfTiles, WALLS, RESALE, WALL_T, wallSegments, outlineSegments, edgeOf, edgeIndex, edgePieceAt, edgeSide, SOLID_EDGE, HANGS_ON, FACING, footprintOf, overlaps, levelOfZ, groundZ, insideOn, levelOf, zOnLevel, VERTICAL, rideEnds, MAX_LEVELS, storeysOf, shopTileList, onBuilding, refundOf, TALL_WALLS } from './layout';
 import { placeUpstairs, ensureCeilings, levelOfPerson, withoutIt, ceilingPrice, ceilFloorsOpened, strands, reachOf, cutOff, repathAfterBuild, PANEL_PRICE } from './storeys';
 import { buildGrid, frontInside, cellOf, isBlocked, type Grid } from './grid';
 import { findPath } from './pathfinding';
@@ -134,7 +134,7 @@ function canPlaceEdge(state: GameState, type: FixtureType, x: number, z: number,
   if (there && there.id !== ignoreId) return { ok: false, reason: FIXTURES[there.type].fixed ? `The ${FIXTURES[there.type].name.toLowerCase()} is there` : 'A wall is there already (R turns it to another side)', price };
   // A tall wall reaches up through a double-height space (no panel over its tile: placeUpstairs), and stands as the
   // wall up there on its line: none of that floor's may be on it.
-  if (type === 'tallWall' && edgeIndex(shop.fixtures).get(edgeOf({ x, z: zOnLevel(z, 1), rot }).key)) return { ok: false, reason: 'A wall upstairs stands on that line', price };
+  if (TALL_WALLS.has(type) && edgeIndex(shop.fixtures).get(edgeOf({ x, z: zOnLevel(z, 1), rot }).key)) return { ok: false, reason: 'A wall upstairs stands on that line', price };
   if (moving && hungOn(shop, moving).length) return { ok: false, reason: 'Take down what hangs on it first', price };
   // A door out of the shop opens onto its tile: nothing may stand in the way there.
   if (DOORS.has(type) && !across && level === 0 && shop.fixtures.some((f) => f.id !== ignoreId && !FIXTURES[f.type].walkable && !FIXTURES[f.type].edge && levelOf(f) === 0 && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: `Keep the ${def.name.toLowerCase()} clear: something stands inside it`, price };
@@ -255,7 +255,7 @@ export function canPaintFloor(state: GameState, x: number, z: number, style: Flo
 }
 
 /** Walls round the shop that take a finish on their inside face (a door, a doorway, a gate or a railing has none). */
-export const FINISHED: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall']);
+export const FINISHED: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'tallWindow']);
 /** The wall round the shop on this stretch (keyed as wallSegments), if it takes a finish. */
 export function finishedWall(shop: Shop, key: string): Fixture | undefined {
   const seg = wallSegments(shop).find((w) => w.key === key);

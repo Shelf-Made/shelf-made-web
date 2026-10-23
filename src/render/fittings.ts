@@ -1,5 +1,6 @@
 import { TorusGeometry, type BufferGeometry } from 'three';
 import type { AssetLibrary } from './assets';
+import { STOREY } from '@/sim/layout';
 import type { FixtureType } from '@/sim/types';
 import type { Scheme } from '@/sim/schemes';
 import { box, cylinder, sphere, merge, place, paint } from './geometry';
@@ -30,7 +31,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
   fountain: 'gen:fountain', statue: 'gen:statue', lampPost: 'gen:lampPost', bollard: 'gen:bollard', balloons: 'gen:balloons', hedge: 'gen:hedge', evCharger: 'gen:evCharger', busStop: 'gen:busStop', loadingDock: 'gen:loadingDock',
   parkingBay: 'gen:parkingBay',
-  stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
+  stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall', tallWindow: 'gen:tallWindow',
   camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
   iceChest: 'gen:iceChest', coolProduce: 'gen:coolProduce', wallShelf: 'gen:wallShelf', glassCase: 'gen:glassCase', displayTable: 'gen:displayTable',
   bakeryCase: 'gen:bakeryCase', clothesRail: 'gen:clothesRail', vending: 'gen:vending', queueRail: 'gen:queueRail',
@@ -55,7 +56,7 @@ export const WALL_SQUEEZE = WALL_THICK / 0.6;
 export const WALL_IN = 0.05;
 export const WALL_OUT = WALL_THICK - WALL_IN;
 /** The walls among them: cut down to a ledge, like the shop's own walls, while the manager is inside. */
-export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim', 'gen:tallWall']);
+export const WALL_PIECES: ReadonlySet<string> = new Set(['gen:wall', 'gen:wallWindow', 'gen:doorway', 'gen:windowTrim', 'gen:tallWall', 'gen:tallWindow']);
 /** Pieces that vanish (rather than being cut down) with the walls: a window's frame has nothing left to frame. */
 export const GONE_WITH_WALLS: ReadonlySet<string> = new Set(['gen:windowTrim']);
 
@@ -243,6 +244,8 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       return merge(parts);
     }
     case 'gen:tallWall': return place(wall('market/wall'), 0, 0, 0, 0, 1, 2, 1);
+    // A window on each storey, one over the other.
+    case 'gen:tallWindow': return merge([wall('market/wall-window'), place(wall('market/wall-window'), 0, STOREY, 0)]);
     // The other looks (the variant arrows).
     case 'gen:treeRound': return merge([m('nature/tree-default', 0, 0, 0, 0.2, 1.1), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);
     case 'gen:treePine': return merge([m('nature/tree-pineroundc', 0, 0, 0, 0.6, 1.0), box(pal, '#6B4A35', 0.5, 0.02, 0.5, 0, 0, 0)]);

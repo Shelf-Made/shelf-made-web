@@ -409,7 +409,9 @@ export function edgeOf(f: { x: number; z: number; rot: number }): EdgeAt {
 /** Does it stand on an edge (a wall, a door), not on a tile? */
 export const onEdge = (type: FixtureType): boolean => !!FIXTURES[type].edge;
 /** Walls nobody walks through: the doors, a doorway and a gate are ways through. */
-export const SOLID_EDGE: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'railing']);
+export const SOLID_EDGE: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'tallWindow', 'railing']);
+/** Walls two storeys tall, for a double-height space: plain, or with a window on both storeys. */
+export const TALL_WALLS: ReadonlySet<FixtureType> = new Set<FixtureType>(['tallWall', 'tallWindow']);
 /** What a light, a camera or a wall shelf can hang on: a wall, plain or tall. */
 export const HANGS_ON: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'tallWall']);
 type Pieces = readonly { id?: number; type: FixtureType; x: number; z: number; rot: number }[];
@@ -712,6 +714,7 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   gate: { type: 'gate', name: 'Gate', price: 35, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true },
   /** Twice as tall as a wall: for a double-height space, where the ceiling panel above has been sold. */
   tallWall: { type: 'tallWall', name: 'Tall wall', price: 75, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true },
+  tallWindow: { type: 'tallWindow', name: 'Tall window wall', price: 140, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', edge: true, looks: 0.05, looksCap: 4 },
   /** The shop's own doors: the way in at the front (it slides along the front wall), and the back door for deliveries and staff. */
   // The doors the shop came with: doors like any other (Doorway), moved, turned or taken out as you like.
   frontDoor: { type: 'frontDoor', name: 'Door', price: 0, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'walls', walkable: true, edge: true, unlisted: true },

@@ -4,7 +4,7 @@
  * are open, their shapes, how upstairs is walked) live with the rest of the floor in layout.ts.
  */
 import type { GameState, FixtureType, FloorStyle, Person, Rot, Vec2, Waypoint, Shop } from './types';
-import { FIXTURES, FLOORS, MAX_LEVELS, inUpperX, TICK, VERTICAL, FLOOR_NAMES, footprintOf, edgeOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys } from './layout';
+import { FIXTURES, FLOORS, MAX_LEVELS, inUpperX, TICK, VERTICAL, FLOOR_NAMES, footprintOf, edgeOf, groundZ, insideOn, isFloor, levelOf, levelOfZ, overlaps, panelsOver, rideEnds, storeysOf, tileKey, toWorld, toLocal, zOnLevel, RESALE, type Rect, type Storeys, TALL_WALLS } from './layout';
 import { buildGrid, fixtureStandWorld, fixtureFront, reachableCells, nearestWalkable, cellOf, cellIndex, inBounds, lineClear, walledBetween, type Grid, type Portal } from './grid';
 import { followPath } from './movement';
 import { dynamicBlockers, setPath, MANAGER_ROOM } from './people';
@@ -49,7 +49,7 @@ export function placeUpstairs(state: GameState, type: FixtureType, x: number, z:
   const st = storeysOf(shop);
   if (level > 0 && !st.built[level]) return { ok: false, reason: 'Put in stairs up to this floor first', price };
   const gz = groundZ(z);
-  if (type === 'tallWall') {
+  if (TALL_WALLS.has(type)) {
     if (level >= MAX_LEVELS - 1) return { ok: false, reason: 'No room up here for one', price };
     if (panelsOver(shop, level).has(tileKey(x, gz))) return { ok: false, reason: 'Only under an open ceiling: sell the panel above first', price };
   }
@@ -174,7 +174,7 @@ export function canAddPanel(state: GameState, x: number, z: number): PlaceCheck 
   if (panelsOver(shop, level).has(k)) return { ok: false, reason: 'There is a panel up there already', price };
   if (onLevel(shop, level).some((f) => VERTICAL.has(f.type) && overlaps(footprintOf(f.type, f.x, f.z, f.rot), { x0: x, z0: z, x1: x + 1, z1: z + 1 }))) return { ok: false, reason: 'Something comes up through there', price };
   // (A tall wall on an edge of it, either side, reaches up there.)
-  if (onLevel(shop, level).some((f) => f.type === 'tallWall' && ((f.x === x && f.z === z) || (edgeOf(f).bx === x && edgeOf(f).bz === z)))) return { ok: false, reason: 'A tall wall reaches up through there', price };
+  if (onLevel(shop, level).some((f) => TALL_WALLS.has(f.type) && ((f.x === x && f.z === z) || (edgeOf(f).bx === x && edgeOf(f).bz === z)))) return { ok: false, reason: 'A tall wall reaches up through there', price };
   if (state.cash < price) return { ok: false, reason: `Need ${dollars(price)}`, price };
   return { ok: true, reason: 'Ceiling panel (the floor above)', price };
 }

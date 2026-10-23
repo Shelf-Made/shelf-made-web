@@ -22,7 +22,7 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'queueRail'
   | 'sofa' | 'cafe' | 'desk' | 'bin' | 'trolleys' | 'speaker' | 'screen' | 'bookcase'
   | 'flowers' | 'rug' | 'doormat'
-  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall'
+  | 'wall' | 'wallWindow' | 'doorway' | 'railing' | 'gate' | 'window' | 'tallWall' | 'tallWindow'
   /** The shop's own doors: in at the front, deliveries and staff at the back (one of each, moved but never bought or sold). */
   | 'frontDoor' | 'backDoor'
   | 'floorLamp' | 'wallLight' | 'pendant' | 'neon'

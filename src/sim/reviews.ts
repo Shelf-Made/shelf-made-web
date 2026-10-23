@@ -123,7 +123,7 @@ export function looksOf(state: GameState): Looks {
   const walls = wallSegments(shop).map((w) => shop.fixtures.find((f) => f.id === w.id)!).filter((f) => FINISHED.has(f.type));
   const wallLooks = walls.reduce((a, f) => a + (WALLS.find((x) => x.id === finishOf(shop, f))?.looks ?? 0), 0) / Math.max(1, walls.length);
   // Windows in the side and back walls: daylight on more of the shop (a few each make a difference; past a dozen, not much).
-  const windows = Math.min(walls.filter((f) => f.type === 'wallWindow' && !(levelOf(f) === 0 && edgeOf(f).line === shop.floor.z1 && edgeOf(f).dir === 'front')).length, 15) * 0.016;
+  const windows = Math.min(walls.filter((f) => (f.type === 'wallWindow' || f.type === 'tallWindow') && !(levelOf(f) === 0 && edgeOf(f).line === shop.floor.z1 && edgeOf(f).dir === 'front')).length, 15) * 0.016;
   // A double-height space or two (panels taken down): light and air.
   const lofty = Math.min(highCeilings(shop), 6) * 0.02;
   const extras = clamp(SIGN_TIERS[signTier(shop)]!.looks + (shop.sizeId === 'medium' ? 0.2 : shop.sizeId === 'large' ? 0.35 : 0) + (shop.bays.length >= 8 ? 0.15 : 0) + 0.25 * curb + (count('produce') > 0 ? 0.25 : 0) + floor + wallLooks + windows + lofty + 0.1, 0, 1);

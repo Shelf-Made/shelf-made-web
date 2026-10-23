@@ -8,7 +8,7 @@ import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
 import { DEFAULT_PAINT } from '@/sim/layout';
-import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
+import { FIXTURES, TALL_WALLS, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
 import { FRONT_ROW } from '@/sim/drive';
@@ -31,8 +31,8 @@ const DEPT_COLOURS: Partial<Record<string, string>> = {
   books: '#3570BC', sports: '#E8573F', beauty: '#F27CC1', seasonal: '#B5235A',
 };
 /** Walls drawn with the shell where they stand round the building (out in the band past the floor's edge); across the shop they are drawn as pieces, and a railing or a gate always is. */
-const SHELL_WALLS: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'doorway', 'frontDoor', 'backDoor']);
-const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['frontDoor', 'backDoor', 'sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
+const SHELL_WALLS: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'tallWindow', 'doorway', 'frontDoor', 'backDoor']);
+const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['frontDoor', 'backDoor', 'sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'tallWindow', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
   'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger', 'parkingBay', 'loadingDock']);
 
 /** Drops of spray over each fountain. */
@@ -63,7 +63,7 @@ const LEDGE = 0.3;
 export const STORE_MODELS = [...new Set([...Object.values(FIXTURE_MODEL).filter((id) => !id.startsWith('gen:')), ...FITTING_MODELS])].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds(), ...PROP_MODELS]);
 
 /** Models whose glass is a window's pane (tinted), not a case's (clear). */
-const WINDOW_MODELS = new Set(['gen:wallWindow', 'gen:windowTrim', 'market/wall-window']);
+const WINDOW_MODELS = new Set(['gen:wallWindow', 'gen:tallWindow', 'gen:windowTrim', 'market/wall-window']);
 export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
 
 interface Side { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull: Mesh[]; extraLedge?: Mesh[] }
@@ -441,7 +441,7 @@ export class StoreView {
           const outward = dir.axis === 'x' ? dir.nz : dir.nx;
           const isFront = L === 0 && dir.name === 'front' && line === f.z1;
           const isDoor = p.type === 'frontDoor' || p.type === 'backDoor' || p.type === 'doorway';
-          const isWindow = p.type === 'wallWindow';
+          const isWindow = p.type === 'wallWindow' || p.type === 'tallWindow';
           const src = isDoor ? doorG : isWindow ? windowG : wallG;
           // How each end of this piece meets its neighbours along the wall.
           const ends = [-1, 1].map((e) => {
@@ -459,13 +459,14 @@ export class StoreView {
           const piece = len < 1 ? wallG : src;
           // A tall wall stands two storeys; any wall under a double-height space reaches up into it.
           const k = tileKey(tile.x, tile.z), beyond = tileKey(tile.x + dir.nx, tile.z + dir.nz);
-          const storeys = p.type === 'tallWall' || (!!up?.has(k) && !upFloor?.has(k) && !up.has(beyond)) ? 2 : 1;
+          const storeys = TALL_WALLS.has(p.type) || (!!up?.has(k) && !upFloor?.has(k) && !up.has(beyond)) ? 2 : 1;
           full.push(place(piece.clone(), px, y0, pz, dir.yaw, len, 1, 1));
-          for (let s = 1; s < storeys; s++) full.push(place(wallG.clone(), px, y0 + s * STOREY, pz, dir.yaw, len, 1, 1));
+          // (A window wall's window goes up with it: one on each storey.)
+          for (let s = 1; s < storeys; s++) full.push(place((isWindow && len === 1 ? windowG : wallG).clone(), px, y0 + s * STOREY, pz, dir.yaw, len, 1, 1));
           // Cut down, a window is a plain wall: the opening starts below the ledge, and squashing its frame
           // and pane onto the cut left a jumble of colours fighting on the sill.
           ledge.push(place(isDoor ? src.clone() : cutDown(isWindow ? wallG : piece, LEDGE), px, y0, pz, dir.yaw, len, 1, 1));
-          if (isWindow && windowGlass && len === 1) glass.push(place(windowGlass.clone(), px, y0, pz, dir.yaw));
+          if (isWindow && windowGlass && len === 1) for (let s = 0; s < storeys; s++) glass.push(place(windowGlass.clone(), px, y0 + s * STOREY, pz, dir.yaw));
           // Offers in every other front window, on the outside of the glass; the front windows glow at night.
           if (L === 0 && isFront && isWindow && pane && Math.round(t - f.x0 - 0.5) % 2 === 0) posters.push(place(posterGeometry(pal, sc.primary, sc.accent, sc.trim), px + (t < shop.door.x ? 0.12 : -0.12), pane.y0 + 0.02, line + centre + pane.z1 + 0.006));
           if (isFront && isWindow && pane) litPanes.push(box(pal, '#FFE6A8', pane.x1 - pane.x0 - 0.02, pane.y1 - pane.y0 - 0.02, 0.01, px + (pane.x0 + pane.x1) / 2, y0 + pane.y0 + 0.01, line + centre - 0.17 * WALL_SQUEEZE));
@@ -485,7 +486,7 @@ export class StoreView {
             const colour = finish === 'paint' ? p.paint ?? DEFAULT_PAINT : null;
             for (let s = 0; s < storeys; s++) {
               const lift = (g: BufferGeometry) => (y0 + s * STOREY ? g.translate(0, y0 + s * STOREY, 0) : g);
-              (colour ? paintFull : full).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, s ? null : hole, finish).map(lift), colour));
+              (colour ? paintFull : full).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, 1, hole, finish).map(lift), colour));
               if (!s) (colour ? paintLedge : ledge).push(...tint0(this.paintPanels(line - outward * 0.062, dir.axis, a, b, LEDGE, null, finish).map(lift), colour));
             }
           }
@@ -881,7 +882,14 @@ export class StoreView {
   /** The see-through glass of one of our own cases (cached per model), or null. */
   private caseGlass(model: string): BufferGeometry | null {
     const key = `${model}:pane`;
-    if (!this.painted.has(key)) { const g = fittingGlass(model, this.assets.palette); if (!g) return null; this.painted.set(key, g); }
+    if (!this.painted.has(key)) {
+      // (A window wall across the shop: the shell's window pane, on each storey it stands.)
+      const pane = this.assets.glassGeometry('market/wall-window');
+      const stack = model === 'gen:wallWindow' ? 1 : model === 'gen:tallWindow' ? 2 : 0;
+      const g = stack && pane ? merge(Array.from({ length: stack }, (_, s) => place(pane.clone().scale(1, 1, WALL_SQUEEZE), 0, s * STOREY, 0))) : fittingGlass(model, this.assets.palette);
+      if (!g) return null;
+      this.painted.set(key, g);
+    }
     return this.painted.get(key)!;
   }
 
