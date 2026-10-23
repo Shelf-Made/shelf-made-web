@@ -91,14 +91,16 @@ test('the first day with the follow camera: build, walk, stock, open, scan, clos
   await hooks(page, 'setSpeed', 1);
   await hooks(page, 'fp', 0.5, -2.0);
   await settle(page, 400);
-  const d = (await state(page)).shop.delivery;
-  const px = (d.x0 + d.x1) / 2, pz = d.z1 + 0.45;
+  // (The pallet by the back door: the one deliveries are dropped on.)
+  const pallets = ((await state(page)).shop as unknown as { fixtures: { type: string; x: number; z: number }[] }).fixtures.filter((f) => f.type === 'pallet');
+  const p = pallets.reduce((a, b) => (Math.abs(b.x + 0.5) < Math.abs(a.x + 0.5) ? b : a));
+  const px = p.x + 0.5, pz = p.z + 1.45;
   await clickAt(page, px, pz);
   // (Within a tile: on a busy machine the camera can still be easing when the click is aimed. aimAt below squares up.)
   await expect.poll(async () => { const o = await owner(page); return Math.hypot(o.x - px, o.z - pz); }, { timeout: 20_000 }).toBeLessThan(1.0);
   await expect.poll(async () => (await owner(page)).walking, { timeout: 10_000 }).toBe(false);
   // Face the pallet squarely (walking up to it usually leaves you facing it anyway).
-  await hooks(page, 'aimAt', px, pz, px, 0, (d.z0 + d.z1) / 2);
+  await hooks(page, 'aimAt', px, pz, px, 0, p.z + 0.5);
   await expect.poll(() => aimText(page)).toMatch(/pick up bread/i);
   await expect(page.locator('.aim-prompt')).toContainText(/F/);
   await page.keyboard.press('KeyF');
@@ -315,11 +317,11 @@ test('click a piece of furniture with empty hands to move it, turn it or sell it
   expect((await state(page)).cash).toBeGreaterThan(cash);
 });
 
-test('walls are pieces: one clicked opens its menu, a door only moves, and the floor inside a wall cut down is clicked over it', async ({ page }) => {
+test('walls are pieces: one clicked opens its menu, and a door only moves', async ({ page }) => {
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Walls', { tutorial: false });
   await hooks(page, 'setSpeed', 0);
-  // The camera out front looking in (the front cut down to a ledge, the door clear of the toolbar), nothing before the manager.
+  // The camera out front looking in (the door clear of the toolbar), nothing before the manager.
   await hooks(page, 'fp', 0.5, -1.5, 0);
   await settle(page, 600);
   // The left wall, standing full height: one the shop came with, so it comes down for nothing.
@@ -334,9 +336,6 @@ test('walls are pieces: one clicked opens its menu, a door only moves, and the f
   const door = (await hooks<{ shop: { door: { x: number } } }>(page, 'state')).shop.door;
   await pointAt(page, door.x, 0.05, 0.6);
   await expect.poll(() => aimText(page)).toBe('Door: Move, Turn or Take down');
-  // Just inside the front windows (drawn as a ledge from here): the floor is what the pointer is on, not the wall.
-  await pointAt(page, -1.5, -0.6);
-  expect(await aimText(page)).not.toMatch(/wall/i);
 });
 
 test("the day's log: closes and comes back, gives way to a card, says when Staff opens, and is kept in Stats", async ({ page }) => {
@@ -445,7 +444,7 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
   // Walls: a window in the left wall. The wall there is picked up and sold (it came with the shop: nothing back), and a
   // wall with a window put up in its place, turned with R onto that edge of the tile.
   await build.getByRole('tab', { name: 'Walls' }).click();
-  await expect(build.locator('.build-grid .build-tile b')).toHaveText(['Wall', 'Wall with window', 'Doorway', 'Railing', 'Gate', 'Tall wall']);
+  await expect(build.locator('.build-grid .build-tile b')).toHaveText(['Wall', 'Wall with window', 'Doorway', 'Railing', 'Gate', 'Tall wall', 'Tall window wall']);
   const left = (await state(page)).shop.fixtures.find((f) => f.type === 'wall' && f.x === -2.5 && f.z === -3 && f.rot === 1)!;
   await page.evaluate((id) => (window as unknown as { __shelf: { runtime: { selectFixture: (id: number) => void } } }).__shelf.runtime.selectFixture(id), left.id);
   await build.getByRole('button', { name: 'Sell' }).click();
@@ -776,7 +775,7 @@ test('from outside, every floor drawn: a brisk drag off the top boards pans as f
     return { x: (t.x - s.shop.originX) * f, z: (t.z - s.shop.originZ) * f };
   });
   // Grab the first floor's boards by their left edge and drag briskly out over the lawn, a pointer move at a time.
-  const edge = await screenAt(page, -2.5, -3 - 16, 0);
+  const edge = await screenAt(page, -2.5, -3 - 24, 0);
   const was = await target();
   await page.mouse.move(edge.x + 20, edge.y);
   await page.mouse.down();

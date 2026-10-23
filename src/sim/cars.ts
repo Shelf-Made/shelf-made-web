@@ -92,13 +92,13 @@ export function freeBay(state: GameState, electric = false, from?: Entry[]): num
       if (!f) return;
       const r = bayRoute(shop, f, from);
       if (!r) return;
-      // A car at the lot takes the bay quickest for it, from the ways in still ahead of it (along the road, then over the
-      // tarmac): never one past the way in it is coming up to. Picked ahead of time (no car yet), the deepest into the lot.
+      // The deepest into the lot first (from the ways in given), so cars pulling in never wait on those backing out of
+      // the bays nearer the road.
       const m = bayMouth(f), depth = net.reach[tileIndex(m.x, m.z)]!;
       const c = bayCentre(f), plug = chargers.some((q) => Math.hypot(q.x + 0.5 - c.x, q.z + 0.5 - c.z) < CHARGE_REACH);
       // A bay opening onto the far side of a lane two wide (turned into across the cars driving out) only once the bays
       // on the near side are taken: crossing that lane is where the cars coming and going get in each other's way.
-      const key = (from ? r.cost - depth * 0.01 : -depth) - (plug ? 1000 : 0) + (r.across ? 500 : 0);
+      const key = -depth - (plug ? 1000 : 0) + (r.across ? 500 : 0);
       if (key < bestKey) { bestKey = key; best = i; }
       return;
     }
@@ -308,12 +308,10 @@ export function pastLot(state: GameState, car: Car): boolean { return !!car.seek
 export function turnIntoLot(state: GameState, car: Car): boolean {
   const west = car.seek!.west, from = entriesFor(state, car);
   if (!from.length) return false;
-  const bayIdx = freeBay(state, isElectric(car), from);
-  // (The bay is only taken as the car comes up to the way in it will turn off at: until then it stays free for a car
-  // already there, and a car pulling out meanwhile may free a nearer one.)
-  const f = bayIdx >= 0 ? bayPiece(state, bayIdx) : null, r = f ? bayRoute(state.shop, f, from) : null;
-  const entry = r ? from.find((e) => e.tile === r.tiles[0]) : undefined;
-  if (entry && (entry.cost ?? 0) / (CAR_LOT_SPEED / CAR_ROAD_SPEED) > SEEK_AHEAD) return false;
+  // A bay in from the way in it comes to first, so it never drives on past it to another; only with none free there, one
+  // in from a way in further on.
+  const first = from.reduce((a, b) => ((b.cost ?? 0) < (a.cost ?? 0) ? b : a)), near = freeBay(state, isElectric(car), [first]);
+  const bayIdx = near >= 0 ? near : freeBay(state, isElectric(car), from);
   const into = bayIdx >= 0 ? pathIntoPlayerBay(state, bayIdx, west, { x: car.x, z: car.z }, from) : null;
   if (!into) return false;
   car.seek = undefined;
