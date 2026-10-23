@@ -141,6 +141,8 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   const gain = b.placing ? looksGain(s, b.placing) : null;
   const selected = b.selectedId !== null ? s.shop.fixtures.find((f) => f.id === b.selectedId) : null;
+  // The piece the coach says to pick (its tab and its tile are pointed at).
+  const coached = snap.tip?.anchor.startsWith('catalog:') ? snap.tip.anchor.slice(8) as FixtureType : null;
   const [tab, setTabState] = useState<Tab>(() => (runtime.buildTab as Tab | null) ?? (b.placing ? FIXTURES[b.placing].category : s.shop.fixtures.some((f) => f.type === 'register') ? 'shelves' : 'checkout'));
   // The Security tab shows what the cameras see while you place them (and stops when you leave it).
   const setTab = (t: Tab) => {
@@ -210,14 +212,14 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
         </div>
       )}
       <nav className="build-tabs" role="tablist" aria-label="What to build">
-        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>{t.label}</button>)}
+        {TABS.map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} className={`${tab === t.id ? 'on' : ''}${tab !== t.id && coached && FIXTURES[coached].category === t.id ? ' nudge' : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
       </nav>
       {items.length > 0 && (
         <div className="build-grid">
           {items.map((type) => {
             const def = FIXTURES[type];
             return (
-              <button key={type} className={`build-tile${b.placing === type ? ' on' : ''}`} disabled={s.cash < def.price} onClick={() => runtime.startPlacing(type)} title={noteFor(type)}>
+              <button key={type} className={`build-tile${b.placing === type ? ' on' : ''}${coached === type && b.placing !== type ? ' nudge' : ''}`} disabled={s.cash < def.price} onClick={() => runtime.startPlacing(type)} title={noteFor(type)}>
                 {thumbs[type] ? <img src={thumbs[type]} alt="" /> : <span className="pic" />}
                 <b>{def.name}</b>
                 <span>{money(def.price)}{def.upkeep ? <small> +{money(def.upkeep)}/day</small> : null}</span>

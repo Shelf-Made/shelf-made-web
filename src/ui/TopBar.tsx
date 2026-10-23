@@ -113,7 +113,7 @@ export function TopBar({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot
       {snap.phase !== 'picking' && !snap.jobs && <GoalChip runtime={runtime} snap={snap} />}
 
       {snap.phase === 'setup' && (
-        <button className="btn open-shop" data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>
+        <button className={`btn open-shop${snap.tip?.anchor === 'button:open' ? ' nudge' : ''}`} data-card="open" onClick={() => runtime.dispatch({ type: 'openShop' })}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5l9-2v18zM13 5h5v16M10 12v1.5" /></svg>
           <span>Open shop<small>Let customers in</small></span>
         </button>

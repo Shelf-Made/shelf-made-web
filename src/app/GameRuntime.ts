@@ -53,7 +53,7 @@ const FINISH_HEX: Record<string, string> = { lino: '#FFF3DC', concrete: '#C4C0B8
 
 export const MODAL_CARDS: ReadonlySet<CardId> = new Set<CardId>(['stock']);
 
-export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'delivery' | 'button:prices' | 'button:stock' | 'button:build' | 'button:open' | 'night'; fixtureId?: number }
+export interface TipInfo { id: string; text: string; anchor: 'register' | 'shelf' | 'delivery' | 'button:prices' | 'button:stock' | 'button:build' | 'button:open' | 'night' | `catalog:${FixtureType}`; fixtureId?: number }
 
 /** What Use (or a click) would do: the key to press, a short label, and where in the world to show it. */
 export interface AimInfo { key: string | null; text: string; ok: boolean; at?: { x: number; y: number; z: number } }
@@ -477,6 +477,12 @@ export class GameRuntime {
       return tip;
     }
     if (tip.id === 'open') return s.phase === 'setup' ? tip : null;
+    // With the Build card open, the coach points at the piece to pick in it, then at where it goes.
+    if ((tip.id === 'counter' || tip.id === 'shelf') && this.card === 'build') {
+      const type: FixtureType = tip.id === 'counter' ? 'register' : 'shelf', name = FIXTURES[type].name.toLowerCase();
+      if (this.build.placing === type) return { ...tip, text: tip.id === 'shelf' ? `Click the floor to put the ${name} down. R turns it.` : `Click the floor to put the ${name} down, facing into the shop.` };
+      return { ...tip, text: `Pick the ${name} in the catalog.`, anchor: `catalog:${type}` };
+    }
     if (tip.id === 'ringUp') {
       const reg = s.shop.fixtures.find((f) => f.type === 'register' && (f.serving || (f.queue?.length ?? 0) > 0));
       return reg ? { ...tip, fixtureId: reg.id } : null;
