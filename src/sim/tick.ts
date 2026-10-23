@@ -84,8 +84,9 @@ export function tick(state: GameState): void {
       state.people = state.people.filter((p) => p.state !== 'gone');
       pruneTills(state);
     }
-    // The last shopper gone, the staff mop up and fill the shelves before they go home (for a few minutes at most).
-    if (!state.people.some((p) => p.kind === 'customer') && (!tidyLeft(state) || state.time > DAY_SECONDS + 300)) {
+    // The last shopper gone, the staff mop up and fill the shelves before they go home (until two minutes past closing
+    // at most, when the last shoppers are seen out anyway).
+    if (!state.people.some((p) => p.kind === 'customer') && (!tidyLeft(state) || state.time > DAY_SECONDS + 120)) {
       pruneTills(state);
       closeDay(state);
     }
