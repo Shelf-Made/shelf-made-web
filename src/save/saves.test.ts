@@ -398,3 +398,19 @@ describe('walls as pieces, from an older save', () => {
     expect(u.shop.fixtures.length).toBe(t.shop.fixtures.length);
   });
 });
+
+describe('upstairs further back', () => {
+  it('an older save keeps every piece upstairs on its floor, where it stood', () => {
+    const s = openGame({ seed: 31, plotId: 'main', name: 'Up', tutorial: false });
+    s.cash = 20000;
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 }).ok).toBe(true);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'shelf', x: -2.5, z: zOnLevel(-4, 1), rot: 1 }).ok).toBe(true);
+    const shelf = s.shop.fixtures[s.shop.fixtures.length - 1]!, at = { x: shelf.x, z: shelf.z };
+    // As it was saved before: a floor up was walked 16 back, not 24.
+    const old = JSON.parse(serialize(s));
+    old.version = 12; old.state.version = 12;
+    for (const f of old.state.shop.fixtures) if (f.z < -20) f.z += 8;
+    const t = parse(JSON.stringify(old)).state, back = t.shop.fixtures.find((f) => f.id === shelf.id)!;
+    expect({ x: back.x, z: back.z }).toEqual(at);
+  });
+});

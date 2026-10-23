@@ -459,7 +459,7 @@ test('the Build card: tabs of pictures, a café table placed, a tile of floor la
 });
 
 test('building up: stairs open the first floor, a shelf goes up there, and a ceiling panel comes down', async ({ page }) => {
-  const UP = -16;
+  const UP = -24;
   test.setTimeout(300_000);
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
@@ -498,7 +498,7 @@ test('building up: stairs open the first floor, a shelf goes up there, and a cei
 });
 
 test('upstairs as it looks: nothing picked through the floor, the stairs ridden from an end, the lot built from any floor, no roof over a floor lifted off', async ({ page }) => {
-  const UP = -16;
+  const UP = -24;
   test.setTimeout(300_000);
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
@@ -638,7 +638,7 @@ const drawFrames = async (page: Page, n = 4) => { for (let i = 0; i < n; i++) aw
 type Shelf = { runtime: { renderer: { reactions: { group: { children: { visible: boolean }[] } }; store: { levelGroups: ({ visible: boolean; children: unknown[] } | null)[]; debugFixtures: () => { ids: number[] }[] }; booth: { shoot: (...a: unknown[]) => unknown } | null }; walkAndUse: (t: { kind: string; id: number }) => void }; state: () => { tick: number; shop: { originX: number; originZ: number; flip?: boolean; litter: { id: number; x: number; z: number }[]; fixtures: Fx[] }; people: { id: number; kind: string; x: number; z: number; px: number; pz: number; path: { x: number; z: number }[]; state: string; timer: number; climb?: number }[]; reactions: { id: number; personId: number; kind: string; tick: number }[] }; crowd: (n: number) => void; photo: (kind: string, seed?: number) => string | null };
 
 test('a card opened on the way to use something lets it go: never done from the stairs, nor from where the walk stopped', async ({ page }) => {
-  const UP = -16;
+  const UP = -24;
   test.setTimeout(300_000);
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
@@ -682,7 +682,7 @@ test('a card opened on the way to use something lets it go: never done from the 
 });
 
 test('upstairs from outside, every floor drawn: a click on the top floor means it, bubbles under it hide, and photos show the whole building', async ({ page }) => {
-  const UP = -16;
+  const UP = -24;
   test.setTimeout(300_000);
   await ready(page);
   await hooks(page, 'newGame', 7, 'main', 'Up We Go', { tutorial: false });
@@ -804,7 +804,7 @@ async function upstairs(page: Page): Promise<void> {
   await page.evaluate(() => { (window as unknown as { __shelf: Up }).__shelf.state().cash = 20000; });
   expect((await hooks<{ ok: boolean }>(page, 'dispatch', { type: 'placeFixture', fixtureType: 'stairs', x: 0.5, z: -2, rot: 0 })).ok).toBe(true);
 }
-const UPS = -16;
+const UPS = -24;
 
 test('with the floor the manager is on lifted off, nothing in front of them is offered or outlined over the floor in view', async ({ page }) => {
   test.setTimeout(300_000);

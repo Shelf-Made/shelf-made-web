@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, applyCommand, buildGrid, findPath, FIXTURES, type GameState } from './index';
 import { canPlace, canSellTile, openEdges, canBuyTile } from './build';
-import { toWorld, edgeOf, edgeSide, edgePieceAt, wallSegments, isFloor, refundOf } from './layout';
+import { toWorld, edgeOf, edgeSide, edgePieceAt, wallSegments, isFloor, refundOf, LEVEL_DZ } from './layout';
 import type { FixtureType } from './types';
 import { fixtureStandWorld, cellOf, canStep, isBlocked } from './grid';
 import { looksOf } from './reviews';
@@ -159,7 +159,7 @@ describe('walls are pieces', () => {
     expect(openEdges(s.shop).some((g) => g.z < -12)).toBe(true);
     expect(applyCommand(s, { type: 'wallUp' }).ok).toBe(true);
     const up = walls(s).find((x) => x.z < -12 && x.rot === 1)!;
-    expect(canRemovePanel(s, up.x, up.z - (-16)).reason).toBe('Move or sell the walls on it upstairs first');
+    expect(canRemovePanel(s, up.x, up.z - LEVEL_DZ).reason).toBe('Move or sell the walls on it upstairs first');
   });
 
   it('the tile behind the back door is never bought on its own: the back door is moved first, or pushed out with its wall', () => {

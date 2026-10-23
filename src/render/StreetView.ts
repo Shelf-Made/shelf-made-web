@@ -88,7 +88,7 @@ export class StreetView {
     this.signs.clear();
     const at: Record<string, { x: number; z: number; yaw: number }> = {
       west: { x: -27, z: MAIN_S[1] + 1.4, yaw: Math.PI / 2 }, east: { x: 27, z: MAIN_N[0] - 1.4, yaw: -Math.PI / 2 },
-      north: { x: -3.6, z: -17.5, yaw: Math.PI }, south: { x: 3.6, z: 22.5, yaw: 0 },
+      north: { x: -3.6, z: -22, yaw: Math.PI }, south: { x: 3.6, z: 27, yaw: 0 },
     };
     for (const site of OFFMAP_SITES) {
       const p = at[site.dir]!;

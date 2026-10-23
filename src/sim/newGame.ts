@@ -12,7 +12,7 @@ import { DEFAULT_RULES, refreshPool } from './staff';
 import { makeMarketing } from './marketing';
 import { SANDBOX_CASH } from './money';
 
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 
 export function emptyDayStats(day: number): DayStats {
   return { day, revenue: 0, cogs: 0, rent: 0, wages: 0, utilities: 0, other: 0, loans: 0, bills: 0, theft: 0, tax: 0, customers: 0, served: 0, walkedOut: 0, turnedAway: 0, missedItems: 0, itemsSold: 0, satisfaction: 0, satisfactionN: 0, profit: 0, endCash: 0, complaints: emptyComplaints() };

@@ -364,7 +364,7 @@ describe('building up: nothing cut off, nothing for free', () => {
     // Floors opened along the way, the most open at once, and the shop grown and sold with floors up there, over
     // every run: it has to be tried, not just pass.
     let done = 0, top = 0, opened = 0, grownUp = 0, soldUp = 0, ups = 0, laid = 0;
-    for (const seed of [81, 82, 83, 84]) {
+    for (const seed of [81, 82, 83, 84, 85, 86]) {
       const s = shop(seed); aside(s);
       const r = new Rng(seed);
       const flights = () => s.shop.fixtures.filter((f) => VERTICAL.has(f.type));
@@ -379,7 +379,8 @@ describe('building up: nothing cut off, nothing for free', () => {
         return at;
       };
       const panels = (L: number) => ensureCeilings(s.shop)[L]!.map((k) => { const [x, z] = k.split(',').map(Number) as [number, number]; return { x, z: zOnLevel(z, L) }; });
-      const plot = () => ({ x: MAX_FLOOR.x0 + r.int(0, 8), z: MAX_FLOOR.z0 + r.int(0, 7) });
+      // (Round the back of the shop as it stands: the plot runs on far further back than it is worth trying.)
+      const plot = () => ({ x: MAX_FLOOR.x0 + r.int(0, 8), z: Math.max(MAX_FLOOR.z0, s.shop.floor.z0 - 5) + r.int(0, 7) });
       let was = worth(s);
       for (let i = 0; i < 160; i++) {
         const a = r.int(0, 12), f = flights().length ? r.pick(flights()) : null, type = r.pick(['stairs', 'stairs', 'escalator', 'elevator'] as const);

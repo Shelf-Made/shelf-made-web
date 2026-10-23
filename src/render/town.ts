@@ -233,6 +233,6 @@ export function buildTown(seed: number, plotId: string): TownPlan {
   for (const [x, z] of [[-6, -4], [14, 8], [-16, 12]] as const) plan.animals.push({ kind: 'bird', x, z, range: 14, y: 9 });
   for (const [x, z] of [[-1.5, -12], [-1.5, 14], [-28, -2], [28, 7]] as const) plan.animals.push({ kind: 'butterfly', x, z, range: 1.6 });
   for (const [x, z] of [[-1.45, -6], [-1.45, 9]] as const) plan.animals.push({ kind: 'squirrel', x, z, range: 0.5 });
-  for (const [x, z] of [[-14, -20], [16, -19.5], [-12, 25], [14, 24.5]] as const) plan.animals.push({ kind: 'rabbit', x, z, range: 2.0 });
+  for (const [x, z] of [[-14, -21.5], [16, -21], [-12, 26.5], [14, 26]] as const) plan.animals.push({ kind: 'rabbit', x, z, range: 2.0 });
   return plan;
 }

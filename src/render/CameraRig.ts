@@ -13,7 +13,7 @@ export class CameraRig {
   /** Height of the look-at point (the lobby looks over the shop toward the mountains). */
   lookY = 0;
   private side = 0;
-  bounds = { minX: -40, maxX: 40, minZ: -16, maxZ: 14 };
+  bounds = { minX: -40, maxX: 40, minZ: -22, maxZ: 20 };
   limits = { minDist: 6, maxDist: 46, minPitch: MathUtils.degToRad(28), maxPitch: MathUtils.degToRad(80) };
 
   constructor(aspect: number) {

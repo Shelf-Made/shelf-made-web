@@ -34,11 +34,11 @@ export const ZEBRA = { west: -2.2, east: 2.2, north: 0.5, south: 4.5 } as const;
 export const STOP_LINE = { eastbound: -3.9, westbound: 3.9, southbound: -1.1, northbound: 6.1 } as const;
 /** The town area: everything that matters lies within |x| < MAP_X, z in MAP_Z. */
 export const MAP_X = 26;
-export const MAP_Z = { north: -16, south: 21 } as const;
+export const MAP_Z = { north: -23, south: 28 } as const;
 /** Where traffic and walkers appear and vanish, out in the fog along each road. */
 export const ROAD_FAR = 90;
-/** Every corner owns this rectangle (shop-relative), big enough for the largest shop with the doubled lot. */
-export const PLOT_RECT = { x0: -8, z0: -11.6, x1: 12.6, z1: 2.55 };
+/** Every corner owns this rectangle (shop-relative): square, as deep back from the street as it is wide along it. */
+export const PLOT_RECT = { x0: -8, z0: -18.05, x1: 12.6, z1: 2.55 };
 /** Shop-relative z of the frontage sidewalk's centre line (the same on every corner). */
 export const FRONT_WALK_Z = SIDEWALK_N_Z + 1.6;
 
@@ -104,7 +104,7 @@ export const BILLBOARDS: { id: string; name: string; rent: number; reach: number
   // (Between the bus-stop corner's walkway and its service lane, the other way from the shelter: both move away as it grows.)
   { id: 'bus', name: 'Bus shelter', rent: 35, reach: 0.05, x: -8.9, z: SIDEWALK_S_Z + 0.55, y: 0, yaw: Math.PI },
   { id: 'edge', name: 'Main Road, edge of town', rent: 45, reach: 0.06, x: -27.5, z: ROAD_Z - 3.2, y: 0, yaw: Math.PI / 2 },
-  { id: 'roof', name: 'High board on Elm Street', rent: 30, reach: 0.04, x: 4.6, z: -16.5, y: 1.8, yaw: 0.35 },
+  { id: 'roof', name: 'High board on Elm Street', rent: 30, reach: 0.04, x: 4.6, z: -21.5, y: 1.8, yaw: 0.35 },
 ];
 
 /**
@@ -527,16 +527,16 @@ export function storeFrame(plotId: string): Frame {
 export const MAX_LEVELS = 5;
 /** What each floor is called. */
 export const FLOOR_NAMES = ['Ground', '1st', '2nd', '3rd', '4th'];
-/** How much further back each floor up is walked (shop-relative z). */
-export const LEVEL_DZ = -16;
+/** How much further back each floor up is walked (shop-relative z): past the back of the plot and then some. */
+export const LEVEL_DZ = -24;
 /** One storey's height (the walls are a unit tall). */
 export const STOREY = 1;
 /** Shop-relative z beyond which a point is upstairs (the plot ends before it). */
-const UPPER_Z = -12;
+const UPPER_Z = -20;
 /** The pieces that go up to the next floor. */
 export const VERTICAL: ReadonlySet<FixtureType> = new Set<FixtureType>(['stairs', 'escalator', 'elevator']);
 /** Which floor a shop-relative z is on (0: the ground floor). */
-export function levelOfZ(z: number): number { return z >= UPPER_Z ? 0 : Math.min(MAX_LEVELS - 1, Math.round((-4 - z) / -LEVEL_DZ)); }
+export function levelOfZ(z: number): number { return z >= UPPER_Z ? 0 : Math.min(MAX_LEVELS - 1, Math.round((-8 - z) / -LEVEL_DZ)); }
 /** A ground z carried up to floor `level`. */
 export const zOnLevel = (z: number, level: number): number => z + level * LEVEL_DZ;
 /** The ground z under a point on any floor. */

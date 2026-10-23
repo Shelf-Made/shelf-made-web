@@ -590,7 +590,7 @@ test.describe('screenshots', () => {
 
   test('building up: stairs, an escalator and a lift, shoppers on the first floor, the building three storeys tall', async ({ page }) => {
     test.setTimeout(300_000);
-    const UP = -16;
+    const UP = -24;
     await ready(page);
     await hooks(page, 'newGame', 7, 'main', 'Tall Order', { tutorial: false });
     await hooks(page, 'setSpeed', 0);

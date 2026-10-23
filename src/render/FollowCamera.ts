@@ -26,7 +26,7 @@ export class FollowCamera {
   private side = 0;
   private goal = { x: 0, y: 0, z: 0, yaw: 0, pitch: deg(52), distance: FollowCamera.DEFAULT };
   /** The camera stays over the crossroads and its backdrop ring. */
-  bounds = { minX: -32, maxX: 32, minZ: -24, maxZ: 28 };
+  bounds = { minX: -32, maxX: 32, minZ: -30, maxZ: 34 };
   limits = { minPitch: deg(35), maxPitch: deg(70) };
   /** Seeing through the manager's eyes: at their eye height, looking where they look, with a wider lens and a short view. */
   firstPerson = false;

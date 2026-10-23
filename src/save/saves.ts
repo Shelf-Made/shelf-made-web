@@ -1,7 +1,7 @@
 import type { GameState, Franchise } from '@/sim/types';
 import { bakeLot } from '@/sim/drive';
 import { rerouteToBays } from '@/sim/cars';
-import { storeFrame, lotLayout, paintedBays, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES, FIXTURES } from '@/sim/layout';
+import { storeFrame, lotLayout, paintedBays, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES, FIXTURES, LEVEL_DZ, toLocal } from '@/sim/layout';
 import { dollars } from '@/sim/money';
 
 import { makeRivals, RIVAL_ECON } from '@/sim/rivals';
@@ -51,6 +51,8 @@ const MIGRATIONS: ((raw: Record<string, unknown>) => Record<string, unknown>)[] 
   (raw) => migrateGoals(raw),
   // v11 → v12: rivals answer the player (no moves yet); shoppers carry why they chose a store (new ones only).
   (raw) => { for (const r of (raw as unknown as GameState).rivals) { r.responses ??= []; r.moveCooldown ??= {}; r.cooldown ??= 0; } return { ...raw, version: 12 }; },
+  // v12 → v13: the plot grew square (deeper back), so each floor upstairs is walked further back to stay past it.
+  (raw) => respaceUpstairs(raw),
 ];
 
 /** Old plot ids to the corners that replaced them; old franchise plots to off-map sites. */
@@ -88,6 +90,36 @@ function migrateToCrossroads(raw: Record<string, unknown>): Record<string, unkno
   }
   for (const f of shop.fixtures) if (f.queue) { f.queue = []; f.serving = null; f.scanned = 0; }
   return { ...raw, version: 9 };
+}
+
+/**
+ * Upstairs was walked 16 further back for each floor up, past a plot 14 deep; the plot is now as deep as it is wide,
+ * and each floor is LEVEL_DZ back. Everything stored at an upstairs z moves back by the difference: the pieces, the
+ * people (where they stand; any way they were walking is planned again), the spills, and each finish laid on a tile
+ * or a stretch of wall up there.
+ */
+function respaceUpstairs(raw: Record<string, unknown>): Record<string, unknown> {
+  const s = raw as unknown as GameState, shop = s.shop;
+  const OLD_DZ = -16, oldLevel = (z: number) => (z >= -12 ? 0 : Math.min(4, Math.round((-4 - z) / -OLD_DZ)));
+  const by = (z: number) => oldLevel(z) * (LEVEL_DZ - OLD_DZ);
+  for (const f of shop.fixtures ?? []) f.z += by(f.z + 0.5);
+  const moveWorld = (p: { x: number; z: number }) => { const l = toLocal(shop, p.x, p.z), d = by(l.z); if (d) { const w = toWorld(shop, l.x, l.z + d); p.x = w.x; p.z = w.z; } };
+  for (const p of s.people ?? []) {
+    const l = toLocal(shop, p.x, p.z), d = by(l.z);
+    if (!d) continue;
+    moveWorld(p); p.px = p.x; p.pz = p.z; p.path = []; p.pathIdx = 0; p.walkGoal = undefined; p.climb = undefined;
+  }
+  for (const l of shop.litter ?? []) moveWorld(l);
+  const tileKeys = <T>(r: Record<string, T> | undefined) => r && Object.fromEntries(Object.entries(r).map(([k, v]) => { const [x, z] = k.split(',').map(Number) as [number, number]; return [`${x},${z + by(z + 0.5)}`, v]; }));
+  shop.tileStyles = tileKeys(shop.tileStyles); shop.tileColors = tileKeys(shop.tileColors);
+  // A wall's key: its side, its line and where along it (a front or back wall's line is a z; a side wall's place is).
+  const wallKeys = <T>(r: Record<string, T> | undefined) => r && Object.fromEntries(Object.entries(r).map(([k, v]) => {
+    const [dir, line, t] = k.split('@') as [string, string, string], a = Number(line), b = Number(t);
+    return dir === 'front' || dir === 'back' ? [`${dir}@${a + by(a)}@${b}`, v] : [`${dir}@${a}@${b + by(b)}`, v];
+  }));
+  shop.wallStyles = wallKeys(shop.wallStyles); shop.wallColors = wallKeys(shop.wallColors);
+  shop.layoutVersion = (shop.layoutVersion ?? 0) + 1;
+  return { ...raw, version: 13 };
 }
 
 function migrateGoals(raw: Record<string, unknown>): Record<string, unknown> {
