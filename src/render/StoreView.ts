@@ -596,9 +596,11 @@ export class StoreView {
       pylon.push(place(this.letters(name, psize, 0.04, CREAM, sc.trim, false), px, 1.24 - psize * 0.4, pz + zOff, yaw));
       pylon.push(...this.bracket(px, 1.07, pz + zOff, Math.min(boardW - 0.3, this.textWidth(name, psize) + 0.16), yaw));
     }
+    // (Taken down, nothing stands there: nor its neon, its slogan or its lit letters.)
+    const hasPylon = !shop.pylonGone;
     const pylonMesh = new Mesh(merge(pylon), this.assets.material);
     pylonMesh.castShadow = true;
-    this.shell.add(pylonMesh);
+    if (hasPylon) this.shell.add(pylonMesh);
     // The sign's tier: neon tubes round the fascia and the pylon's board (neon and up); the slogan on a panel under
     // the pylon's board, or on the top sign an LED board there with the slogan running across it.
     this.ticker = null;
@@ -609,10 +611,10 @@ export class StoreView {
           tubes.push(box(pal, '#FFFFFF', w, t, t, x, y, z), box(pal, '#FFFFFF', w, t, t, x, y + h - t, z), box(pal, '#FFFFFF', t, h, t, x - w / 2 + t / 2, y, z), box(pal, '#FFFFFF', t, h, t, x + w / 2 - t / 2, y, z));
         };
         frame(width + 0.4, 0.44, ox + (fr.x0 + fr.x1) / 2, 1.025, fz + 0.045);
-        for (const s of [1, -1]) frame(boardW - 0.06, 0.49, px, 1.03, pz + s * 0.074);
+        if (hasPylon) for (const s of [1, -1]) frame(boardW - 0.06, 0.49, px, 1.03, pz + s * 0.074);
         this.shell.add(new Mesh(merge(tubes), this.signNeon));
       }
-      if (slogan || tier >= 3) {
+      if (hasPylon && (slogan || tier >= 3)) {
         const w = Math.max(0.6, boardW - 0.58), h = 0.24, y = 0.66;
         this.shell.add(Object.assign(new Mesh(box(pal, tier >= 3 ? '#222226' : '#FFF6E0', w + 0.05, h + 0.05, 0.07, px, y - 0.025, pz), this.assets.material), { castShadow: true }));
         const tex = tier >= 3 ? tickerTexture(`${slogan || 'Open every day'}   •   ${name}`) : wordsTexture(slogan, 512, Math.round(512 * h / w), sc.dark, null);
@@ -676,7 +678,7 @@ export class StoreView {
       // Lit letters (a goal reward): the name on the fascia and the pylon shines after dark.
       if (signTier(shop) >= 1) {
         const lit = [place(this.letters(name, size, 0.05, CREAM, sc.trim), ox + (f.x0 + f.x1) / 2, 1.25 - size * 0.4, fz + 0.046)];
-        for (const yaw of [0, Math.PI]) lit.push(place(this.letters(name, psize, 0.04, CREAM, sc.trim, false), px, 1.24 - psize * 0.4, pz + (yaw === 0 ? 0.076 : -0.076), yaw));
+        if (hasPylon) for (const yaw of [0, Math.PI]) lit.push(place(this.letters(name, psize, 0.04, CREAM, sc.trim, false), px, 1.24 - psize * 0.4, pz + (yaw === 0 ? 0.076 : -0.076), yaw));
         g.add(Object.assign(new Mesh(merge(lit), SIGN_GLOW), { name: 'lit-sign' }));
       }
       const pool = new Mesh(mergeGeometries([spillGeometry(width * 0.6, 1.4, ox + (f.x0 + f.x1) / 2, 0.035, fz + 1.1), spillGeometry(0.9, 0.7, ox + shop.door.x, 0.036, fz + 0.45, 0.7)]), SPILL);
@@ -1337,7 +1339,7 @@ function wayInRuns(shop: Shop): [number, number][] {
   return runs;
 }
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => `${f.type}:${f.x},${f.z},${f.rot},${f.finish ?? ''},${f.paint ?? ''}`).join(';')}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => `${f.type}:${f.x},${f.z},${f.rot},${f.finish ?? ''},${f.paint ?? ''}`).join(';')}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.pylonGone ? 'nopylon' : ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
 function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean; cross?: boolean; veins?: string } {

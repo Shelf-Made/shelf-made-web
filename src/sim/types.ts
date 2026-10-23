@@ -468,6 +468,8 @@ export interface Shop {
   lotBaked?: boolean;
   /** Where the pylon sign stands (shop-relative centre and board width), fixed once the lot is laid as tiles. */
   pylon?: { x: number; z: number; w: number };
+  /** The pylon sign taken down (sold): nothing stands where it stood, and its spot is free to build on. */
+  pylonGone?: boolean;
   /** Which parking bays are painted, by slot (see baySlots), in the order they were painted (`bays` follows it). Old saves: every slot of `lotRows` rows. */
   bayPlan?: number[];
 }

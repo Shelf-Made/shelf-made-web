@@ -7,7 +7,7 @@
  * without them plays exactly as before.
  */
 import type { GameState, Shop, SignStyle, Car, Fixture, Vec2 } from './types';
-import { LOT_FRONT, FRONT_WALK_Z, WALL_T, toWorld, toLocal, bayRect, lotLayout, serviceDoor, byDoor, footprintOf } from './layout';
+import { LOT_FRONT, FRONT_WALK_Z, WALL_T, FIXTURES, RESALE, PYLON_PRICE, toWorld, toLocal, bayRect, lotLayout, serviceDoor, byDoor, footprintOf, overlaps, pylonRect, pylonSpot } from './layout';
 import { popup, cue, withRng } from './state';
 import { dollars, formatMoney } from './money';
 import { idHash } from './visitors';
@@ -158,4 +158,22 @@ export function offTheBus(state: GameState, rush: boolean): Vec2 | null {
   if (!withRng(state, 'transit', (r) => r.chance(rush ? BUS_RUSH_SHARE : BUS_QUIET_SHARE))) return null;
   const off = withRng(state, 'transit', (r) => r.range(-0.6, 0.6));
   return toWorld(state.shop, stop.x + 1 + off, FRONT_WALK_Z);
+}
+
+/** Take the pylon sign down, sold as a bought billboard is (part of its price back); or put one back up where it stood. */
+export function setPylon(state: GameState, up: boolean): string | null {
+  const shop = state.shop;
+  if (up === !shop.pylonGone) return up ? 'The pylon sign is up already.' : 'The pylon sign is down already.';
+  if (up) {
+    const r = pylonRect(pylonSpot(shop));
+    if (shop.fixtures.some((f) => FIXTURES[f.type].outdoor && overlaps(footprintOf(f.type, f.x, f.z, f.rot), r))) return 'Clear where it stood first.';
+    if (state.cash < PYLON_PRICE) return `Need ${dollars(PYLON_PRICE)}.`;
+    state.cash -= PYLON_PRICE;
+    delete shop.pylonGone;
+  } else {
+    state.cash += Math.round(PYLON_PRICE * RESALE);
+    shop.pylonGone = true;
+  }
+  shop.layoutVersion++;
+  return null;
 }

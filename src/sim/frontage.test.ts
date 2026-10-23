@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { canPlaceOutside } from './lot';
+import { lotReserved, PYLON_PRICE, RESALE } from './layout';
 import { newGame, applyCommand, tick, TICK, resetGridCache, type GameState } from './index';
 import { canPlace } from './build';
 import { lotAppeal } from './lot';
@@ -227,5 +228,17 @@ describe('the new pieces for the lot', () => {
       expect(applyCommand(s, { type: 'placeFixture', fixtureType: t, x: at.x, z: at.z, rot: 0 }).ok, t).toBe(true);
     }
     expect(lotAppeal(s.shop)).toBeGreaterThan(before + 0.2);
+  });
+});
+
+describe('the pylon sign', () => {
+  it('sells like a bought piece, frees its spot, and goes back up', () => {
+    const s = shop();
+    const cash = s.cash, spot = lotReserved(s.shop)[0]!;
+    expect(applyCommand(s, { type: 'pylon', up: false }).ok).toBe(true);
+    expect(s.cash).toBe(cash + Math.round(PYLON_PRICE * RESALE));
+    expect(lotReserved(s.shop).some((r) => r.x0 === spot.x0 && r.z0 === spot.z0)).toBe(false);
+    expect(applyCommand(s, { type: 'pylon', up: true }).ok).toBe(true);
+    expect(s.cash).toBe(cash + Math.round(PYLON_PRICE * RESALE) - PYLON_PRICE);
   });
 });

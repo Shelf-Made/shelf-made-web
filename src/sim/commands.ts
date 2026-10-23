@@ -3,7 +3,7 @@
  * Commands are plain data, so they can be recorded for replays and driven by tests.
  */
 import { pickUpLitter, moveAlong } from './life';
-import { setSign, setSlogan, cleanSignText } from './frontage';
+import { setSign, setSlogan, cleanSignText, setPylon } from './frontage';
 import { replyToReview } from './reviews';
 import type { GameState, Rot, FixtureType, FloorStyle, WallStyle, LotSurface, SavedOrder, SignStyle } from './types';
 import { saveOrder, editSavedOrder, deleteSavedOrder, placeSaved } from './savedOrders';
@@ -65,6 +65,7 @@ export type Command =
   | { type: 'replaceManager'; franchiseId: number; managerId: number }
   | { type: 'buyCorner'; rivalId: string; managerId: number }
   | { type: 'openingEvent' }
+  | { type: 'pylon'; up: boolean }
   | { type: 'signStyle'; style: SignStyle }
   | { type: 'setSlogan'; text: string }
   | { type: 'setSignText'; fixtureId: number; text: string }
@@ -125,7 +126,7 @@ export const GRAB_REACH = 1.3;
 /** The sound a command makes when it works and has not already made its own. */
 const COMMAND_CUES: Partial<Record<Command['type'], string>> = {
   removeFixture: 'sell', moveFixture: 'place', setPrice: 'tick', flyers: 'paper', billboard: 'build', promotion: 'order', ad: 'order',
-  outsideSign: 'build', signStyle: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
+  outsideSign: 'build', signStyle: 'build', pylon: 'build', closeFranchise: 'thud', replaceManager: 'hire', takeLoan: 'coin', repayLoan: 'coin', hire: 'hire', fire: 'thud',
   setShift: 'tick', setBreak: 'tick', restyleStaff: 'tap', raise: 'coin', setRules: 'tick', openTomorrow: 'open', choosePlot: 'reward', setScheme: 'tick',
 };
 
@@ -369,6 +370,7 @@ function apply(state: GameState, cmd: Command): CommandResult {
     case 'placeSavedOrder': { const err = placeSaved(state, cmd.id); if (!err) cue(state, 'order'); return err ? { ok: false, message: err } : { ok: true }; }
     case 'deleteSavedOrder': { const err = deleteSavedOrder(state, cmd.id); return err ? { ok: false, message: err } : { ok: true }; }
     case 'eraseBay': { const err = eraseBay(state, cmd.slot); if (!err) cue(state, 'coin'); return err ? { ok: false, message: err } : { ok: true }; }
+    case 'pylon': { const err = setPylon(state, cmd.up); return err ? { ok: false, message: err } : { ok: true }; }
     case 'signStyle': { const err = setSign(state, cmd.style); return err ? { ok: false, message: err } : { ok: true }; }
     case 'setSlogan': { setSlogan(state, cmd.text); return { ok: true }; }
     case 'setSignText': {

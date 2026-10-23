@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GameRuntime, Snapshot } from '@/app/GameRuntime';
-import { FIXTURES, VARIANTS, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, storeysOf, panelsOver } from '@/sim/layout';
+import { FIXTURES, PYLON_PRICE, RESALE, VARIANTS, CORNERS, FLOORS, WALLS, SURFACES, BAY_PRICE, LOT_MAX, PALLET_UNITS, STORE_RACK_UNITS, RACK_STANDS, floorTileCount, MAX_FLOOR, MAX_LEVELS, FLOOR_NAMES, storeysOf, panelsOver } from '@/sim/layout';
 import { PANEL_PRICE } from '@/sim/storeys';
 import { bayReachable, truckStop } from '@/sim/drive';
 import { tileCost, grownCeilings, openEdges, wallUpPrice } from '@/sim/build';
@@ -380,7 +380,7 @@ export function BuildCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
 
 /**
  * The front of the shop: the sign (each one up gets the shop noticed by more of the people going past), a
- * slogan for the pylon, and a loading bay at the back door.
+ * slogan for the pylon, and the pylon sign itself (sold, or put back up).
  */
 function ShopFront({ runtime }: { runtime: GameRuntime }) {
   const s = runtime.state!;
@@ -389,6 +389,13 @@ function ShopFront({ runtime }: { runtime: GameRuntime }) {
   const save = () => { if ((s.shop.slogan ?? '') !== slogan.trim()) runtime.dispatch({ type: 'setSlogan', text: slogan }); };
   return (
     <>
+      <h3>Pylon sign</h3>
+      <div className="item">
+        <div><div className="name">{s.shop.pylonGone ? 'Pylon sign taken down' : 'Pylon sign by the road'}</div><div className="sub">{s.shop.pylonGone ? 'Its spot on the lot is free to build on.' : 'It came with the shop. Sold, its spot on the lot is free to build on.'}</div></div>
+        {s.shop.pylonGone
+          ? <button className="btn small" disabled={s.cash < PYLON_PRICE} onClick={() => { const r = runtime.dispatch({ type: 'pylon', up: true }); if (!r.ok && r.message) runtime.showToast(r.message); }}>Put up {money(PYLON_PRICE)}</button>
+          : <button className="btn small ghost" onClick={() => runtime.dispatch({ type: 'pylon', up: false })}>Sell {money(Math.round(PYLON_PRICE * RESALE))}</button>}
+      </div>
       <h3>Shop sign</h3>
       <p className="muted">A brighter sign gets the shop noticed: more of the people going past come in.</p>
       {SIGN_TIERS.map((t, i) => {

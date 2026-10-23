@@ -298,16 +298,20 @@ export function pylonSpot(shape: { floor: Rect; storeroom: Rect; lotRows?: numbe
   return { x: (left + right) / 2, z: 1.85, w: Math.min(2.6, right - left) };
 }
 /** What on the lot is spoken for: the apron, the walkway, lanes and yard, the painted bays and the pylon sign. Nothing is built on them. */
-export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; lotBaked?: boolean; pylon?: { x: number; z: number; w: number } }): Rect[] {
-  const py = pylonSpot(shop);
-  // Laid as tiles, the paths and lanes are yours to dig up: only the pylon sign stands where it stands.
-  if (shop.lotBaked) return [{ x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 }];
+export function lotReserved(shop: { floor: Rect; storeroom: Rect; lotRows?: number; bayPlan?: number[]; lotBaked?: boolean; pylon?: { x: number; z: number; w: number }; pylonGone?: boolean }): Rect[] {
+  const py = pylonSpot(shop), sign = shop.pylonGone ? [] : [pylonRect(py)];
+  // Laid as tiles, the paths and lanes are yours to dig up: only the pylon sign stands where it stands (if it does).
+  if (shop.lotBaked) return sign;
   const L = lotLayout(shop);
   return [
     L.apron, { x0: L.walkwayX - 0.5, z0: L.apron.z0, x1: L.walkwayX + 0.5, z1: LOT_FRONT }, L.aisle, { ...L.driveway, z1: LOT_FRONT }, { ...L.serviceLane, z1: LOT_FRONT }, L.backYard,
-    ...L.bays.map(bayRect), { x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 },
+    ...L.bays.map(bayRect), ...sign,
   ];
 }
+/** The ground the pylon sign stands on. */
+export const pylonRect = (py: { x: number; z: number; w: number }): Rect => ({ x0: py.x - py.w / 2 - 0.1, z0: py.z - 0.3, x1: py.x + py.w / 2 + 0.1, z1: py.z + 0.3 });
+/** What the pylon sign the shop came with sells for (as a bought billboard does), and what putting one back up costs. */
+export const PYLON_PRICE = 300;
 
 // ---- The floor, tile by tile. It grows a tile at a time inside the market hall's footprint: `floor`
 // is its bounding rectangle and `gaps` the tiles inside that are not floor yet (keys "x,z" of their
