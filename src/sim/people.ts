@@ -6,7 +6,7 @@ import { fixtureFront, fixtureFrontWorld, fixtureBackWorld, fixtureFacingWorld, 
 import { findPath } from './pathfinding';
 import { followPath, turnToward } from './movement';
 import { withRng, nextId, popup, cue, gridFor, wallGridFor, wallBodiesFor, dist, react, complain } from './state';
-import { spawnCustomerCar, leaveLot, drivewayX, atLot, turnIntoLot, driveOn, headHome, onTheRoad, onwardDestination } from './cars';
+import { spawnCustomerCar, leaveLot, drivewayX, atLot, turnIntoLot, pastLot, driveOn, headHome, onTheRoad, onwardDestination } from './cars';
 import { bayCentre, DIRS } from './drive';
 import { route, walkStreet, legOf, LEGS, LEG_END, CORNER_POINT, legCorner } from './streets';
 import { tickRivalShopper, rivalShopperInCar } from './rivalShoppers';
@@ -613,8 +613,9 @@ function tickCustomer(state: GameState, p: Person, dyn: Set<number>): void {
       p.x = car.x; p.z = car.z; p.yaw = car.yaw;
       // Closing time with the car still out on the road: no turning in now, home instead.
       if (state.phase !== 'open' && car.lot === undefined && car.state === 'arriving' && onTheRoad(car)) { headHome(state, car); p.state = 'gone'; break; }
-      // At your lot: the free bay they can get to, or (none) on past it.
-      if (car.seek && atLot(state, car) && !turnIntoLot(state, car)) { lotFullAtLot(state, p, car); break; }
+      // At your lot: the free bay they can get to, looked for again as they come up to each way in (a car may pull out
+      // meanwhile), and only once past the last one, on past it.
+      if (car.seek && atLot(state, car) && !turnIntoLot(state, car) && pastLot(state, car)) { lotFullAtLot(state, p, car); break; }
       if (car.state === 'parked' && car.lot === 'street') {
         // Parked on Elm Street: onto the sidewalk and round to the shop on foot.
         p.x = SIDEWALK_E_X; p.z = car.z;
