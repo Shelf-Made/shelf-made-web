@@ -788,3 +788,6 @@ html.colour-blind .look-swatches button.selected::after { content: '✓'; color:
 .item .text-in { margin-top: 6px; padding: 7px 10px; font-size: 14px; }
 .sign-words { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .sign-words input { padding: 6px 9px; font-size: 14px; }
+/* An order on credit: what is owed and when; red when today's cash would not cover it. */
+.basket .credit { margin: 6px 0; padding: 6px 8px; border-radius: 8px; background: #fff6e0; border: 1px solid #f1d58a; font-size: 13px; line-height: 1.35; }
+.basket .credit.warn { background: #fde3dd; border-color: #f3b9ab; color: #b8402e; }

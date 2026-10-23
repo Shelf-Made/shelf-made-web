@@ -102,9 +102,11 @@ export function checkFailState(state: GameState): void {
   if (state.sandbox) return;
   if (state.cash < 0) {
     state.brokeDays++;
-    if (state.brokeDays === 1 && !state.rescueOffered) {
+    if (state.brokeDays === 1) {
+      // Said every time it happens: one more night in the red and the shop is gone.
+      const rescue = !state.rescueOffered;
       state.rescueOffered = true;
-      state.notices.push({ day: state.day, text: 'You are out of cash. The bank offers one rescue loan; take it from the Money card before tomorrow night.', kind: 'money' });
+      state.notices.push({ day: state.day, text: `You could not pay your bills tonight. Be back in the black by tomorrow night or the bank takes the shop${rescue ? ': it offers one rescue loan (Money card)' : ''}.`, kind: 'money' });
     } else if (state.brokeDays >= 2) state.gameOver = true;
   } else state.brokeDays = 0;
 }

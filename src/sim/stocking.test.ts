@@ -87,3 +87,15 @@ describe('the stock tool', () => {
     expect(storageCap(s.shop)).toBe(cap + STORE_RACK_UNITS);
   });
 });
+
+describe('room on a shelf', () => {
+  it('is any slot not full: a full slot of the product never turns the rest of the shelf away', () => {
+    const s = openGame({ seed: 5, plotId: 'main', name: 'T', tutorial: false });
+    const shelf = s.shop.fixtures.find((f) => f.type === 'shelf')!, cap = FIXTURES.shelf.capacity;
+    shelf.slots.forEach((sl, i) => { sl.productId = i === 0 ? 'pasta' : 'chips'; sl.qty = i === 0 ? cap : 0; });
+    // With the stock tool, more pasta goes into the sold-out slots.
+    s.shop.storage = [{ productId: 'pasta', qty: 10, day: 1 }];
+    expect(applyCommand(s, { type: 'topUp', fixtureId: shelf.id }).ok).toBe(true);
+    expect(shelf.slots.filter((sl) => sl.productId === 'pasta').reduce((a, sl) => a + sl.qty, 0)).toBe(cap + 10);
+  });
+});

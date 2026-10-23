@@ -23,7 +23,7 @@ export function topUp(state: GameState, f: Fixture): number {
   if (!FIXTURES[f.type].slots || !getsTo(state, f)) return 0;
   let moved = 0;
   for (let guard = 0; guard < 40; guard++) {
-    const t = pickCarryTask(state, f, true), before = moved;
+    const t = pickCarryTask(state, f, true, true), before = moved;
     if (!t) break;
     let want = t.qty;
     // Off the pallet, oldest first.
@@ -31,8 +31,8 @@ export function topUp(state: GameState, f: Fixture): number {
       if (want <= 0) break;
       const take = Math.min(e.qty, want);
       e.qty -= take; want -= take;
-      // (As the manager stocks: a product new to this shelf may take a sold-out slot.)
-      const left = placeOnFixture(state, f, t.productId, take, !f.slots.some((s) => s.productId === t.productId));
+      // (As the manager stocks by hand: any sold-out slot is room.)
+      const left = placeOnFixture(state, f, t.productId, take, true);
       e.qty += left;
       moved += take - left;
       if (left > 0) break;

@@ -1479,7 +1479,7 @@ export function placeOnFixture(state: GameState, f: Fixture, productId: string, 
 }
 
 /** What the owner should carry to this fixture, or null if nothing fits. */
-export function pickCarryTask(state: GameState, f: Fixture, coldFirst = false): { productId: string; qty: number } | null {
+export function pickCarryTask(state: GameState, f: Fixture, coldFirst = false, anyRoom = false): { productId: string; qty: number } | null {
   const def = FIXTURES[f.type];
   if (def.slots === 0) return null;
   const storage = state.shop.storage.filter((s) => s.qty > 0);
@@ -1508,20 +1508,22 @@ export function pickCarryTask(state: GameState, f: Fixture, coldFirst = false): 
     if (entry) return { productId: entry.productId, qty: Math.min(def.capacity, entry.qty, 8) };
   }
   if (f.slots.some((s) => s.productId && s.qty === 0)) {
-    const entry = storage.find((e) => fits(e.productId) && !shelvedAnywhere(state, e.productId));
+    // (The manager filling a shelf by hand, with the stock tool, uses any room there is: something not on this shelf
+    // first, else more of what is.)
+    const entry = storage.find((e) => fits(e.productId) && !shelvedAnywhere(state, e.productId))
+      ?? (anyRoom ? storage.find((e) => fits(e.productId) && !f.slots.some((s) => s.productId === e.productId && s.qty > 0)) ?? storage.find((e) => fits(e.productId)) : undefined);
     if (entry) return { productId: entry.productId, qty: Math.min(def.capacity, entry.qty, 8) };
   }
   return null;
 }
 
 /**
- * May this box go into a slot sold out of something else? Only when it is on purpose: the manager
- * stocking a shelf that has none of the product yet, or staff shelving a product new to the shop.
- * Otherwise what is left over goes back on the pallet, so a sold-out product keeps its place and the
- * range never shrinks to whatever there is most of.
+ * May this box go into a slot sold out of something else? The manager's box always may: any room on the shelf is
+ * room for it, and only a shelf with every slot holding stock is full. Staff only shelve a product new to the shop
+ * there, so a sold-out product keeps its place and the range never shrinks to whatever there is most of.
  */
-function mayTakeOver(state: GameState, p: Person, f: Fixture, productId: string): boolean {
-  return p.kind === 'owner' ? !f.slots.some((s) => s.productId === productId) : !shelvedAnywhere(state, productId);
+function mayTakeOver(state: GameState, p: Person, _f: Fixture, productId: string): boolean {
+  return p.kind === 'owner' || !shelvedAnywhere(state, productId);
 }
 
 /** Is a product on a shelf anywhere in the shop, even sold out there? */

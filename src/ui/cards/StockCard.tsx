@@ -7,6 +7,7 @@ import { keyLabel } from '@/save/settings';
 import { FIXTURES, storageCap, storageUsed } from '@/sim/layout';
 import { money, ProductPic } from '../useRuntime';
 import { savedOrderCost, ruleText, MAX_SAVED } from '@/sim/savedOrders';
+import { upcoming, unlimitedCash } from '@/sim/money';
 import type { OrderRule, SavedOrder } from '@/sim/types';
 
 export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snapshot }) {
@@ -19,6 +20,8 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const [recycling, setRecycling] = useState<string | null>(null);
   // Instant delivery: straight onto the pallet, no truck to wait for, a quarter dearer.
   const [instant, setInstant] = useState(false);
+  // Buying on credit more than you could pay today: the first click asks, the second orders (that order, from that supplier).
+  const [creditFor, setCreditFor] = useState<string | null>(null);
   // Opened from a shelf: start at the products that go on it (a chiller's dairy, a stand's produce).
   const [cat, setCat] = useState<Category | 'all'>(() => {
     const t = runtime.takeStockFor();
@@ -31,6 +34,10 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
   const sup = SUPPLIERS.find((x) => x.id === supplierId)!;
   const total = Math.round(lines.reduce((a, l) => a + l.qty * Math.round(unitCost(l.productId, supplierId, s) * (instant ? INSTANT_MUL : 1) * 100) / 100, 0) * 100) / 100;
   const short = lines.length > 0 && total < sup.minOrder;
+  // On credit (the supplier invoices you): what you owe by the day it is due, and whether today's cash covers it.
+  const owed = upcoming(s).filter((u) => u.day <= s.day + sup.terms).reduce((a, u) => a + u.amount, 0);
+  const risky = sup.terms > 0 && lines.length > 0 && !unlimitedCash(s) && total + owed > s.cash;
+  const creditKey = `${supplierId}|${total}`, credit = creditFor === creditKey;
   const onShelf = useMemo(() => {
     const m = new Map<string, { qty: number; cap: number }>();
     for (const f of s.shop.fixtures) for (const sl of f.slots) if (sl.productId) { const e = m.get(sl.productId) ?? { qty: 0, cap: 0 }; e.qty += sl.qty; e.cap += FIXTURES[f.type].capacity; m.set(sl.productId, e); }
@@ -112,7 +119,18 @@ export function StockCard({ runtime, snap }: { runtime: GameRuntime; snap: Snaps
             <input type="checkbox" checked={instant} onChange={(e) => setInstant(e.target.checked)} />
             <span><b>Instant delivery</b> +{Math.round((INSTANT_MUL - 1) * 100)}%<small>Straight onto the pallet, no truck to wait for</small></span>
           </label>
-          <button className="btn big" disabled={lines.length === 0 || short} onClick={() => { const r = runtime.dispatch({ type: 'placeOrder', supplierId, lines, instant }); if (r.ok) { setQty({}); runtime.showToast(instant ? 'Delivered! It is on the pallet.' : 'Order placed. The truck is on its way.'); } }}>{instant ? 'Order now' : 'Place order'}</button>
+          {sup.terms > 0 && lines.length > 0 && (
+            <p className={`credit${risky ? ' warn' : ''}`} role={risky ? 'alert' : undefined}>
+              <b>Bought on credit:</b> {sup.name} sends an invoice for {money(total)}, due on day {s.day + sup.terms}.
+              {risky ? ` With ${money(owed)} already due by then, that is ${money(total + owed - s.cash)} more than you have. If you can't pay your bills two nights running, the bank takes the shop.` : ' Keep that much in hand by then.'}
+            </p>
+          )}
+          <button className={`btn big${risky && credit ? ' danger' : ''}`} disabled={lines.length === 0 || short} onClick={() => {
+            if (risky && !credit) { setCreditFor(creditKey); return; }
+            setCreditFor(null);
+            const r = runtime.dispatch({ type: 'placeOrder', supplierId, lines, instant });
+            if (r.ok) { setQty({}); runtime.showToast(sup.terms > 0 ? `Ordered on credit: ${money(total)} due on day ${s.day + sup.terms}.` : instant ? 'Delivered! It is on the pallet.' : 'Order placed. The truck is on its way.'); }
+          }}>{risky && credit ? `Yes, owe ${money(total)}` : instant ? 'Order now' : 'Place order'}</button>
           {short && <p className="muted">{sup.name} takes orders of {money(sup.minOrder)} or more.</p>}
           {total > s.cash && !sup.terms && <p className="muted">You have {money(s.cash)}.</p>}
           {lines.length > 0 && (s.savedOrders?.length ?? 0) < MAX_SAVED && (
