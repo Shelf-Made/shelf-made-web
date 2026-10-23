@@ -5,7 +5,7 @@ import { PRODUCTS, productDef, inSeason, holidayName, holidayOn, sizeOf, HOLIDAY
 import { emptyDayStats } from './newGame';
 import { popup, cue, withRng } from './state';
 import { spawnDeliveryTruck, deliverOrder } from './cars';
-import { BAY_ETA } from './frontage';
+import { BAY_ETA, hasDock } from './frontage';
 import { doorOutside } from './people';
 import { rivalDay, rivalsNight, planRivals } from './rivals';
 import { computeScores, priceIndex, playerShare } from './customers';
@@ -34,7 +34,7 @@ export function supplier(id: string): Supplier { return SUPPLIERS.find((s) => s.
 export function orderEta(state: GameState, supplierId: string): number {
   const sup = supplier(supplierId);
   // Quick while the shop is still being fitted out, so the first five minutes keep moving; sooner with a loading bay.
-  return (state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds) * (state.shop.loadingBay ? BAY_ETA : 1);
+  return (state.phase === 'setup' ? Math.min(sup.etaSeconds, 20) : sup.etaSeconds) * (hasDock(state.shop) ? BAY_ETA : 1);
 }
 
 export function unitCost(productId: string, supplierId: string, state?: GameState): number {

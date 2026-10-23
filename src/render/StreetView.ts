@@ -17,7 +17,7 @@ type Lamp = 'mainR' | 'mainA' | 'mainG' | 'sideR' | 'sideA' | 'sideG' | 'walk' |
 export class StreetView {
   readonly group = new Group();
   private lamps = new Map<Lamp, Mesh>();
-  private boards = new Map<string, { mine: Mesh; rival: Mesh; empty: Mesh }>();
+  private boards = new Map<string, { mine: Mesh; rival: Mesh; empty: Mesh; town: Mesh }>();
   private signs = new Group();
   private signKey = '';
   private boardKey = '';
@@ -59,7 +59,7 @@ export class StreetView {
   /** Billboard faces for the player's name; rebuilt when the name changes. */
   private buildBoards(shopName: string): void {
     const pal = this.assets.palette;
-    for (const b of this.boards.values()) for (const m of [b.mine, b.rival, b.empty]) this.group.remove(m);
+    for (const b of this.boards.values()) for (const m of [b.mine, b.rival, b.empty, b.town]) this.group.remove(m);
     this.boards.clear();
     for (const site of BILLBOARDS) {
       const face = (bg: string, line1: string, c1: string, line2: string, c2: string) => {
@@ -76,6 +76,8 @@ export class StreetView {
         mine: face('#3FA87A', shopName, '#FFF3DC', 'Fresh every day', '#FFC044'),
         rival: face(RIVAL_SCHEMES.chain.primary, 'MegaMart', '#FFFFFF', 'Big savings, every aisle', '#FFC044'),
         empty: face('#FFFFFF', 'Space to let', '#38383D', 'Call 555-0100', '#4A4A52'),
+        // (Once you are open, a board nobody rents carries the town's own poster, not a to-let notice.)
+        town: face('#3570BC', 'Shop local', '#FFFFFF', 'Fresh food on every corner', '#FFC044'),
       });
     }
   }
@@ -117,11 +119,12 @@ export class StreetView {
     for (const [k, m] of this.lamps) m.visible = vis[k];
     const bk = state.shop.name;
     if (bk !== this.boardKey) { this.boardKey = bk; this.buildBoards(state.shop.name); }
-    // MegaMart's ad goes up only on a board it has bought (one of its moves); the rest are yours or to let.
+    // MegaMart's ad goes up only on a board it has bought (one of its moves); the rest are yours, or to let until you open.
+    const opened = state.phase !== 'picking' && state.phase !== 'setup';
     for (const [id, b] of this.boards) {
       const mine = state.marketing.billboards.includes(id);
       const theirs = !mine && state.rivals.some((r) => r.billboard === id && r.open);
-      b.mine.visible = mine; b.rival.visible = theirs; b.empty.visible = !mine && !theirs;
+      b.mine.visible = mine; b.rival.visible = theirs; b.empty.visible = !mine && !theirs && !opened; b.town.visible = !mine && !theirs && opened;
     }
     const sk = state.franchises.map((f) => f.siteId + f.name).join(',') + '|' + state.rivals.map((r) => r.branches.join('+')).join(',');
     if (sk !== this.signKey) { this.signKey = sk; this.buildSigns(state); }

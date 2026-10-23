@@ -10,7 +10,7 @@ import {
   toWorld, toLocal, yawToWorld, justBought, floorTileList, isFloor, WALL_T, type Rect,
 } from './layout';
 import { dollars } from './money';
-import { busStopRule, chargerReachesBay } from './frontage';
+import { busStopRule, chargerReachesBay, dockByDoor } from './frontage';
 import { tilesOf, syncLotBays, defaultSlots, bayPieces, dropCovered, type LotSlot } from './drive';
 
 export interface LotCheck { ok: boolean; reason: string; price: number }
@@ -48,7 +48,9 @@ export function canPlaceOutside(state: GameState, type: FixtureType, x: number, 
     if (ignoreId === undefined && state.cash < total) return { ok: false, reason: `Need ${dollars(total)}`, price: total };
     return { ok: true, reason: FIXTURES[type].name, price: total };
   }
-  if (shop.lotBaked && on.some((t) => surfaceAt(shop, t.x, t.z) === 'asphalt')) return { ok: false, reason: 'Not on the tarmac: cars drive there', price };
+  // (A loading dock is painted on the tarmac, where the truck stands; nothing else goes where cars drive.)
+  if (type === 'loadingDock') { if (!dockByDoor(shop, x, z, rot)) return { ok: false, reason: 'Put it by the door deliveries come in at', price }; }
+  else if (shop.lotBaked && on.some((t) => surfaceAt(shop, t.x, t.z) === 'asphalt')) return { ok: false, reason: 'Not on the tarmac: cars drive there', price };
   if (others.some((f) => overlaps(footprintOf(f.type, f.x, f.z, f.rot), r))) return { ok: false, reason: 'Something is already there', price };
   if (others.some((f) => f.type === 'bikeRack' && overlaps(frontTile(f), r))) return { ok: false, reason: 'Leave room in front of the bike rack', price };
   if (type === 'busStop') { const why = busStopRule(r, rot); if (why) return { ok: false, reason: why, price }; }

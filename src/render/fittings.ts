@@ -28,7 +28,7 @@ export const FITTING_MODEL: Partial<Record<FixtureType, string>> = {
   floorLamp: 'gen:floorLamp', wallLight: 'gen:wallLight', pendant: 'gen:pendant', neon: 'gen:neon', window: 'gen:windowTrim', pallet: 'gen:pallet',
   bench: 'gen:bench',
   flowerBed: 'gen:flowerBed', tree: 'gen:tree', planter: 'gen:planter', parkBench: 'gen:parkBench', bikeRack: 'gen:bikeRack', billboard: 'gen:billboard',
-  fountain: 'gen:fountain', statue: 'gen:statue', lampPost: 'gen:lampPost', bollard: 'gen:bollard', balloons: 'gen:balloons', hedge: 'gen:hedge', evCharger: 'gen:evCharger', busStop: 'gen:busStop',
+  fountain: 'gen:fountain', statue: 'gen:statue', lampPost: 'gen:lampPost', bollard: 'gen:bollard', balloons: 'gen:balloons', hedge: 'gen:hedge', evCharger: 'gen:evCharger', busStop: 'gen:busStop', loadingDock: 'gen:loadingDock',
   parkingBay: 'gen:parkingBay',
   stairs: 'gen:stairs', escalator: 'gen:escalator', elevator: 'gen:elevator', tallWall: 'gen:tallWall',
   camera: 'gen:camera', dome: 'gen:dome', smartCam: 'gen:smartCam', tagGate: 'gen:tagGate', storeRack: 'gen:storeRack',
@@ -167,8 +167,10 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
         // The founder in bronze, waving from the plinth.
         const bronze = '#8A6A3A';
         parts.push(box(pal, bronze, 0.08, 0.32, 0.1, -0.06, 0.47, 0), box(pal, bronze, 0.08, 0.32, 0.1, 0.06, 0.47, 0), box(pal, bronze, 0.26, 0.34, 0.15, 0, 0.78, 0), sphere(pal, bronze, 0.085, 0, 1.22, 0, 10, 8));
-        const arm = box(pal, bronze, 0.06, 0.3, 0.06, 0, 0, 0); arm.rotateZ(-0.55); arm.translate(0.2, 1.12, 0); parts.push(arm);
-        const down = box(pal, bronze, 0.06, 0.28, 0.06, 0, 0, 0); down.rotateZ(0.12); down.translate(-0.16, 0.82, 0); parts.push(down);
+        // Both arms hang from the shoulders, their tops sunk into the torso's corners: the waving one raised out to the
+        // side, the other down by the body, its hand a little out from the hip.
+        const arm = box(pal, bronze, 0.06, 0.3, 0.06, 0, -0.04, 0); arm.rotateZ(-0.55); arm.translate(0.12, 1.08, 0); parts.push(arm);
+        const down = box(pal, bronze, 0.06, 0.28, 0.06, 0, -0.28, 0); down.rotateZ(-0.12); down.translate(-0.15, 1.1, 0); parts.push(down);
       } else {
         // Modern art: three cubes in the shop's colours, stacked at angles.
         parts.push(box(pal, sc.primary, 0.3, 0.3, 0.3, 0, 0.47, 0, 0.3), box(pal, sc.accent, 0.24, 0.24, 0.24, 0.02, 0.77, 0, 0.9), box(pal, sc.trim, 0.17, 0.17, 0.17, -0.01, 1.01, 0, 1.5));
@@ -206,6 +208,14 @@ export function fittingGeometry(assets: AssetLibrary, id: string, sc: Scheme): B
       // Tile-wide, so a row of them makes one hedge.
       const parts = [box(pal, '#2F7A3E', 1, 0.5, 0.56, 0, 0, 0), box(pal, '#3F8F4A', 0.96, 0.08, 0.5, 0, 0.5, 0)];
       if (id === 'gen:hedgeFlower') for (let i = 0; i < 9; i++) parts.push(box(pal, i % 3 === 0 ? '#FFFFFF' : '#F28CB8', 0.06, 0.04, 0.06, -0.42 + (i * 0.37) % 0.84, 0.56, -0.2 + ((i * 0.23) % 0.42)));
+      return merge(parts);
+    }
+    case 'gen:loadingDock': {
+      // Painted on the tarmac: a yellow frame round black-and-yellow hatching, rubber bumpers at its back end.
+      const parts: BufferGeometry[] = [];
+      for (const s of [-1, 1]) parts.push(box(pal, '#FFC844', 1.9, 0.012, 0.07, 0, 0.018, s * 0.44), box(pal, '#FFC844', 0.07, 0.012, 0.88, s * 0.92, 0.018, 0));
+      for (let i = 0; i < 10; i++) parts.push(box(pal, i % 2 ? '#38383D' : '#FFC844', 0.17, 0.012, 0.8, -0.78 + i * 0.173, 0.016, 0));
+      for (const s of [-1, 1]) parts.push(box(pal, '#222226', 0.12, 0.2, 0.08, s * 0.5, 0, -0.46));
       return merge(parts);
     }
     case 'gen:evCharger': return merge([

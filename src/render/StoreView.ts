@@ -7,7 +7,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import type { AssetLibrary } from './assets';
 import type { GameState, Shop, Fixture, FixtureType, Rot } from '@/sim/types';
 import { PRODUCTS, productDef } from '@/sim/products';
-import { DEFAULT_PAINT, serviceDoor } from '@/sim/layout';
+import { DEFAULT_PAINT } from '@/sim/layout';
 import { FIXTURES, lotLayout, WALL_T, PLOT_RECT, ROAD_Z, PALLET_UNITS, RACK_STANDS, storageUsed, toLocal, isFloor, floorTileList, tileKey, footprintOf, levelOf, levelOfZ, zOnLevel, groundZ, sinkWorld, storeysOf, rideEnds, VERTICAL, MAX_LEVELS, STOREY, edgeOf, edgeSide, insideOn } from '@/sim/layout';
 import { standPoint } from '@/sim/lot';
 import { signTier, chargersInUse } from '@/sim/frontage';
@@ -33,7 +33,7 @@ const DEPT_COLOURS: Partial<Record<string, string>> = {
 /** Walls drawn with the shell where they stand round the building (out in the band past the floor's edge); across the shop they are drawn as pieces, and a railing or a gate always is. */
 const SHELL_WALLS: ReadonlySet<FixtureType> = new Set<FixtureType>(['wall', 'wallWindow', 'tallWall', 'doorway', 'frontDoor', 'backDoor']);
 const CENTRED: ReadonlySet<FixtureType> = new Set<FixtureType>(['frontDoor', 'backDoor', 'sign', 'plant', 'floorLamp', 'pendant', 'basketStack', 'speaker', 'bin', 'rug', 'doormat', 'pallet', 'cafe', 'wall', 'wallWindow', 'doorway', 'railing', 'gate', 'wallLight', 'neon', 'window', 'tallWall', 'stairs', 'escalator', 'elevator', 'camera', 'dome', 'smartCam', 'tagGate', 'storeRack', 'iceChest', 'coolProduce', 'wallShelf', 'glassCase', 'displayTable', 'bakeryCase', 'clothesRail', 'vending', 'queueRail',
-  'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger', 'parkingBay']);
+  'fountain', 'statue', 'lampPost', 'bollard', 'balloons', 'hedge', 'evCharger', 'parkingBay', 'loadingDock']);
 
 /** Drops of spray over each fountain. */
 const SPRAY = 36;
@@ -62,6 +62,8 @@ const LEDGE = 0.3;
 
 export const STORE_MODELS = [...new Set([...Object.values(FIXTURE_MODEL).filter((id) => !id.startsWith('gen:')), ...FITTING_MODELS])].concat(['market/wall', 'market/wall-window', 'market/wall-door', 'furniture/cardboard-box-closed', ...productModelIds(), ...PROP_MODELS]);
 
+/** Models whose glass is a window's pane (tinted), not a case's (clear). */
+const WINDOW_MODELS = new Set(['gen:wallWindow', 'gen:windowTrim', 'market/wall-window']);
 export type StoreHit = { kind: 'fixture'; id: number; type: FixtureType; dist: number } | { kind: 'floor'; x: number; z: number; dist: number };
 
 interface Side { full: Mesh; ledge: Mesh; nx: number; nz: number; extraFull: Mesh[]; extraLedge?: Mesh[] }
@@ -496,7 +498,7 @@ export class StoreView {
         for (const b of boxes) this.wallBoxes.push({ ...b, side });
         if (paintFull.length) { const pm = new Mesh(mergeTinted(paintFull), this.paintMat()); pm.receiveShadow = true; parent.add(pm); side.extraFull.push(pm); }
         if (paintLedge.length) { const pm = new Mesh(mergeTinted(paintLedge), this.paintMat()); pm.receiveShadow = true; pm.visible = false; parent.add(pm); side.extraLedge!.push(pm); }
-        if (glass.length) { const gm = new Mesh(merge(glass), this.assets.glass); parent.add(gm); side.extraFull.push(gm); }
+        if (glass.length) { const gm = new Mesh(merge(glass), this.assets.windowGlass); parent.add(gm); side.extraFull.push(gm); }
         this.sides.push(side);
         if (dir.name === 'front' && L === 0) front = side;
       }
@@ -619,21 +621,6 @@ export class StoreView {
           if (tier >= 3) this.ticker = tex;
         }
       }
-    }
-    // A loading bay: hatching where the truck stands, and a dock with rubber bumpers by the delivery door (while it is in
-    // a wall at the back, where the dock and the yard are).
-    const sd = serviceDoor(shop);
-    if (shop.loadingBay && sd && sd.nz < 0) {
-      const ts = lotLayout(shop).truckStop, bay: BufferGeometry[] = [];
-      // Against the back door's own wall (a shop grown back a tile elsewhere has its back edge deeper).
-      const len = 2.8, wid = 1.25, wallOut = shop.backDoor.z - WALL_T, face = shop.backDoor.z - WALL_OUT;
-      for (const s of [-1, 1]) bay.push(box(pal, '#FFC844', len, 0.012, 0.07, ts.x, 0.018, ts.z + s * wid / 2));
-      for (let i = 0; i < 8; i++) bay.push(box(pal, i % 2 ? '#38383D' : '#FFC844', 0.16, 0.012, wid - 0.1, ts.x + len / 2 - 0.12 - i * 0.16, 0.018, ts.z));
-      const dx = shop.backDoor.x;
-      // (The dock runs back over the step to the wall itself.)
-      bay.push(box(pal, '#B9BCC4', 1.4, 0.12, face - wallOut + 0.42, dx, 0, (face + wallOut - 0.42) / 2), box(pal, '#FFC844', 1.4, 0.03, 0.04, dx, 0.1, wallOut - 0.42));
-      for (const s of [-1, 1]) bay.push(box(pal, '#222226', 0.1, 0.18, 0.07, dx + s * 0.55, 0.06, wallOut - 0.46));
-      this.shell.add(Object.assign(new Mesh(merge(bay), this.assets.material), { receiveShadow: true }));
     }
     // Roof: a flat deck with a parapet in the shop's green, worn when you are outside and pulled back.
     { // Over the floor and its walls, tile by tile, on top of however many storeys stand there, with the parapet round each outline.
@@ -1011,7 +998,7 @@ export class StoreView {
       // Kenney's glass, or our own cases' (the glass counter's top, the bakery case's front): their goods show through.
       const glass = model === 'chiller' ? null : this.assets.glassGeometry(model) ?? this.caseGlass(model);
       if (glass) {
-        const gm = new InstancedMesh(glass, this.assets.glass, list.length);
+        const gm = new InstancedMesh(glass, WINDOW_MODELS.has(model) ? this.assets.windowGlass : this.assets.glass, list.length);
         gm.frustumCulled = false;
         list.forEach((f, i) => gm.setMatrixAt(i, this.fixtureMatrix(shop, f, m, 0, true)));
         this.root.add(gm);
@@ -1342,7 +1329,7 @@ function wayInRuns(shop: Shop): [number, number][] {
   return runs;
 }
 
-function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => `${f.type}:${f.x},${f.z},${f.rot},${f.finish ?? ''},${f.paint ?? ''}`).join(';')}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.loadingBay ? 'bay' : ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
+function shellKeyOf(shop: Shop): string { return `${shop.name}|${shop.originX}|${shop.originZ}|${JSON.stringify(shop.floor)}|${(shop.gaps ?? []).join(';')}|${shop.backDoor.z}|${JSON.stringify(shop.tileStyles ?? {})}|${JSON.stringify(shop.tileColors ?? {})}|${(shop.floorImage ?? '').length}${(shop.floorImage ?? '').slice(-24)}|${shop.wallStyle ?? ''}|${shop.fixtures.filter((f) => FIXTURES[f.type].edge).map((f) => `${f.type}:${f.x},${f.z},${f.rot},${f.finish ?? ''},${f.paint ?? ''}`).join(';')}|${shop.lotRows}|${shop.scheme}|${shop.signStyle ?? 'classic'}|${shop.slogan ?? ''}|${shop.floorStyle ?? 'lino'}|${shop.fixtures.filter((f) => FIXTURES[f.type].outdoor || VERTICAL.has(f.type)).map((f) => `${f.type}:${f.x},${f.z},${f.rot}`).join(';')}|${(shop.ceilings ?? []).map((r) => r.join(' ')).join('/')}|${JSON.stringify(shop.lotTiles ?? {})}|${(shop.bayPlan ?? []).join(',')}`; }
 
 /** The floor's colours for a finish (every one a colour in the baked palette). */
 function floorPaint(style: FloorStyle, sc: Scheme): { a: string; b: string; joint: string; boards?: string[]; quarters?: boolean; cross?: boolean; veins?: string } {

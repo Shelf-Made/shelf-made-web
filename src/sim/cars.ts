@@ -1,5 +1,5 @@
 import type { GameState, Car, Vec2, Order, ParkingBay, RivalState } from './types';
-import { BAY_UNLOAD, CHARGE_REACH, chargersInUse, isElectric } from './frontage';
+import { BAY_UNLOAD, CHARGE_REACH, chargersInUse, isElectric, hasDock } from './frontage';
 import {
   ROAD_Z, LANE_EAST_Z, LANE_WEST_Z, LANE_NORTH_X, LANE_SOUTH_X, SIDE_HALF, STOP_LINE, CAR_ROAD_SPEED, CAR_LOT_SPEED, TICK, ROAD_FAR,
   lotLayout, toWorld, toLocal, greenFor, serviceDoor, byDoor, type Frame, type LotLayout,
@@ -1069,7 +1069,7 @@ export function tickCars(state: GameState): void {
 }
 
 /** A loading bay unloads the truck in half the time. */
-function unloadK(state: GameState): number { return state.shop.loadingBay ? BAY_UNLOAD : 1; }
+function unloadK(state: GameState): number { return hasDock(state.shop) ? BAY_UNLOAD : 1; }
 
 export function deliverOrder(state: GameState, order: Order): void {
   order.state = 'delivered';

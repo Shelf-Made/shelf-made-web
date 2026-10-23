@@ -140,7 +140,7 @@ export class StaticWorld {
     if (glassParts.length) {
       const g = mergeGeometries(glassParts, false);
       for (const p of glassParts) p.dispose();
-      if (g) { const mesh = new Mesh(g, this.assets.glass); this.group.add(mesh); this.meshes.push(mesh); }
+      if (g) { const mesh = new Mesh(g, this.assets.windowGlass); this.group.add(mesh); this.meshes.push(mesh); }
     }
 
     // The verges: grass tufts, flowers and pebbles by the thousand, merged into one mesh (one draw).

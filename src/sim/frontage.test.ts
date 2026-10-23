@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { canPlaceOutside } from './lot';
 import { newGame, applyCommand, tick, TICK, resetGridCache, type GameState } from './index';
 import { canPlace } from './build';
 import { lotAppeal } from './lot';
@@ -6,7 +7,7 @@ import { LOT_FRONT, PLOT_RECT, FRONT_WALK_Z, toLocal, lotLayout } from './layout
 import { expectedByType } from './customers';
 import { placeOrder } from './economy';
 import { spawnCustomer } from './people';
-import { SIGN_TIERS, SLOGAN_MAX, LOADING_BAY_PRICE, BAY_ETA, CHARGE_FEE, BUS_PULL, signPrice, isElectric, chargersInUse, chargerReachesBay, cleanSignText, SIGN_TEXT_MAX } from './frontage';
+import { SIGN_TIERS, SLOGAN_MAX, BAY_ETA, CHARGE_FEE, BUS_PULL, signPrice, isElectric, chargersInUse, chargerReachesBay, cleanSignText, SIGN_TEXT_MAX } from './frontage';
 import { supplier, orderEta } from './economy';
 import type { Rot, FixtureType } from './types';
 
@@ -80,22 +81,24 @@ describe('the shop sign', () => {
   });
 });
 
-describe('the loading bay', () => {
-  it('brings the truck sooner and unloads it faster', () => {
+describe('the loading dock', () => {
+  it('put by the delivery door, brings the truck sooner and unloads it faster', () => {
     const s = shop();
     s.phase = 'open';
     const slow = placeOrder(s, 'local', [{ productId: 'bread', qty: 10 }]);
     expect(typeof slow).not.toBe('string');
-    expect(applyCommand(s, { type: 'buyLoadingBay' }).ok).toBe(true);
-    expect(s.shop.loadingBay).toBe(true);
-    expect(applyCommand(s, { type: 'buyLoadingBay' }).ok).toBe(false);
+    // Not out by the street; somewhere by the back door.
+    expect(canPlaceOutside(s, 'loadingDock', 6, 0.5, 0).reason).toBe('Put it by the door deliveries come in at');
+    const spots = [];
+    for (let x = -8; x <= 12; x++) for (let z = -11.5; z <= 1.5; z++) for (const rot of [0, 1] as const) if (canPlaceOutside(s, 'loadingDock', x, z, rot).ok) spots.push({ x, z, rot });
+    expect(spots.length).toBeGreaterThan(0);
+    expect(applyCommand(s, { type: 'placeFixture', fixtureType: 'loadingDock', ...spots[0]! }).ok).toBe(true);
     const fast = placeOrder(s, 'local', [{ productId: 'milk', qty: 10 }]);
     if (typeof fast === 'string' || typeof slow === 'string') throw new Error('no order');
     expect(fast.eta).toBeCloseTo(supplier('local').etaSeconds * BAY_ETA, 5);
     expect(slow.eta).toBe(supplier('local').etaSeconds);
     // The Stock card promises the time the truck really takes.
     expect(orderEta(s, 'local')).toBe(fast.eta);
-    expect(LOADING_BAY_PRICE).toBeGreaterThan(0);
   });
 });
 

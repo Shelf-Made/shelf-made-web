@@ -1,13 +1,13 @@
 /**
  * The shop front and the lot's extras. A better sign (lit letters, neon, an LED board on the pylon) gets
- * the shop noticed by more of the people going past; a slogan runs under the name. A loading bay at the
- * back door brings the trucks sooner and unloads them faster. Car chargers on the lot earn a little from
+ * the shop noticed by more of the people going past; a slogan runs under the name. A loading dock by the
+ * delivery door brings the trucks sooner and unloads them faster. Car chargers on the lot earn a little from
  * every electric car that plugs in, and draw a few more drivers; your own bus stop puts the shop on the
  * bus route. None of it draws on the random streams except the bus stop's own ('transit'), so a shop
  * without them plays exactly as before.
  */
 import type { GameState, Shop, SignStyle, Car, Fixture, Vec2 } from './types';
-import { LOT_FRONT, FRONT_WALK_Z, toWorld, toLocal, bayRect, lotLayout } from './layout';
+import { LOT_FRONT, FRONT_WALK_Z, WALL_T, toWorld, toLocal, bayRect, lotLayout, serviceDoor, byDoor, footprintOf } from './layout';
 import { popup, cue, withRng } from './state';
 import { dollars, formatMoney } from './money';
 import { idHash } from './visitors';
@@ -22,8 +22,7 @@ export const SIGN_TIERS: { id: SignStyle; name: string; price: number; pull: num
 ];
 /** Longest slogan (letters). */
 export const SLOGAN_MAX = 28;
-export const LOADING_BAY_PRICE = 1500;
-/** With a loading bay, trucks come in this share of the time, and unload in this share of it. */
+/** With a loading dock by the delivery door, trucks come in this share of the time, and unload in this share of it. */
 export const BAY_ETA = 0.6;
 export const BAY_UNLOAD = 0.5;
 /** What a driver pays to charge (once, when they plug in). */
@@ -77,14 +76,17 @@ export function setSlogan(state: GameState, text: string): string | null {
   return null;
 }
 
-export function buyLoadingBay(state: GameState): string | null {
-  if (state.shop.loadingBay) return 'The shop has a loading bay already.';
-  if (state.cash < LOADING_BAY_PRICE) return `Need ${dollars(LOADING_BAY_PRICE)}.`;
-  state.cash -= LOADING_BAY_PRICE;
-  state.shop.loadingBay = true;
-  state.shop.layoutVersion++;
-  return null;
+/** How far from just outside the door deliveries come in at a loading dock may be (its middle) and still serve it. */
+export const DOCK_REACH = 3.5;
+/** Is a dock at x, z (lot tile corner, turned rot) by the door deliveries come in at? */
+export function dockByDoor(shop: Shop, x: number, z: number, rot: number): boolean {
+  const sd = serviceDoor(shop);
+  if (!sd) return false;
+  const r = footprintOf('loadingDock', x, z, rot), out = byDoor(sd, WALL_T + 0.5);
+  return Math.hypot((r.x0 + r.x1) / 2 - out.x, (r.z0 + r.z1) / 2 - out.z) <= DOCK_REACH;
 }
+/** Does the shop have a loading dock by its delivery door (trucks sooner, unloading faster)? */
+export function hasDock(shop: Shop): boolean { return shop.fixtures.some((f) => f.type === 'loadingDock' && dockByDoor(shop, f.x, f.z, f.rot)); }
 
 /** How much more trade the front of the shop brings in: the sign, your bus stop, car chargers (two count). */
 export function frontagePull(shop: Shop): number {

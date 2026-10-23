@@ -30,6 +30,8 @@ export class AssetLibrary {
   /** Without surface detail: for people, cars, products and the pictures of them. */
   plainMaterial!: MeshStandardMaterial;
   glass!: MeshStandardMaterial;
+  /** A window's pane: tinted and glossy, so it reads as glass from across the street (a case's glass stays clear: `glass`). */
+  windowGlass!: MeshStandardMaterial;
   unlit!: MeshBasicMaterial;
   index = new Map<string, ModelInfo>();
   private readonly geoms = new Map<string, { atlas: BufferGeometry; glass: BufferGeometry | null }>();
@@ -57,6 +59,7 @@ export class AssetLibrary {
     this.carMaterial = addWetSheen(new MeshStandardMaterial({ map: atlas, roughness: 0.9, metalness: 0, flatShading: false }), false);
     this.ground = addWetness(addSurfaceDetail(new MeshStandardMaterial({ map: atlas, roughness: 0.95, metalness: 0, flatShading: false }), detail));
     this.glass = new MeshStandardMaterial({ color: new Color('#CFE9F7'), roughness: 0.2, metalness: 0, transparent: true, opacity: 0.45, depthWrite: false });
+    this.windowGlass = new MeshStandardMaterial({ color: new Color('#86AFC8'), roughness: 0.06, metalness: 0.35, transparent: true, opacity: 0.72, depthWrite: false });
     this.unlit = new MeshBasicMaterial({ map: atlas });
     // The town's trees are our own detailed ones under Kenney's ids (their GLBs are then never fetched).
     for (const [id, g] of detailedTrees(this.palette)) if (this.index.has(id)) this.geoms.set(id, { atlas: g, glass: null });

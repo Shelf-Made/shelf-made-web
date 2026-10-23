@@ -12,7 +12,7 @@ import { forSale, CORNER_PRICE } from '@/sim/rivals';
 import { managerCandidates } from '@/sim/franchise';
 import { FURNITURE_USE } from '@/sim/furniture';
 import { looksOf } from '@/sim/reviews';
-import { SIGN_TIERS, SLOGAN_MAX, LOADING_BAY_PRICE, CHARGE_FEE, BUS_PULL, BAY_ETA, signTier, signPrice } from '@/sim/frontage';
+import { SIGN_TIERS, SLOGAN_MAX, CHARGE_FEE, BUS_PULL, BAY_ETA, signTier, signPrice } from '@/sim/frontage';
 
 type Tab = BuildCategory | 'floors' | 'shop';
 const TABS: { id: Tab; label: string }[] = [
@@ -44,6 +44,7 @@ const NOTES: Partial<Record<FixtureType, string>> = {
   fountain: 'Two tiers of stone and a pool: the frontage at its finest', statue: 'On a plinth by the car park (two kinds)', lampPost: 'Lights the lot after dark',
   bollard: 'A pair of posts to line a path', balloons: 'A bunch on a string: it looks like a party', hedge: 'Tile by tile: a row makes one hedge',
   evCharger: `Electric cars parked within reach plug in: ${money(CHARGE_FEE)} a charge, and a few more drivers come`,
+  loadingDock: `Paint it where the truck stops, by the delivery door: trucks come ${Math.round((1 - BAY_ETA) * 100)}% sooner and unload in half the time`,
   busStop: `Your own stop on the bus route, by the sidewalk: ${Math.round((BUS_PULL - 1) * 100)}% more shoppers, and the rush-hour crowd gets off at your door`,
 };
 
@@ -403,11 +404,6 @@ function ShopFront({ runtime }: { runtime: GameRuntime }) {
           <div className="sub">On a panel under the pylon's board{tier >= 3 ? ', running across the LED board' : ''}.</div>
           <input className="text-in" type="text" maxLength={SLOGAN_MAX} placeholder="Fresh every day" value={slogan} onChange={(e) => setSlogan(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter') { save(); (e.target as HTMLInputElement).blur(); } e.stopPropagation(); }} aria-label="Shop slogan" />
         </div>
-      </div>
-      <h3>Loading bay</h3>
-      <div className="item">
-        <div><div className="name">{s.shop.loadingBay ? 'Loading bay built' : `Loading bay · ${money(LOADING_BAY_PRICE)}`}</div><div className="sub">A dock at the back door: trucks come {Math.round((1 - BAY_ETA) * 100)}% sooner and unload in half the time.</div></div>
-        {!s.shop.loadingBay && <button className="btn small" disabled={s.cash < LOADING_BAY_PRICE} onClick={() => runtime.dispatch({ type: 'buyLoadingBay' })}>Build</button>}
       </div>
     </>
   );

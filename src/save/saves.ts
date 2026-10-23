@@ -1,7 +1,8 @@
 import type { GameState, Franchise } from '@/sim/types';
 import { bakeLot } from '@/sim/drive';
 import { rerouteToBays } from '@/sim/cars';
-import { storeFrame, lotLayout, paintedBays, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES } from '@/sim/layout';
+import { storeFrame, lotLayout, paintedBays, toWorld, yawToWorld, STREET_BAYS, OFFMAP_SITES, FIXTURES } from '@/sim/layout';
+import { dollars } from '@/sim/money';
 
 import { makeRivals, RIVAL_ECON } from '@/sim/rivals';
 import { SAVE_VERSION, emptyComplaints, makeGoals } from '@/sim/newGame';
@@ -131,6 +132,12 @@ export function migrate(file: SaveFile): SaveFile {
   stepOnInside(st);
   // The delivery corner the shop came with: a Pallet on each of its tiles, to move like any other.
   palletsFromDelivery(st);
+  // The loading bay bought before it was a piece: its price back, to put a Loading dock where you want one.
+  if (st.shop.loadingBay) {
+    delete st.shop.loadingBay;
+    st.cash += FIXTURES.loadingDock.price;
+    st.notices.push({ day: st.day, text: `The loading bay is now a Loading dock you place yourself (Build, Outside): ${dollars(FIXTURES.loadingDock.price)} back to buy one where you want it.`, kind: 'info' });
+  }
   // The lot laid as tiles: its paths, lanes and yard tiles to dig up or lay again, its bays Parking bays to move.
   st.cars ??= [];
   const baked = st.shop.lotBaked;

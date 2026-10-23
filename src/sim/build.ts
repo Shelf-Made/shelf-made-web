@@ -19,6 +19,11 @@ export interface PlaceCheck { ok: boolean; reason: string; price: number; ceilin
 
 /** Pieces that reach up to the ceiling (or hang from it): a camera up there would be inside them. */
 const TO_CEILING: ReadonlySet<FixtureType> = new Set<FixtureType>(['pendant', 'vending', 'storeRack', 'freezer', 'kiosk', 'endcap', 'sign', ...VERTICAL]);
+/** Is `light` a light hung up out of the way (on a wall, from the ceiling) and `under` a piece standing on the floor below it that stays clear of it? */
+const underLight = (light: FixtureType, under: FixtureType): boolean => {
+  const l = FIXTURES[light], u = FIXTURES[under];
+  return l.category === 'lights' && (!!l.onWall || light === 'pendant') && !u.onWall && !u.overhead && !u.edge && !u.outdoor && under !== 'pendant' && !TO_CEILING.has(under);
+};
 
 /** Is (x, z) not a tile's corner? (The Build card snaps to tiles; a command need not.) */
 function offTile(shop: Shop, x: number, z: number): boolean { const f = shop.floor; return Math.abs((x - f.x0) - Math.round(x - f.x0)) > 1e-6 || Math.abs((z - f.z0) - Math.round(z - f.z0)) > 1e-6; }
@@ -43,7 +48,9 @@ export function canPlace(state: GameState, type: FixtureType, x: number, z: numb
   const mine = footprintOf(type, x, z, rot);
   // (A camera up on the ceiling shares its tile with what stands under it, but not with another up there,
   // nor with anything that reaches up to the ceiling.)
-  const apart = (fx: Fixture) => !!def.overhead !== !!FIXTURES[fx.type].overhead && !TO_CEILING.has(def.overhead ? fx.type : type);
+  const apart = (fx: Fixture) => !!def.overhead !== !!FIXTURES[fx.type].overhead && !TO_CEILING.has(def.overhead ? fx.type : type)
+    // (Nor does a light hung on the wall or from the ceiling with what stands on the floor under it, unless that reaches up to it.)
+    || underLight(type, fx.type) || underLight(fx.type, type);
   if (shop.fixtures.some((fx) => fx.id !== ignoreId && !FIXTURES[fx.type].outdoor && !FIXTURES[fx.type].edge && !apart(fx) && (fx.x === x && fx.z === z
     ? (sameWall(fx) || (type !== 'window' && fx.type !== 'window'))
     : type !== 'window' && fx.type !== 'window' && overlaps(footprintOf(fx.type, fx.x, fx.z, fx.rot), mine)))) return { ok: false, reason: 'Something is already there', price };

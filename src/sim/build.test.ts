@@ -175,6 +175,19 @@ describe('building: walls, doors, lights, floors and windows', () => {
   });
 });
 
+describe('lights', () => {
+  it('a light goes up over the furniture under it, not into a tall piece', () => {
+    const s = shop();
+    const z = s.shop.floor.z0, x = s.shop.floor.x1 - 1;
+    expect(place(s, 'shelf', x, z + 2).ok).toBe(true);
+    expect(place(s, 'pendant', x, z + 2).ok).toBe(true);
+    expect(place(s, 'shelf', x, z).ok).toBe(true);
+    expect(place(s, 'wallLight', x, z, 0).ok).toBe(true);
+    expect(place(s, 'freezer', x - 1, z + 3).ok).toBe(true);
+    expect(canPlace(s, 'pendant', x - 1, z + 3, 0).reason).toBe('Something is already there');
+  });
+});
+
 describe('pallets', () => {
   it('an extra pallet on the floor holds more deliveries, and is not sold while its boxes need it', () => {
     const s = shop();

@@ -32,6 +32,8 @@ export type FixtureType = 'register' | 'shelf' | 'fridge' | 'freezer' | 'produce
   | 'flowerBed' | 'tree' | 'planter' | 'parkBench' | 'bikeRack' | 'billboard'
   /** More for the lot: a fountain, a statue, lamp posts, bollards, balloons, hedges, a car charger and your own bus stop. */
   | 'fountain' | 'statue' | 'lampPost' | 'bollard' | 'balloons' | 'hedge' | 'evCharger' | 'busStop'
+  /** A loading dock where the delivery truck stops: it comes sooner and unloads faster. */
+  | 'loadingDock'
   /** A parking bay on your own lot, anywhere there is tarmac to drive to it. */
   | 'parkingBay'
   /** Up to the next floor. */
@@ -432,7 +434,7 @@ export interface Shop {
   signBought?: SignStyle;
   /** A line under the name on the pylon (and across the LED board). */
   slogan?: string;
-  /** A loading bay at the back door: trucks come sooner and unload faster. */
+  /** Old saves only: the loading bay bought before it was a piece (a Loading dock) to put where you like. */
   loadingBay?: boolean;
   /** Bumped whenever fixtures or walls change, so the pathfinding grid is rebuilt. */
   layoutVersion: number;

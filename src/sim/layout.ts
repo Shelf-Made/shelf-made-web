@@ -746,6 +746,8 @@ export const FIXTURES: Record<FixtureType, FixtureDef> = {
   evCharger: { type: 'evCharger', name: 'Car charger', price: 1200, w: 1, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 2, category: 'outside', outdoor: true, curb: 0.02, looksCap: 2 },
   /** Your own stop on the bus route, by the sidewalk: more shoppers, and the rush-hour crowd gets off at your door. */
   busStop: { type: 'busStop', name: 'Bus stop', price: 2500, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 3, category: 'outside', outdoor: true },
+  /** Painted on the tarmac where the delivery truck stops, by the door deliveries come in at: trucks come sooner and unload faster. */
+  loadingDock: { type: 'loadingDock', name: 'Loading dock', price: 1500, w: 2, d: 1, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, walkable: true },
   /** Laid on tarmac (it comes with it), its open end facing the tarmac a car drives up. */
   parkingBay: { type: 'parkingBay', name: 'Parking bay', price: BAY_PRICE, w: 1, d: 2, slots: 0, capacity: 0, chilled: false, upkeep: 0, category: 'outside', outdoor: true, walkable: true },
   // Up to the next floor: each runs back from its front tile and comes up through the floor above.
@@ -810,7 +812,7 @@ export function solidRect(f: { type: FixtureType; x: number; z: number; rot: num
 }
 
 /** Most of each that the lot takes. */
-export const LOT_MAX: Partial<Record<FixtureType, number>> = { billboard: 2, bikeRack: 4, fountain: 2, evCharger: 4, busStop: 1 };
+export const LOT_MAX: Partial<Record<FixtureType, number>> = { billboard: 2, bikeRack: 4, fountain: 2, evCharger: 4, busStop: 1, loadingDock: 1 };
 /** Bikes a rack holds. */
 export const RACK_STANDS = 3;
 
