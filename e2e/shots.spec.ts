@@ -407,7 +407,8 @@ test.describe('screenshots', () => {
     // Furniture clicked with empty hands: its menu (Stock, Move, Turn, Sell); Move picks it up and the ghost follows the pointer.
     {
       const sh = (await st(page)).shop.fixtures.find((f) => f.type === 'shelf')!;
-      await follow(page, 0.5, -1.2, 9, 0, 1200);
+      // (From above: the walls stand full height, so a low view from the street looks at the front windows.)
+      await follow(page, 0.5, -1.2, 9, 0, 1200, 1.2);
       const p = await hooks<{ x: number; y: number }>(page, 'screenAt', (sh as unknown as { x: number }).x + 0.5, (sh as unknown as { z: number }).z + 0.5, 0.6);
       await page.mouse.click(p.x, p.y);
       await expect(page.getByRole('menu', { name: 'Shelf' })).toBeVisible();
